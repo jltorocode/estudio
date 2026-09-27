@@ -12,7 +12,7 @@ const PRACTICE: Record<string, string> = {
   english: "Práctica de inglés · con audio, micrófono y corrección al instante",
   postgres: "Práctica con PostgreSQL 18 · simulado aquí mismo, en tu navegador"
 };
-const KIND: Record<string, string> = { vocabulario: "Vocabulario", gramatica: "Gramática", traduccion: "Traducción", dictado: "Dictado", pronunciacion: "Pronunciación", conversacion: "Conversación", examen: "Examen del libro", mixto: "Desafío", "pg-query": "Consulta", "pg-script": "Script SQL", "pg-psql": "Consola psql" };
+const KIND: Record<string, string> = { vocabulario: "Vocabulario", gramatica: "Gramática", traduccion: "Traducción", dictado: "Dictado", pronunciacion: "Pronunciación", conversacion: "Conversación", examen: "Examen", mixto: "Desafío", lectura: "Lectura", audicion: "Comprensión auditiva", escritura: "Escritura", expresion: "Expresión oral", "pg-query": "Consulta", "pg-script": "Script SQL", "pg-psql": "Consola psql" };
 
 export default function ExercisesTab({ courseId, meta, pct, runtime }: { courseId: string; meta: SectionMeta; pct: number; runtime?: string }) {
   const { p } = useProgress();

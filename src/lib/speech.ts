@@ -228,25 +228,27 @@ const RECOG_ERR: Record<string, string> = {
  * Escucha una frase y devuelve lo reconocido (varias alternativas). `local` exige que se procese en el equipo.
  * Llama a onInterim con el texto provisional mientras hablas.
  */
-export function listen(opts: { local: boolean; onInterim?: (t: string) => void }): { stop: () => void; result: Promise<{ text: string; alts: string[] }> } {
+export function listen(opts: { local: boolean; continuous?: boolean; onInterim?: (t: string) => void }): { stop: () => void; result: Promise<{ text: string; alts: string[] }> } {
   const C = ctor();
   if (!C) return { stop: () => {}, result: Promise.reject(new Error("Este navegador no tiene reconocimiento de voz.")) };
   const r = new C();
   r.lang = "en-US";
   r.interimResults = true;
   r.maxAlternatives = 5;
-  r.continuous = false;
+  r.continuous = !!opts.continuous;
   if (opts.local) r.processLocally = true;
   let finalText = "";
   let alts: string[] = [];
   const result = new Promise<{ text: string; alts: string[] }>((resolve, reject) => {
     r.onresult = (e) => {
-      let interim = "";
+      // Se reconstruye entero en cada evento: la lista de resultados trae también los ya finales
+      let interim = "", fin = "";
       for (let i = 0; i < e.results.length; i++) {
         const res = e.results[i];
-        if (res.isFinal) { finalText += res[0].transcript; alts = Array.from({ length: res.length }, (_, k) => res[k].transcript); }
+        if (res.isFinal) { fin += res[0].transcript; alts = Array.from({ length: res.length }, (_, k) => res[k].transcript); }
         else interim += res[0].transcript;
       }
+      finalText = fin;
       opts.onInterim?.((finalText + " " + interim).trim());
     };
     r.onerror = (e) => { const m = RECOG_ERR[e.error] ?? `Error de reconocimiento: ${e.error}`; if (m) reject(new Error(m)); };

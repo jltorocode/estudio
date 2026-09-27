@@ -70,6 +70,7 @@ export function lessonText(blocks: Section["lessons"][number]["blocks"]): string
         case "phrases": return b.items.map((p) => `${p.en} — ${p.es}`).join("\n");
         case "dialog": return b.lines.map((l) => `${l.who}: ${l.en} (${l.es})`).join("\n");
         case "pattern": return b.rows.map((r) => r.join(" ")).join("\n");
+        case "text": return [b.title || "", ...b.paragraphs.map((p) => `${p.en}\n${p.es}`)].join("\n");
       }
     })
     .join("\n\n");
@@ -91,15 +92,21 @@ export const getSectionNames = cache((courseId: string): Record<string, string> 
 /** Grupos del vocabulario de Ogden, en el orden en que se presentan (s11). */
 const VOCAB_GROUPS = ["Operaciones", "Cosas generales", "Cosas que se pueden dibujar", "Cualidades generales", "Cualidades opuestas"];
 
-/** Las 850 palabras (bloques `words` de la sección 11 cuyo título empieza por un grupo de Ogden). */
+/**
+ * Vocabulario para el laboratorio. En el curso de Ghio, las 850 palabras (bloques `words` cuyo título empieza
+ * por un grupo de Ogden); en los demás cursos de inglés, todas las palabras de todas las secciones, agrupadas por nivel.
+ */
 export const getVocab = cache((courseId: string) => {
   const vocab: { en: string; es: string; ipa?: string; fig?: string; group: string }[] = [];
   const seen = new Set<string>();
+  const course = getCourse(courseId);
+  const ogden = !course?.vocabLabel;
+  const levelName = (d: string) => course?.domains.find((x) => x.id === d)?.short || d;
   for (const s of getSections(courseId))
     for (const l of s.lessons)
       for (const b of l.blocks)
-        if (b.type === "words" && b.title) {
-          const group = VOCAB_GROUPS.find((g) => b.title!.startsWith(g));
+        if (b.type === "words") {
+          const group = ogden ? (b.title ? VOCAB_GROUPS.find((g) => b.title!.startsWith(g)) : undefined) : levelName(s.domain);
           if (!group) continue;
           for (const w of b.items) {
             const k = w.en.toLowerCase();
@@ -108,7 +115,8 @@ export const getVocab = cache((courseId: string) => {
             vocab.push({ en: w.en, es: w.es, ipa: w.ipa, fig: w.fig, group });
           }
         }
-  return { vocab, groups: VOCAB_GROUPS.filter((g) => vocab.some((w) => w.group === g)) };
+  const groups = ogden ? VOCAB_GROUPS : [...new Set(vocab.map((w) => w.group))];
+  return { vocab, groups: groups.filter((g) => vocab.some((w) => w.group === g)), label: course?.vocabLabel || "Las 850 palabras" };
 });
 
 /** Todas las frases de ejemplo del curso (para practicar la pronunciación al azar). */

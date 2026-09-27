@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EnItem, EnglishExercise } from "@/lib/types";
-import { canonical, expand, fillCloze, gaps, grade, speechScore, tiles, type DiffPart, type Grade } from "@/lib/english";
+import { canonical, expand, fillCloze, gaps, grade, speechScore, targetHits, tiles, wordCount, type DiffPart, type Grade } from "@/lib/english";
 import { fmt, fmtBlock, levelLabel, shuffle } from "@/lib/format";
 import { getPrefs, hasMic, listen, record, speak, stopSpeaking } from "@/lib/speech";
 import { IconMic, IconSpeaker, IconStop, Say, VoiceMenu } from "./EnVoice";
@@ -19,9 +19,10 @@ type Outcome = { ok: boolean; skipped?: boolean; requeue?: boolean; grade?: Grad
 
 export const KIND_LABEL: Record<EnglishExercise["kind"], string> = {
   vocabulario: "Vocabulario", gramatica: "Gramática", traduccion: "Traducción", dictado: "Dictado", pronunciacion: "Pronunciación",
-  conversacion: "Conversación", examen: "Examen del libro", mixto: "Desafío"
+  conversacion: "Conversación", examen: "Examen", mixto: "Desafío",
+  lectura: "Lectura", audicion: "Comprensión auditiva", escritura: "Escritura", expresion: "Expresión oral"
 };
-const ITEM_LABEL: Record<EnItem["t"], string> = { write: "escribir", choice: "elegir", cloze: "completar", order: "ordenar", match: "unir", speak: "pronunciar" };
+const ITEM_LABEL: Record<EnItem["t"], string> = { write: "escribir", choice: "elegir", cloze: "completar", order: "ordenar", match: "unir", speak: "pronunciar", free: "producción libre" };
 
 export default function EnglishDrill(props: Props) {
   const { ready } = useProgress();
@@ -47,7 +48,7 @@ function Drill({ courseId, sectionId, exercise: x, index, total, prev, next }: P
     for (const it of x.items) c[it.t] = (c[it.t] || 0) + 1;
     return Object.entries(c).map(([t, n]) => `${n} de ${ITEM_LABEL[t as EnItem["t"]]}`).join(" · ");
   }, [x.items]);
-  const audio = x.items.some((it) => ("say" in it && it.say) || it.t === "speak" || it.t === "match");
+  const audio = x.items.some((it) => ("say" in it && it.say) || it.t === "speak" || it.t === "match" || it.t === "free");
 
   const start = () => {
     setQueue(x.items.map((_, i) => i));
@@ -214,6 +215,7 @@ function ItemSummary({ it }: { it: EnItem }) {
     case "order": return <><span dangerouslySetInnerHTML={{ __html: fmt(it.q) }} /> → <b lang="en">{it.answer}</b><Say text={it.answer} /></>;
     case "match": return <>{it.pairs.map(([a, b]) => `${a} = ${b}`).join(" · ")}</>;
     case "speak": return <><b lang="en">{it.say}</b><Say text={it.say} slow />{it.es && <span className="faint"> · {it.es}</span>}</>;
+    case "free": return <><span dangerouslySetInnerHTML={{ __html: fmt(it.q) }} /> → <span className="faint">modelo:</span> <b lang="en">{it.model}</b><Say text={it.model} /></>;
   }
 }
 
@@ -274,6 +276,7 @@ function ItemView({ item, outcome, onAnswer }: { item: EnItem; outcome: Outcome 
     case "order": return <OrderItem item={item} outcome={outcome} onAnswer={onAnswer} />;
     case "match": return <MatchItem item={item} outcome={outcome} onAnswer={onAnswer} />;
     case "speak": return <SpeakItem item={item} outcome={outcome} onAnswer={onAnswer} />;
+    case "free": return <FreeItem item={item} outcome={outcome} onAnswer={onAnswer} />;
   }
 }
 
@@ -619,6 +622,160 @@ function SpeakItem({ item, outcome, onAnswer }: ItemProps<"speak">) {
         </div>
       )}
       {!auto && !outcome && <p className="faint" style={{ margin: 0 }}>Grábate, escucha tu voz junto al modelo y evalúate con honestidad. Para que la plataforma te corrija sola, activa el reconocimiento en «Voz».</p>}
+    </>
+  );
+}
+
+/* ------------------------------ Producción libre ------------------------------ */
+
+/**
+ * Escribir o hablar con libertad: el alumno produce su propio texto (o lo dice y el navegador lo transcribe),
+ * la plataforma comprueba sola las metas (estructuras y palabras que debía usar) y la extensión, y después
+ * enseña la respuesta modelo con audio y una rúbrica para autoevaluarse con honestidad.
+ */
+function FreeItem({ item, outcome, onAnswer }: ItemProps<"free">) {
+  const [mode] = useState(() => getPrefs().recog);
+  const [text, setText] = useState("");
+  const [state, setState] = useState<"idle" | "listening" | "recording">("idle");
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const [review, setReview] = useState(false);
+  const [ticks, setTicks] = useState<boolean[]>(() => item.rubric.map(() => false));
+  const [showEs, setShowEs] = useState(false);
+  const stopRef = useRef<(() => void) | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => { stopRef.current?.(); if (url) URL.revokeObjectURL(url); }, [url]);
+  const speakMode = item.mode === "speak";
+  const auto = speakMode && mode !== "off";
+  const targets = useMemo(() => item.targets || [], [item.targets]);
+  const n = wordCount(text);
+  const hits = useMemo(() => targetHits(text, targets), [text, targets]);
+  const lenOk = (!item.minWords || n >= item.minWords) && (!item.maxWords || n <= item.maxWords);
+
+  const talk = async () => {
+    setErr(null); setState("listening");
+    const before = text.trim();
+    const r = listen({ local: mode === "local", continuous: true, onInterim: (t) => setText((before ? before + " " : "") + t) });
+    stopRef.current = r.stop;
+    try {
+      const { text: heard } = await r.result;
+      setText((before ? before + " " : "") + heard);
+      if (!heard && !before) setErr("No se entendió nada. Habla un poco más fuerte y claro, y vuelve a intentarlo.");
+    } catch (e) { setErr((e as Error).message); }
+    setState("idle");
+  };
+
+  const rec = async () => {
+    setErr(null);
+    try {
+      const r = await record(180000);
+      stopRef.current = r.stop;
+      setState("recording");
+      const blob = await r.result;
+      if (url) URL.revokeObjectURL(url);
+      setUrl(URL.createObjectURL(blob));
+    } catch { setErr("No se pudo usar el micrófono (revisa el permiso del navegador)."); }
+    setState("idle");
+  };
+
+  const rubricPct = item.rubric.length ? ticks.filter(Boolean).length / item.rubric.length : 1;
+  const allTargets = hits.every(Boolean);
+  const ok = allTargets && lenOk && rubricPct >= 0.7;
+  const canReview = speakMode ? !!(text.trim() || url) : !!text.trim();
+  const finish = () =>
+    onAnswer({
+      ok, requeue: false,
+      msg: ok
+        ? "Bien hecho: cumpliste las metas y tu autoevaluación es buena. Vuelve a hacerlo otro día sin mirar el modelo."
+        : `Todavía no: ${[!allTargets && "te faltan metas", !lenOk && "revisa la extensión", rubricPct < 0.7 && "la rúbrica pide más"].filter(Boolean).join(", ")}. Estudia el modelo, dilo o escríbelo otra vez con tus palabras y repite el ejercicio.`
+    });
+
+  return (
+    <>
+      <Q text={item.q} />
+      {item.say && (
+        <div className="listen-box">
+          <Say text={item.say} slow big autoPlay label="Escuchar" />
+          <span className="faint">Escucha la pregunta (las veces que quieras) y responde {speakMode ? "hablando" : "por escrito"}.</span>
+        </div>
+      )}
+      {(targets.length > 0 || item.minWords || item.maxWords) && (
+        <div className="free-goals">
+          <span className="eyebrow">Metas{review ? "" : " (se comprueban solas)"}</span>
+          <ul>
+            {targets.map((t, i) => <li key={i} className={review ? (hits[i] ? "ok" : "ko") : ""}>{review ? (hits[i] ? "✓ " : "✗ ") : ""}<span dangerouslySetInnerHTML={{ __html: fmt(t.label) }} /></li>)}
+            {(item.minWords || item.maxWords) && (
+              <li className={review ? (lenOk ? "ok" : "ko") : ""}>
+                {review ? (lenOk ? "✓ " : "✗ ") : ""}Extensión: {item.minWords && item.maxWords ? `${item.minWords}–${item.maxWords}` : item.minWords ? `al menos ${item.minWords}` : `como máximo ${item.maxWords}`} palabras <span className="faint">(llevas {n})</span>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+      {!review && (
+        <>
+          {speakMode && (
+            <div className="speak-actions">
+              {auto && (state === "listening"
+                ? <button className="btn primary rec-on" onClick={() => stopRef.current?.()}><IconStop /> Escuchando… (pulsa al terminar)</button>
+                : <button className="btn primary" onClick={talk}><IconMic /> {text ? "Seguir hablando" : "Hablar"}</button>)}
+              {typeof window !== "undefined" && hasMic() && (state === "recording"
+                ? <button className="btn rec-on" onClick={() => stopRef.current?.()}><IconStop /> Grabando… (pulsa al terminar)</button>
+                : <button className={"btn" + (auto ? " ghost" : " primary")} onClick={rec}><IconMic /> {url ? "Grabarme otra vez" : "Grabarme"}</button>)}
+              {url && <button className="btn small" onClick={() => audioRef.current?.play()}><IconSpeaker /> Mi grabación</button>}
+              <audio ref={audioRef} src={url || undefined} hidden />
+            </div>
+          )}
+          <textarea
+            className="drill-input free-text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            lang="en"
+            spellCheck={false}
+            autoCapitalize="sentences"
+            placeholder={speakMode ? (auto ? "Aquí aparece lo que dices (puedes corregir lo que el reconocimiento entendió mal)…" : "Grábate y, si quieres que se comprueben las metas, escribe aquí lo que dijiste…") : "Escribe en inglés…"}
+            aria-label="Tu respuesta"
+          />
+          {err && <p className="callout warn" style={{ margin: 0 }}><span className="lbl">Ojo</span><span>{err}</span></p>}
+          {!outcome && (
+            <div className="row">
+              <button className="btn primary" onClick={() => { stopRef.current?.(); setReview(true); }} disabled={!canReview}>Comprobar y ver el modelo</button>
+              <button className="btn ghost" onClick={() => onAnswer({ ok: true, skipped: true, requeue: false, msg: speakMode ? "Omitido: no cuenta para tu resultado. Hazlo en voz alta cuando puedas." : "Omitido: no cuenta para tu resultado." })}>{speakMode ? "Ahora no puedo hablar" : "Ahora no"}</button>
+            </div>
+          )}
+        </>
+      )}
+      {review && (
+        <>
+          {text.trim() && <div className="heard"><span className="faint">Tu respuesta ({n} palabras):</span> <span lang="en">{text}</span></div>}
+          <div className="speak-model">
+            <span className="eyebrow">Respuesta modelo</span>
+            <span lang="en" className="free-model">{item.model}</span>
+            <div className="row" style={{ gap: 6 }}>
+              <Say text={item.model} label="Escuchar el modelo" />
+              {url && <button className="btn small" onClick={() => audioRef.current?.play()}><IconSpeaker /> Mi grabación</button>}
+              {item.modelEs && <button type="button" className="btn small ghost" onClick={() => setShowEs(!showEs)}>{showEs ? "Ocultar traducción" : "Ver traducción"}</button>}
+            </div>
+            {showEs && item.modelEs && <span className="faint">{item.modelEs}</span>}
+          </div>
+          <div className="free-goals">
+            <span className="eyebrow">Autoevaluación (marca lo que lograste de verdad)</span>
+            <ul className="free-rubric">
+              {item.rubric.map((r, i) => (
+                <li key={i}>
+                  <label><input type="checkbox" checked={ticks[i]} disabled={!!outcome} onChange={(e) => setTicks(ticks.map((t, k) => (k === i ? e.target.checked : t)))} /> <span dangerouslySetInnerHTML={{ __html: fmt(r) }} /></label>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {!outcome && (
+            <div className="row">
+              <button className="btn primary" onClick={finish}>Terminar</button>
+              <button className="btn ghost" onClick={() => { setReview(false); setTicks(item.rubric.map(() => false)); }}>Corregir mi respuesta</button>
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }

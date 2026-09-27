@@ -2,7 +2,7 @@
 
 // Bloques del curso de inglés: vocabulario, frases, diálogos y patrones de frase, todos con audio.
 import { useEffect, useRef, useState } from "react";
-import type { Phrase, Word } from "@/lib/types";
+import type { Phrase, TextQuestion, Word } from "@/lib/types";
 import { fmt } from "@/lib/format";
 import { speakAll } from "@/lib/speech";
 import { IconPlay, IconStop, Say, VoiceMenu } from "./EnVoice";
@@ -233,5 +233,94 @@ export function PatternBlock({ title, slots, rows, es, caption }: { title?: stri
       </div>
       {caption && <figcaption dangerouslySetInnerHTML={{ __html: fmt(caption) }} />}
     </figure>
+  );
+}
+
+/* ------------------------------ Lectura / audición ------------------------------ */
+
+/**
+ * Texto largo por párrafos, todos con audio. En una lectura se ve el inglés y la traducción se destapa por
+ * párrafo; en una audición el texto empieza oculto: primero se escucha, se responden las preguntas y después se lee.
+ */
+export function TextBlock({ title, kind = "read", level, source, paragraphs, glossary, questions, caption }: {
+  title?: string; kind?: "read" | "listen"; level?: string; source?: string; paragraphs: Phrase[];
+  glossary?: { en: string; es: string }[]; questions?: TextQuestion[]; caption?: string;
+}) {
+  const listenFirst = kind === "listen";
+  const [showText, setShowText] = useState(!listenFirst);
+  const [showEs, setShowEs] = useState<Record<number, boolean>>({});
+  const [allEs, setAllEs] = useState(false);
+  const { idx, button } = usePlayAll(paragraphs.map((p) => ({ text: p.en })), 700);
+  const words = paragraphs.reduce((n, p) => n + p.en.split(/\s+/).filter(Boolean).length, 0);
+  return (
+    <section className="en-block en-text">
+      <header className="en-head">
+        <div>
+          <span className="eyebrow">{listenFirst ? "Audición" : "Lectura"}{level ? ` · ${level}` : ""} · {words} palabras</span>
+          {title && <H as="h4" html={title} />}
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          {button(listenFirst ? "Escuchar" : "Escuchar el texto")}
+          {listenFirst && <button type="button" className={"btn small" + (showText ? " primary" : "")} onClick={() => setShowText(!showText)}>{showText ? "Ocultar el texto" : "Ver el texto"}</button>}
+          {showText && <button type="button" className={"btn small" + (allEs ? " primary" : "")} onClick={() => { setAllEs(!allEs); setShowEs({}); }}>{allEs ? "Ocultar traducción" : "Traducción completa"}</button>}
+          <VoiceMenu />
+        </div>
+      </header>
+      {listenFirst && !showText && (
+        <p className="faint" style={{ margin: 0 }}>Escucha sin leer (una vez a velocidad normal y otra más despacio si hace falta), responde las preguntas y solo entonces mira el texto.</p>
+      )}
+      {showText && (
+        <div className="en-paras">
+          {paragraphs.map((p, i) => {
+            const es = allEs || showEs[i];
+            return (
+              <div key={i} className={"en-para" + (idx === i ? " playing" : "")}>
+                <div className="en-para-en"><Say text={p.en} /><p lang="en">{p.en}</p></div>
+                {es ? <p className="en-es">{p.es}</p> : <button type="button" className="btn small ghost en-para-tr" onClick={() => setShowEs({ ...showEs, [i]: true })}>Traducir este párrafo</button>}
+                {p.note && <H className="en-note" html={p.note} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {glossary?.length ? (
+        <details className="en-gloss">
+          <summary>Glosario del texto ({glossary.length})</summary>
+          <ul>{glossary.map((g, i) => <li key={i}><Say text={g.en} /><b lang="en">{g.en}</b> <span className="faint">= {g.es}</span></li>)}</ul>
+        </details>
+      ) : null}
+      {questions?.length ? <TextQuestions questions={questions} /> : null}
+      {(source || caption) && <p className="faint" style={{ margin: 0 }}>{caption && <span dangerouslySetInnerHTML={{ __html: fmt(caption) }} />}{source ? <> {caption ? "· " : ""}Fuente: <span dangerouslySetInnerHTML={{ __html: fmt(source) }} /></> : null}</p>}
+    </section>
+  );
+}
+
+function TextQuestions({ questions }: { questions: TextQuestion[] }) {
+  const [picked, setPicked] = useState<Record<number, number>>({});
+  const answered = Object.keys(picked).length;
+  const right = questions.filter((q, i) => picked[i] === q.answer).length;
+  return (
+    <div className="en-tq">
+      <span className="eyebrow">Comprensión · {answered ? `${right}/${answered} correctas` : `${questions.length} preguntas`}</span>
+      <ol>
+        {questions.map((q, i) => {
+          const got = picked[i];
+          return (
+            <li key={i}>
+              <H as="p" html={q.q} />
+              <div className="en-tq-opts">
+                {q.options.map((o, k) => (
+                  <button key={k} type="button" disabled={got != null}
+                    className={"btn small" + (got != null && k === q.answer ? " tq-ok" : got === k ? " tq-ko" : "")}
+                    onClick={() => setPicked({ ...picked, [i]: k })}>{o}</button>
+                ))}
+              </div>
+              {got != null && <p className={got === q.answer ? "tq-msg ok" : "tq-msg ko"}>{got === q.answer ? "✓ Correcto." : `✗ Era: ${q.options[q.answer]}.`} {q.explain && <span dangerouslySetInnerHTML={{ __html: fmt(q.explain) }} />}</p>}
+            </li>
+          );
+        })}
+      </ol>
+      {answered > 0 && <button type="button" className="btn small ghost" onClick={() => setPicked({})}>Responder otra vez</button>}
+    </div>
   );
 }

@@ -10,11 +10,23 @@ import * as E from "../src/lib/english.ts";
 import { enWords, ipaAll, known } from "./en-dict.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DOMAINS = new Set(["nivel1", "nivel2", "nivel3", "nivel4", "extra"]);
-const BLOCKS = new Set(["p", "h", "list", "table", "diagram", "callout", "terms", "words", "phrases", "dialog", "pattern"]);
+const COURSES = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "courses.json"), "utf8"));
+const BLOCKS = new Set(["p", "h", "list", "table", "diagram", "callout", "terms", "words", "phrases", "dialog", "pattern", "text"]);
 const LEVELS = new Set(["facil", "medio", "dificil", "proyecto"]);
-const KINDS = new Set(["vocabulario", "gramatica", "traduccion", "dictado", "pronunciacion", "conversacion", "examen", "mixto"]);
-const ITEMS = new Set(["write", "choice", "cloze", "order", "match", "speak"]);
+const KINDS = new Set(["vocabulario", "gramatica", "traduccion", "dictado", "pronunciacion", "conversacion", "examen", "mixto", "lectura", "audicion", "escritura", "expresion"]);
+const ITEMS = new Set(["write", "choice", "cloze", "order", "match", "speak", "free"]);
+
+/** Mínimos por sección de cada curso (la sección final, domain "extra", tiene los suyos). */
+const MINIMUMS = {
+  ingles: {
+    normal: { lessons: 5, diagrams: 4, patterns: 3, dialogs: 1, words: 3, phrases: 3, exercises: 12, exams: 1, flashcards: 40, quiz: 35, speak: 8, dictation: 8, listening: 12 },
+    final: { lessons: 3, diagrams: 3, exercises: 8, flashcards: 30, quiz: 100, speak: 6, dictation: 6, listening: 10 }
+  },
+  "ingles-pro": {
+    normal: { lessons: 6, diagrams: 5, patterns: 4, dialogs: 2, words: 4, phrases: 4, texts: 2, exercises: 14, exams: 1, flashcards: 50, quiz: 40, speak: 10, dictation: 8, listening: 20, free: 4, freeSpeak: 2, freeWrite: 2 },
+    final: { lessons: 4, diagrams: 3, texts: 2, exercises: 10, flashcards: 40, quiz: 120, speak: 6, dictation: 6, listening: 20, free: 4 }
+  }
+};
 const str = (v) => typeof v === "string" && v.trim().length > 0;
 const ALLOW = new Set(
   fs.readFileSync(path.join(HERE, "data", "en-allow.txt"), "utf8").split("\n").map((l) => l.replace(/#.*/, "").trim().toLowerCase()).filter(Boolean)
@@ -47,7 +59,12 @@ const stripIpa = (s) => String(s).replace(/^\/|\/$/g, "").trim();
 function check(s, file) {
   const e = [];
   const need = (c, m) => { if (!c) e.push(m); };
+  const courseId = path.basename(path.dirname(path.resolve(file)));
+  const course = COURSES.find((c) => c.id === courseId);
+  if (!course || course.runtime !== "english") return { e: [`${file}: la carpeta no corresponde a un curso de inglés de courses.json`], counts: {} };
+  const DOMAINS = new Set(course.domains.map((d) => d.id));
   const isFinal = s.domain === "extra";
+  const topics = new Set(course.sections.filter((x) => x !== s.id));
   need(str(s.id) && /^s\d\d$/.test(s.id) && path.basename(file, ".json") === s.id, "id debe ser sNN e igual al nombre del archivo");
   need(str(s.title) && str(s.summary) && str(s.goal), "Faltan title/summary/goal");
   need(Number.isInteger(s.order), "order debe ser entero");
@@ -66,7 +83,7 @@ function check(s, file) {
   const english = [];
   const en = (text, where) => { if (str(text)) english.push([text, where]); };
   const vague = /^(entender|conocer|saber|comprender|aprender)\b/i;
-  const counts = { lessons: 0, diagrams: 0, patterns: 0, dialogs: 0, words: 0, phrases: 0, exercises: 0, items: 0, speak: 0, dictation: 0, exams: 0, flashcards: 0, quiz: 0, listening: 0 };
+  const counts = { lessons: 0, diagrams: 0, patterns: 0, dialogs: 0, words: 0, phrases: 0, texts: 0, exercises: 0, items: 0, speak: 0, dictation: 0, free: 0, freeSpeak: 0, freeWrite: 0, exams: 0, flashcards: 0, quiz: 0, listening: 0 };
 
   (s.lessons || []).forEach((l, i) => {
     const w = `lessons[${i}] ${l.id || ""}`;
@@ -121,6 +138,16 @@ function check(s, file) {
         (b.lines || []).forEach((x, k) => en(x.en, `${bw} línea ${k}`));
         const who = new Set((b.lines || []).map((x) => x.who));
         need(who.size >= 2 && who.size <= 4, `${bw}: 2–4 personajes`);
+      }
+      if (b.type === "text") {
+        counts.texts++;
+        need(Array.isArray(b.paragraphs) && b.paragraphs.length >= 2 && b.paragraphs.every((p) => str(p.en) && str(p.es)), `${bw}: al menos 2 paragraphs con en/es`);
+        need(!b.kind || b.kind === "read" || b.kind === "listen", `${bw}: kind read|listen`);
+        (b.paragraphs || []).forEach((p, k) => en(p.en, `${bw} párrafo ${k}`));
+        if (b.glossary != null) need(Array.isArray(b.glossary) && b.glossary.every((g) => str(g.en) && str(g.es)), `${bw}: glossary con en/es`);
+        (b.glossary || []).forEach((g, k) => en(g.en, `${bw} glosario ${k}`));
+        if (b.questions != null) need(Array.isArray(b.questions) && b.questions.every((q) => str(q.q) && Array.isArray(q.options) && q.options.length >= 2 && q.options.every(str) && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length), `${bw}: questions (q, options ≥ 2, answer en rango)`);
+        if (b.kind === "listen") { need(Array.isArray(b.questions) && b.questions.length >= 3, `${bw}: una audición necesita al menos 3 preguntas`); counts.listening++; }
       }
       if (b.type === "pattern") {
         counts.patterns++;
@@ -202,6 +229,24 @@ function check(s, file) {
         (it.pairs || []).forEach((p) => en(p[0], iw));
       }
       if (it.t === "speak") { need(str(it.say), `${iw}: say`); counts.speak++; }
+      if (it.t === "free") {
+        counts.free++;
+        need(it.mode === "write" || it.mode === "speak", `${iw}: mode write|speak`);
+        if (it.mode === "speak") counts.freeSpeak++; else counts.freeWrite++;
+        need(str(it.q) && str(it.model), `${iw}: q y model`);
+        en(it.model, iw + " model");
+        need(Array.isArray(it.rubric) && it.rubric.length >= 3 && it.rubric.every(str), `${iw}: rubric con al menos 3 criterios`);
+        if (it.minWords != null) need(Number.isInteger(it.minWords) && it.minWords > 0, `${iw}: minWords`);
+        if (it.maxWords != null) need(Number.isInteger(it.maxWords) && it.maxWords >= (it.minWords || 1), `${iw}: maxWords`);
+        if (it.targets != null) need(Array.isArray(it.targets) && it.targets.every((t) => str(t.label) && Array.isArray(t.any) && t.any.length && t.any.every(str)), `${iw}: targets [{label, any: [...]}]`);
+        (it.targets || []).forEach((t) => (t.any || []).forEach((a) => tryExpand(a).forEach((f) => en(f.replace(/\*/g, " "), iw + " target"))));
+        // La respuesta modelo tiene que cumplir sus propias metas y su extensión
+        const hits = E.targetHits(it.model || "", it.targets || []);
+        hits.forEach((h, k) => { if (!h) e.push(`${iw}: la respuesta modelo no cumple la meta «${it.targets[k].label}»`); });
+        const n = E.wordCount(it.model || "");
+        if (it.minWords && n < it.minWords) e.push(`${iw}: la respuesta modelo tiene ${n} palabras (mínimo ${it.minWords})`);
+        if (it.maxWords && n > it.maxWords) e.push(`${iw}: la respuesta modelo tiene ${n} palabras (máximo ${it.maxWords})`);
+      }
     });
   });
 
@@ -215,7 +260,7 @@ function check(s, file) {
     counts.quiz++;
     uniq(q.id, w, "q");
     if (q.say != null) { need(str(q.say), `${w}: say`); en(q.say, w); counts.listening++; }
-    if (isFinal) need(/^s(0[1-9]|1[01])$/.test(q.topic || ""), `${w}: en el examen final, topic = sección (s01…s11)`);
+    if (isFinal) need(topics.has(q.topic || ""), `${w}: en el examen final, topic = una sección del curso (${[...topics][0]}…${[...topics].at(-1)})`);
     if (!["single", "multi", "yesno"].includes(q.type)) return e.push(`${w}: type inválido`);
     need(str(q.q) && str(q.explain), `${w}: q/explain`);
     if (q.type === "yesno") need(Array.isArray(q.statements) && q.statements.length >= 2 && q.statements.every((st) => str(st.text) && typeof st.answer === "boolean"), `${w}: statements`);
@@ -228,7 +273,7 @@ function check(s, file) {
     }
   });
   need(Array.isArray(s.sources) && s.sources.length >= 2, "sources: al menos 2");
-  (s.sources || []).forEach((src, i) => need(str(src.title) && (/^https?:\/\//.test(src.url || "") || /^\/libros\/ingles-basico\.pdf(#page=\d+)?$/.test(src.url || "")), `sources[${i}]: url https://… o /libros/ingles-basico.pdf#page=N`));
+  (s.sources || []).forEach((src, i) => need(str(src.title) && (/^https?:\/\//.test(src.url || "") || (courseId === "ingles" && /^\/libros\/ingles-basico\.pdf(#page=\d+)?$/.test(src.url || ""))), `sources[${i}]: url https://…${courseId === "ingles" ? " o /libros/ingles-basico.pdf#page=N" : ""}`));
 
   // Ortografía (la sección puede declarar nombres propios en "allow": ["Matanzas"])
   if (s.allow != null) need(Array.isArray(s.allow) && s.allow.every((w) => str(w) && /^\p{Lu}/u.test(w)), "allow: lista de nombres propios (con mayúscula)");
@@ -242,7 +287,7 @@ function check(s, file) {
   for (const [word, [us, where]] of brit) e.push(`grafía británica «${word}» (${where}): el curso usa inglés americano → «${us}» (puedes mencionar la británica en una nota)`);
 
   // s11: el vocabulario completo de Ogden en sus cinco grupos
-  if (s.id === "s11") {
+  if (courseId === "ingles" && s.id === "s11") {
     const GROUPS = [["Operaciones", 100], ["Cosas generales", 400], ["Cosas que se pueden dibujar", 200], ["Cualidades generales", 100], ["Cualidades opuestas", 50]];
     const seen = new Map();
     for (const l of s.lessons || []) for (const b of l.blocks || []) if (b.type === "words" && str(b.title)) {
@@ -261,9 +306,8 @@ function check(s, file) {
   }
 
   // Cantidades mínimas del plan
-  const min = isFinal
-    ? { lessons: 3, diagrams: 3, exercises: 8, flashcards: 30, quiz: 100, speak: 6, dictation: 6, listening: 10 }
-    : { lessons: 5, diagrams: 4, patterns: 3, dialogs: 1, words: 3, phrases: 3, exercises: 12, exams: 1, flashcards: 40, quiz: 35, speak: 8, dictation: 8, listening: 12 };
+  const mins = MINIMUMS[courseId] || MINIMUMS.ingles;
+  const min = isFinal ? mins.final : mins.normal;
   for (const [k, v] of Object.entries(min)) if (counts[k] < v) e.push(`mínimo del plan: ${k} ≥ ${v} (hay ${counts[k]})`);
   return { e, counts };
 }

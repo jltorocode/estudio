@@ -1,6 +1,6 @@
 "use client";
 
-// Laboratorio del curso de inglés: pronunciación libre, las 850 palabras y repaso espaciado.
+// Laboratorio de los cursos de inglés: pronunciación libre, el vocabulario del curso y repaso espaciado.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { grade, SRS_DAYS, speechScore, srsNext, today, type DiffPart } from "@/lib/english";
 import { shuffle } from "@/lib/format";
@@ -9,9 +9,9 @@ import { IconMic, IconPlay, IconSlow, IconSpeaker, IconStop, Say, VoiceSettings 
 import { pkey, useProgress } from "./ProgressProvider";
 
 export type VocabWord = { en: string; es: string; ipa?: string; fig?: string; group: string };
-type Props = { courseId: string; vocab: VocabWord[]; groups: string[]; phrases: { en: string; es: string }[] };
+type Props = { courseId: string; vocab: VocabWord[]; groups: string[]; label: string; phrases: { en: string; es: string }[] };
 
-const TABS = [["pronunciar", "Pronunciar"], ["vocabulario", "Las 850 palabras"], ["repaso", "Repaso espaciado"], ["voz", "Voz y micrófono"]] as const;
+const TABS = [["pronunciar", "Pronunciar"], ["vocabulario", "Vocabulario"], ["repaso", "Repaso espaciado"], ["voz", "Voz y micrófono"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 export default function EnglishLab(props: Props) {
@@ -26,7 +26,7 @@ export default function EnglishLab(props: Props) {
   return (
     <>
       <div className="tabs" role="tablist">
-        {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={"tab" + (tab === id ? " active" : "")} onClick={() => go(id)}>{label}</button>)}
+        {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} className={"tab" + (tab === id ? " active" : "")} onClick={() => go(id)}>{id === "vocabulario" ? props.label : label}</button>)}
       </div>
       {tab === "pronunciar" && <Pronounce phrases={props.phrases} />}
       {tab === "vocabulario" && <VocabBrowser {...props} />}
@@ -135,7 +135,7 @@ function Pronounce({ phrases }: { phrases: { en: string; es: string }[] }) {
   );
 }
 
-/* ------------------------------ Las 850 palabras ------------------------------ */
+/* ------------------------------ Vocabulario del curso ------------------------------ */
 
 const boxLabel = (b: number | undefined) => (b == null ? "nueva" : b >= 3 ? "dominada" : "aprendiendo");
 
@@ -145,7 +145,7 @@ function VocabBrowser({ courseId, vocab, groups }: Props) {
   const [g, setG] = useState<string>("");
   const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const list = vocab.filter((w) => (!g || w.group === g) && (!q || norm(w.en).includes(norm(q)) || norm(w.es).includes(norm(q))));
-  if (!vocab.length) return <div className="empty">El vocabulario aparecerá cuando esté la sección 11.</div>;
+  if (!vocab.length) return <div className="empty">El vocabulario aparecerá cuando estén las secciones con sus listas de palabras.</div>;
   const srs = p.srs || {};
   return (
     <div className="stack">
@@ -198,7 +198,7 @@ function Review({ courseId, vocab, groups }: Props) {
   const [i, setI] = useState(0);
   const [stats, setStats] = useState({ ok: 0, ko: 0 });
 
-  if (!vocab.length) return <div className="empty">El repaso espaciado se activa cuando esté la sección 11 (las 850 palabras).</div>;
+  if (!vocab.length) return <div className="empty">El repaso espaciado se activa cuando estén las secciones con sus listas de palabras.</div>;
 
   const start = () => {
     const pool = fresh.filter((w) => !group || w.group === group).slice(0, newCount);
@@ -253,7 +253,7 @@ function Review({ courseId, vocab, groups }: Props) {
           Empezar · {due.length} repaso{due.length === 1 ? "" : "s"} + {Math.min(newCount, fresh.filter((w) => !group || w.group === group).length)} nueva{newCount === 1 ? "" : "s"}
         </button>
         <p className="faint" style={{ margin: 0 }}>
-          Repetición espaciada (sistema Leitner): cada acierto pasa la palabra a la caja siguiente y la aleja en el tiempo ({SRS_DAYS.slice(1).join(", ")} días); cada fallo la devuelve a la caja 0 para repasarla hoy. Con 10 minutos diarios dominas las 850 palabras en unos tres meses.
+          Repetición espaciada (sistema Leitner): cada acierto pasa la palabra a la caja siguiente y la aleja en el tiempo ({SRS_DAYS.slice(1).join(", ")} días); cada fallo la devuelve a la caja 0 para repasarla hoy. Con 10 minutos diarios (unas 10 palabras nuevas al día) dominas las {vocab.length} palabras en unos {Math.max(1, Math.round(vocab.length / 10 / 30))} meses.
         </p>
       </div>
     </div>

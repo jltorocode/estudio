@@ -247,6 +247,40 @@ export function speechScore(heard: string, target: string): { pct: number; parts
   return { pct: b.length ? Math.round((same / b.length) * 100) : 0, parts };
 }
 
+/* --------------------------- Producción libre (free) -------------------------- */
+
+/** Nº de palabras de un texto libre. */
+export const wordCount = (text: string) => base(text).split(" ").filter(Boolean).length;
+
+/** ¿Aparece `needle` en `hay` como palabras completas? Un `*` en `needle` = cualquier cosa en medio, en orden. */
+function hasWords(hay: string, needle: string): boolean {
+  const parts = needle.split("*").map((p) => p.trim()).filter(Boolean);
+  let from = 0;
+  for (const p of parts) {
+    const i = hay.indexOf(` ${p} `, from);
+    if (i < 0) return false;
+    from = i + p.length + 1;
+  }
+  return parts.length > 0;
+}
+
+/**
+ * Metas de una producción libre (escrita o hablada): cada una se cumple si aparece alguna de sus formas.
+ * Las formas son patrones como los de `answers` (`{a|b}`, `(x)`) y admiten `*` para «lo que sea en medio»
+ * (`if I had * I would`); se comparan como palabras completas y con las contracciones expandidas.
+ */
+export function targetHits(text: string, targets: { label: string; any: string[] }[]): boolean[] {
+  const hay = enForms(text, false, true).map((f) => ` ${f} `);
+  return targets.map((t) =>
+    t.any.some((pat) =>
+      expand(pat).some((form) => {
+        const needles = form.split("*").map((p) => enForms(p)[0] || "").join(" * ");
+        return hay.some((h) => hasWords(h, needles));
+      })
+    )
+  );
+}
+
 /* ------------------------------ Otros ayudantes ---------------------------- */
 
 /** Fichas de un ejercicio de ordenar: las palabras de la respuesta (sin puntuación final). */

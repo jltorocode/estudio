@@ -1,7 +1,7 @@
 import type { Block } from "@/lib/types";
 import { fmt } from "@/lib/format";
 import CodeBlock from "./CodeBlock";
-import { DialogBlock, PatternBlock, PhrasesBlock, WordsBlock } from "./EnBlocks";
+import { DialogBlock, PatternBlock, PhrasesBlock, TextBlock, WordsBlock } from "./EnBlocks";
 import Mermaid from "./Mermaid";
 import GitDemo from "./GitDemo";
 import PgDemo from "./PgDemo";
@@ -71,6 +71,7 @@ export function BlockView({ b, ctx, index = 0 }: { b: Block; ctx?: Ctx; index?: 
     case "phrases": return <PhrasesBlock title={b.title} items={b.items} />;
     case "dialog": return <DialogBlock title={b.title} lines={b.lines} caption={b.caption} />;
     case "pattern": return <PatternBlock title={b.title} slots={b.slots} rows={b.rows} es={b.es} caption={b.caption} />;
+    case "text": return <TextBlock {...b} />;
     case "sessions": return <PgSessions b={b} />;
   }
 }

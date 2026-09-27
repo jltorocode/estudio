@@ -11,6 +11,8 @@ export type Block =
   | { type: "phrases"; title?: string; items: Phrase[] }
   | { type: "dialog"; title?: string; lines: { who: string; en: string; es: string }[]; caption?: string }
   | { type: "pattern"; title?: string; slots: string[]; rows: string[][]; es?: string[]; caption?: string }
+  // Lectura o audición larga: párrafos con audio y traducción tapada, glosario y preguntas de comprensión
+  | { type: "text"; title?: string; kind?: "read" | "listen"; level?: string; source?: string; paragraphs: Phrase[]; glossary?: { en: string; es: string }[]; questions?: TextQuestion[]; caption?: string }
   // Curso de PostgreSQL: varias sesiones a la vez (salidas grabadas en PostgreSQL 18)
   | SimBlock;
 
@@ -19,6 +21,10 @@ export type Term = { term: string; en?: string; def: string };
 /** Palabra del curso de inglés: `fig` = pronunciación figurada del libro, `ipa` = transcripción fonética. */
 export type Word = { en: string; es: string; fig?: string; ipa?: string; note?: string };
 export type Phrase = { en: string; es: string; note?: string };
+/** Pregunta de comprensión de un bloque `text`: se responde tocando una opción; `explain` justifica la correcta. */
+export type TextQuestion = { q: string; options: string[]; answer: number; explain?: string };
+/** Meta que se comprueba sola en una producción libre: `any` = patrones (como en `answers`); basta con que aparezca uno. */
+export type FreeTarget = { label: string; any: string[] };
 
 export type Lesson = { id: string; title: string; minutes?: number; blocks: Block[]; goals?: string[]; takeaways?: string[] };
 
@@ -74,14 +80,16 @@ export type EnItem =
   | { t: "cloze"; q?: string; text: string; answers: string[][]; say?: boolean; es?: string; note?: string }
   | { t: "order"; q: string; answer: string; answers?: string[]; extra?: string[]; note?: string }
   | { t: "match"; q?: string; pairs: [string, string][]; note?: string }
-  | { t: "speak"; q?: string; say: string; es?: string; note?: string };
+  | { t: "speak"; q?: string; say: string; es?: string; note?: string }
+  /** Producción libre (escribir o hablar): metas que se comprueban solas, respuesta modelo y rúbrica de autoevaluación. */
+  | { t: "free"; mode: "write" | "speak"; q: string; say?: string; minWords?: number; maxWords?: number; targets?: FreeTarget[]; model: string; modelEs?: string; rubric: string[]; note?: string };
 
 export type EnglishExercise = {
   id: string;
   title: string;
   level: Exercise["level"];
   minutes?: number;
-  kind: "vocabulario" | "gramatica" | "traduccion" | "dictado" | "pronunciacion" | "conversacion" | "examen" | "mixto";
+  kind: "vocabulario" | "gramatica" | "traduccion" | "dictado" | "pronunciacion" | "conversacion" | "examen" | "mixto" | "lectura" | "audicion" | "escritura" | "expresion";
   prompt: string[];
   items: EnItem[];
   /** % de aciertos a la primera para darlo por resuelto (por defecto 80). */
@@ -147,6 +155,8 @@ export type Course = {
   /** Texto de introducción de la pestaña de prácticas. */
   labIntro?: string;
   method?: { t: string; d: string; goal: string }[];
+  /** Curso de inglés: nombre del vocabulario en el laboratorio (por defecto, las 850 palabras de Ogden). */
+  vocabLabel?: string;
 };
 
 /** Resumen ligero de una sección para la navegación. */
