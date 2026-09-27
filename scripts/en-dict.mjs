@@ -38,6 +38,15 @@ const FIXES = {
   invention: "IH0 N V EH1 N SH AH0 N"
 };
 
+// Pronunciaciones que el CMU no trae: sustantivos con el acento al principio (an UPgrade), verbos con el
+// acento al final (to exPORT) y la forma habitual de tres sílabas de «comfortable»
+const EXTRA = {
+  comfortable: ["K AH1 M F T ER0 B AH0 L"],
+  upgrade: ["AH1 P G R EY2 D"],
+  downgrade: ["D AW1 N G R EY2 D"],
+  export: ["IH0 K S P AO1 R T"]
+};
+
 // IPA fija cuando la división en sílabas automática coloca mal la marca de acento (house·work, no hou·swork)
 const IPA_FIXES = {
   housework: "ˈhaʊsˌwɝk", lightweight: "ˈlaɪtˌweɪt", lifelong: "ˈlaɪfˌlɔŋ", worthwhile: "ˌwɝθˈwaɪl", artwork: "ˈɑrtˌwɝk",
@@ -55,6 +64,11 @@ export function dict() {
     if (FIXES[w]) continue;
     if (!DICT.has(w)) DICT.set(w, []);
     DICT.get(w).push(m[2].trim().split(/\s+/));
+  }
+  // Variantes que le faltan al CMU (se agregan a las suyas; la primera es la que se usa por defecto)
+  for (const [w, list] of Object.entries(EXTRA)) {
+    const cur = DICT.get(w) || [];
+    DICT.set(w, [...list.map((x) => x.split(" ")), ...cur]);
   }
   return DICT;
 }
