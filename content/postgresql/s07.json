@@ -1,0 +1,2394 @@
+{
+  "id": "s07",
+  "order": 7,
+  "title": "Agregación y agrupamiento",
+  "domain": "consultas",
+  "summary": "Aprende a resumir miles de filas en unas pocas cifras que responden preguntas de negocio: cuántos, cuánto, en promedio, por región, por mes. Verás cómo PostgreSQL forma los grupos, por qué exige la regla de oro del GROUP BY, cómo filtrar grupos con HAVING, calcular agregados condicionales con FILTER y armar informes con subtotales usando ROLLUP y CUBE.",
+  "goal": "Escribir consultas de resumen correctas (conteos, sumas, promedios, medianas, tablas dinámicas y subtotales) sobre datos reales, prediciendo su resultado incluso cuando hay NULL.",
+  "objectives": [
+    "Calcular conteos, sumas, promedios, mínimos y máximos distinguiendo count(*), count(columna) y count(DISTINCT columna).",
+    "Predecir el efecto de los NULL y de los conjuntos vacíos en cada función de agregado y neutralizarlo con COALESCE.",
+    "Agrupar por columnas y por expresiones (date_trunc, extract, CASE) respetando la regla de oro del GROUP BY.",
+    "Filtrar filas con WHERE y grupos con HAVING según el orden lógico de evaluación de la consulta.",
+    "Construir agregados condicionales y tablas dinámicas con FILTER (WHERE …).",
+    "Resumir grupos con string_agg, array_agg, bool_and, bool_or, percentile_cont, percentile_disc, mode(), stddev y any_value.",
+    "Generar informes con subtotales y total general usando GROUPING SETS, ROLLUP y CUBE, y rotular sus filas con grouping()."
+  ],
+  "lessons": [
+    {
+      "id": "s07-l1",
+      "title": "Funciones de agregado: de muchas filas a una cifra",
+      "minutes": 20,
+      "goals": [
+        "Calcular totales, promedios, mínimos y máximos de una tabla con sum, avg, min y max.",
+        "Predecir el resultado de count(*), count(columna) y count(DISTINCT columna) cuando hay NULL y valores repetidos.",
+        "Redondear promedios con round(valor, n) y evitar la división entera al calcular un promedio a mano."
+      ],
+      "takeaways": [
+        "Una función de agregado recibe todas las filas que sobreviven al WHERE y devuelve un solo valor; sin GROUP BY, la consulta entrega exactamente una fila.",
+        "count(*) cuenta filas; count(columna) cuenta valores no NULL; count(DISTINCT columna) cuenta valores distintos no NULL.",
+        "Todos los agregados, salvo count(*), ignoran los NULL: avg divide por la cantidad de valores no nulos, no por la cantidad de filas.",
+        "Sobre cero filas, count devuelve 0, pero sum, avg, min y max devuelven NULL: usa coalesce(sum(x), 0) cuando necesites un cero.",
+        "avg de enteros devuelve numeric con muchos decimales (redondea con round(avg(x), n)); sum(x) / count(*) entre enteros trunca."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Hasta ahora cada consulta devolvía filas de una tabla, una por una. Pero las preguntas de negocio casi nunca son «muéstrame los 420 pedidos», sino «¿cuántos pedidos hubo?», «¿cuánto vendimos?», «¿cuál es el precio promedio?». Para eso existen las **funciones de agregado** (*aggregate functions*): reciben un conjunto de filas y devuelven **un solo valor** que las resume."
+        },
+        {
+          "type": "p",
+          "text": "Piensa en la caja del supermercado: pasan 30 productos por el lector (las filas) y al final la máquina imprime una sola cifra, el total (el agregado). No importa cuántos productos pasen: el total es uno. En SQL, el «lector» es el `FROM` más el `WHERE`: primero se eligen las filas y **después** el agregado las resume."
+        },
+        {
+          "type": "diagram",
+          "title": "De muchas filas a una",
+          "mermaid": "flowchart LR\n  T[\"productos<br/>49 filas\"] --> W[\"WHERE activo<br/>quedan 48 filas\"]\n  W --> A[\"count(*) · sum(stock) · avg(precio)<br/>se calculan sobre esas 48\"]\n  A --> R[\"1 fila de resultado\"]",
+          "caption": "Sin GROUP BY, todas las filas que pasan el WHERE forman un solo grupo y la consulta devuelve exactamente una fila, aunque ninguna fila pase el filtro."
+        },
+        {
+          "type": "h",
+          "text": "count: tres maneras de contar"
+        },
+        {
+          "type": "p",
+          "text": "`count` es el agregado más usado y tiene tres formas que responden preguntas distintas: `count(*)` cuenta **filas**; `count(columna)` cuenta las filas donde esa columna **no es NULL**; `count(DISTINCT columna)` cuenta los **valores distintos** no nulos. En la tabla `clientes` hay 60 personas, pero no todas dejaron email o teléfono:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*)               AS clientes,\n       count(email)           AS con_email,\n       count(telefono)        AS con_telefono,\n       count(region)          AS con_region,\n       count(DISTINCT region) AS regiones_distintas\nFROM clientes;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Expresión",
+            "Cuenta…",
+            "En clientes"
+          ],
+          "rows": [
+            [
+              "`count(*)`",
+              "todas las filas, aunque tengan NULL en todas sus columnas",
+              "60"
+            ],
+            [
+              "`count(email)`",
+              "filas cuyo email no es NULL",
+              "55"
+            ],
+            [
+              "`count(DISTINCT region)`",
+              "valores distintos de region, sin contar el NULL",
+              "10"
+            ],
+            [
+              "`count(*) - count(telefono)`",
+              "filas **sin** teléfono",
+              "11"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Un uso muy común de `count(DISTINCT …)`: ¿cuántos clientes distintos han comprado? La tabla `pedidos` tiene 420 filas, pero muchos clientes repiten:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*)                   AS pedidos,\n       count(DISTINCT cliente_id) AS clientes_que_compraron\nFROM pedidos;"
+        },
+        {
+          "type": "h",
+          "text": "sum, avg, min y max"
+        },
+        {
+          "type": "p",
+          "text": "`sum` suma, `avg` calcula el promedio (la media aritmética), `min` y `max` buscan el menor y el mayor. Aceptan cualquier **expresión**, no solo columnas: `sum(cantidad * precio_unitario)` calcula el monto de cada ítem y luego los suma. `sum` y `avg` solo funcionan con tipos numéricos (y con `interval`); `min` y `max` sirven para cualquier tipo que se pueda ordenar: números, texto, fechas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*)    AS productos,\n       sum(stock)  AS unidades_en_bodega,\n       min(precio) AS mas_barato,\n       max(precio) AS mas_caro,\n       avg(precio) AS precio_promedio\nFROM productos\nWHERE activo;\n\nSELECT min(fecha_registro) AS primer_registro,\n       max(fecha_registro) AS ultimo_registro,\n       min(apellido)       AS primer_apellido\nFROM clientes;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Entrada",
+            "Devuelve",
+            "Ojo"
+          ],
+          "rows": [
+            [
+              "`count(*)`, `count(x)`",
+              "cualquier tipo",
+              "`bigint`",
+              "nunca devuelve NULL"
+            ],
+            [
+              "`sum(x)`",
+              "`smallint`, `integer`",
+              "`bigint`",
+              "así una suma de enteros no se desborda"
+            ],
+            [
+              "`sum(x)`",
+              "`bigint`, `numeric`",
+              "`numeric`",
+              "precisión exacta"
+            ],
+            [
+              "`avg(x)`",
+              "enteros o `numeric`",
+              "`numeric`",
+              "muchos decimales: redondea"
+            ],
+            [
+              "`avg(x)`, `sum(x)`",
+              "`real`, `double precision`",
+              "`double precision` (sum de `real` da `real`)",
+              "aritmética aproximada"
+            ],
+            [
+              "`min(x)`, `max(x)`",
+              "cualquier tipo ordenable",
+              "el mismo tipo de x",
+              "el texto se compara según la colación"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Los NULL no votan"
+        },
+        {
+          "type": "p",
+          "text": "Regla clave: **todas las funciones de agregado ignoran los NULL, excepto `count(*)`**. Es como una votación en la que los votos en blanco no se cuentan para el promedio: `avg` divide por la cantidad de valores **no nulos**, no por la cantidad de filas. A veces es justo lo que quieres; otras, no. Mira un taller con cuatro alumnos, donde Camila no rindió la prueba:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "setup": "CREATE TABLE taller (alumno text, nota numeric(2,1));\nINSERT INTO taller VALUES ('Ana', 6.0), ('Benjamín', 5.0), ('Camila', NULL), ('Diego', 4.0);",
+          "code": "SELECT * FROM taller;\n\nSELECT count(*)                           AS alumnos,\n       count(nota)                        AS rindieron,\n       sum(nota)                          AS suma,\n       round(avg(nota), 1)                AS promedio,\n       round(sum(nota) / count(*), 1)     AS suma_entre_filas,\n       round(avg(coalesce(nota, 1.0)), 1) AS promedio_con_uno\nFROM taller;"
+        },
+        {
+          "type": "p",
+          "text": "El promedio «oficial» es 5.0, porque la nota de Camila no participa. Si el reglamento dice que una prueba no rendida vale 1.0, tienes que decirlo explícitamente con `coalesce(nota, 1.0)`: el promedio baja a 4.0. Y `sum(nota) / count(*)` da otro número (3.8), porque divide por las 4 filas: **con NULL, no es lo mismo que `avg`**."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**La suma de nada no es cero.** Si ninguna fila pasa el WHERE, `count(*)` devuelve 0, pero `sum`, `avg`, `min` y `max` devuelven NULL. Es un error clásico en los reportes: «ventas del día: (vacío)». Usa `coalesce(sum(monto), 0)` cuando necesites un cero."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT count(*)                 AS cuantos,\n       sum(precio)              AS suma,\n       max(precio)              AS maximo,\n       coalesce(sum(precio), 0) AS suma_segura\nFROM productos\nWHERE precio > 1000000;"
+        },
+        {
+          "type": "h",
+          "text": "Redondear sin caer en la división entera"
+        },
+        {
+          "type": "p",
+          "text": "`avg` sobre enteros devuelve `numeric` con muchos decimales (por ejemplo, 3.8666666666666667), que no le sirven a nadie. `round(valor, n)` redondea a `n` decimales (en `numeric`, un 5 se redondea hacia arriba, como en el colegio) y `round(valor)` redondea a entero. Y recuerda la trampa de la sección 4: si calculas el promedio «a mano» con `sum(x) / count(*)` y ambos son enteros, PostgreSQL hace **división entera** y bota los decimales. Las notas de las reseñas son enteros del 1 al 5:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT avg(nota)                               AS promedio_crudo,\n       round(avg(nota), 1)                     AS promedio,\n       sum(nota) / count(*)                    AS division_entera,\n       round(sum(nota)::numeric / count(*), 1) AS division_correcta\nFROM resenas;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta clásica de entrevista: «¿qué diferencia hay entre `count(*)`, `count(1)` y `count(columna)`?». `count(*)` y `count(1)` cuentan filas (el 1 nunca es NULL) y dan lo mismo; `count(columna)` omite las filas con NULL en esa columna. En PostgreSQL la forma idiomática es `count(*)`; `count(1)` no es más rápido (usa la versión con argumento, que revisa en cada fila si el valor es NULL)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Función de agregado",
+              "en": "Aggregate function",
+              "def": "Función que calcula un único resultado a partir de un conjunto de filas: count, sum, avg, min, max, string_agg…"
+            },
+            {
+              "term": "Filas de entrada",
+              "en": "Input rows",
+              "def": "Las filas que llegan al agregado: las que pasaron el FROM y el WHERE (y, con GROUP BY, las de cada grupo)."
+            },
+            {
+              "term": "Agregado con DISTINCT",
+              "en": "Distinct aggregate",
+              "def": "count(DISTINCT x), sum(DISTINCT x)…: el agregado recibe cada valor distinto una sola vez."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s07-l2",
+      "title": "GROUP BY: un resumen por cada grupo",
+      "minutes": 25,
+      "goals": [
+        "Agrupar filas por una o varias columnas y calcular agregados para cada grupo.",
+        "Corregir el error «must appear in the GROUP BY clause» aplicando la regla de oro del GROUP BY.",
+        "Agrupar por expresiones como date_trunc('month', fecha), extract(year FROM fecha) o un CASE.",
+        "Agrupar por el nombre de una categoría uniendo dos tablas con un JOIN simple."
+      ],
+      "takeaways": [
+        "GROUP BY reparte las filas en grupos con el mismo valor de la clave y devuelve una fila por grupo; los agregados se calculan dentro de cada grupo.",
+        "Regla de oro: toda expresión del SELECT que no esté dentro de un agregado debe estar en el GROUP BY (salvo que dependa de la clave primaria agrupada).",
+        "Para GROUP BY los NULL son iguales entre sí: todas las filas con NULL en la clave forman un único grupo.",
+        "Se puede agrupar por expresiones y, en PostgreSQL, por el alias o la posición de una columna del SELECT; ante un nombre ambiguo, GROUP BY usa la columna de la tabla.",
+        "GROUP BY no ordena el resultado: si necesitas un orden, escribe ORDER BY y desempata."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Una sola cifra para toda la tabla sirve de poco: el gerente no quiere «60 clientes», quiere saber «¿cuántos clientes hay **en cada región**?». `GROUP BY` resuelve eso: reparte las filas en **grupos** según el valor de una o más columnas y calcula los agregados **dentro de cada grupo**. El resultado tiene una fila por grupo."
+        },
+        {
+          "type": "p",
+          "text": "Imagina el conteo de votos en una mesa: el vocal abre la urna, separa los votos en montones, uno por candidato (eso es `GROUP BY candidato`), y cuenta cada montón (`count(*)`). El acta final tiene una línea por candidato, no una por voto."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo GROUP BY forma los grupos",
+          "mermaid": "flowchart LR\n  A[\"clientes<br/>60 filas\"] -->|\"GROUP BY region\"| B[\"11 grupos<br/>uno por cada valor distinto,<br/>incluido NULL\"]\n  B -->|\"count(*) en cada grupo\"| C[\"11 filas de resultado<br/>Metropolitana 43<br/>Biobío 4<br/>…<br/>NULL 1\"]",
+          "caption": "Cada grupo se convierte en una sola fila del resultado. Las filas con region NULL forman su propio grupo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT region, count(*) AS clientes\nFROM clientes\nGROUP BY region\nORDER BY clientes DESC, region;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en la fila con la región vacía: es el cliente sin región. Aunque `NULL = NULL` no es verdadero en un WHERE, **para agrupar, PostgreSQL trata todos los NULL como iguales** y los junta en un solo grupo (lo mismo hace `DISTINCT`). Fíjate también en que ordenamos por el alias `clientes`: el ORDER BY se evalúa después del SELECT, así que ve sus alias."
+        },
+        {
+          "type": "h",
+          "text": "La regla de oro"
+        },
+        {
+          "type": "p",
+          "text": "Después de agrupar, cada grupo es **una sola fila** del resultado. Si en el SELECT pides una columna que tiene varios valores dentro del grupo, ¿cuál debería mostrar PostgreSQL? En el grupo «Biobío» hay clientes de Concepción y de Talcahuano: no existe **una** comuna para esa fila. PostgreSQL no adivina:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT region, comuna, count(*)\nFROM clientes\nGROUP BY region;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Regla de oro del GROUP BY:** cada expresión del SELECT (y también del HAVING y del ORDER BY) debe estar **agrupada** (aparece en el GROUP BY) o **agregada** (va dentro de una función de agregado). Si no es ninguna de las dos, PostgreSQL responde `column \"…\" must appear in the GROUP BY clause or be used in an aggregate function`."
+        },
+        {
+          "type": "diagram",
+          "title": "¿Es válida esta columna en una consulta agrupada?",
+          "mermaid": "flowchart TD\n  Q[\"Expresión del SELECT\"] --> A{\"¿Va dentro de un agregado?\"}\n  A -->|\"Sí\"| OK1[\"Válida\"]\n  A -->|\"No\"| B{\"¿Está en el GROUP BY o se calcula<br/>solo con columnas agrupadas?\"}\n  B -->|\"Sí\"| OK2[\"Válida\"]\n  B -->|\"No\"| F{\"¿Es de una tabla cuya clave<br/>primaria está en el GROUP BY?\"}\n  F -->|\"Sí\"| OK3[\"Válida: dependencia funcional\"]\n  F -->|\"No\"| E[\"ERROR: must appear in the GROUP BY clause<br/>or be used in an aggregate function\"]",
+          "caption": "La regla de oro como árbol de decisión. La tercera pregunta es la excepción de la dependencia funcional, que verás más abajo."
+        },
+        {
+          "type": "p",
+          "text": "Hay tres formas de arreglar el error, y cada una responde una pregunta distinta:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "**Agregar la columna al GROUP BY** (`GROUP BY region, comuna`): los grupos se vuelven más finos, uno por cada par región-comuna. Cambia la pregunta: «clientes por región **y** comuna».",
+            "**Meterla en un agregado**: `count(DISTINCT comuna)` («¿cuántas comunas hay por región?»), `min(comuna)` o `string_agg(comuna, ', ')` (lección 4).",
+            "**Sacarla del SELECT** si en realidad no la necesitabas."
+          ],
+          "ordered": true
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT region,\n       count(*)               AS clientes,\n       count(DISTINCT comuna) AS comunas,\n       min(fecha_registro)    AS primer_registro\nFROM clientes\nWHERE region IS NOT NULL\nGROUP BY region\nORDER BY clientes DESC, region;"
+        },
+        {
+          "type": "h",
+          "text": "Agrupar por varias columnas"
+        },
+        {
+          "type": "p",
+          "text": "Con varias columnas, un grupo es cada **combinación** de valores que **aparece en los datos** (no todas las combinaciones posibles: si ningún pedido pendiente se pagó con débito, esa combinación simplemente no sale)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT estado, metodo_pago, count(*) AS pedidos\nFROM pedidos\nGROUP BY estado, metodo_pago\nORDER BY estado, metodo_pago;"
+        },
+        {
+          "type": "h",
+          "text": "Agrupar por expresiones: pedidos por mes"
+        },
+        {
+          "type": "p",
+          "text": "La clave de agrupación puede ser cualquier expresión. Para reportes mensuales, `date_trunc('month', fecha)` lleva cada fecha al primer instante de su mes: todos los pedidos de marzo quedan con el mismo valor y caen en el mismo grupo. `extract(year FROM fecha)` agrupa por año, y un `CASE` agrupa por tramos que tú defines."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT date_trunc('month', fecha)::date AS mes,\n       count(*)                         AS pedidos,\n       count(DISTINCT cliente_id)       AS clientes\nFROM pedidos\nWHERE fecha >= '2026-01-01'\nGROUP BY mes\nORDER BY mes;\n\nSELECT CASE\n         WHEN precio < 20000  THEN '1. menos de $20.000'\n         WHEN precio < 100000 THEN '2. de $20.000 a $99.999'\n         ELSE '3. $100.000 o más'\n       END      AS tramo,\n       count(*) AS productos\nFROM productos\nGROUP BY tramo\nORDER BY tramo;"
+        },
+        {
+          "type": "p",
+          "text": "Aquí escribimos `GROUP BY mes` y `GROUP BY tramo`: en PostgreSQL puedes agrupar por el **alias** de una columna del SELECT, o por su **posición** (`GROUP BY 1`). Es una extensión de PostgreSQL al estándar, muy cómoda, pero con una trampa: si el alias coincide con el nombre de una columna de la tabla, **GROUP BY usa la columna de la tabla** (al revés que ORDER BY, que prefiere el alias)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- ¡Trampa! El alias «fecha» choca con la columna fecha de la tabla\nSELECT date_trunc('month', fecha) AS fecha, count(*) AS pedidos\nFROM pedidos\nGROUP BY fecha\nORDER BY fecha\nLIMIT 3;"
+        },
+        {
+          "type": "p",
+          "text": "Salen tres filas de enero con 1 pedido cada una: GROUP BY agrupó por la columna `fecha` original (cada pedido tiene su propio instante), no por el mes. La solución es usar un alias distinto (`mes`) o repetir la expresión en el GROUP BY: `GROUP BY date_trunc('month', fecha)`."
+        },
+        {
+          "type": "h",
+          "text": "Agrupar con datos de dos tablas"
+        },
+        {
+          "type": "p",
+          "text": "Muchas veces la clave de agrupación está en otra tabla: los productos guardan `categoria_id`, pero el reporte debe mostrar el **nombre** de la categoría. Un `JOIN … ON` pega a cada producto la fila de su categoría (lo verás a fondo en la sección 8). Aquí basta la idea: `FROM productos p JOIN categorias c ON c.id = p.categoria_id` produce una fila por producto con las columnas de ambas tablas (`p` y `c` son alias de tabla), y sobre eso agrupamos."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.nombre             AS categoria,\n       count(*)             AS productos,\n       round(avg(p.precio)) AS precio_promedio,\n       sum(p.stock)         AS stock_total\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nGROUP BY c.nombre\nORDER BY productos DESC, categoria;"
+        },
+        {
+          "type": "p",
+          "text": "**Dependencia funcional.** Hay una excepción legítima a la regla de oro: si agrupas por la **clave primaria** de una tabla, puedes mostrar cualquier otra columna de esa misma tabla sin agregarla, porque dentro de cada grupo solo puede haber un valor. Por eso esta consulta funciona aunque `nombre` y `apellido` no estén en el GROUP BY:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.id, c.nombre, c.apellido, count(*) AS pedidos\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id\nGROUP BY c.id\nORDER BY pedidos DESC, c.id\nLIMIT 5;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Expresión en el SELECT",
+            "¿Válida?",
+            "Por qué"
+          ],
+          "rows": [
+            [
+              "`region` con `GROUP BY region`",
+              "Sí",
+              "Tiene un solo valor por grupo"
+            ],
+            [
+              "`count(*)`, `max(precio)`",
+              "Sí",
+              "Los agregados resumen el grupo"
+            ],
+            [
+              "`upper(region)`, `'Chile'`",
+              "Sí",
+              "Se calculan solo con columnas agrupadas o constantes"
+            ],
+            [
+              "`comuna` con `GROUP BY region`",
+              "No",
+              "Puede tener varios valores dentro del grupo"
+            ],
+            [
+              "`c.apellido` con `GROUP BY c.id`",
+              "Sí",
+              "Depende funcionalmente de la clave primaria de clientes"
+            ],
+            [
+              "`c.apellido` con `GROUP BY p.cliente_id`",
+              "No",
+              "`p.cliente_id` no es la clave primaria de clientes, aunque tenga el mismo valor"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`GROUP BY` **no ordena**. Según el plan que elija, PostgreSQL puede agrupar con una tabla hash y devolver los grupos en cualquier orden. Si el orden importa (en un reporte, casi siempre), escribe `ORDER BY` y desempata con otra columna."
+        },
+        {
+          "type": "p",
+          "text": "Compruébalo: `EXPLAIN` muestra el plan que eligió PostgreSQL (lo estudiarás en la sección 15). Aquí agrupa con un `HashAggregate`, una tabla hash con una entrada por región, y los grupos salen en el orden en que quedaron en esa tabla:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "EXPLAIN (COSTS OFF)\nSELECT region, count(*) FROM clientes GROUP BY region;\n\nSELECT region, count(*) FROM clientes GROUP BY region;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Te pueden preguntar: «¿`SELECT DISTINCT region FROM clientes` y `SELECT region FROM clientes GROUP BY region` dan lo mismo?». Sí: un GROUP BY sin agregados equivale a DISTINCT. La diferencia es que con GROUP BY además puedes calcular agregados por grupo."
+        }
+      ]
+    },
+    {
+      "id": "s07-l3",
+      "title": "HAVING y FILTER: filtrar grupos y agregar con condiciones",
+      "minutes": 20,
+      "goals": [
+        "Filtrar grupos con HAVING y filas con WHERE, justificando dónde va cada condición.",
+        "Ordenar las cláusulas según su orden lógico de evaluación para explicar qué alias ve cada una.",
+        "Calcular agregados condicionales con FILTER (WHERE …) y con su equivalente usando CASE.",
+        "Construir una tabla dinámica (pivot) con un agregado con FILTER por cada columna."
+      ],
+      "takeaways": [
+        "WHERE filtra filas antes de agrupar; HAVING filtra grupos después de calcular los agregados.",
+        "Los agregados no pueden ir en WHERE porque aún no existen; una condición sin agregados rinde más en WHERE que en HAVING.",
+        "Orden lógico: FROM → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT; por eso HAVING no ve los alias del SELECT y ORDER BY sí.",
+        "agregado(x) FILTER (WHERE condición) alimenta solo ese agregado con las filas que cumplen la condición; los demás agregados no se ven afectados.",
+        "Una tabla dinámica se arma con GROUP BY por la dimensión de las filas y un agregado con FILTER por cada columna."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Ya sabes agrupar. Ahora, dos preguntas nuevas: «¿qué regiones tienen **al menos 2** clientes?» y «¿cuántos pedidos **cancelados** hubo, al lado del total?». La primera filtra **grupos** según un agregado; la segunda cuenta solo **algunas filas** dentro de cada grupo. Para eso están `HAVING` y `FILTER`."
+        },
+        {
+          "type": "h",
+          "text": "WHERE filtra filas, HAVING filtra grupos"
+        },
+        {
+          "type": "p",
+          "text": "Vuelve a la mesa de votación: `WHERE` es el vocal que, **antes** de separar los montones, aparta los votos que no corresponden; `HAVING` es la regla que, **después** de contar, dice «solo informen a los candidatos con más de 10 votos». WHERE decide qué filas entran a los grupos; HAVING decide qué grupos llegan al resultado."
+        },
+        {
+          "type": "diagram",
+          "title": "Orden lógico de evaluación",
+          "mermaid": "flowchart TD\n  A[\"1. FROM y JOIN<br/>arman las filas\"] --> B[\"2. WHERE<br/>descarta filas\"]\n  B --> C[\"3. GROUP BY<br/>forma los grupos\"]\n  C --> D[\"4. Agregados<br/>count, sum, avg… por grupo\"]\n  D --> E[\"5. HAVING<br/>descarta grupos\"]\n  E --> F[\"6. SELECT<br/>calcula columnas y alias\"]\n  F --> G[\"7. DISTINCT\"]\n  G --> H[\"8. ORDER BY<br/>ya ve los alias\"]\n  H --> I[\"9. LIMIT y OFFSET\"]",
+          "caption": "El motor puede reordenar el trabajo físico para ir más rápido, pero el resultado siempre es el que daría seguir este orden lógico."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT region, count(*) AS clientes\nFROM clientes\nWHERE region IS NOT NULL\nGROUP BY region\nHAVING count(*) >= 2\nORDER BY clientes DESC, region;"
+        },
+        {
+          "type": "p",
+          "text": "Los dos filtros conviven: el `WHERE` saca al cliente sin región **antes** de agrupar y el `HAVING` deja solo los grupos con 2 o más clientes. ¿Por qué no poner `count(*) >= 2` en el WHERE? Porque cuando se evalúa el WHERE los grupos todavía no existen: no hay nada que contar."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT region, count(*)\nFROM clientes\nWHERE count(*) >= 2\nGROUP BY region;\n\nSELECT region, count(*) AS total\nFROM clientes\nGROUP BY region\nHAVING total >= 2;"
+        },
+        {
+          "type": "p",
+          "text": "El segundo error es más sutil: el alias `total` nace en el SELECT (paso 6) y el HAVING se evalúa antes (paso 5), así que en PostgreSQL no lo ve: repite la expresión, `HAVING count(*) >= 2`. En cambio, `ORDER BY total` sí funciona, porque ORDER BY va después del SELECT."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Si una condición **no usa agregados** (por ejemplo `estado <> 'cancelado'`), ponla en el **WHERE**. Si la columna está agrupada, en HAVING también funcionaría, pero obligas a PostgreSQL a agrupar filas que después va a botar. Regla práctica: WHERE para filas, HAVING solo para condiciones sobre agregados."
+        },
+        {
+          "type": "p",
+          "text": "Un caso real que combina ambos: los clientes con 15 o más pedidos **no cancelados**, con la fecha de su primera y su última compra."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT cliente_id,\n       count(*)         AS pedidos,\n       min(fecha)::date AS primera_compra,\n       max(fecha)::date AS ultima_compra\nFROM pedidos\nWHERE estado <> 'cancelado'\nGROUP BY cliente_id\nHAVING count(*) >= 15\nORDER BY pedidos DESC, cliente_id;"
+        },
+        {
+          "type": "h",
+          "text": "FILTER: agregados con condición"
+        },
+        {
+          "type": "p",
+          "text": "`FILTER (WHERE condición)` se escribe justo después de un agregado y hace que **ese agregado** reciba solo las filas que cumplen la condición. A diferencia del WHERE, no saca filas de la consulta: cada agregado puede tener su propio filtro. Es SQL estándar (en PostgreSQL desde la versión 9.4)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*)                                     AS total,\n       count(*) FILTER (WHERE estado = 'entregado') AS entregados,\n       count(*) FILTER (WHERE estado = 'cancelado') AS cancelados,\n       round(100.0 * count(*) FILTER (WHERE estado = 'cancelado') / count(*), 1) AS pct_cancelados\nFROM pedidos;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en el `100.0`: al multiplicar por un `numeric` antes de dividir, evitamos la división entera (24 / 420 daría 0)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "WHERE",
+            "HAVING",
+            "FILTER (WHERE …)"
+          ],
+          "rows": [
+            [
+              "Qué filtra",
+              "filas",
+              "grupos",
+              "las filas que recibe un agregado"
+            ],
+            [
+              "Cuándo actúa",
+              "antes de agrupar",
+              "después de calcular los agregados",
+              "mientras se calcula ese agregado"
+            ],
+            [
+              "¿Puede usar agregados?",
+              "No",
+              "Sí",
+              "No"
+            ],
+            [
+              "A qué afecta",
+              "a toda la consulta",
+              "a toda la consulta",
+              "solo a ese agregado"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Antes de que existiera FILTER se usaba un `CASE` dentro del agregado; lo verás en código antiguo y en otros motores. Son equivalentes:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Con FILTER",
+            "Con CASE (equivalente)"
+          ],
+          "rows": [
+            [
+              "`count(*) FILTER (WHERE estado = 'cancelado')`",
+              "`count(CASE WHEN estado = 'cancelado' THEN 1 END)`"
+            ],
+            [
+              "`sum(costo_despacho) FILTER (WHERE metodo_pago = 'debito')`",
+              "`sum(CASE WHEN metodo_pago = 'debito' THEN costo_despacho END)`"
+            ],
+            [
+              "`avg(nota) FILTER (WHERE semestre = 1)`",
+              "`avg(CASE WHEN semestre = 1 THEN nota END)`"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "El truco del CASE funciona porque, sin `ELSE`, devuelve NULL, y los agregados ignoran los NULL. Cuidado con escribir `ELSE 0` dentro de un `count`: el 0 no es NULL y se contaría. FILTER es más claro y dice exactamente lo que quieres."
+        },
+        {
+          "type": "h",
+          "text": "Tablas dinámicas (pivot)"
+        },
+        {
+          "type": "p",
+          "text": "Una **tabla dinámica** (*pivot table*, como en Excel) convierte los valores de una columna en columnas del resultado. La receta en SQL: `GROUP BY` por lo que va en las filas y un agregado con `FILTER` por cada columna que quieres ver. Por ejemplo, el promedio de notas de cada curso con un semestre por columna:"
+        },
+        {
+          "type": "diagram",
+          "title": "Del formato largo al formato ancho",
+          "mermaid": "flowchart LR\n  A[\"Formato largo<br/>curso · semestre · nota<br/>5985 filas\"] -->|\"GROUP BY curso\"| B[\"un grupo por curso\"]\n  B -->|\"avg(nota) FILTER (WHERE semestre = 1)\"| C[\"columna sem1\"]\n  B -->|\"avg(nota) FILTER (WHERE semestre = 2)\"| D[\"columna sem2\"]\n  C --> E[\"Formato ancho<br/>curso · sem1 · sem2<br/>6 filas\"]\n  D --> E",
+          "caption": "Cada columna de la tabla dinámica es el mismo agregado con un FILTER distinto."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT c.nombre AS curso,\n       round(avg(n.nota) FILTER (WHERE n.semestre = 1), 2) AS sem1,\n       round(avg(n.nota) FILTER (WHERE n.semestre = 2), 2) AS sem2,\n       count(*) FILTER (WHERE n.nota < 4.0)                AS notas_rojas\nFROM notas n\nJOIN alumnos a ON a.id = n.alumno_id\nJOIN cursos c  ON c.id = a.curso_id\nGROUP BY c.nombre\nORDER BY c.nombre;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`count(*) FILTER (…)` devuelve **0** si ninguna fila cumple, pero `sum(…) FILTER (…)` o `avg(…) FILTER (…)` devuelven **NULL**, igual que sobre un conjunto vacío. En una tabla dinámica de montos, envuélvelos con `coalesce(…, 0)` si quieres ver ceros. Y el filtro no puede contener agregados: `aggregate functions are not allowed in FILTER`."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "La diferencia que siempre preguntan: `WHERE` filtra filas **antes** de agrupar, `HAVING` filtra grupos **después**, y `FILTER` filtra las filas que recibe **un** agregado sin afectar a los demás. Si te preguntan «¿se puede usar un agregado en el WHERE?», la respuesta es no: `aggregate functions are not allowed in WHERE`."
+        },
+        {
+          "type": "p",
+          "text": "Para tablas dinámicas con columnas que no conoces de antemano existe la función `crosstab` de la extensión `tablefunc` (sección 25). Para la mayoría de los reportes, FILTER basta y es SQL estándar."
+        }
+      ]
+    },
+    {
+      "id": "s07-l4",
+      "title": "Agregados especiales: listas, lógicos y estadísticos",
+      "minutes": 25,
+      "goals": [
+        "Concatenar los valores de cada grupo en un orden definido con string_agg y array_agg.",
+        "Evaluar una condición sobre todo un grupo con bool_and y bool_or.",
+        "Calcular medianas, percentiles, moda y desviación estándar con percentile_cont, percentile_disc, mode() y stddev.",
+        "Elegir un valor del grupo con any_value (PostgreSQL 16 o superior) solo cuando todos los valores del grupo son iguales."
+      ],
+      "takeaways": [
+        "string_agg(texto, separador ORDER BY …) une los valores en un texto y omite los NULL; array_agg(x ORDER BY …) los reúne en un arreglo e incluye los NULL. Sin ORDER BY interno, el orden no está garantizado.",
+        "El ORDER BY de un agregado va dentro de los paréntesis, después del último argumento y sin coma: string_agg(sku, ', ' ORDER BY sku).",
+        "bool_and es verdadero si todas las filas cumplen; bool_or, si al menos una cumple (every es el nombre estándar de bool_and).",
+        "Los agregados de conjunto ordenado usan WITHIN GROUP (ORDER BY …): percentile_cont interpola y devuelve double precision; percentile_disc y mode() devuelven un valor que existe en el grupo.",
+        "La mediana resiste los valores extremos que arrastran al promedio; stddev (muestral) mide qué tan dispersos están los valores."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "No todo resumen es un número. A veces quieres **la lista** de comunas de una región, saber si **todos** los productos de una categoría están activos, o la **mediana** de los sueldos porque el promedio engaña. PostgreSQL trae agregados para cada caso."
+        },
+        {
+          "type": "h",
+          "text": "string_agg y array_agg: juntar valores"
+        },
+        {
+          "type": "p",
+          "text": "`string_agg(expresión, separador)` concatena los valores no nulos del grupo en un texto, separados por lo que indiques. `array_agg(expresión)` los reúne en un **arreglo** de PostgreSQL (los verás a fondo en la sección 18). Ambos aceptan `DISTINCT` y un `ORDER BY` **dentro de los paréntesis**, que define el orden de los elementos: sin él, el orden no está garantizado."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT region,\n       count(*)                                          AS clientes,\n       string_agg(DISTINCT comuna, ', ' ORDER BY comuna) AS comunas\nFROM clientes\nWHERE region <> 'Metropolitana'\nGROUP BY region\nORDER BY region;"
+        },
+        {
+          "type": "p",
+          "text": "Con `array_agg` hay un truco muy útil: ordenar el arreglo y tomar su primer elemento con `[1]`. Así obtienes, por ejemplo, el nombre del producto más caro de cada categoría sin subconsultas:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.nombre                                        AS categoria,\n       array_agg(p.precio ORDER BY p.precio DESC)      AS precios,\n       (array_agg(p.nombre ORDER BY p.precio DESC))[1] AS el_mas_caro\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nWHERE c.padre_id = 1\nGROUP BY c.nombre\nORDER BY c.nombre;"
+        },
+        {
+          "type": "p",
+          "text": "Los paréntesis alrededor del agregado son obligatorios para poder escribir `[1]`. Si dos productos pudieran tener el mismo precio máximo, agrega un desempate para que el resultado sea siempre el mismo: `ORDER BY p.precio DESC, p.id`."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**El ORDER BY va después de todos los argumentos.** `string_agg(sku, ', ' ORDER BY sku)` es correcto. `string_agg(sku ORDER BY sku, ', ')` se lee como un agregado de **un solo** argumento ordenado por dos claves (`sku` y la constante `', '`), y como `string_agg` necesita dos argumentos, falla. Además, con `DISTINCT`, el ORDER BY solo puede usar las expresiones del argumento."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT string_agg(sku ORDER BY sku, ', ') FROM productos;\n\nSELECT string_agg(DISTINCT comuna, ', ' ORDER BY region) FROM clientes;"
+        },
+        {
+          "type": "p",
+          "text": "Una diferencia fina con los NULL: `string_agg` **omite** los NULL (como casi todos los agregados), pero `array_agg` **los incluye** en el arreglo. El cliente 5 no tiene región:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT array_agg(region ORDER BY id)         AS arreglo,\n       string_agg(region, ' | ' ORDER BY id) AS texto\nFROM clientes\nWHERE id BETWEEN 4 AND 6;"
+        },
+        {
+          "type": "h",
+          "text": "bool_and y bool_or: ¿todos? ¿alguno?"
+        },
+        {
+          "type": "p",
+          "text": "`bool_and(condición)` es verdadero si la condición se cumple en **todas** las filas del grupo (el «para todo»); `bool_or(condición)`, si se cumple en **al menos una** (el «existe»). `every` es el nombre del estándar SQL para `bool_and`. Ignoran los NULL y, sobre cero filas, devuelven NULL."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.nombre                 AS categoria,\n       bool_and(p.activo)       AS todos_activos,\n       bool_or(p.stock < 20)    AS alguno_con_poco_stock,\n       every(p.precio >= 10000) AS todos_desde_10000\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nGROUP BY c.nombre\nORDER BY c.nombre;"
+        },
+        {
+          "type": "h",
+          "text": "Mediana, percentiles y moda"
+        },
+        {
+          "type": "p",
+          "text": "El promedio tiene un defecto: un solo valor extremo lo arrastra. En Chile siempre se discute el «sueldo promedio» versus el «sueldo mediano»: bastan unos pocos sueldos muy altos para subir el promedio, mientras que la **mediana** (el valor del medio cuando los ordenas) casi no se mueve. Mira los sueldos de los empleados vigentes de Andes Digital:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT count(*)                                            AS empleados,\n       round(avg(sueldo))                                  AS promedio,\n       percentile_cont(0.5) WITHIN GROUP (ORDER BY sueldo) AS mediana,\n       mode() WITHIN GROUP (ORDER BY sueldo)               AS moda,\n       min(sueldo)                                         AS minimo,\n       max(sueldo)                                         AS maximo\nFROM empleados\nWHERE fecha_salida IS NULL;"
+        },
+        {
+          "type": "p",
+          "text": "El promedio ($2.504.717) queda casi $500.000 sobre la mediana ($2.020.000): la mitad de los empleados gana $2.020.000 o menos. Estas funciones son **agregados de conjunto ordenado** (*ordered-set aggregates*): necesitan los valores ordenados, y ese orden se escribe en `WITHIN GROUP (ORDER BY …)`. El número entre paréntesis es la fracción: 0.5 es la mediana, 0.25 el primer cuartil, 0.9 el percentil 90. `mode()` devuelve el valor más frecuente (si hay empate, elige arbitrariamente el primero)."
+        },
+        {
+          "type": "diagram",
+          "title": "percentile_cont frente a percentile_disc",
+          "mermaid": "flowchart LR\n  V[\"Valores ordenados<br/>10 · 20 · 30 · 40\"] --> C[\"percentile_cont(0.5)<br/>interpola entre 20 y 30<br/>= 25\"]\n  V --> D[\"percentile_disc(0.5)<br/>primer valor que alcanza<br/>la mitad = 20\"]",
+          "caption": "percentile_cont puede devolver un valor que no existe en los datos (25); percentile_disc siempre devuelve uno de los valores del grupo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY x)                    AS cont,\n       percentile_disc(0.5) WITHIN GROUP (ORDER BY x)                    AS disc,\n       percentile_cont(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY x) AS cuartiles\nFROM generate_series(10, 40, 10) AS s(x);"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Qué calcula",
+            "Devuelve"
+          ],
+          "rows": [
+            [
+              "`percentile_cont(f) WITHIN GROUP (ORDER BY x)`",
+              "percentil continuo: interpola entre los dos valores vecinos",
+              "`double precision` (o `interval`)"
+            ],
+            [
+              "`percentile_disc(f) WITHIN GROUP (ORDER BY x)`",
+              "el primer valor cuya posición en el orden alcanza la fracción f",
+              "el tipo de x"
+            ],
+            [
+              "`percentile_cont(ARRAY[…]) WITHIN GROUP (…)`",
+              "varios percentiles de una vez",
+              "un arreglo"
+            ],
+            [
+              "`mode() WITHIN GROUP (ORDER BY x)`",
+              "el valor más frecuente",
+              "el tipo de x"
+            ],
+            [
+              "`stddev(x)` (= `stddev_samp`)",
+              "desviación estándar muestral (divide por n − 1)",
+              "`numeric` (o `double precision`)"
+            ],
+            [
+              "`stddev_pop(x)`, `variance(x)`",
+              "desviación poblacional (divide por n); varianza muestral",
+              "`numeric` (o `double precision`)"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Desviación estándar: ¿qué tan parejos son los datos?"
+        },
+        {
+          "type": "p",
+          "text": "`stddev(x)`, alias histórico de `stddev_samp`, mide cuánto se alejan los valores del promedio: si es chica, los datos están apretados; si es grande, están dispersos. `stddev_pop` es la versión poblacional. Con un solo valor, `stddev` devuelve NULL (no se puede estimar la dispersión de una muestra de 1) y `stddev_pop` devuelve 0. Compara las asignaturas del liceo:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT s.nombre                                              AS asignatura,\n       round(avg(n.nota), 2)                                 AS promedio,\n       percentile_cont(0.5) WITHIN GROUP (ORDER BY n.nota)   AS mediana,\n       mode() WITHIN GROUP (ORDER BY n.nota)                 AS moda,\n       round(stddev(n.nota), 2)                              AS desviacion\nFROM notas n\nJOIN asignaturas s ON s.id = n.asignatura_id\nGROUP BY s.nombre\nORDER BY promedio DESC, asignatura;"
+        },
+        {
+          "type": "p",
+          "text": "En Artes y Educación Física la nota más repetida es un 7.0, aunque su promedio está entre 5.7 y 5.8: la moda cuenta otra historia que el promedio. Matemática tiene el promedio más bajo; las desviaciones son parecidas en todas las asignaturas."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`percentile_cont` devuelve `double precision`, y `round(double precision, integer)` **no existe**. Convierte primero: `round((percentile_cont(0.5) WITHIN GROUP (ORDER BY precio))::numeric, 1)`. Ojo también con `round(x)` sobre `double precision`: en los empates, la documentación advierte que depende de la plataforma y lo más común es redondear al par (2.5 → 2), mientras que sobre `numeric` se redondea alejándose del cero (2.5 → 3)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY precio), 1) FROM productos;\n\nSELECT round((percentile_cont(0.5) WITHIN GROUP (ORDER BY precio))::numeric, 1) AS mediana\nFROM productos;"
+        },
+        {
+          "type": "h",
+          "text": "any_value: cualquiera del grupo (PostgreSQL 16)"
+        },
+        {
+          "type": "p",
+          "text": "A veces sabes que una columna tiene **el mismo valor** en todas las filas del grupo, pero PostgreSQL no puede deducirlo porque no agrupaste por la clave primaria de su tabla. Antes se usaba `min(columna)` como parche; desde PostgreSQL 16 existe `any_value(columna)`, que devuelve un valor cualquiera, no nulo, del grupo, y deja clara la intención. Aquí agrupamos por `a.curso_id` (de la tabla alumnos), así que `c.nombre` no podría ir suelto en el SELECT:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT a.curso_id,\n       any_value(c.nombre)        AS curso,\n       any_value(c.profesor_jefe) AS profesor_jefe,\n       count(*)                   AS alumnos\nFROM alumnos a\nJOIN cursos c ON c.id = a.curso_id\nGROUP BY a.curso_id\nORDER BY a.curso_id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`any_value` no es una forma de «callar» la regla de oro. Si los valores del grupo son distintos, devuelve uno **cualquiera**, que puede cambiar de una ejecución a otra. Úsalo solo cuando todos los valores del grupo sean iguales (como el nombre del curso aquí); si no, la pregunta está mal planteada."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿Cómo se calcula la mediana en PostgreSQL?» No existe `median()`: se usa `percentile_cont(0.5) WITHIN GROUP (ORDER BY x)`. Y distingue los dos ORDER BY: el que va **dentro** de `string_agg` o `array_agg` ordena los elementos de la lista; el de la consulta ordena las filas del resultado."
+        }
+      ]
+    },
+    {
+      "id": "s07-l5",
+      "title": "GROUPING SETS, ROLLUP y CUBE: subtotales y total general",
+      "minutes": 25,
+      "goals": [
+        "Generar subtotales por grupo y un total general en una sola consulta con ROLLUP.",
+        "Enumerar los conjuntos de agrupamiento que producen ROLLUP, CUBE y GROUPING SETS para una lista de columnas.",
+        "Distinguir un NULL de subtotal de un NULL de los datos con grouping() y rotular las filas de un informe."
+      ],
+      "takeaways": [
+        "GROUPING SETS calcula varias agrupaciones en una sola consulta y entrega todas sus filas juntas; el conjunto vacío () es el total general.",
+        "ROLLUP (a, b) equivale a GROUPING SETS ((a, b), (a), ()): es jerárquico y da n + 1 niveles. CUBE (a, b) genera todas las combinaciones: 2^n conjuntos.",
+        "En las filas de subtotal, las columnas que no participan del conjunto aparecen como NULL, igual que un NULL de los datos.",
+        "grouping(col) vale 1 si la columna no participa del conjunto de esa fila y 0 si participa; con varias columnas forma una máscara de bits.",
+        "Ordena los informes con ORDER BY grouping(…) para dejar cada subtotal después de su detalle y el total general al final."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Todo informe de ventas que se precie tiene **subtotales** y un **total general**: ventas por año y método de pago, un subtotal por año y el gran total al final. Con lo que sabes hasta ahora necesitarías una consulta por nivel y luego pegarlas. PostgreSQL lo resuelve en una sola consulta, leyendo la tabla una vez, con `GROUPING SETS`, `ROLLUP` y `CUBE`."
+        },
+        {
+          "type": "h",
+          "text": "GROUPING SETS: varias agrupaciones a la vez"
+        },
+        {
+          "type": "p",
+          "text": "`GROUP BY GROUPING SETS ((a), (b), ())` significa «agrupa por a; además agrupa por b; además calcula el total (`()`, el conjunto vacío)», y entrega todas esas filas juntas. En cada fila, las columnas que **no** forman parte de su conjunto se muestran como NULL. Es lo mismo que obtendrías uniendo tres consultas con `UNION ALL` (sección 9), pero más corto y más eficiente:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "-- Lo que GROUPING SETS te ahorra (UNION ALL se ve en la sección 9)\nSELECT estado, NULL AS metodo_pago, count(*) FROM pedidos GROUP BY estado\nUNION ALL\nSELECT NULL, metodo_pago, count(*) FROM pedidos GROUP BY metodo_pago\nUNION ALL\nSELECT NULL, NULL, count(*) FROM pedidos;"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT estado, metodo_pago, count(*) AS pedidos\nFROM pedidos\nGROUP BY GROUPING SETS ((estado), (metodo_pago), ())\nORDER BY estado, metodo_pago;"
+        },
+        {
+          "type": "p",
+          "text": "Mira las dos últimas filas: ambas tienen las dos columnas vacías, pero una dice 3 y la otra 420. La de 420 es el total general; la de 3 es el grupo de `metodo_pago` NULL (los pedidos pendientes, que aún no tienen método de pago). **Los dos NULL se ven iguales**, y ese es el gran problema de los subtotales. Lo resolveremos con `grouping()`."
+        },
+        {
+          "type": "p",
+          "text": "¿Por qué es más eficiente que tres consultas? Mira el plan: un solo `Seq Scan` alimenta un nodo `MixedAggregate`, que llena a la vez una tabla hash por estado, otra por método de pago y el acumulador del total (`Group Key: ()`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "EXPLAIN (COSTS OFF)\nSELECT estado, metodo_pago, count(*)\nFROM pedidos\nGROUP BY GROUPING SETS ((estado), (metodo_pago), ());"
+        },
+        {
+          "type": "h",
+          "text": "ROLLUP: subtotales jerárquicos"
+        },
+        {
+          "type": "p",
+          "text": "`ROLLUP (a, b, c)` genera la lista completa y todos sus **prefijos**: `(a, b, c)`, `(a, b)`, `(a)` y `()`. Sirve para jerarquías: región → comuna, año → mes, ciudad → departamento. El orden de las columnas importa: `ROLLUP (region, comuna)` da subtotales por región, no por comuna."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué genera ROLLUP (region, comuna)",
+          "mermaid": "flowchart LR\n  R[\"ROLLUP (region, comuna)\"] --> S1[\"(region, comuna)<br/>detalle: una fila por comuna\"]\n  R --> S2[\"(region)<br/>subtotal: una fila por región\"]\n  R --> S3[\"( )<br/>total general: una fila\"]",
+          "caption": "ROLLUP con n columnas produce n + 1 conjuntos de agrupamiento: la lista completa y cada prefijo, hasta llegar al conjunto vacío."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT region, comuna, count(*) AS clientes\nFROM clientes\nWHERE region IN ('Biobío', 'Coquimbo', 'Maule', 'Valparaíso')\nGROUP BY ROLLUP (region, comuna)\nORDER BY region, comuna;"
+        },
+        {
+          "type": "p",
+          "text": "Cada región termina con su fila de subtotal (comuna vacía) y al final aparece el total general (región y comuna vacías). Salen en ese orden porque, en un orden ascendente, PostgreSQL pone los NULL al final."
+        },
+        {
+          "type": "h",
+          "text": "CUBE: todas las combinaciones"
+        },
+        {
+          "type": "p",
+          "text": "`CUBE (a, b)` genera **todos los subconjuntos** de la lista: `(a, b)`, `(a)`, `(b)` y `()`. Con n columnas son 2ⁿ conjuntos. Sirve cuando las dimensiones no son jerárquicas y quieres los totales «por los dos lados», como una planilla con totales por fila y por columna."
+        },
+        {
+          "type": "diagram",
+          "title": "Los niveles de CUBE (curso, semestre)",
+          "mermaid": "flowchart TD\n  AB[\"(curso, semestre)<br/>detalle\"] --> A[\"(curso)<br/>total por curso\"]\n  AB --> B[\"(semestre)<br/>total por semestre\"]\n  A --> V[\"( )<br/>total general\"]\n  B --> V",
+          "caption": "CUBE incluye los cuatro niveles; ROLLUP (curso, semestre) solo recorrería el camino de la izquierda y no daría el total por semestre."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT c.nombre              AS curso,\n       n.semestre,\n       count(*)              AS notas,\n       round(avg(n.nota), 2) AS promedio\nFROM notas n\nJOIN alumnos a ON a.id = n.alumno_id\nJOIN cursos c  ON c.id = a.curso_id\nWHERE c.nivel >= 3\nGROUP BY CUBE (c.nombre, n.semestre)\nORDER BY curso, semestre;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Escribes",
+            "Equivale a GROUPING SETS",
+            "Conjuntos"
+          ],
+          "rows": [
+            [
+              "`GROUP BY a, b`",
+              "`((a, b))`",
+              "1"
+            ],
+            [
+              "`ROLLUP (a, b)`",
+              "`((a, b), (a), ())`",
+              "n + 1 = 3"
+            ],
+            [
+              "`ROLLUP (a, b, c)`",
+              "`((a, b, c), (a, b), (a), ())`",
+              "4"
+            ],
+            [
+              "`CUBE (a, b)`",
+              "`((a, b), (a), (b), ())`",
+              "2ⁿ = 4"
+            ],
+            [
+              "`CUBE (a, b, c)`",
+              "los 8 subconjuntos de {a, b, c}",
+              "8"
+            ],
+            [
+              "`GROUP BY a, ROLLUP (b, c)`",
+              "`((a, b, c), (a, b), (a))`",
+              "3"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "La última fila muestra que puedes combinar: con varios elementos en el GROUP BY, los conjuntos se multiplican entre sí (producto cartesiano), así que `a` queda en todos. Si esa combinación produce conjuntos repetidos, `GROUP BY DISTINCT` (desde PostgreSQL 14) los elimina."
+        },
+        {
+          "type": "h",
+          "text": "grouping(): ¿NULL de los datos o fila de subtotal?"
+        },
+        {
+          "type": "p",
+          "text": "`grouping(columna)` devuelve **1** si esa columna **no** participa del conjunto de agrupamiento de la fila (es decir, es una fila de subtotal para ella) y **0** si participa. Con eso distingues el NULL «de verdad» del NULL «de subtotal» y puedes rotular las filas con un `CASE`. Sus argumentos deben ser las mismas expresiones del GROUP BY (no sirven los alias del SELECT)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT CASE WHEN grouping(estado) = 1 THEN 'TOTAL' ELSE estado END AS estado,\n       CASE\n         WHEN grouping(metodo_pago) = 1 THEN '(todos)'\n         ELSE coalesce(metodo_pago, '(sin método)')\n       END                           AS metodo_pago,\n       count(*)                      AS pedidos,\n       grouping(estado, metodo_pago) AS nivel\nFROM pedidos\nWHERE estado IN ('cancelado', 'pagado', 'pendiente')\nGROUP BY ROLLUP (estado, metodo_pago)\nORDER BY grouping(estado), estado, grouping(metodo_pago), metodo_pago;"
+        },
+        {
+          "type": "p",
+          "text": "Ahora el pedido pendiente sin método se lee «(sin método)» y su subtotal «(todos)»: ya no se confunden. El `ORDER BY grouping(…)` deja cada subtotal justo después de su detalle y el total al final, sin depender de dónde caen los NULL."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Fila",
+            "grouping(estado)",
+            "grouping(metodo_pago)",
+            "grouping(estado, metodo_pago)"
+          ],
+          "rows": [
+            [
+              "detalle (estado y método)",
+              "0",
+              "0",
+              "0 (binario 00)"
+            ],
+            [
+              "subtotal por estado",
+              "0",
+              "1",
+              "1 (binario 01)"
+            ],
+            [
+              "subtotal por método (solo con CUBE)",
+              "1",
+              "0",
+              "2 (binario 10)"
+            ],
+            [
+              "total general",
+              "1",
+              "1",
+              "3 (binario 11)"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Con varios argumentos, `grouping(a, b)` arma una **máscara de bits**: el argumento de más a la derecha es el bit menos significativo. Por eso el total general vale 3 (binario 11: ni `estado` ni `metodo_pago` participan)."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "No uses `coalesce(columna, 'Total')` para rotular subtotales si la columna puede tener NULL en los datos: confundirías el grupo «sin método» con el subtotal. `grouping()` nunca se equivoca. `coalesce` solo es seguro cuando la expresión nunca vale NULL en los datos (por ejemplo, una columna NOT NULL)."
+        },
+        {
+          "type": "h",
+          "text": "Un informe completo"
+        },
+        {
+          "type": "p",
+          "text": "Juntemos todo: ventas por año y método de pago de los pedidos pagados, enviados o entregados, con subtotal por año y total general, en pesos. El monto sale de `pedido_items`; como el JOIN deja una fila por ítem, los pedidos se cuentan con `count(DISTINCT p.id)`. Observa que la expresión `to_char(p.fecha, 'YYYY')` se repite en el SELECT, en el GROUP BY y en `grouping()`:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT CASE WHEN grouping(to_char(p.fecha, 'YYYY')) = 1 THEN 'TOTAL'\n            ELSE to_char(p.fecha, 'YYYY') END            AS anio,\n       CASE WHEN grouping(p.metodo_pago) = 1 THEN '(todos)'\n            ELSE p.metodo_pago END                       AS metodo_pago,\n       count(DISTINCT p.id)                              AS pedidos,\n       sum(i.cantidad * i.precio_unitario)               AS ventas\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\nGROUP BY ROLLUP (to_char(p.fecha, 'YYYY'), p.metodo_pago)\nORDER BY grouping(to_char(p.fecha, 'YYYY')), 1, grouping(p.metodo_pago), 2;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Con ROLLUP y CUBE puedes seguir usando `HAVING` (se aplica a cada fila de cada nivel) y cualquier agregado: `sum`, `avg`, `count(DISTINCT …)`, incluso `percentile_cont`. Cada nivel se calcula desde las filas originales, no sumando los subtotales: por eso un `count(DISTINCT cliente_id)` del total general es correcto aunque un cliente aparezca en varios años."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Preguntas típicas: «¿cuántos conjuntos genera `ROLLUP (a, b, c)`?» (4: n + 1) y «¿y `CUBE (a, b, c)`?» (8: 2ⁿ). «¿Cómo distingues un NULL de subtotal de un NULL de los datos?» Con `grouping(columna)`, que vale 1 en las filas de subtotal. «¿Qué representa `()` en GROUPING SETS?» El total general."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s07-e1",
+      "title": "Radiografía de la cartera de clientes",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El área comercial quiere saber qué tan completos están los datos de contacto de los clientes.",
+        "Escribe una consulta sobre `clientes` que devuelva **una sola fila** con cuatro columnas, en este orden y con estos nombres: `total` (cantidad de clientes), `con_email` (clientes que tienen email), `sin_telefono` (clientes **sin** teléfono) y `regiones` (cantidad de regiones distintas registradas, sin contar el NULL)."
+      ],
+      "starter": "-- Una sola fila con cuatro conteos\nSELECT\n  \nFROM clientes;",
+      "solution": "SELECT count(*)               AS total,\n       count(email)           AS con_email,\n       count(*) - count(telefono) AS sin_telefono,\n       count(DISTINCT region) AS regiones\nFROM clientes;",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "`count(*)` cuenta filas y `count(columna)` solo las filas cuya columna no es NULL.",
+        "Los clientes sin teléfono son la diferencia `count(*) - count(telefono)`. Para las regiones usa `count(DISTINCT region)`."
+      ],
+      "explain": "Cada forma de `count` responde una pregunta distinta: `count(*)` = 60 filas, `count(email)` = 55 con email, `count(*) - count(telefono)` = 11 sin teléfono y `count(DISTINCT region)` = 10 regiones. Alternativa para los sin teléfono: `count(*) FILTER (WHERE telefono IS NULL)` (lección 3). Trampa: `count(DISTINCT region)` da 10 aunque `GROUP BY region` devuelva 11 grupos, porque el DISTINCT dentro de count no cuenta el NULL y GROUP BY sí lo muestra como un grupo."
+    },
+    {
+      "id": "s07-e2",
+      "title": "Precios del catálogo vigente",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para la vitrina de la tienda solo interesan los productos **activos**.",
+        "Devuelve una fila con: `productos` (cuántos productos activos hay), `minimo` (precio más bajo), `maximo` (precio más alto) y `promedio` (precio promedio **redondeado a pesos enteros**, sin decimales)."
+      ],
+      "starter": "-- Solo productos activos\nSELECT\n  \nFROM productos;",
+      "solution": "SELECT count(*)           AS productos,\n       min(precio)        AS minimo,\n       max(precio)        AS maximo,\n       round(avg(precio)) AS promedio\nFROM productos\nWHERE activo;",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "Filtra con `WHERE activo` antes de agregar: el agregado solo ve las filas que pasan el WHERE.",
+        "`avg` de enteros devuelve muchos decimales; `round(avg(precio))` lo deja en pesos enteros."
+      ],
+      "explain": "El WHERE deja 48 productos y los agregados trabajan solo sobre ellos: mínimo $2.990, máximo $549.990 y promedio $48.084. `round(avg(precio), 0)` da lo mismo. Si olvidas el WHERE, entra el producto inactivo y el promedio pasa a $47.510. No calcules el promedio como `sum(precio) / count(*)`: con enteros la división trunca en vez de redondear."
+    },
+    {
+      "id": "s07-e3",
+      "title": "Clientes por región",
+      "level": "facil",
+      "minutes": 7,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Cuenta los clientes de cada región, **sin considerar** a los clientes que no tienen región registrada.",
+        "Columnas: `region` y `clientes`. Ordena de la región con más clientes a la con menos; si empatan, por nombre de región en orden alfabético."
+      ],
+      "starter": "-- Clientes por región\nSELECT region\nFROM clientes;",
+      "solution": "SELECT region, count(*) AS clientes\nFROM clientes\nWHERE region IS NOT NULL\nGROUP BY region\nORDER BY clientes DESC, region;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "Agrupa con `GROUP BY region` y cuenta con `count(*)`.",
+        "Excluye los NULL con `WHERE region IS NOT NULL` y ordena con `ORDER BY clientes DESC, region`."
+      ],
+      "explain": "GROUP BY forma un grupo por región y count(*) cuenta sus filas. Sin el WHERE aparecería un grupo con region NULL (el cliente 5), porque GROUP BY junta todos los NULL en un solo grupo. `HAVING region IS NOT NULL` también funcionaría, pero es una condición sin agregados: va en el WHERE, que filtra antes de agrupar. El desempate por `region` es necesario porque varias regiones tienen 2 clientes y otras 1."
+    },
+    {
+      "id": "s07-e4",
+      "title": "Resumen de notas por semestre",
+      "level": "facil",
+      "minutes": 7,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "La dirección del liceo quiere comparar los dos semestres.",
+        "Desde `notas`, devuelve por cada `semestre`: `notas` (cantidad de notas registradas), `promedio` (redondeado a 2 decimales), `minima` y `maxima`. Ordena por semestre."
+      ],
+      "starter": "-- Una fila por semestre\nSELECT semestre\nFROM notas;",
+      "solution": "SELECT semestre,\n       count(*)            AS notas,\n       round(avg(nota), 2) AS promedio,\n       min(nota)           AS minima,\n       max(nota)           AS maxima\nFROM notas\nGROUP BY semestre\nORDER BY semestre;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "Agrupa por `semestre`: cada grupo tendrá todas las notas de ese semestre.",
+        "`round(avg(nota), 2)`, `min(nota)` y `max(nota)` dentro del mismo SELECT."
+      ],
+      "explain": "Con GROUP BY semestre cada agregado se calcula dentro de su semestre. El segundo semestre tiene menos notas (2394 contra 3591) porque su tercera evaluación aún no existe. Observa que min y max devuelven el mismo tipo de la columna (`numeric(2,1)`), por eso se ven con un decimal sin redondear."
+    },
+    {
+      "id": "s07-e5",
+      "title": "Pedidos por mes en 2026",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para el reporte mensual de este año, devuelve por cada mes de 2026: `mes` (el primer día del mes, de tipo `date`, por ejemplo `2026-01-01`), `pedidos` (cantidad de pedidos de cualquier estado) y `clientes` (cantidad de clientes **distintos** que hicieron pedidos ese mes).",
+        "Ordena por mes."
+      ],
+      "starter": "-- Un grupo por mes de 2026\nSELECT fecha, cliente_id\nFROM pedidos;",
+      "solution": "SELECT date_trunc('month', fecha)::date AS mes,\n       count(*)                         AS pedidos,\n       count(DISTINCT cliente_id)       AS clientes\nFROM pedidos\nWHERE fecha >= '2026-01-01' AND fecha < '2027-01-01'\nGROUP BY mes\nORDER BY mes;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "`date_trunc('month', fecha)` lleva cada fecha al inicio de su mes; conviértelo a fecha con `::date`.",
+        "Filtra 2026 en el WHERE (`fecha >= '2026-01-01'`), agrupa por el mes y cuenta los clientes con `count(DISTINCT cliente_id)`."
+      ],
+      "explain": "date_trunc deja todos los pedidos de un mes con el mismo valor, así que caen en el mismo grupo. `count(DISTINCT cliente_id)` evita contar dos veces al cliente que compró varias veces en el mes. Trampas: agrupar solo por `extract(month FROM fecha)` mezclaría meses de años distintos si no filtras el año; y si llamas `fecha` al alias, `GROUP BY fecha` agrupa por la columna original (un grupo por pedido). Con `to_char(fecha, 'YYYY-MM')` obtendrías texto, no una fecha."
+    },
+    {
+      "id": "s07-e6",
+      "title": "Clientes frecuentes",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing quiere premiar a los clientes frecuentes: los que tienen **12 o más pedidos no cancelados** (estado distinto de `'cancelado'`).",
+        "Devuelve `id` (del cliente), `cliente` (nombre y apellido separados por un espacio) y `pedidos` (cantidad de pedidos no cancelados). Ordena de más a menos pedidos y, si empatan, por `id` ascendente."
+      ],
+      "starter": "-- Une clientes con sus pedidos\nSELECT c.id, c.nombre, c.apellido\nFROM clientes c;",
+      "solution": "SELECT c.id,\n       c.nombre || ' ' || c.apellido AS cliente,\n       count(*)                      AS pedidos\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id\nWHERE p.estado <> 'cancelado'\nGROUP BY c.id\nHAVING count(*) >= 12\nORDER BY pedidos DESC, c.id;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bhaving\\b",
+          "msg": "Filtra los grupos (12 o más pedidos) con HAVING",
+          "name": "Usa HAVING"
+        }
+      ],
+      "hints": [
+        "La condición sobre el estado es de **filas** (WHERE); la de «12 o más pedidos» es de **grupos** (HAVING).",
+        "Une con `JOIN pedidos p ON p.cliente_id = c.id`, agrupa por `c.id` y filtra con `HAVING count(*) >= 12`."
+      ],
+      "explain": "El WHERE descarta los pedidos cancelados antes de agrupar; el HAVING descarta los clientes con menos de 12 pedidos después de contarlos. Agrupar por `c.id` basta para mostrar `c.nombre` y `c.apellido`: dependen funcionalmente de la clave primaria de clientes. Si agruparas por `p.cliente_id`, PostgreSQL rechazaría `c.nombre`. Si pones la condición del estado en el HAVING, falla (estado no está agrupado); y si no la pones, cuentas también los cancelados y el resultado cambia."
+    },
+    {
+      "id": "s07-e7",
+      "title": "Ventas entregadas por método de pago",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Finanzas necesita, para los pedidos **entregados**, un resumen por método de pago: `metodo_pago`, `pedidos` (cantidad de pedidos), `unidades` (unidades vendidas) y `monto` (suma de cantidad × precio_unitario, en pesos).",
+        "Los montos están en `pedido_items`, que tiene una fila por cada producto de cada pedido. Ordena de mayor a menor monto."
+      ],
+      "starter": "-- Une pedidos con sus ítems\nSELECT p.metodo_pago\nFROM pedidos p;",
+      "solution": "SELECT p.metodo_pago,\n       count(DISTINCT p.id)                AS pedidos,\n       sum(i.cantidad)                     AS unidades,\n       sum(i.cantidad * i.precio_unitario) AS monto\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado = 'entregado'\nGROUP BY p.metodo_pago\nORDER BY monto DESC;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "Une las tablas con `JOIN pedido_items i ON i.pedido_id = p.id` y filtra `p.estado = 'entregado'`.",
+        "Después del JOIN hay una fila por ítem, no por pedido: cuenta los pedidos con `count(DISTINCT p.id)`."
+      ],
+      "explain": "Es la trampa clásica de agregar después de un JOIN: cada pedido aparece tantas veces como ítems tiene, así que `count(*)` daría 388 para débito (ítems), no 189 (pedidos). `count(DISTINCT p.id)` lo corrige. Las sumas de unidades y montos sí deben hacerse por ítem, así que ahí no va DISTINCT. El monto se calcula con el precio histórico de `pedido_items`, no con el precio actual de `productos`."
+    },
+    {
+      "id": "s07-e8",
+      "title": "Métodos de pago mes a mes (tabla dinámica)",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Arma una tabla dinámica con los pedidos de 2026 (de cualquier estado): una fila por mes y una columna por método de pago.",
+        "Columnas: `mes` (texto con formato AAAA-MM, por ejemplo `2026-01`), `debito`, `credito`, `transferencia`, `sin_metodo` (pedidos con metodo_pago NULL) y `total`. Cada columna es una cantidad de pedidos. Ordena por mes. Usa FILTER."
+      ],
+      "starter": "-- Una fila por mes, una columna por método\nSELECT to_char(fecha, 'YYYY-MM') AS mes\nFROM pedidos\nWHERE fecha >= '2026-01-01';",
+      "solution": "SELECT to_char(fecha, 'YYYY-MM')                              AS mes,\n       count(*) FILTER (WHERE metodo_pago = 'debito')        AS debito,\n       count(*) FILTER (WHERE metodo_pago = 'credito')       AS credito,\n       count(*) FILTER (WHERE metodo_pago = 'transferencia') AS transferencia,\n       count(*) FILTER (WHERE metodo_pago IS NULL)           AS sin_metodo,\n       count(*)                                              AS total\nFROM pedidos\nWHERE fecha >= '2026-01-01'\nGROUP BY mes\nORDER BY mes;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bfilter\\s*\\(\\s*where\\b",
+          "msg": "Calcula cada columna con count(*) FILTER (WHERE …)",
+          "name": "Usa FILTER"
+        }
+      ],
+      "hints": [
+        "`to_char(fecha, 'YYYY-MM')` entrega el mes como texto: agrupa por él.",
+        "Una columna por método: `count(*) FILTER (WHERE metodo_pago = 'debito') AS debito`. Para los NULL: `FILTER (WHERE metodo_pago IS NULL)`."
+      ],
+      "explain": "La receta de una tabla dinámica: GROUP BY por lo que va en las filas (el mes) y un agregado con FILTER por cada columna. Fíjate en junio: hay 3 pedidos pendientes sin método, que solo aparecen gracias a `IS NULL`; con `FILTER (WHERE metodo_pago = NULL)` obtendrías 0, porque `= NULL` nunca es verdadero. Equivalente sin FILTER: `count(CASE WHEN metodo_pago = 'debito' THEN 1 END)`. Si las columnas no se conocieran de antemano, existe `crosstab` de la extensión tablefunc."
+    },
+    {
+      "id": "s07-e9",
+      "title": "El catálogo en una línea",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para una ficha rápida del catálogo, devuelve por cada categoría: `categoria` (nombre), `productos` (cantidad) y `skus`: los SKU de sus productos en un solo texto, separados por coma y espacio (`, `), **del más caro al más barato** (si hubiera empate de precio, por SKU).",
+        "Ordena por nombre de categoría."
+      ],
+      "starter": "-- Una fila por categoría\nSELECT c.nombre AS categoria\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id;",
+      "solution": "SELECT c.nombre                                            AS categoria,\n       count(*)                                            AS productos,\n       string_agg(p.sku, ', ' ORDER BY p.precio DESC, p.sku) AS skus\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nGROUP BY c.nombre\nORDER BY categoria;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "string_agg\\s*\\([^()]*\\border\\s+by\\b",
+          "msg": "Usa string_agg con ORDER BY dentro del agregado",
+          "name": "string_agg ordenado"
+        }
+      ],
+      "hints": [
+        "`string_agg(p.sku, ', ')` junta los SKU; el orden de la lista se define **dentro** de los paréntesis.",
+        "`string_agg(p.sku, ', ' ORDER BY p.precio DESC, p.sku)`: el ORDER BY va después del separador, sin coma antes."
+      ],
+      "explain": "El ORDER BY interno ordena los elementos de la lista; el ORDER BY de la consulta ordena las filas (categorías). Son independientes. Sin ORDER BY interno el orden de los SKU no está garantizado y podría cambiar entre ejecuciones. Error típico: `string_agg(p.sku ORDER BY p.precio DESC, ', ')`, que PostgreSQL interpreta como un agregado de un solo argumento y responde `function string_agg(text) does not exist`."
+    },
+    {
+      "id": "s07-e10",
+      "title": "Promedio contra mediana de los sueldos",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "En Andes Digital sospechan que los sueldos de las jefaturas inflan el promedio. Para los empleados **vigentes** (sin `fecha_salida`), devuelve por departamento: `departamento` (nombre), `empleados`, `promedio` (sueldo promedio redondeado a pesos enteros), `mediana` (mediana del sueldo, convertida a numeric y redondeada a pesos enteros) y `brecha` (promedio − mediana, usando los dos valores ya redondeados).",
+        "Considera solo los departamentos con **4 o más** empleados vigentes. Ordena por brecha de mayor a menor."
+      ],
+      "starter": "-- Empleados vigentes por departamento\nSELECT d.nombre AS departamento\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id;",
+      "solution": "SELECT d.nombre                AS departamento,\n       count(*)                AS empleados,\n       round(avg(e.sueldo))    AS promedio,\n       round((percentile_cont(0.5) WITHIN GROUP (ORDER BY e.sueldo))::numeric) AS mediana,\n       round(avg(e.sueldo))\n         - round((percentile_cont(0.5) WITHIN GROUP (ORDER BY e.sueldo))::numeric) AS brecha\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nGROUP BY d.nombre\nHAVING count(*) >= 4\nORDER BY brecha DESC;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "percentile_cont\\s*\\(\\s*0?\\.50*\\s*\\)\\s*within\\s+group",
+          "msg": "Calcula la mediana con percentile_cont(0.5) WITHIN GROUP (ORDER BY …)",
+          "name": "Mediana con percentile_cont"
+        }
+      ],
+      "hints": [
+        "La mediana es `percentile_cont(0.5) WITHIN GROUP (ORDER BY e.sueldo)`.",
+        "`percentile_cont` devuelve double precision: conviértelo con `::numeric` antes de `round`. El filtro de «4 o más» va en HAVING y el de vigentes en WHERE.",
+        "Para la brecha, repite las dos expresiones y réstalas: en el SELECT no puedes usar los alias `promedio` ni `mediana`."
+      ],
+      "explain": "En Operaciones el promedio ($1.686.000) supera a la mediana ($980.000) en $706.000: el sueldo del gerente ($5.100.000) y los de las dos jefaturas arrastran el promedio, mientras que la mitad del departamento (los cinco operarios de bodega) gana $980.000 o menos. Detalles técnicos: `round(percentile_cont(…), 0)` falla porque no existe `round(double precision, integer)`; el cast a numeric lo resuelve. La practicante sin departamento queda fuera por el JOIN, y los empleados que ya se fueron, por el WHERE. Gerencia (1 empleado) queda fuera por el HAVING."
+    },
+    {
+      "id": "s07-e11",
+      "title": "Cursos con notas rojas",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "Para el consejo de profesores del **primer semestre**, devuelve por cada curso: `curso` (nombre), `alumnos` (alumnos con notas en el semestre 1), `con_rojos` (alumnos con **al menos una** nota bajo 4.0 en el semestre 1) y `pct` (porcentaje de alumnos con rojos, con 1 decimal).",
+        "Ordena por nombre de curso."
+      ],
+      "starter": "-- Une notas, alumnos y cursos\nSELECT c.nombre AS curso\nFROM notas n\nJOIN alumnos a ON a.id = n.alumno_id\nJOIN cursos c ON c.id = a.curso_id;",
+      "solution": "SELECT c.nombre                                                AS curso,\n       count(DISTINCT a.id)                                    AS alumnos,\n       count(DISTINCT a.id) FILTER (WHERE n.nota < 4.0)        AS con_rojos,\n       round(100.0 * count(DISTINCT a.id) FILTER (WHERE n.nota < 4.0)\n             / count(DISTINCT a.id), 1)                        AS pct\nFROM notas n\nJOIN alumnos a ON a.id = n.alumno_id\nJOIN cursos c  ON c.id = a.curso_id\nWHERE n.semestre = 1\nGROUP BY c.nombre\nORDER BY curso;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "Cada fila de `notas` es una nota, no un alumno: para contar alumnos usa `count(DISTINCT a.id)`.",
+        "Los alumnos con rojos: `count(DISTINCT a.id) FILTER (WHERE n.nota < 4.0)`. Multiplica por `100.0` antes de dividir para no caer en la división entera."
+      ],
+      "explain": "Combinar DISTINCT y FILTER es la clave: FILTER deja pasar solo las notas rojas y DISTINCT cuenta cada alumno una vez aunque tenga varias. `count(*) FILTER (WHERE n.nota < 4.0)` contaría notas rojas, no alumnos. Alternativa con CASE: `count(DISTINCT CASE WHEN n.nota < 4.0 THEN a.id END)`. El `100.0` evita la división entera: `100 * 14 / 31` daría 45 en vez de 45.2."
+    },
+    {
+      "id": "s07-e12",
+      "title": "El más caro de cada categoría",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Sin usar subconsultas, devuelve por cada categoría: `categoria` (nombre), `productos` (cantidad), `mas_caro` (nombre del producto de mayor precio; si hubiera empate, el de menor id) y `precio_max`.",
+        "Ordena por `precio_max` de mayor a menor y luego por categoría."
+      ],
+      "starter": "-- ¿Cómo mostrar el nombre del más caro sin romper la regla de oro?\nSELECT c.nombre AS categoria, max(p.precio) AS precio_max\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nGROUP BY c.nombre;",
+      "solution": "SELECT c.nombre                                               AS categoria,\n       count(*)                                               AS productos,\n       (array_agg(p.nombre ORDER BY p.precio DESC, p.id))[1] AS mas_caro,\n       max(p.precio)                                          AS precio_max\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nGROUP BY c.nombre\nORDER BY precio_max DESC, categoria;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "array_agg\\s*\\([^()]*\\border\\s+by\\b",
+          "msg": "Ordena dentro de array_agg y toma el primer elemento con [1]",
+          "name": "array_agg ordenado"
+        }
+      ],
+      "hints": [
+        "`max(p.precio)` da el precio, pero no el nombre: `p.nombre` no puede ir suelto en el SELECT.",
+        "`array_agg(p.nombre ORDER BY p.precio DESC, p.id)` arma la lista del más caro al más barato; `(…)[1]` toma el primero. Los paréntesis alrededor del agregado son obligatorios."
+      ],
+      "explain": "El arreglo ordenado resuelve el «top 1 por grupo» dentro de un GROUP BY normal, así que además puedes contar los productos en la misma consulta. El desempate `p.id` hace que el resultado sea determinista si dos productos comparten el precio máximo. Otras soluciones que verás más adelante: `DISTINCT ON` (sección 2, pero no permite contar en la misma consulta), `LATERAL` (sección 8) y `row_number()` (sección 10). Poner `min(p.nombre)` sería un error: daría el primer nombre alfabético, no el del más caro."
+    },
+    {
+      "id": "s07-e13",
+      "title": "Masa salarial con subtotales por ciudad",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "El área de Personas necesita la masa salarial (suma de sueldos) de los empleados **vigentes** (sin fecha_salida), por ciudad y departamento, con un subtotal por ciudad y un total general. La ciudad es la del departamento.",
+        "Columnas: `ciudad` (`'TOTAL'` en la fila del total general), `departamento` (`'(todos)'` en las filas de subtotal y de total), `empleados` y `masa_salarial`.",
+        "Orden: ciudades en orden alfabético; dentro de cada ciudad, los departamentos en orden alfabético y su subtotal al final; la fila TOTAL al último. Usa ROLLUP y grouping()."
+      ],
+      "starter": "-- Detalle por ciudad y departamento (faltan los subtotales)\nSELECT d.ciudad, d.nombre AS departamento, count(*) AS empleados, sum(e.sueldo) AS masa_salarial\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nGROUP BY d.ciudad, d.nombre;",
+      "solution": "SELECT CASE WHEN grouping(d.ciudad) = 1 THEN 'TOTAL' ELSE d.ciudad END     AS ciudad,\n       CASE WHEN grouping(d.nombre) = 1 THEN '(todos)' ELSE d.nombre END  AS departamento,\n       count(*)                                                           AS empleados,\n       sum(e.sueldo)                                                      AS masa_salarial\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nGROUP BY ROLLUP (d.ciudad, d.nombre)\nORDER BY grouping(d.ciudad), d.ciudad, grouping(d.nombre), d.nombre;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brollup\\s*\\(",
+          "msg": "Genera los subtotales con GROUP BY ROLLUP (…)",
+          "name": "Usa ROLLUP"
+        },
+        {
+          "pattern": "\\bgrouping\\s*\\(",
+          "msg": "Rotula las filas de subtotal con grouping()",
+          "name": "Usa grouping()"
+        }
+      ],
+      "hints": [
+        "`GROUP BY ROLLUP (d.ciudad, d.nombre)` genera el detalle, un subtotal por ciudad y el total general.",
+        "Rotula con `CASE WHEN grouping(d.nombre) = 1 THEN '(todos)' ELSE d.nombre END` y algo parecido para la ciudad.",
+        "Ordena con `ORDER BY grouping(d.ciudad), d.ciudad, grouping(d.nombre), d.nombre`: `grouping` vale 0 en el detalle y 1 en el subtotal."
+      ],
+      "explain": "El orden de ROLLUP importa: `ROLLUP (d.ciudad, d.nombre)` da subtotales por ciudad (la jerarquía ciudad → departamento). `grouping()` identifica las filas de subtotal sin depender de los NULL. En el ORDER BY, las columnas calificadas (`d.ciudad`, `d.nombre`) se refieren a las columnas de la tabla, no a los rótulos del SELECT; por eso la fila TOTAL no se ordena alfabéticamente entre las ciudades. Aquí no hay NULL en los datos, así que `coalesce(d.nombre, '(todos)')` también funcionaría, pero grouping() es el hábito correcto (en el proyecto de la región verás por qué)."
+    },
+    {
+      "id": "s07-e14",
+      "title": "Promedios del liceo en una sola consulta",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "La dirección quiere en una sola tabla: el promedio de notas de cada curso (todas las asignaturas), el de cada asignatura (todos los cursos) y el promedio general del liceo. Usa GROUPING SETS.",
+        "Columnas: `curso` (nombre del curso, o `'Todos'` cuando la fila no es de un curso), `asignatura` (nombre de la asignatura, o `'Todas'` cuando la fila no es de una asignatura), `notas` (cantidad) y `promedio` (2 decimales).",
+        "Orden: primero las 6 filas por curso (por nombre de curso), luego las 7 por asignatura (por nombre de asignatura) y al final el total general."
+      ],
+      "starter": "-- Une las cuatro tablas y agrupa con GROUPING SETS\nSELECT c.nombre AS curso, s.nombre AS asignatura, n.nota\nFROM notas n\nJOIN alumnos a     ON a.id = n.alumno_id\nJOIN cursos c      ON c.id = a.curso_id\nJOIN asignaturas s ON s.id = n.asignatura_id;",
+      "solution": "SELECT CASE WHEN grouping(c.nombre) = 1 THEN 'Todos' ELSE c.nombre END AS curso,\n       CASE WHEN grouping(s.nombre) = 1 THEN 'Todas' ELSE s.nombre END AS asignatura,\n       count(*)                                                       AS notas,\n       round(avg(n.nota), 2)                                          AS promedio\nFROM notas n\nJOIN alumnos a     ON a.id = n.alumno_id\nJOIN cursos c      ON c.id = a.curso_id\nJOIN asignaturas s ON s.id = n.asignatura_id\nGROUP BY GROUPING SETS ((c.nombre), (s.nombre), ())\nORDER BY grouping(c.nombre), grouping(s.nombre), c.nombre, s.nombre;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bgrouping\\s+sets\\b",
+          "msg": "Usa GROUP BY GROUPING SETS (…)",
+          "name": "Usa GROUPING SETS"
+        }
+      ],
+      "hints": [
+        "Los tres niveles pedidos son exactamente `GROUPING SETS ((c.nombre), (s.nombre), ())`.",
+        "En las filas por curso, `grouping(s.nombre)` vale 1; en las filas por asignatura, `grouping(c.nombre)` vale 1; en el total, ambos.",
+        "Ordena con `ORDER BY grouping(c.nombre), grouping(s.nombre), c.nombre, s.nombre`."
+      ],
+      "explain": "Ni ROLLUP ni CUBE dan exactamente estos niveles: `ROLLUP (c.nombre, s.nombre)` agregaría el detalle curso × asignatura (42 filas) y no daría los totales por asignatura; `CUBE` daría todo eso más los totales por asignatura. GROUPING SETS elige a mano los conjuntos. El orden por `grouping(c.nombre), grouping(s.nombre)` produce (0,1) para los cursos, (1,0) para las asignaturas y (1,1) para el total. Matemática tiene el promedio más bajo (4.80) y Educación Física el más alto (5.84)."
+    },
+    {
+      "id": "s07-e15",
+      "title": "Proyecto: informe de ventas por región y trimestre",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Eres analista de Tienda Andes y te piden el informe de ventas del **primer semestre de 2026** (pedidos desde el 1 de enero hasta el 30 de junio de 2026, inclusive) para la reunión de gerencia.",
+        "Solo cuentan los pedidos **pagados, enviados o entregados** (ni cancelados ni pendientes). La región es la del cliente, y el monto de un pedido es la suma de cantidad × precio_unitario de sus ítems.",
+        "Columnas: `region` (nombre de la región; `'(sin región)'` para los clientes sin región; `'TOTAL'` en la fila del total general), `trimestre` (texto como `2026-T1`, que obtienes con `to_char(p.fecha, 'YYYY-\"T\"Q')`; `'(todos)'` en las filas de subtotal y de total), `pedidos` (cantidad de pedidos distintos) y `ventas` (monto total en pesos).",
+        "Incluye un subtotal por región y un total general. Orden: regiones en orden alfabético, con el grupo `(sin región)` después de todas las regiones con nombre; dentro de cada región, los trimestres en orden y su subtotal al final; la fila TOTAL al último."
+      ],
+      "starter": "-- Informe de ventas S1 2026 por región y trimestre\nSELECT c.region, p.fecha, i.cantidad, i.precio_unitario\nFROM pedidos p\nJOIN clientes c     ON c.id = p.cliente_id\nJOIN pedido_items i ON i.pedido_id = p.id;",
+      "solution": "SELECT CASE WHEN grouping(c.region) = 1 THEN 'TOTAL'\n            ELSE coalesce(c.region, '(sin región)') END        AS region,\n       CASE WHEN grouping(to_char(p.fecha, 'YYYY-\"T\"Q')) = 1 THEN '(todos)'\n            ELSE to_char(p.fecha, 'YYYY-\"T\"Q') END             AS trimestre,\n       count(DISTINCT p.id)                                    AS pedidos,\n       sum(i.cantidad * i.precio_unitario)                     AS ventas\nFROM pedidos p\nJOIN clientes c     ON c.id = p.cliente_id\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  AND p.fecha >= '2026-01-01' AND p.fecha < '2026-07-01'\nGROUP BY ROLLUP (c.region, to_char(p.fecha, 'YYYY-\"T\"Q'))\nORDER BY grouping(c.region), c.region, grouping(to_char(p.fecha, 'YYYY-\"T\"Q')), trimestre;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brollup\\s*\\(",
+          "msg": "Genera los subtotales con GROUP BY ROLLUP (…)",
+          "name": "Usa ROLLUP"
+        },
+        {
+          "pattern": "\\bgrouping\\s*\\(",
+          "msg": "Distingue las filas de subtotal con grouping()",
+          "name": "Usa grouping()"
+        }
+      ],
+      "hints": [
+        "Empieza por el detalle: une pedidos, clientes y pedido_items, filtra estados y fechas en el WHERE (`p.fecha < '2026-07-01'` incluye todo el 30 de junio) y agrupa por región y trimestre.",
+        "Cambia el GROUP BY por `ROLLUP (c.region, to_char(p.fecha, 'YYYY-\"T\"Q'))`. Los pedidos se cuentan con `count(DISTINCT p.id)`, porque el JOIN con los ítems repite cada pedido.",
+        "El cliente sin región produce un NULL **de los datos**: rotula con `CASE WHEN grouping(c.region) = 1 THEN 'TOTAL' ELSE coalesce(c.region, '(sin región)') END`. Ordena con `grouping(c.region), c.region, grouping(…), trimestre`."
+      ],
+      "explain": "Este informe junta toda la sección: JOIN de tres tablas, filtro de filas en el WHERE, agrupación por una expresión (`to_char`), `count(DISTINCT)` para no inflar los pedidos, ROLLUP para los subtotales y grouping() para no confundir el grupo «sin región» (un NULL real: el cliente 5) con el total general (un NULL de subtotal). Si rotulas con `coalesce(c.region, 'TOTAL')`, el grupo sin región se llamaría TOTAL y habría dos filas TOTAL. En el ORDER BY, `c.region` ascendente deja el NULL real al final de las regiones y `grouping(c.region)` manda el total general al último. Ojo con el rango de fechas: `p.fecha <= '2026-06-30'` dejaría fuera los pedidos del 30 de junio después de medianoche, porque la fecha es un timestamptz. El total general (162 pedidos, $10.427.920) coincide con la suma de los subtotales, pero cada nivel se calcula desde las filas originales."
+    },
+    {
+      "id": "s07-e16",
+      "title": "Proyecto: acta de notas del 4° Medio A",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "El profesor jefe del 4° Medio A (curso con `id` 6) necesita el acta del **primer semestre**: una fila por alumno y una columna por asignatura, como la planilla que se lleva al consejo de profesores.",
+        "Columnas, en este orden: `alumno` (apellido, coma, espacio y nombre, por ejemplo `Castillo Espinoza, Sofía`); `len`, `mat`, `his`, `cie`, `ing`, `edf` y `art` (promedio del semestre 1 en Lenguaje, Matemática, Historia, Ciencias, Inglés, Educación Física y Artes, que son las asignaturas con id 1 a 7 en ese orden, cada uno redondeado a 1 decimal); `promedio` (promedio de todas sus notas del semestre 1, redondeado a 1 decimal) y `rojas` (cantidad de notas bajo 4.0 del semestre).",
+        "Ordena del mejor promedio al peor; si empatan, por `alumno` en orden alfabético."
+      ],
+      "starter": "-- Acta del 4° Medio A, semestre 1\nSELECT a.apellido || ', ' || a.nombre AS alumno\nFROM alumnos a\nJOIN notas n ON n.alumno_id = a.id\nWHERE a.curso_id = 6 AND n.semestre = 1;",
+      "solution": "SELECT a.apellido || ', ' || a.nombre                                   AS alumno,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 1), 1)        AS len,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 2), 1)        AS mat,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 3), 1)        AS his,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 4), 1)        AS cie,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 5), 1)        AS ing,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 6), 1)        AS edf,\n       round(avg(n.nota) FILTER (WHERE n.asignatura_id = 7), 1)        AS art,\n       round(avg(n.nota), 1)                                           AS promedio,\n       count(*) FILTER (WHERE n.nota < 4.0)                            AS rojas\nFROM alumnos a\nJOIN notas n ON n.alumno_id = a.id\nWHERE a.curso_id = 6 AND n.semestre = 1\nGROUP BY a.id\nORDER BY promedio DESC, alumno;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bfilter\\s*\\(\\s*where\\b",
+          "msg": "Arma cada columna de asignatura con avg(…) FILTER (WHERE …)",
+          "name": "Usa FILTER"
+        }
+      ],
+      "hints": [
+        "Una fila por alumno: agrupa por `a.id` (así puedes mostrar su nombre y apellido por dependencia funcional).",
+        "Cada asignatura es una columna: `round(avg(n.nota) FILTER (WHERE n.asignatura_id = 1), 1) AS len`, y así hasta la 7.",
+        "Las rojas son `count(*) FILTER (WHERE n.nota < 4.0)`. Ordena con `ORDER BY promedio DESC, alumno`."
+      ],
+      "explain": "Es una tabla dinámica de 7 columnas: el WHERE deja solo el curso 6 y el semestre 1, GROUP BY a.id forma una fila por alumno y cada FILTER elige las notas de una asignatura. Como cada alumno tiene exactamente 3 notas por asignatura en el semestre 1, el promedio de todas sus notas coincide con el promedio de sus 7 promedios sin redondear. Ojo: muchos reglamentos calculan el promedio general desde los promedios ya redondeados a un decimal, lo que puede diferir en una décima; eso requiere agregar sobre un resultado agregado (subconsultas, sección 9). En el ORDER BY, `alumno` y `promedio` son alias del SELECT, válidos porque ORDER BY se evalúa al final. Verás que «Álvarez» aparece después de «Flores»: la base usa la colación C (sección 3), que compara bytes, y las letras con tilde quedan después de la z."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "¿Qué cuenta `count(*)` y qué cuenta `count(columna)`?",
+      "back": "`count(*)` cuenta filas (todas). `count(columna)` cuenta solo las filas donde esa columna no es NULL."
+    },
+    {
+      "front": "`count(DISTINCT region)`",
+      "back": "Cantidad de valores distintos de region, **sin contar el NULL**. En clientes da 10, aunque `GROUP BY region` produzca 11 grupos."
+    },
+    {
+      "front": "¿Qué agregados ignoran los NULL?",
+      "back": "Todos, salvo `count(*)`. Ojo: `array_agg` sí incluye los NULL dentro del arreglo que devuelve."
+    },
+    {
+      "front": "¿Qué devuelve `sum(x)` si ninguna fila pasa el WHERE?",
+      "back": "NULL (no 0). `count` devuelve 0. Para obtener un cero: `coalesce(sum(x), 0)`."
+    },
+    {
+      "front": "Tipo que devuelven `sum(integer)` y `avg(integer)`",
+      "back": "`sum(integer)` → `bigint`; `avg(integer)` → `numeric` (con muchos decimales: redondea con `round`)."
+    },
+    {
+      "front": "Promedio de notas con 1 decimal",
+      "back": "`round(avg(nota), 1)`"
+    },
+    {
+      "front": "¿Por qué `sum(nota) / count(*)` puede dar un resultado distinto de `avg(nota)`?",
+      "back": "Con enteros es división entera (trunca), y `count(*)` incluye las filas con NULL que `avg` ignora."
+    },
+    {
+      "front": "Regla de oro del GROUP BY",
+      "back": "Cada expresión del SELECT (y de HAVING y ORDER BY) debe estar en el GROUP BY o dentro de una función de agregado."
+    },
+    {
+      "front": "Error de la regla de oro",
+      "back": "`ERROR:  column \"clientes.comuna\" must appear in the GROUP BY clause or be used in an aggregate function`"
+    },
+    {
+      "front": "Dependencia funcional en GROUP BY",
+      "back": "Si agrupas por la clave primaria de una tabla, puedes mostrar las demás columnas de esa tabla sin agregarlas: `GROUP BY c.id` permite `c.nombre`."
+    },
+    {
+      "front": "¿Cómo trata GROUP BY los NULL?",
+      "back": "Como iguales entre sí: todas las filas con NULL en la clave forman un solo grupo."
+    },
+    {
+      "front": "Nombre ambiguo en GROUP BY vs en ORDER BY",
+      "back": "GROUP BY prefiere la columna de la tabla (input); ORDER BY prefiere el alias del SELECT (output)."
+    },
+    {
+      "front": "Agrupar pedidos por mes",
+      "back": "`GROUP BY date_trunc('month', fecha)` (y `::date` en el SELECT para mostrarlo como fecha)."
+    },
+    {
+      "front": "WHERE vs HAVING",
+      "back": "WHERE filtra filas antes de agrupar (sin agregados). HAVING filtra grupos después de calcular los agregados."
+    },
+    {
+      "front": "Orden lógico de evaluación",
+      "back": "FROM → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT."
+    },
+    {
+      "front": "`WHERE count(*) > 2`",
+      "back": "`ERROR:  aggregate functions are not allowed in WHERE`. Va en `HAVING count(*) > 2`."
+    },
+    {
+      "front": "¿Puede HAVING usar un alias del SELECT en PostgreSQL?",
+      "back": "No: HAVING se evalúa antes que el SELECT (`column \"total\" does not exist`). Repite la expresión. ORDER BY sí ve los alias."
+    },
+    {
+      "front": "HAVING sin GROUP BY",
+      "back": "Toda la tabla es un solo grupo: devuelve 1 fila si la condición se cumple y 0 filas si no."
+    },
+    {
+      "front": "Sintaxis de FILTER",
+      "back": "`count(*) FILTER (WHERE estado = 'cancelado')`: el agregado solo recibe las filas que cumplen la condición."
+    },
+    {
+      "front": "`count(*) FILTER (WHERE x)` con CASE",
+      "back": "`count(CASE WHEN x THEN 1 END)` (sin ELSE: el NULL no se cuenta). Con `ELSE 0` contaría todas las filas."
+    },
+    {
+      "front": "Receta de una tabla dinámica (pivot)",
+      "back": "GROUP BY por la dimensión de las filas y un agregado con `FILTER (WHERE col = valor)` por cada columna."
+    },
+    {
+      "front": "`string_agg` con orden",
+      "back": "`string_agg(sku, ', ' ORDER BY precio DESC)`: el ORDER BY va dentro, después del último argumento y sin coma."
+    },
+    {
+      "front": "¿Qué pasa con `string_agg(sku ORDER BY sku, ', ')`?",
+      "back": "Se lee como un agregado de un argumento ordenado por dos claves: `function string_agg(text) does not exist`."
+    },
+    {
+      "front": "DISTINCT + ORDER BY dentro de un agregado",
+      "back": "El ORDER BY solo puede usar las expresiones del argumento: `in an aggregate with DISTINCT, ORDER BY expressions must appear in argument list`."
+    },
+    {
+      "front": "Nombre del producto más caro de cada grupo sin subconsultas",
+      "back": "`(array_agg(nombre ORDER BY precio DESC, id))[1]`"
+    },
+    {
+      "front": "`bool_and`, `bool_or`, `every`",
+      "back": "bool_and: todas las filas cumplen. bool_or: al menos una cumple. every: nombre estándar de bool_and."
+    },
+    {
+      "front": "Mediana en PostgreSQL",
+      "back": "`percentile_cont(0.5) WITHIN GROUP (ORDER BY x)` (no existe `median()`)."
+    },
+    {
+      "front": "percentile_cont vs percentile_disc",
+      "back": "cont interpola (puede dar un valor que no existe, devuelve double precision); disc devuelve el primer valor real cuya posición alcanza la fracción."
+    },
+    {
+      "front": "`mode() WITHIN GROUP (ORDER BY x)`",
+      "back": "El valor más frecuente del grupo; si hay empate, elige arbitrariamente el primero."
+    },
+    {
+      "front": "stddev vs stddev_pop",
+      "back": "`stddev` = `stddev_samp` (muestral, divide por n − 1; NULL con una fila). `stddev_pop` es poblacional (divide por n; 0 con una fila)."
+    },
+    {
+      "front": "`any_value(x)`",
+      "back": "Desde PostgreSQL 16: devuelve un valor arbitrario no nulo del grupo. Úsalo solo si todos los valores del grupo son iguales."
+    },
+    {
+      "front": "`round(percentile_cont(0.5) WITHIN GROUP (ORDER BY x), 1)`",
+      "back": "Error: `function round(double precision, integer) does not exist`. Convierte antes: `(…)::numeric`."
+    },
+    {
+      "front": "`ROLLUP (a, b)` equivale a…",
+      "back": "`GROUPING SETS ((a, b), (a), ())`: detalle, subtotal por a y total general (n + 1 conjuntos)."
+    },
+    {
+      "front": "`CUBE (a, b)` equivale a…",
+      "back": "`GROUPING SETS ((a, b), (a), (b), ())`: todos los subconjuntos (2ⁿ conjuntos)."
+    },
+    {
+      "front": "`grouping(col)`",
+      "back": "1 si la columna no participa del conjunto de esa fila (fila de subtotal), 0 si participa. `grouping(a, b)` es una máscara de bits: el total general vale 3."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s07-q1",
+      "type": "single",
+      "q": "En `clientes` hay 60 filas, 11 clientes sin teléfono, 10 regiones distintas y 1 cliente sin región. ¿Qué devuelve esta consulta?\n```sql\nSELECT count(*), count(telefono), count(DISTINCT region)\nFROM clientes;\n```",
+      "options": [
+        "`60 | 49 | 10`",
+        "`60 | 60 | 11`",
+        "`60 | 49 | 11`",
+        "`49 | 49 | 10`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`count(*)` cuenta todas las filas (60); `count(telefono)` omite los 11 NULL (49); `count(DISTINCT region)` cuenta valores distintos sin el NULL (10)."
+    },
+    {
+      "id": "s07-q2",
+      "type": "single",
+      "q": "La tabla `taller` tiene las notas 6.0, 5.0, NULL y 4.0. ¿Qué devuelve esta consulta?\n```sql\nSELECT round(avg(nota), 1) FROM taller;\n```",
+      "options": [
+        "`5.0`",
+        "`3.8`",
+        "NULL, porque hay un NULL",
+        "Un error"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`avg` ignora el NULL y divide la suma (15.0) por los 3 valores no nulos: 5.0. Para tratar la nota faltante como 1.0 habría que escribir `avg(coalesce(nota, 1.0))`."
+    },
+    {
+      "id": "s07-q3",
+      "type": "single",
+      "q": "Ningún producto cuesta más de un millón de pesos. ¿Qué devuelve esta consulta?\n```sql\nSELECT sum(precio) FROM productos WHERE precio > 1000000;\n```",
+      "options": [
+        "Una fila con 0",
+        "Una fila con NULL",
+        "Cero filas",
+        "Un error"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin GROUP BY siempre hay una fila de resultado. Sobre cero filas, `sum` devuelve NULL (solo `count` devuelve 0). Usa `coalesce(sum(precio), 0)` si necesitas un cero."
+    },
+    {
+      "id": "s07-q4",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT count(*) FROM clientes WHERE false GROUP BY region;\n```",
+      "options": [
+        "Una fila con 0",
+        "Cero filas",
+        "Una fila con NULL",
+        "11 filas con 0"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Con GROUP BY, cada fila del resultado es un grupo; si ninguna fila pasa el WHERE no hay grupos, así que el resultado queda vacío. Sin el GROUP BY, la misma consulta devuelve una fila con 0."
+    },
+    {
+      "id": "s07-q5",
+      "type": "multi",
+      "q": "¿Cuáles de estos agregados ignoran los NULL de su argumento? (Selecciona TRES.)",
+      "options": [
+        "`count(email)`",
+        "`avg(nota)`",
+        "`string_agg(comuna, ', ')`",
+        "`array_agg(region)`",
+        "`count(*)`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "`count(email)`, `avg` y `string_agg` descartan los NULL. `array_agg` los incluye en el arreglo (`{Metropolitana,NULL,Magallanes}`) y `count(*)` no tiene argumento: cuenta todas las filas."
+    },
+    {
+      "id": "s07-q6",
+      "type": "single",
+      "q": "¿Dónde está el error?\n```sql\nSELECT region, comuna, count(*)\nFROM clientes\nGROUP BY region;\n```",
+      "options": [
+        "`comuna` no está en el GROUP BY ni dentro de un agregado",
+        "`count(*)` no se puede combinar con GROUP BY",
+        "Falta un HAVING",
+        "`region` tiene valores NULL"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Regla de oro: dentro de un grupo de región hay varias comunas, así que PostgreSQL no sabe cuál mostrar: `column \"clientes.comuna\" must appear in the GROUP BY clause or be used in an aggregate function`."
+    },
+    {
+      "id": "s07-q7",
+      "type": "single",
+      "q": "¿Dónde está el error?\n```sql\nSELECT region, count(*)\nFROM clientes\nWHERE count(*) >= 2\nGROUP BY region;\n```",
+      "options": [
+        "Los agregados no pueden ir en el WHERE: la condición va en HAVING",
+        "Falta el alias de count(*)",
+        "WHERE debe ir después del GROUP BY",
+        "No hay error"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El WHERE se evalúa antes de formar los grupos, así que no hay nada que contar: `aggregate functions are not allowed in WHERE`. La condición correcta es `HAVING count(*) >= 2`."
+    },
+    {
+      "id": "s07-q8",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta en PostgreSQL?\n```sql\nSELECT region, count(*) AS total\nFROM clientes\nGROUP BY region\nHAVING total >= 2;\n```",
+      "options": [
+        "Error: `column \"total\" does not exist`",
+        "Devuelve las regiones con 2 o más clientes",
+        "Error: los alias no se permiten en el SELECT",
+        "Devuelve todas las regiones"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El alias `total` nace en el SELECT, que se evalúa después del HAVING. Hay que repetir la expresión: `HAVING count(*) >= 2`. En cambio, `ORDER BY total` sí funcionaría."
+    },
+    {
+      "id": "s07-q9",
+      "type": "yesno",
+      "q": "Sobre WHERE y HAVING, indica Sí o No.",
+      "statements": [
+        {
+          "text": "WHERE se evalúa antes de formar los grupos.",
+          "answer": true
+        },
+        {
+          "text": "HAVING puede usar funciones de agregado.",
+          "answer": true
+        },
+        {
+          "text": "Una condición sin agregados sobre una columna agrupada funciona en HAVING, pero es más eficiente en WHERE.",
+          "answer": true
+        },
+        {
+          "text": "HAVING solo se puede usar si la consulta tiene GROUP BY.",
+          "answer": false
+        },
+        {
+          "text": "En PostgreSQL, HAVING puede usar los alias definidos en el SELECT.",
+          "answer": false
+        }
+      ],
+      "explain": "WHERE filtra filas antes de agrupar y HAVING filtra grupos después. HAVING sin GROUP BY es válido: toda la tabla forma un solo grupo. HAVING no ve los alias del SELECT porque se evalúa antes."
+    },
+    {
+      "id": "s07-q10",
+      "type": "single",
+      "q": "La tabla `clientes` tiene 60 filas. ¿Qué devuelve esta consulta?\n```sql\nSELECT count(*) FROM clientes HAVING count(*) > 100;\n```",
+      "options": [
+        "Cero filas",
+        "Una fila con 60",
+        "Una fila con 0",
+        "Un error: falta GROUP BY"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "HAVING sin GROUP BY convierte la consulta en agrupada con un único grupo (toda la tabla). Como 60 no es mayor que 100, ese grupo se descarta y el resultado queda vacío."
+    },
+    {
+      "id": "s07-q11",
+      "type": "single",
+      "q": "Hay 24 pedidos cancelados y ninguno con estado 'inexistente'. ¿Qué devuelve esta consulta?\n```sql\nSELECT count(*) FILTER (WHERE estado = 'cancelado'),\n       sum(costo_despacho) FILTER (WHERE estado = 'inexistente')\nFROM pedidos;\n```",
+      "options": [
+        "`24 | NULL`",
+        "`24 | 0`",
+        "`420 | NULL`",
+        "`24 | 420`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "FILTER hace que cada agregado reciba solo las filas que cumplen su condición. `count` sobre cero filas da 0, pero `sum` sobre cero filas da NULL."
+    },
+    {
+      "id": "s07-q12",
+      "type": "single",
+      "q": "¿Cuál de estas expresiones es equivalente a `count(*) FILTER (WHERE nota < 4.0)`?",
+      "options": [
+        "`count(CASE WHEN nota < 4.0 THEN 1 END)`",
+        "`count(CASE WHEN nota < 4.0 THEN 1 ELSE 0 END)`",
+        "`count(nota < 4.0)`",
+        "`sum(CASE WHEN nota < 4.0 THEN 0 ELSE 1 END)`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Sin ELSE, el CASE devuelve NULL cuando la condición no se cumple, y count ignora los NULL. Con `ELSE 0` se cuentan todas las filas (0 no es NULL); `count(nota < 4.0)` cuenta todos los booleanos no nulos, true o false; la última opción cuenta justo lo contrario."
+    },
+    {
+      "id": "s07-q13",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones cuentan correctamente los pedidos cancelados? (Selecciona TRES.)",
+      "options": [
+        "`count(*) FILTER (WHERE estado = 'cancelado')`",
+        "`sum(CASE WHEN estado = 'cancelado' THEN 1 ELSE 0 END)`",
+        "`count(CASE WHEN estado = 'cancelado' THEN 1 END)`",
+        "`count(estado = 'cancelado')`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "FILTER, `sum` de unos y ceros y `count` de un CASE sin ELSE dan 24. `count(estado = 'cancelado')` cuenta todas las filas cuyo booleano no es NULL: las 420."
+    },
+    {
+      "id": "s07-q14",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta?\n```sql\nSELECT string_agg(sku ORDER BY sku, ', ') FROM productos;\n```",
+      "options": [
+        "Error: `function string_agg(text) does not exist`, porque el ORDER BY se «tragó» el separador",
+        "Devuelve los SKU ordenados y separados por coma",
+        "Devuelve los SKU pegados, sin separador",
+        "Ordena las filas del resultado por sku"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El ORDER BY debe ir después de todos los argumentos. Así escrito, PostgreSQL entiende un agregado de un solo argumento (`sku`) ordenado por `sku` y por la constante `', '`; como no existe `string_agg` de un argumento, falla (con un HINT que lo explica). Lo correcto: `string_agg(sku, ', ' ORDER BY sku)`."
+    },
+    {
+      "id": "s07-q15",
+      "type": "single",
+      "q": "¿En qué orden aparecen los valores en `string_agg(comuna, ', ')` si no escribes ORDER BY dentro del agregado?",
+      "options": [
+        "En un orden no garantizado",
+        "En orden alfabético",
+        "En el orden de inserción, siempre",
+        "En el orden del ORDER BY de la consulta"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación dice que el orden de entrada no está especificado. Para fijarlo, escribe `string_agg(comuna, ', ' ORDER BY comuna)`. El ORDER BY de la consulta ordena las filas del resultado, no los elementos de la lista."
+    },
+    {
+      "id": "s07-q16",
+      "type": "single",
+      "q": "Los clientes 4, 5 y 6 tienen como región 'Metropolitana', NULL y 'Magallanes'. ¿Qué devuelve esta consulta?\n```sql\nSELECT array_agg(region ORDER BY id), string_agg(region, '|' ORDER BY id)\nFROM clientes\nWHERE id BETWEEN 4 AND 6;\n```",
+      "options": [
+        "`{Metropolitana,NULL,Magallanes} | Metropolitana|Magallanes`",
+        "`{Metropolitana,Magallanes} | Metropolitana|Magallanes`",
+        "`{Metropolitana,NULL,Magallanes} | Metropolitana||Magallanes`",
+        "`NULL | NULL`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`array_agg` incluye los NULL en el arreglo; `string_agg` los omite (y no deja un separador vacío)."
+    },
+    {
+      "id": "s07-q17",
+      "type": "single",
+      "q": "¿Qué devuelve la segunda columna?\n```sql\nSELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY x),\n       percentile_disc(0.5) WITHIN GROUP (ORDER BY x)\nFROM generate_series(10, 40, 10) AS s(x);  -- 10, 20, 30, 40\n```",
+      "options": [
+        "`20`",
+        "`25`",
+        "`30`",
+        "`22.5`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`percentile_disc(0.5)` devuelve el primer valor cuya posición alcanza la mitad: 20. `percentile_cont(0.5)` interpola entre 20 y 30 y da 25, un valor que no existe en los datos."
+    },
+    {
+      "id": "s07-q18",
+      "type": "single",
+      "q": "¿Cómo se calcula la mediana del sueldo en PostgreSQL?",
+      "options": [
+        "`percentile_cont(0.5) WITHIN GROUP (ORDER BY sueldo)`",
+        "`median(sueldo)`",
+        "`avg(sueldo)`",
+        "`percentile_cont(sueldo, 0.5)`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "PostgreSQL no tiene `median()`. La mediana es el percentil 50 continuo, un agregado de conjunto ordenado: la fracción va entre paréntesis y el valor a ordenar en `WITHIN GROUP (ORDER BY …)`."
+    },
+    {
+      "id": "s07-q19",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta?\n```sql\nSELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY precio), 1)\nFROM productos;\n```",
+      "options": [
+        "Error: `function round(double precision, integer) does not exist`",
+        "Devuelve la mediana con un decimal",
+        "Devuelve la mediana redondeada a entero",
+        "Error: percentile_cont no acepta ORDER BY"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`percentile_cont` devuelve `double precision` y `round` con cantidad de decimales solo existe para `numeric`. Solución: `round((percentile_cont(0.5) WITHIN GROUP (ORDER BY precio))::numeric, 1)`."
+    },
+    {
+      "id": "s07-q20",
+      "type": "yesno",
+      "q": "Sobre los agregados de conjunto ordenado, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`mode()` devuelve el valor más frecuente del grupo.",
+          "answer": true
+        },
+        {
+          "text": "`percentile_disc` siempre devuelve un valor que existe en los datos.",
+          "answer": true
+        },
+        {
+          "text": "`percentile_cont` siempre devuelve un valor que existe en los datos.",
+          "answer": false
+        },
+        {
+          "text": "El orden de los valores se indica con `WITHIN GROUP (ORDER BY …)`.",
+          "answer": true
+        }
+      ],
+      "explain": "`percentile_cont` interpola entre valores vecinos, así que puede devolver un valor intermedio que no está en los datos; `percentile_disc` y `mode()` devuelven valores reales del grupo."
+    },
+    {
+      "id": "s07-q21",
+      "type": "single",
+      "q": "La categoría Audio tiene 5 productos: 4 activos y 1 inactivo. ¿Qué devuelven `bool_and(activo)` y `bool_or(activo)` para esa categoría?",
+      "options": [
+        "`false` y `true`",
+        "`true` y `true`",
+        "`false` y `false`",
+        "`true` y `false`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`bool_and` exige que todas las filas cumplan (falla por el inactivo); `bool_or` exige que al menos una cumpla (hay 4)."
+    },
+    {
+      "id": "s07-q22",
+      "type": "single",
+      "q": "¿Qué devuelve `stddev(precio)` para un grupo que tiene una sola fila?",
+      "options": [
+        "NULL",
+        "0",
+        "El mismo precio",
+        "Un error"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`stddev` es la desviación estándar muestral (divide por n − 1), que no se puede calcular con un solo valor: devuelve NULL. `stddev_pop` (divide por n) devuelve 0."
+    },
+    {
+      "id": "s07-q23",
+      "type": "yesno",
+      "q": "Sobre `any_value`, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Está disponible desde PostgreSQL 16.",
+          "answer": true
+        },
+        {
+          "text": "Si los valores del grupo son distintos, siempre devuelve el menor.",
+          "answer": false
+        },
+        {
+          "text": "Devuelve un valor de entre los valores no nulos del grupo.",
+          "answer": true
+        },
+        {
+          "text": "Es buena práctica usarlo para silenciar cualquier error de la regla de oro.",
+          "answer": false
+        }
+      ],
+      "explain": "`any_value` devuelve un valor arbitrario no nulo del grupo, sin garantía de cuál. Tiene sentido cuando todos los valores del grupo son iguales (por ejemplo, el nombre del curso al agrupar por curso_id); para otra cosa, la pregunta está mal planteada."
+    },
+    {
+      "id": "s07-q24",
+      "type": "single",
+      "q": "En `pedidos` cada fecha es un instante distinto (timestamptz). ¿Cuántas filas devuelve esta consulta?\n```sql\nSELECT date_trunc('month', fecha) AS fecha, count(*)\nFROM pedidos\nGROUP BY fecha;\n```",
+      "options": [
+        "420, una por pedido",
+        "18, una por mes",
+        "1",
+        "Un error por el alias repetido"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Ante un nombre ambiguo, GROUP BY usa la columna de la tabla (`fecha` original), no el alias del SELECT. Cada pedido queda en su propio grupo. Solución: otro alias (`mes`) o `GROUP BY date_trunc('month', fecha)`."
+    },
+    {
+      "id": "s07-q25",
+      "type": "single",
+      "q": "¿Cuál de estas consultas es válida?",
+      "options": [
+        "`SELECT c.id, c.apellido, count(*) FROM clientes c JOIN pedidos p ON p.cliente_id = c.id GROUP BY c.id;`",
+        "`SELECT c.id, c.apellido, count(*) FROM clientes c JOIN pedidos p ON p.cliente_id = c.id GROUP BY p.cliente_id;`",
+        "`SELECT c.apellido, count(*) FROM clientes c GROUP BY c.nombre;`",
+        "`SELECT p.estado, count(*) FROM clientes c JOIN pedidos p ON p.cliente_id = c.id GROUP BY c.id;`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Solo la primera: `c.apellido` depende funcionalmente de `c.id`, la clave primaria de clientes. Agrupar por `p.cliente_id` no cuenta (no es la clave primaria de clientes), `apellido` no depende de `nombre`, y `p.estado` no depende de `c.id` (un cliente tiene muchos pedidos)."
+    },
+    {
+      "id": "s07-q26",
+      "type": "single",
+      "q": "Hay 10 regiones distintas y 1 cliente sin región. ¿Cuántas filas devuelve `SELECT region, count(*) FROM clientes GROUP BY region;`?",
+      "options": [
+        "11",
+        "10",
+        "60",
+        "9"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "GROUP BY trata los NULL como iguales y los junta en un grupo propio: 10 regiones más el grupo NULL. En cambio, `count(DISTINCT region)` da 10."
+    },
+    {
+      "id": "s07-q27",
+      "type": "single",
+      "q": "`pedidos` tiene 5 estados y 3 métodos de pago (más NULL). ¿Cuántos grupos genera `GROUP BY estado, metodo_pago`?",
+      "options": [
+        "Uno por cada combinación que aparece en los datos",
+        "Siempre 5 × 4 = 20",
+        "Siempre 5 + 4 = 9",
+        "Uno por estado"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "GROUP BY solo forma grupos con las combinaciones presentes en las filas. En la tienda salen 10: por ejemplo, no hay pedidos pendientes pagados con débito, ni pedidos enviados con crédito."
+    },
+    {
+      "id": "s07-q28",
+      "type": "single",
+      "q": "¿Cuántos conjuntos de agrupamiento genera `ROLLUP (a, b, c)`?",
+      "options": [
+        "4",
+        "3",
+        "8",
+        "6"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "ROLLUP genera la lista completa y cada prefijo: (a, b, c), (a, b), (a) y (). Con n columnas son n + 1."
+    },
+    {
+      "id": "s07-q29",
+      "type": "single",
+      "q": "¿Cuántos conjuntos de agrupamiento genera `CUBE (a, b, c)`?",
+      "options": [
+        "8",
+        "4",
+        "6",
+        "9"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "CUBE genera todos los subconjuntos (el conjunto potencia): 2³ = 8, incluido el conjunto vacío ()."
+    },
+    {
+      "id": "s07-q30",
+      "type": "single",
+      "q": "¿A qué equivale `GROUP BY ROLLUP (region, comuna)`?",
+      "options": [
+        "`GROUPING SETS ((region, comuna), (region), ())`",
+        "`GROUPING SETS ((region, comuna), (comuna), ())`",
+        "`GROUPING SETS ((region, comuna), (region), (comuna), ())`",
+        "`GROUPING SETS ((region), (comuna))`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "ROLLUP toma prefijos de izquierda a derecha: detalle, subtotal por región y total. La tercera opción es `CUBE (region, comuna)`."
+    },
+    {
+      "id": "s07-q31",
+      "type": "single",
+      "q": "En un `GROUP BY ROLLUP (estado, metodo_pago)`, ¿qué vale `grouping(estado, metodo_pago)` en la fila del total general?",
+      "options": [
+        "3",
+        "0",
+        "1",
+        "2"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Es una máscara de bits: cada argumento aporta un 1 si no participa del conjunto de la fila. En el total no participa ninguno: binario 11 = 3. En los subtotales por estado vale 1 (binario 01)."
+    },
+    {
+      "id": "s07-q32",
+      "type": "single",
+      "q": "En un `ROLLUP (estado, metodo_pago)` aparecen dos filas «pendiente | (vacío) | 3»: una es el detalle de los pedidos pendientes sin método de pago y la otra es el subtotal de pendientes. ¿Cómo las distingues?",
+      "options": [
+        "`grouping(metodo_pago)` vale 1 en la fila de subtotal y 0 en la de detalle",
+        "`metodo_pago IS NULL` solo es verdadero en el subtotal",
+        "`coalesce(metodo_pago, 'Subtotal')` las rotula bien",
+        "No se pueden distinguir"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En ambas filas metodo_pago es NULL, así que IS NULL y coalesce no las distinguen. `grouping()` mira si la columna participa del conjunto de agrupamiento, no su valor."
+    },
+    {
+      "id": "s07-q33",
+      "type": "multi",
+      "q": "¿Cuáles de estas cláusulas producen una fila de total general? (Selecciona TRES.)",
+      "options": [
+        "`GROUP BY ROLLUP (a, b)`",
+        "`GROUP BY CUBE (a, b)`",
+        "`GROUP BY GROUPING SETS ((a), (b))`",
+        "`GROUP BY GROUPING SETS ((a), ())`",
+        "`GROUP BY a, b`"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "El total general es el conjunto vacío (). ROLLUP y CUBE siempre lo incluyen; en GROUPING SETS solo aparece si lo escribes explícitamente."
+    },
+    {
+      "id": "s07-q34",
+      "type": "yesno",
+      "q": "Sobre GROUPING SETS, ROLLUP y CUBE, indica Sí o No.",
+      "statements": [
+        {
+          "text": "El conjunto vacío () calcula el agregado sobre todas las filas.",
+          "answer": true
+        },
+        {
+          "text": "En las filas de subtotal, las columnas que no participan del conjunto valen NULL.",
+          "answer": true
+        },
+        {
+          "text": "`ROLLUP (region, comuna)` y `ROLLUP (comuna, region)` producen los mismos subtotales.",
+          "answer": false
+        },
+        {
+          "text": "`CUBE (a, b)` incluye un subtotal por b solo.",
+          "answer": true
+        }
+      ],
+      "explain": "ROLLUP es jerárquico: el orden define qué prefijos se generan ((region) en un caso, (comuna) en el otro). CUBE genera todos los subconjuntos, incluido (b)."
+    },
+    {
+      "id": "s07-q35",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta?\n```sql\nSELECT to_char(fecha, 'YYYY') AS anio, count(*), grouping(anio)\nFROM pedidos\nGROUP BY ROLLUP (anio);\n```",
+      "options": [
+        "Error: `column \"anio\" does not exist`, por el grouping(anio)",
+        "Funciona: grouping acepta alias",
+        "Error: ROLLUP no acepta alias",
+        "Devuelve solo el total"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El GROUP BY sí acepta el alias (extensión de PostgreSQL), pero los argumentos de `grouping()` son expresiones del SELECT, donde los alias no existen. Hay que escribir `grouping(to_char(fecha, 'YYYY'))`."
+    },
+    {
+      "id": "s07-q36",
+      "type": "single",
+      "q": "¿Qué tipo de dato devuelve `sum` sobre una columna `integer` como `stock`?",
+      "options": [
+        "`bigint`",
+        "`integer`",
+        "`numeric`",
+        "`double precision`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`sum(integer)` devuelve `bigint` para que la suma de muchos enteros no se desborde. `avg(integer)` devuelve `numeric` y `sum(bigint)` devuelve `numeric`."
+    },
+    {
+      "id": "s07-q37",
+      "type": "single",
+      "q": "Las 150 reseñas tienen notas enteras (smallint) y su promedio es 3.87. ¿Qué devuelve esta consulta?\n```sql\nSELECT sum(nota) / count(*) FROM resenas;\n```",
+      "options": [
+        "`3`",
+        "`3.87`",
+        "`4`",
+        "`3.8666666666666667`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`sum(smallint)` es `bigint` y `count(*)` es `bigint`: la división entre enteros trunca. Usa `avg(nota)` o convierte: `sum(nota)::numeric / count(*)`."
+    },
+    {
+      "id": "s07-q38",
+      "type": "single",
+      "q": "¿Cuál es el orden lógico de evaluación de una consulta agrupada?",
+      "options": [
+        "FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT",
+        "SELECT → FROM → WHERE → GROUP BY → HAVING → ORDER BY → LIMIT",
+        "FROM → GROUP BY → WHERE → HAVING → SELECT → ORDER BY → LIMIT",
+        "FROM → WHERE → SELECT → GROUP BY → HAVING → ORDER BY → LIMIT"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Primero se arman y filtran las filas, luego se agrupan y se filtran los grupos, después se calculan las columnas del SELECT (con sus alias) y al final se ordena y limita."
+    },
+    {
+      "id": "s07-q39",
+      "type": "single",
+      "q": "Ambas consultas dan el mismo resultado. ¿Cuál es más eficiente y por qué?\n```sql\n-- A\nSELECT region, count(*) FROM clientes\nWHERE region <> 'Metropolitana' GROUP BY region;\n-- B\nSELECT region, count(*) FROM clientes\nGROUP BY region HAVING region <> 'Metropolitana';\n```",
+      "options": [
+        "A, porque descarta las filas antes de agrupar",
+        "B, porque HAVING es más rápido que WHERE",
+        "Son idénticas en todo",
+        "B, porque agrupa menos filas"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Con WHERE, las 43 filas de la Metropolitana ni siquiera llegan a la agrupación. Con HAVING se agrupan todas y después se bota un grupo. Las condiciones sin agregados van en WHERE."
+    },
+    {
+      "id": "s07-q40",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas son válidas? (Selecciona TRES.)",
+      "options": [
+        "`SELECT region FROM clientes GROUP BY region ORDER BY count(*) DESC;`",
+        "`SELECT upper(region), count(*) FROM clientes GROUP BY region;`",
+        "`SELECT region, count(*) FROM clientes GROUP BY 1;`",
+        "`SELECT region, avg(count(*)) FROM clientes GROUP BY region;`",
+        "`SELECT comuna, count(*) FROM clientes GROUP BY region;`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Se puede ordenar por un agregado que no está en el SELECT, calcular expresiones sobre columnas agrupadas y agrupar por posición. Los agregados no se pueden anidar (`aggregate function calls cannot be nested`) y `comuna` no está agrupada."
+    },
+    {
+      "id": "s07-q41",
+      "type": "single",
+      "q": "Unes `pedidos` con `pedido_items` (varias filas por pedido) y agrupas por método de pago. ¿Qué expresión cuenta los pedidos?",
+      "options": [
+        "`count(DISTINCT p.id)`",
+        "`count(*)`",
+        "`count(i.pedido_id)`",
+        "`sum(1)`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Después del JOIN hay una fila por ítem: `count(*)`, `count(i.pedido_id)` y `sum(1)` cuentan ítems (388 para débito en los entregados). `count(DISTINCT p.id)` cuenta cada pedido una vez (189)."
+    },
+    {
+      "id": "s07-q42",
+      "type": "single",
+      "q": "¿Qué ventaja tiene `GROUPING SETS ((estado), (metodo_pago), ())` frente a unir tres consultas con UNION ALL?",
+      "options": [
+        "Se escribe una sola vez y PostgreSQL lee la tabla una sola vez",
+        "Devuelve resultados distintos",
+        "Es la única forma de obtener un total general",
+        "Ordena automáticamente el resultado"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El resultado es el mismo, pero con GROUPING SETS la consulta es más corta y el motor calcula todos los niveles a partir de una sola lectura de los datos. Como siempre, el orden hay que pedirlo con ORDER BY."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: funciones de agregado",
+      "url": "https://www.postgresql.org/docs/18/functions-aggregate.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: expresiones de tabla (GROUP BY, HAVING, GROUPING SETS, CUBE y ROLLUP)",
+      "url": "https://www.postgresql.org/docs/18/queries-table-expressions.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: expresiones de agregado (DISTINCT, ORDER BY, FILTER y WITHIN GROUP)",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html#SYNTAX-AGGREGATES"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT (cláusulas GROUP BY y HAVING)",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tutorial de funciones de agregado",
+      "url": "https://www.postgresql.org/docs/18/tutorial-agg.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones matemáticas (round)",
+      "url": "https://www.postgresql.org/docs/18/functions-math.html"
+    },
+    {
+      "title": "Notas de la versión 16 de PostgreSQL (any_value)",
+      "url": "https://www.postgresql.org/docs/release/16.0/"
+    }
+  ]
+}

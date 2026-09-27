@@ -1,0 +1,1884 @@
+{
+ "id": "s01",
+ "order": 1,
+ "title": "Fundamentos: IA, Machine Learning e IA generativa",
+ "domain": "concepts",
+ "summary": "Construyes el modelo mental sobre el que se apoya todo el examen: qué es la IA, cómo aprende un modelo de machine learning, qué hay dentro de un LLM (tokens, embeddings, Transformer, atención) y cómo se entrena y se usa (pre-entrenamiento, SFT, RLHF, temperatura, ventana de contexto). Terminas sabiendo reconocer las limitaciones de la IA generativa, cuándo mitigarlas con grounding/RAG o fine-tuning, y a qué carga de trabajo pertenece cada escenario, que es justo lo que el examen pregunta en el dominio de conceptos.",
+ "goal": "Explicar cómo un LLM genera texto token a token, reconocer qué carga de trabajo de IA pide un escenario y elegir entre RAG y fine-tuning, con al menos un 80 % en el test de la sección.",
+ "objectives": [
+  "Describir cómo funcionan los modelos de IA generativa (Describe how generative AI models work)",
+  "Identificar escenarios de las cargas de trabajo de IA comunes, incluidas la IA generativa y agéntica (Identify scenarios for common AI workloads, including generative and agentic AI, text analysis, speech, computer vision, and information extraction)"
+ ],
+ "lessons": [
+  {
+   "id": "s01-l1",
+   "title": "Qué es la IA y en qué se diferencia el machine learning de la programación tradicional",
+   "minutes": 14,
+   "goals": [
+    "Ordenar IA, machine learning, deep learning, IA generativa e IA agéntica de lo más amplio a lo más específico, y explicar por qué un LLM es IA estrecha (narrow AI) y no AGI.",
+    "Decidir si un problema concreto se resuelve mejor con reglas programadas a mano o con machine learning.",
+    "Identificar en un escenario los features, el label y si se trata de entrenamiento o de inferencia."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La **inteligencia artificial** (*artificial intelligence*, AI) es el conjunto de técnicas que permiten a un software imitar capacidades que asociamos a la inteligencia humana: entender y generar lenguaje, ver e interpretar imágenes, escuchar y hablar, razonar sobre datos y tomar decisiones o ejecutar acciones. En el examen AI-901 no se trata de filosofía: se trata de reconocer **qué tipo de capacidad** necesita un escenario y **qué tecnología de Azure** la ofrece."
+    },
+    {
+     "type": "h",
+     "text": "IA estrecha frente a IA general"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Concepto",
+      "Qué significa",
+      "Ejemplos"
+     ],
+     "rows": [
+      [
+       "**IA estrecha** (*narrow AI*, IA débil)",
+       "Sistemas diseñados y entrenados para una tarea o un conjunto acotado de tareas. Es **toda** la IA que existe hoy en producción.",
+       "Un clasificador de spam, un modelo de detección de objetos, un LLM que chatea o resume, un agente que reserva salas."
+      ],
+      [
+       "**IA general** (*artificial general intelligence*, AGI)",
+       "Hipotética IA capaz de aprender y razonar en cualquier dominio al nivel humano o superior, transfiriendo conocimiento libremente entre tareas.",
+       "No existe todavía. Es un objetivo de investigación, no un producto de Azure."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un LLM que escribe poesía, código y resúmenes parece «general», pero sigue siendo IA estrecha: es un modelo que predice el siguiente token y cuyas capacidades dependen de sus datos de entrenamiento. No confundas **versatilidad** con **AGI**."
+    },
+    {
+     "type": "h",
+     "text": "La jerarquía: IA ⊃ Machine Learning ⊃ Deep Learning ⊃ IA generativa"
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo encajan los términos (de lo más amplio a lo más específico)",
+     "mermaid": "flowchart TB\n  AI[\"Inteligencia artificial (AI) - cualquier técnica que imita capacidades inteligentes\"]\n  ML[\"Machine learning (ML) - el sistema aprende patrones a partir de datos\"]\n  DL[\"Deep learning - ML con redes neuronales de muchas capas\"]\n  GEN[\"IA generativa - modelos que crean contenido nuevo: texto, imagen, audio, código\"]\n  AG[\"IA agéntica - modelo + instrucciones + herramientas que actúan\"]\n  AI --> ML --> DL --> GEN --> AG",
+     "caption": "Cada nivel es un subconjunto del anterior. Los agentes se construyen sobre modelos generativos."
+    },
+    {
+     "type": "p",
+     "text": "Microsoft Learn lo resume así: **el machine learning es la base de la mayoría de las soluciones de IA modernas**. Los LLM son redes neuronales profundas (deep learning), y los agentes son aplicaciones construidas sobre esos modelos generativos."
+    },
+    {
+     "type": "h",
+     "text": "Programación tradicional frente a machine learning"
+    },
+    {
+     "type": "p",
+     "text": "En la **programación tradicional** una persona escribe las reglas: *si el correo contiene «premio» y viene de un dominio desconocido, márcalo como spam*. En **machine learning** invertimos el proceso: damos al algoritmo **datos** (ejemplos) y, cuando es supervisado, las **respuestas conocidas**, y el algoritmo **deduce** la función que relaciona unos con otras."
+    },
+    {
+     "type": "diagram",
+     "title": "Reglas escritas a mano frente a reglas aprendidas",
+     "mermaid": "flowchart LR\n  subgraph T[\"Programación tradicional\"]\n    D1[\"Datos\"] --> P1[\"Programa con reglas escritas por una persona\"]\n    R1[\"Reglas\"] --> P1\n    P1 --> O1[\"Respuestas\"]\n  end\n  subgraph M[\"Machine learning\"]\n    D2[\"Datos (features)\"] --> A2[\"Algoritmo de entrenamiento\"]\n    O2[\"Respuestas conocidas (labels)\"] --> A2\n    A2 --> F2[\"Modelo = función aprendida f(x)\"]\n  end",
+     "caption": "En ML el resultado del entrenamiento es el modelo; luego se usa para predecir sobre datos nuevos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación",
+      "¿Mejor reglas o ML?",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "Calcular el IVA de una factura",
+       "Reglas",
+       "La lógica es exacta, conocida y estable."
+      ],
+      [
+       "Predecir cuántos helados se venderán mañana según el tiempo",
+       "ML (regresión)",
+       "La relación entre temperatura, lluvia y ventas es estadística, no una fórmula fija."
+      ],
+      [
+       "Detectar si una reseña es positiva o negativa",
+       "ML / modelo de lenguaje",
+       "Hay infinitas formas de expresar una opinión; escribir reglas no escala."
+      ],
+      [
+       "Validar que un código postal tiene 5 dígitos",
+       "Reglas",
+       "Una expresión regular basta y es 100 % predecible."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Features, labels, entrenamiento e inferencia"
+    },
+    {
+     "type": "p",
+     "text": "Microsoft Learn define un modelo de ML como *una aplicación de software que encapsula una función para calcular un valor de salida a partir de uno o más valores de entrada*. Vocabulario imprescindible:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Features** (características, `x`): los atributos observados. Ej.: temperatura, lluvia y viento de un día. Normalmente es un vector `[x1, x2, x3, ...]`.",
+      "**Label** (etiqueta, `y`): el valor que queremos predecir. Ej.: número de helados vendidos ese día.",
+      "**Algoritmo**: el procedimiento que busca la relación entre `x` e `y` y la *ajusta* (*fit*) a una función.",
+      "**Modelo**: el resultado del entrenamiento, la función `y = f(x)`.",
+      "**Entrenamiento** (*training*): el proceso de definir esa función a partir de datos históricos.",
+      "**Inferencia** (*inferencing*): usar el modelo entrenado para predecir sobre datos nuevos. La predicción se escribe `ŷ` («y-hat») porque es un valor calculado, no observado."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: «¿cómo se llama el valor que el modelo intenta predecir?» → **label**. «¿Qué son la temperatura y la humedad en un modelo que predice ventas?» → **features**. «¿Cómo se llama usar un modelo ya entrenado para obtener predicciones?» → **inferencia**."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Truco: **L**abel = **L**o que quiero predecir. **F**eature = **F**actor de entrada."
+    }
+   ],
+   "takeaways": [
+    "Toda la IA que existe hoy es **IA estrecha** (*narrow AI*): un LLM que escribe código y poesía es versátil, pero no es **AGI**, que sigue siendo hipotética.",
+    "Jerarquía: IA ⊃ **machine learning** ⊃ **deep learning** ⊃ **IA generativa**; los **agentes** se construyen sobre modelos generativos.",
+    "En la programación tradicional una persona escribe las reglas; en **machine learning** el algoritmo las deduce de los datos (y, si es supervisado, de las respuestas conocidas).",
+    "**Features** (`x`) = factores de entrada; **label** (`y`) = lo que quieres predecir. Temperatura y lluvia son features; los helados vendidos, el label.",
+    "**Entrenamiento** (*training*) ajusta la función `f(x)` con datos históricos; **inferencia** (*inferencing*) la usa para predecir sobre datos nuevos (`ŷ`)."
+   ]
+  },
+  {
+   "id": "s01-l2",
+   "title": "Tipos de machine learning y ciclo de vida de un modelo",
+   "minutes": 16,
+   "goals": [
+    "Elegir entre regresión, clasificación binaria, clasificación multiclase, clustering y aprendizaje por refuerzo a partir de la descripción de un problema.",
+    "Distinguir aprendizaje supervisado de no supervisado (y, por tanto, clasificación de clustering) según si los datos de entrenamiento traen label.",
+    "Ordenar las fases del ciclo de vida de un modelo, de la ingesta de datos a la monitorización, e indicar qué error típico aparece si se descuida cada una."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El tipo de ML que aplicas depende de **qué quieres predecir** y de **si tus datos tienen etiquetas**. Es uno de los temas más preguntados porque se presta a escenarios cortos: te describen un problema y tienes que nombrar la técnica."
+    },
+    {
+     "type": "h",
+     "text": "Aprendizaje supervisado: los datos traen la respuesta"
+    },
+    {
+     "type": "p",
+     "text": "En el **aprendizaje supervisado** (*supervised learning*) los datos de entrenamiento incluyen **features y labels conocidos**. El modelo aprende la relación para predecir labels desconocidos en casos futuros."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Técnica",
+      "Qué predice",
+      "Ejemplos (Microsoft Learn y otros)"
+     ],
+     "rows": [
+      [
+       "**Regresión** (*regression*)",
+       "Un **valor numérico** continuo",
+       "Helados vendidos según temperatura y lluvia · precio de una vivienda según metros y habitaciones · consumo de combustible de un coche según peso y motor."
+      ],
+      [
+       "**Clasificación binaria** (*binary classification*)",
+       "Una de **dos** clases excluyentes (sí/no, verdadero/falso)",
+       "¿El paciente tiene riesgo de diabetes? · ¿El cliente impagará el préstamo? · ¿Responderá a una oferta de marketing?"
+      ],
+      [
+       "**Clasificación multiclase** (*multiclass classification*)",
+       "Una de **varias** clases excluyentes",
+       "Especie de pingüino (Adelie, Gentoo o Chinstrap) · género de una película."
+      ],
+      [
+       "**Clasificación multietiqueta** (*multilabel*)",
+       "**Varias** clases a la vez para un mismo elemento",
+       "Una película que es a la vez ciencia ficción y comedia."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Aprendizaje no supervisado: los datos no traen etiquetas"
+    },
+    {
+     "type": "p",
+     "text": "En el **aprendizaje no supervisado** (*unsupervised learning*) solo hay features. El algoritmo descubre estructura en los datos. La forma más común es el **clustering** (agrupamiento): agrupar observaciones similares en *clusters*. Ej.: segmentar clientes por comportamiento de compra, o agrupar flores por tamaño, número de hojas y pétalos."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa clásica: clustering y clasificación multiclase **ambos** reparten elementos en grupos. La diferencia es que en clasificación **las clases ya se conocen** y vienen etiquetadas en los datos; en clustering **no hay etiquetas previas** y los grupos los descubre el algoritmo. Si el enunciado dice «no sabemos de antemano qué segmentos existen» → clustering."
+    },
+    {
+     "type": "p",
+     "text": "Ambas técnicas se combinan: puedes usar clustering para descubrir segmentos de clientes, ponerles nombre («alto valor - bajo volumen», «comprador frecuente pequeño»), etiquetar los datos con esos nombres y después entrenar un **clasificador** que asigne clientes nuevos a un segmento."
+    },
+    {
+     "type": "h",
+     "text": "Aprendizaje por refuerzo"
+    },
+    {
+     "type": "p",
+     "text": "En el **aprendizaje por refuerzo** (*reinforcement learning*, RL) un **agente** interactúa con un **entorno**, ejecuta **acciones** y recibe **recompensas** o penalizaciones. Con prueba y error aprende una estrategia (*policy*) que maximiza la recompensa acumulada. No hay un dataset etiquetado: la «señal» es la recompensa. Ejemplos: robots que aprenden a caminar, sistemas que aprenden a jugar, optimización de semáforos o de ofertas dinámicas. Es relevante para la IA generativa porque el **RLHF** (lección 5) usa refuerzo para alinear los LLM con las preferencias humanas."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo elegir el tipo de machine learning",
+     "mermaid": "flowchart TD\n  Q1{\"¿Los datos de entrenamiento tienen label conocido?\"}\n  Q1 -->|\"Sí\"| Q2{\"¿El label es un número o una categoría?\"}\n  Q1 -->|\"No, solo features\"| Q4{\"¿Aprende por prueba y error con recompensas?\"}\n  Q2 -->|\"Número\"| REG[\"Regresión\"]\n  Q2 -->|\"Categoría\"| Q3{\"¿Cuántas clases?\"}\n  Q3 -->|\"Dos\"| BIN[\"Clasificación binaria\"]\n  Q3 -->|\"Más de dos\"| MUL[\"Clasificación multiclase\"]\n  Q4 -->|\"No, busco grupos similares\"| CLU[\"Clustering (no supervisado)\"]\n  Q4 -->|\"Sí, agente y entorno\"| RL[\"Aprendizaje por refuerzo\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Palabras clave: «cuánto / cuántos / precio / importe» → **regresión**. «Sí o no / fraude o no / aprobado o suspendido» → **clasificación binaria**. «Qué tipo / qué categoría de entre varias» → **multiclase**. «Agrupar / segmentar sin categorías previas» → **clustering**. «Recompensa / prueba y error / agente en un entorno» → **refuerzo**."
+    },
+    {
+     "type": "h",
+     "text": "Ciclo de vida de un modelo de machine learning"
+    },
+    {
+     "type": "p",
+     "text": "Entrenar es solo una fase. Un proyecto real de ML sigue un ciclo iterativo, que en Azure se apoya en servicios como Azure Machine Learning (para modelos propios) o Microsoft Foundry (para modelos generativos y agentes):"
+    },
+    {
+     "type": "diagram",
+     "title": "Ciclo de vida iterativo de ML",
+     "mermaid": "flowchart LR\n  A[\"1. Ingesta de datos - recoger datos de fuentes\"] --> B[\"2. Preparación - limpiar, transformar, elegir features\"]\n  B --> C[\"3. Entrenamiento - aplicar el algoritmo\"]\n  C --> D[\"4. Evaluación - medir con datos de validación\"]\n  D -->|\"No es suficientemente bueno\"| B\n  D -->|\"Aceptable\"| E[\"5. Despliegue - publicar como endpoint\"]\n  E --> F[\"6. Gestión y monitorización - deriva de datos, rendimiento, costes\"]\n  F -->|\"Reentrenar con datos nuevos\"| A"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Fase",
+      "Qué se hace",
+      "Error típico si se descuida"
+     ],
+     "rows": [
+      [
+       "Ingesta",
+       "Reunir datos de bases de datos, ficheros, sensores, APIs.",
+       "Datos insuficientes o no representativos → modelo sesgado."
+      ],
+      [
+       "Preparación",
+       "Limpiar valores nulos y duplicados, normalizar, codificar categorías, seleccionar features, **separar datos de entrenamiento y validación**.",
+       "*Garbage in, garbage out*: basura entra, basura sale."
+      ],
+      [
+       "Entrenamiento",
+       "Ajustar la función `f(x)` con el algoritmo elegido.",
+       "Sobreajuste (*overfitting*): memoriza el entrenamiento y generaliza mal."
+      ],
+      [
+       "Evaluación",
+       "Comparar predicciones con valores reales **en datos que el modelo no vio**. Métricas: exactitud (*accuracy*), precisión, recall, F1 en clasificación; errores medios en regresión.",
+       "Evaluar con los mismos datos de entrenamiento da resultados falsamente optimistas."
+      ],
+      [
+       "Despliegue",
+       "Exponer el modelo como servicio (normalmente un endpoint REST) para que las aplicaciones hagan inferencia.",
+       "Sin control de acceso ni cuotas."
+      ],
+      [
+       "Gestión",
+       "Monitorizar calidad, latencia, costes y deriva (*drift*); reentrenar cuando los datos cambian.",
+       "El modelo se degrada silenciosamente con el tiempo."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Aunque en AI-901 casi siempre usarás modelos **ya entrenados** (del catálogo de Foundry o de Foundry Tools), las fases de **evaluación, despliegue y monitorización** siguen existiendo: en Foundry evalúas modelos con benchmarks y evaluadores, los despliegas con una cuota de tokens por minuto y monitorizas su uso."
+    }
+   ],
+   "takeaways": [
+    "**Regresión** predice un número («cuánto», «precio»); **clasificación** predice una categoría: **binaria** (sí/no) o **multiclase** (una de varias).",
+    "Si «no se sabe de antemano qué grupos existen», es **clustering** (no supervisado, sin *labels*); si las clases ya vienen etiquetadas, es **clasificación**.",
+    "**Aprendizaje por refuerzo** (*reinforcement learning*): un agente actúa en un entorno y aprende por prueba y error maximizando **recompensas**, sin dataset etiquetado.",
+    "Evalúa siempre con **datos de validación** que el modelo no vio; con los de entrenamiento obtienes resultados falsamente optimistas y no detectas el **sobreajuste** (*overfitting*).",
+    "Un modelo desplegado se degrada si cambian los datos (**deriva**, *drift*): hay que monitorizarlo y reentrenarlo."
+   ]
+  },
+  {
+   "id": "s01-l3",
+   "title": "Deep learning y redes neuronales (a nivel conceptual)",
+   "minutes": 12,
+   "goals": [
+    "Explicar cómo una neurona artificial combina entradas, pesos y una función de activación, y cómo se organizan las capas de una red profunda.",
+    "Describir el bucle de entrenamiento de una red neuronal: forward pass, función de pérdida, descenso de gradiente y backpropagation.",
+    "Explicar qué limitaciones de las RNN resolvió el mecanismo de atención y por qué eso hizo posible el Transformer."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El **deep learning** (aprendizaje profundo) es una forma avanzada de machine learning que intenta emular cómo aprende el cerebro mediante **redes neuronales artificiales** (*artificial neural networks*). Es la tecnología detrás de la visión por computador moderna, el reconocimiento de voz y todos los LLM."
+    },
+    {
+     "type": "h",
+     "text": "La neurona artificial"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Cada **neurona** es una función que recibe entradas (`x`) y las multiplica por **pesos** (*weights*, `w`), que indican cuánto importa cada entrada.",
+      "El resultado pasa por una **función de activación** que decide si (y cuánto) se transmite la señal a la siguiente capa.",
+      "Las neuronas se organizan en **capas**: capa de entrada, una o varias **capas ocultas** y capa de salida. Muchas capas = red **profunda** (*deep neural network*, DNN).",
+      "En una red totalmente conectada (*fully connected*) cada neurona se conecta con todas las de la capa siguiente."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Ejemplo de Microsoft Learn: para clasificar la especie de un pingüino, la entrada es un vector de 4 medidas `[37.3, 16.8, 19.2, 30.0]`. La capa de salida usa una función **softmax** que devuelve una probabilidad por clase, p. ej. `[0.2, 0.7, 0.1]`. La mayor (0.7) corresponde a la clase 1, **Gentoo**, que es la predicción."
+    },
+    {
+     "type": "h",
+     "text": "¿Cómo aprende una red neuronal?"
+    },
+    {
+     "type": "diagram",
+     "title": "Bucle de entrenamiento de una red neuronal",
+     "mermaid": "flowchart TD\n  A[\"Pesos iniciales aleatorios\"] --> B[\"Forward pass - los features atraviesan las capas\"]\n  B --> C[\"Salida ŷ - ej. probabilidades por clase\"]\n  C --> D[\"Función de pérdida (loss) - compara ŷ con el valor real y\"]\n  D --> E[\"Optimizador - descenso de gradiente calcula cómo ajustar cada peso\"]\n  E --> F[\"Backpropagation - los nuevos pesos se propagan hacia atrás por la red\"]\n  F --> G{\"¿La pérdida es suficientemente baja?\"}\n  G -->|\"No, otra época\"| B\n  G -->|\"Sí\"| H[\"Modelo entrenado = pesos finales\"]"
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Peso",
+       "en": "Weight",
+       "def": "Valor numérico que multiplica cada entrada de una neurona. Lo que la red «aprende» son los pesos. En un LLM a los pesos se les llama también parámetros."
+      },
+      {
+       "term": "Función de pérdida",
+       "en": "Loss function",
+       "def": "Mide cuánto se equivoca el modelo comparando la predicción ŷ con el valor real y."
+      },
+      {
+       "term": "Descenso de gradiente",
+       "en": "Gradient descent",
+       "def": "Técnica de optimización que ajusta cada peso un poco hacia arriba o hacia abajo para reducir la pérdida."
+      },
+      {
+       "term": "Retropropagación",
+       "en": "Backpropagation",
+       "def": "Propagar hacia atrás, capa a capa, los ajustes de los pesos calculados a partir del error."
+      },
+      {
+       "term": "Época",
+       "en": "Epoch",
+       "def": "Una pasada completa por el conjunto de entrenamiento. Se entrenan muchas épocas hasta minimizar la pérdida."
+      },
+      {
+       "term": "Softmax",
+       "en": "Softmax",
+       "def": "Función de la capa de salida que convierte puntuaciones en una distribución de probabilidades que suma 1."
+      }
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los datos se procesan en lotes como matrices; por eso el entrenamiento de redes neuronales se hace en **GPU**, optimizadas para operaciones con vectores y matrices. Es la razón por la que entrenar un LLM cuesta millones y por la que en Azure lo normal es **consumir** modelos ya entrenados."
+    },
+    {
+     "type": "h",
+     "text": "De las redes recurrentes a la atención"
+    },
+    {
+     "type": "p",
+     "text": "Para procesar lenguaje, las primeras redes fueron las **RNN** (*recurrent neural networks*): leen los tokens **uno detrás de otro** y arrastran una memoria (*hidden state*). Tenían dos problemas: les costaba recordar información lejana en textos largos y, al ser secuenciales, **no se podían paralelizar** bien. El mecanismo de **atención** resolvió ambos: cada token puede mirar **directamente** a cualquier otro token relevante, esté donde esté, y todos se procesan en paralelo. Sobre esa idea se construyó el **Transformer** (lección 5)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "RNN",
+      "Atención / Transformer"
+     ],
+     "rows": [
+      [
+       "Procesamiento",
+       "Secuencial, token a token",
+       "En paralelo"
+      ],
+      [
+       "Dependencias lejanas",
+       "Se pierden con la distancia",
+       "Conexión directa entre tokens relacionados"
+      ],
+      [
+       "Escala de entrenamiento",
+       "Limitada",
+       "Permite entrenar con billones de tokens en GPU"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si una pregunta menciona «redes neuronales de muchas capas», «imita el funcionamiento del cerebro» o «pesos que se ajustan para minimizar la pérdida», la respuesta es **deep learning**. Los modelos de lenguaje, visión y voz modernos son todos modelos de deep learning."
+    }
+   ],
+   "takeaways": [
+    "**Deep learning** = machine learning con **redes neuronales de muchas capas**; es la base de la visión por computador, la voz y los LLM modernos.",
+    "Lo que una red «aprende» son sus **pesos** (*weights*); en un LLM se les llama también **parámetros**.",
+    "Entrenar es un bucle: predicción → **función de pérdida** (*loss*) → **descenso de gradiente** → **retropropagación** (*backpropagation*), repetido durante varias **épocas**.",
+    "**Softmax** convierte la salida en probabilidades que suman 1: la clase predicha es la de mayor probabilidad (p. ej. `[0.2, 0.7, 0.1]` → gana la clase con 0.7).",
+    "La **atención** superó a las **RNN**: conecta directamente tokens lejanos y procesa en paralelo, lo que permitió entrenar Transformers a gran escala en GPU."
+   ]
+  },
+  {
+   "id": "s01-l4",
+   "title": "IA generativa: modelos fundacionales, LLM y SLM, multimodalidad, tokens y embeddings",
+   "minutes": 18,
+   "goals": [
+    "Distinguir un modelo generativo de un clasificador y elegir entre un LLM y un SLM (p. ej. Phi-4) según el escenario.",
+    "Identificar cuándo un caso requiere un modelo multimodal o un modelo de generación de imágenes, como uno de difusión.",
+    "Explicar qué son los tokens y los embeddings, y cómo la similitud coseno permite la búsqueda semántica y RAG."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La **IA generativa** (*generative AI*) es la rama de la IA que permite a las aplicaciones **crear contenido nuevo**: diálogos en lenguaje natural, pero también imágenes, vídeo, audio y código. Los usuarios interactúan con ella mediante **prompts** (instrucciones o preguntas en lenguaje natural) y el modelo genera una **completion** (respuesta)."
+    },
+    {
+     "type": "p",
+     "text": "La diferencia con el ML «clásico»: un clasificador **elige** entre clases predefinidas; un modelo generativo **produce** una salida nueva (un texto que no existía, una imagen original) a partir de los patrones que aprendió."
+    },
+    {
+     "type": "h",
+     "text": "Modelos fundacionales"
+    },
+    {
+     "type": "p",
+     "text": "Un **modelo fundacional** (*foundation model*) es un modelo grande **pre-entrenado** con enormes volúmenes de datos generales que ofrece capacidades de lenguaje, razonamiento o multimodales «de serie». En Foundry, los modelos fundacionales (GPT, Claude, Mistral, Llama, Phi, DeepSeek...) pueden **desplegarse directamente** o **personalizarse** con fine-tuning, y sirven de capa base para construir aplicaciones y agentes."
+    },
+    {
+     "type": "h",
+     "text": "LLM frente a SLM"
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "LLM (*large language model*)",
+      "SLM (*small language model*)"
+     ],
+     "rows": [
+      [
+       "Tamaño",
+       "Muchos miles de millones de parámetros, entrenados con volúmenes masivos de datos",
+       "Menos parámetros y menos datos"
+      ],
+      [
+       "Fortalezas",
+       "Potentes, generalizan bien, razonamiento complejo, contexto largo",
+       "Rápidos, baratos, se pueden ejecutar en local o en dispositivos"
+      ],
+      [
+       "Inconvenientes",
+       "Más caros de entrenar y de usar, más latencia",
+       "Menos conocimiento general, rinden mejor en dominios acotados"
+      ],
+      [
+       "Ejemplos en Foundry",
+       "Familia GPT-5.x, GPT-4.1, Claude Opus/Sonnet, Mistral Large 3",
+       "Phi-4 y otros modelos compactos"
+      ],
+      [
+       "Escenario típico",
+       "Asistente corporativo generalista, agentes multi-herramienta, análisis de código",
+       "App móvil offline, agente en un dispositivo, tarea específica de alto volumen"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Microsoft Learn: la diferencia entre LLM y SLM se basa en el **volumen de datos** y el **número de variables (parámetros)**. Los SLM funcionan bien en escenarios centrados en temas específicos o que requieren modelos pequeños fáciles de desplegar en aplicaciones locales y agentes en dispositivos. Si el enunciado dice «ejecutar en el dispositivo sin conexión» o «minimizar coste para una tarea concreta» → piensa en **SLM**."
+    },
+    {
+     "type": "h",
+     "text": "Modelos multimodales y modelos de difusión"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Multimodal**: acepta y/o genera más de un tipo de dato (texto, imágenes, audio, vídeo). Ej.: un modelo al que le envías la foto de un recibo y le preguntas el total, o al que le hablas y responde. En Foundry: Phi-4-multimodal-instruct, modelos GPT-5.x multimodales, Mistral Large 3.",
+      "**Generación de imágenes (texto a imagen)**: el proceso inverso a describir una imagen. En Foundry Microsoft recomienda empezar por la familia **GPT-Image-1** (GPT-Image-1.5, GPT-Image-1, GPT-Image-1-Mini); también hay modelos de terceros como **FLUX** (Black Forest Labs). También existen modelos de **generación de vídeo**.",
+      "**Modelos de difusión** (*diffusion models*): arquitectura muy usada en generación de imágenes. Durante el entrenamiento aprenden a **eliminar ruido** de imágenes a las que se les ha añadido ruido progresivamente; para generar, parten de ruido aleatorio y lo van «limpiando» paso a paso, guiados por el texto del prompt, hasta obtener una imagen coherente."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No todos los modelos generativos son LLM de texto: un modelo de difusión genera imágenes y no «predice el siguiente token». Y no todo modelo multimodal genera imágenes: muchos solo **entienden** imágenes y responden con texto."
+    },
+    {
+     "type": "h",
+     "text": "Tokens y tokenización"
+    },
+    {
+     "type": "p",
+     "text": "Un LLM no trabaja con palabras sino con **tokens**: la unidad mínima de texto que procesa. Un token puede ser una palabra, una parte de palabra (*subword*), un signo de puntuación o una secuencia frecuente de caracteres. El **tokenizador** divide el texto y asigna a cada token un **ID entero**; el conjunto de tokens únicos que conoce el modelo es su **vocabulario** (los LLM actuales tienen vocabularios de cientos de miles de tokens)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método",
+      "Cómo divide",
+      "Ventajas",
+      "Inconvenientes"
+     ],
+     "rows": [
+      [
+       "Por palabra",
+       "Palabras separadas por espacios",
+       "Menos tokens por texto",
+       "Vocabulario enorme, no maneja palabras nuevas o erratas"
+      ],
+      [
+       "Por carácter",
+       "Cada carácter",
+       "Vocabulario mínimo, maneja cualquier entrada",
+       "Muchísimos tokens, se agota antes el límite"
+      ],
+      [
+       "Por subpalabra (p. ej. BPE, *Byte-Pair Encoding*, usado por los modelos GPT)",
+       "Fragmentos frecuentes: `un` + `believ` + `able`",
+       "Equilibrio: reutiliza piezas, maneja palabras desconocidas, emojis, código y varios idiomas",
+       "Los límites de token a veces son poco intuitivos"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "¿Por qué importa? Porque **todo se mide en tokens**: el precio (tokens de entrada y de salida, a menudo con precios distintos), las cuotas de despliegue (**TPM**, *tokens per minute*), el límite de salida (`max_output_tokens`) y la **ventana de contexto**. Como regla aproximada, en inglés un token equivale a unos 4 caracteres; en español y otros idiomas suele haber más tokens por palabra, así que el mismo contenido puede costar algo más."
+    },
+    {
+     "type": "h",
+     "text": "Embeddings: el significado convertido en números"
+    },
+    {
+     "type": "p",
+     "text": "Un **embedding** es un **vector** (lista de números en coma flotante) que representa el **significado semántico** de un token, frase o documento. Se aprenden durante el entrenamiento: tokens usados en contextos parecidos acaban con vectores que apuntan en direcciones parecidas. Así, `perro` y `cachorro` quedan cerca, `gato` no muy lejos, y `monopatín` o `coche` lejos. Los embeddings reales tienen cientos o miles de dimensiones."
+    },
+    {
+     "type": "diagram",
+     "title": "Del texto a vectores comparables",
+     "mermaid": "flowchart LR\n  T[\"Texto - Me encanta mi cachorro\"] --> TK[\"Tokenizador - divide en tokens\"]\n  TK --> ID[\"IDs de token - ej. 1543, 88, 9021\"]\n  ID --> EM[\"Modelo de embeddings - ej. text-embedding-3-small\"]\n  EM --> V[\"Vector - 0.12, -0.45, 0.78, ...\"]\n  V --> CS[\"Similitud coseno - con otros vectores\"]\n  CS --> U[\"Usos: búsqueda semántica, RAG, recomendaciones, clustering, detección de anomalías\"]"
+    },
+    {
+     "type": "p",
+     "text": "La **similitud del coseno** (*cosine similarity*) mide el ángulo entre dos vectores: cuanto más cerca de 1, más parecido es el significado. Microsoft Learn indica que los embeddings de Azure OpenAI suelen usar similitud coseno porque dos documentos de tamaños muy distintos pueden estar lejos en distancia euclídea y, aun así, formar un ángulo pequeño. Es la base de la **búsqueda vectorial** en Azure AI Search, Cosmos DB, Azure SQL o PostgreSQL con pgvector."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Cuando el escenario pide «encontrar documentos con significado parecido aunque no compartan palabras» o «preparar datos para búsqueda vectorial / RAG», la respuesta es un **modelo de embeddings** (p. ej. `text-embedding-3-small`), no un modelo de chat. Los embeddings **no generan texto**: generan vectores."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Contar palabras en común no es similitud semántica: «coche» y «automóvil» no comparten palabras pero sus embeddings son muy similares. Y dos vectores solo son comparables si los generó **el mismo modelo de embeddings**."
+    }
+   ],
+   "takeaways": [
+    "**SLM** (p. ej. **Phi-4**) → ejecución local o en el dispositivo, bajo coste y tareas acotadas; **LLM** → razonamiento complejo y asistentes generalistas.",
+    "Un modelo **multimodal** acepta o genera varios tipos de datos, pero muchos solo **entienden** imágenes y responden con texto; para crear imágenes necesitas un modelo de generación (p. ej. **GPT-Image-1**).",
+    "Todo se mide en **tokens** (palabras, subpalabras o signos): precio, cuota **TPM**, límite de salida y ventana de contexto. En inglés, 1 token ≈ 4 caracteres.",
+    "Un **embedding** es un vector que representa el significado: textos parecidos quedan cerca aunque no compartan palabras, y se comparan con **similitud coseno** (*cosine similarity*).",
+    "Para búsqueda semántica o para preparar datos de **RAG** usa un **modelo de embeddings** (p. ej. `text-embedding-3-small`): genera vectores, no texto."
+   ]
+  },
+  {
+   "id": "s01-l5",
+   "title": "Dentro del LLM: Transformer, entrenamiento e inferencia",
+   "minutes": 18,
+   "goals": [
+    "Describir qué hacen el encoder, el decoder, la atención multi-head y la codificación posicional en un Transformer.",
+    "Distinguir las tres etapas de entrenamiento de un LLM (pre-entrenamiento auto-supervisado, SFT y RLHF) y lo que aporta cada una.",
+    "Ajustar temperature, top_p y max_output_tokens según el problema observado y explicar qué ocupa la ventana de contexto."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "La arquitectura Transformer"
+    },
+    {
+     "type": "p",
+     "text": "El **Transformer** (presentado en 2017 en el artículo *Attention Is All You Need*) es la arquitectura de red neuronal sobre la que se construyen los LLM actuales. Microsoft Learn la simplifica en dos bloques:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Encoder**: crea **embeddings contextuales** aplicando **atención**. La capa de atención examina cada token y determina cuánto le influyen los tokens que lo rodean. El resultado pasa por una red *feed-forward* que calcula la mejor representación vectorial.",
+      "**Decoder**: usa esas representaciones para **predecir el siguiente token más probable** en una secuencia iniciada por un prompt. También usa atención y una red feed-forward.",
+      "**Codificación posicional** (*positional encoding*): como los tokens se procesan en paralelo, se añade a cada vector información sobre su **posición** en la secuencia, porque el orden cambia el significado."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Transformer simplificado (visión de Microsoft Learn)",
+     "mermaid": "flowchart LR\n  IN[\"Tokens de entrada + codificación posicional\"] --> ENC\n  subgraph ENC[\"Encoder\"]\n    A1[\"Multi-head attention\"] --> F1[\"Red feed-forward\"]\n  end\n  ENC --> EMB[\"Embeddings contextuales\"]\n  EMB --> DEC\n  subgraph DEC[\"Decoder\"]\n    A2[\"Masked attention - solo mira tokens anteriores\"] --> F2[\"Red feed-forward\"]\n  end\n  DEC --> P[\"Probabilidades del siguiente token\"]\n  P --> OUT[\"Token elegido\"]\n  OUT -->|\"Se añade a la secuencia y se repite\"| DEC"
+    },
+    {
+     "type": "h",
+     "text": "Atención y multi-head attention"
+    },
+    {
+     "type": "p",
+     "text": "Ejemplo de Microsoft Learn: en «*I heard a dog bark*», al procesar `bark` los tokens `heard` y `dog` reciben **más peso** que `I` o `a`, porque son mejores pistas. Otro clásico: en «El animal no cruzó la calle porque **estaba** cansado», la atención permite relacionar lo cansado con «animal» y no con «calle»."
+    },
+    {
+     "type": "p",
+     "text": "La **multi-head attention** ejecuta varias «cabezas» de atención **en paralelo**, cada una especializada en un tipo de relación distinta (sujeto-verbo, proximidad, preposición-objeto...). Sus resultados se combinan en una representación más rica de cada token."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Muchos LLM generativos actuales (como la familia GPT) usan solo la parte *decoder* del Transformer. Para el examen basta con la versión de Microsoft Learn: **encoder = crea embeddings con atención**, **decoder = predice el siguiente token con atención enmascarada**."
+    },
+    {
+     "type": "h",
+     "text": "Cómo se entrena un LLM: tres etapas"
+    },
+    {
+     "type": "diagram",
+     "title": "Del texto de internet a un asistente útil",
+     "mermaid": "flowchart TD\n  P[\"1. Pre-entrenamiento auto-supervisado - billones de tokens de texto público - tarea: predecir el siguiente token\"] --> B[\"Modelo base - sabe continuar texto, no seguir instrucciones\"]\n  B --> S[\"2. Supervised fine-tuning (SFT) - pares prompt + respuesta ideal escritos por personas\"]\n  S --> I[\"Modelo que sigue instrucciones\"]\n  I --> R[\"3. RLHF - personas ordenan respuestas, se entrena un reward model - y se ajusta el LLM para maximizar la recompensa\"]\n  R --> A[\"Modelo alineado - más útil, honesto y seguro\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Etapa",
+      "Datos",
+      "Qué aprende",
+      "Idea clave"
+     ],
+     "rows": [
+      [
+       "**Pre-entrenamiento auto-supervisado** (*self-supervised pre-training*)",
+       "Volúmenes enormes de texto sin etiquetar",
+       "Gramática, hechos, relaciones semánticas, patrones de código",
+       "La etiqueta sale del propio texto: de «La capital de Francia es» la respuesta es «París». No hace falta etiquetar a mano."
+      ],
+      [
+       "**Supervised fine-tuning** (SFT)",
+       "Conjunto relativamente pequeño y de alta calidad de pares prompt → respuesta ideal",
+       "A responder preguntas y seguir instrucciones",
+       "Predecir el siguiente token no garantiza comportamiento de pregunta-respuesta; SFT lo enseña."
+      ],
+      [
+       "**RLHF** (*Reinforcement Learning from Human Feedback*)",
+       "Rankings humanos de varias respuestas a un mismo prompt",
+       "A preferir respuestas útiles, seguras y apropiadas",
+       "Paso 1: entrenar un *reward model* con las preferencias. Paso 2: ajustar el LLM con refuerzo para maximizar la recompensa."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En Foundry también aparece **DPO** (*Direct Preference Optimization*): una técnica de alineación que, a diferencia de RLHF, **no necesita ajustar un reward model** y usa pares de respuesta preferida / no preferida, siendo más ligera computacionalmente. Y **RFT** (*reinforcement fine-tuning*), que usa un calificador (*grader*) para mejorar el razonamiento en problemas con muchas soluciones posibles."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El pre-entrenamiento de un LLM es **auto-supervisado**: no requiere etiquetado manual porque la «respuesta correcta» es el siguiente token del propio texto. RLHF usa **feedback humano** para **alinear** el modelo con las preferencias humanas. SFT enseña a **seguir instrucciones** con ejemplos prompt/respuesta."
+    },
+    {
+     "type": "h",
+     "text": "Inferencia: generar token a token"
+    },
+    {
+     "type": "p",
+     "text": "Al usar el modelo, el decoder calcula una **distribución de probabilidad** sobre todo el vocabulario para el siguiente token, elige uno, lo **añade a la secuencia** y repite, hasta que predice el final o alcanza el límite de tokens. Por eso se dice que los LLM son **autorregresivos** y **probabilísticos**. Microsoft lo compara con un «predictor de texto del móvil superpotente»."
+    },
+    {
+     "type": "diagram",
+     "title": "Generación autorregresiva",
+     "mermaid": "sequenceDiagram\n  participant U as Usuario\n  participant M as LLM\n  U->>M: Prompt El tiempo hoy\n  M->>M: Probabilidades es 0.62, será 0.21, parece 0.09\n  M-->>U: es\n  M->>M: Nueva entrada El tiempo hoy es\n  M->>M: Probabilidades soleado 0.40, frío 0.25, lluvioso 0.20\n  M-->>U: soleado\n  M->>M: Repite hasta token de fin o max_output_tokens\n  M-->>U: Respuesta completa"
+    },
+    {
+     "type": "h",
+     "text": "Parámetros de configuración que controlan la salida"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Parámetro",
+      "Qué controla",
+      "Cuándo tocarlo"
+     ],
+     "rows": [
+      [
+       "**Temperature** (temperatura)",
+       "Aleatoriedad al elegir el siguiente token. Rango 0 a 2. Baja (p. ej. 0.2) → salidas más enfocadas, deterministas y repetibles. Alta (p. ej. 0.7 o más) → más variadas y creativas.",
+       "Baja para documentos legales, extracción de datos, respuestas factuales. Alta para ficción, lluvia de ideas, eslóganes."
+      ],
+      [
+       "**Top_p** (*nucleus sampling*)",
+       "Solo considera los tokens cuya probabilidad acumulada llega a p. Con 0.1 solo entra el 10 % superior de masa de probabilidad.",
+       "Alternativa a la temperatura. Recomendación de Microsoft: **ajustar uno de los dos, no ambos**."
+      ],
+      [
+       "**Max output tokens** (`max_output_tokens`)",
+       "Longitud máxima de la respuesta.",
+       "Si la respuesta sale cortada, súbelo. Valores altos consumen más cuota TPM y pueden provocar *throttling*."
+      ],
+      [
+       "**System instructions** (system prompt)",
+       "Rol, tono, reglas y límites del asistente.",
+       "Siempre: define el comportamiento base."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los **modelos de razonamiento** (serie GPT-5 y modelos o-series) **no admiten** `temperature` ni `top_p`; se controlan con otros parámetros (p. ej. el esfuerzo de razonamiento). Si en un lab no ves el control de temperatura, comprueba si has desplegado un modelo de razonamiento. Y temperatura 0 reduce la variabilidad, pero **no garantiza** respuestas correctas ni idénticas al 100 %."
+    },
+    {
+     "type": "h",
+     "text": "Ventana de contexto"
+    },
+    {
+     "type": "p",
+     "text": "La **ventana de contexto** (*context window*) es el número máximo de tokens que el modelo puede manejar en una petición, y normalmente cubre **entrada + salida** juntas: system prompt, historial de conversación, documentos adjuntos, la pregunta y la respuesta generada. Si la conversación crece más allá, hay que resumir o recortar historial. El modelo **no tiene memoria entre peticiones**: la «memoria» de un chat es la aplicación reenviando el historial en cada llamada."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Resumen de ajustes: respuesta **cortada** → aumentar `max_output_tokens`. Respuestas **demasiado variables** o inventivas en una tarea factual → **bajar temperatura**. Necesitas **creatividad** → subir temperatura. Errores de **límite de tasa** (429) → reducir tokens por petición o concurrencia, o aumentar la cuota **TPM** del despliegue."
+    }
+   ],
+   "takeaways": [
+    "Un LLM es **autorregresivo**: calcula la probabilidad de cada posible siguiente token, elige uno, lo añade a la secuencia y repite hasta el token de fin o el límite `max_output_tokens`.",
+    "**Pre-entrenamiento** auto-supervisado (la etiqueta es el siguiente token del propio texto) → **SFT** (seguir instrucciones) → **RLHF** (alinear con preferencias humanas mediante un *reward model*).",
+    "`temperature` baja → salidas más enfocadas y repetibles (extracción de datos, textos legales); alta → más creativas. Ajusta `temperature` **o** `top_p`, no ambos.",
+    "Respuesta cortada → sube `max_output_tokens`; errores **429** → reduce tokens por petición o concurrencia, o aumenta la cuota **TPM**.",
+    "La **ventana de contexto** cubre entrada + salida, y el modelo **no recuerda** entre peticiones: la «memoria» del chat es la app reenviando el historial."
+   ]
+  },
+  {
+   "id": "s01-l6",
+   "title": "Limitaciones, mitigaciones y mapa de cargas de trabajo de IA",
+   "minutes": 18,
+   "goals": [
+    "Reconocer en un escenario las limitaciones de un modelo generativo: alucinaciones, fecha de corte, falta de datos privados, sesgos y no determinismo.",
+    "Elegir entre prompt engineering, grounding con RAG y fine-tuning según el problema que haya que resolver.",
+    "Clasificar un escenario en su carga de trabajo de IA (generativa, agéntica, análisis de texto, voz, visión o extracción de información) a partir de las pistas del enunciado."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "Limitaciones de los modelos generativos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Limitación",
+      "Qué es",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "**Alucinaciones** (*hallucinations*, fabricaciones)",
+       "El modelo genera con total seguridad contenido falso o no respaldado por ninguna fuente, porque produce lo **más probable**, no lo **verificado**.",
+       "Cita una sentencia judicial o un artículo científico que no existe."
+      ],
+      [
+       "**Fecha de corte del conocimiento** (*knowledge cutoff*, frescura)",
+       "Solo sabe lo que había en sus datos de entrenamiento; lo aprendido puede quedar desactualizado.",
+       "Desconoce una ley aprobada después de su entrenamiento."
+      ],
+      [
+       "**Límites de conocimiento** (datos privados)",
+       "No conoce información privada de tu organización.",
+       "No sabe cuánto reembolsa tu empresa por un taxi."
+      ],
+      [
+       "**Sesgos** (*bias*)",
+       "Reproduce sesgos presentes en los datos de entrenamiento.",
+       "Asocia sistemáticamente ciertas profesiones a un género."
+      ],
+      [
+       "**No determinismo**",
+       "La misma pregunta puede dar respuestas distintas.",
+       "Dos usuarios reciben resúmenes diferentes del mismo texto."
+      ],
+      [
+       "**Ventana de contexto finita**",
+       "No puede procesar documentos arbitrariamente largos en una sola llamada.",
+       "Un contrato de 2.000 páginas no cabe entero."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Técnicas de mitigación"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Prompt engineering**: instrucciones claras en el system prompt, ejemplos (*few-shot*), pedir citas, dar al modelo una «salida» («si no encuentras la respuesta, di que no lo sabes»). Es lo primero, más barato y rápido.",
+      "**Grounding (anclaje) y RAG**: proporcionar al modelo **datos fiables en el prompt** para que responda a partir de ellos. **RAG** (*Retrieval-Augmented Generation*) automatiza esto: **recupera** fragmentos relevantes de tus fuentes (normalmente con búsqueda vectorial sobre embeddings) y los **añade al prompt** como contexto. La respuesta resultante es una **respuesta anclada** (*grounded response*) y puede incluir citas. En Foundry, **Foundry IQ** ayuda a los agentes a recuperar información empresarial con respuestas citadas.",
+      "**Fine-tuning**: seguir entrenando un modelo pre-entrenado con un conjunto pequeño y de alta calidad (cientos o miles de ejemplos) para ajustar **estilo, tono, formato de salida** o una tarea concreta. **Sí modifica los pesos** del modelo.",
+      "**Evaluación y filtros de contenido**: evaluadores de calidad (groundedness, relevancia, coherencia, fluidez) y de seguridad en Foundry, más supervisión humana."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo RAG: recuperar, aumentar, generar",
+     "mermaid": "sequenceDiagram\n  participant U as Usuario\n  participant App as App o agente\n  participant IDX as Índice vectorial\n  participant LLM as Modelo de lenguaje\n  U->>App: Cuánto puedo reclamar por un taxi\n  App->>IDX: Búsqueda semántica con el embedding de la pregunta\n  IDX-->>App: Fragmento de la política de gastos sobre taxis\n  App->>LLM: System prompt + fragmento recuperado + pregunta\n  LLM-->>App: Respuesta anclada en la política\n  App-->>U: Respuesta con cita al documento"
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "Prompt engineering",
+      "RAG / grounding",
+      "Fine-tuning"
+     ],
+     "rows": [
+      [
+       "¿Cambia los pesos del modelo?",
+       "No",
+       "No",
+       "**Sí**"
+      ],
+      [
+       "Aporta conocimiento actualizado o privado",
+       "Solo lo que escribas en el prompt",
+       "**Sí**, en tiempo de ejecución; basta actualizar el índice",
+       "Poco adecuado: habría que reentrenar cada vez que cambian los datos"
+      ],
+      [
+       "Ideal para",
+       "Ajustar instrucciones, formato, tono de forma rápida",
+       "Responder sobre documentos de la empresa, datos cambiantes, citar fuentes",
+       "Estilo o formato muy consistentes, tareas especializadas, reducir prompts largos, destilar a un modelo más pequeño"
+      ],
+      [
+       "Coste y esfuerzo",
+       "Bajo",
+       "Medio (indexar, búsqueda)",
+       "Alto (datos de calidad, entrenamiento y hosting del modelo personalizado)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Frase de Microsoft Learn que conviene memorizar: **RAG no cambia los parámetros aprendidos del modelo; aporta conocimiento relevante en tiempo de ejecución**. Si las políticas cambian, se actualiza la documentación y el índice, **sin reentrenar**. Por eso, para «respuestas actualizadas sobre documentos internos» la respuesta es RAG, no fine-tuning."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa: el fine-tuning **no** es la mejor forma de «enseñar hechos nuevos que cambian a menudo» y **no** elimina las alucinaciones. Tampoco lo hace una temperatura 0. La mitigación principal de las alucinaciones factuales es el **grounding (RAG)** más pedir citas y evaluar."
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué técnica aplico?",
+     "mermaid": "flowchart TD\n  S[\"El modelo no responde como necesito\"] --> Q1{\"¿Le falta información privada o reciente?\"}\n  Q1 -->|\"Sí\"| RAG[\"Grounding / RAG - recuperar datos y añadirlos al prompt\"]\n  Q1 -->|\"No\"| Q2{\"¿Basta con mejores instrucciones o ejemplos?\"}\n  Q2 -->|\"Sí\"| PE[\"Prompt engineering - system prompt, few-shot, formato\"]\n  Q2 -->|\"No, necesito estilo o formato muy consistente a escala\"| FT[\"Fine-tuning - SFT, DPO o RFT\"]"
+    },
+    {
+     "type": "h",
+     "text": "Mapa de cargas de trabajo de IA del AI-901"
+    },
+    {
+     "type": "p",
+     "text": "El temario agrupa los escenarios en cinco grandes cargas de trabajo (*AI workloads*). Reconocerlas es la mitad del examen: en muchas preguntas basta con identificar la carga para descartar opciones."
+    },
+    {
+     "type": "diagram",
+     "title": "Cargas de trabajo de IA",
+     "mermaid": "mindmap\n  root((\"Cargas de trabajo de IA\"))\n    IA generativa y agéntica\n      Chat y asistentes\n      Crear y resumir contenido\n      Agentes con herramientas\n    Análisis de texto\n      Detección de idioma\n      Sentimiento\n      Frases clave y entidades\n      PII y resumen\n    Voz\n      Speech to text\n      Text to speech\n      Traducción de voz\n    Visión por computador\n      Clasificación de imágenes\n      Detección de objetos\n      Segmentación semántica\n      Generación de imagen y vídeo\n    Extracción de información\n      OCR y campos de formularios\n      Documentos, imágenes, audio y vídeo"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escenario",
+      "Carga de trabajo",
+      "Pista en el enunciado"
+     ],
+     "rows": [
+      [
+       "Un chatbot responde preguntas sobre la historia de la informática con respuestas originales",
+       "IA generativa",
+       "«Generar», «redactar», «responder en lenguaje natural»"
+      ],
+      [
+       "Un asistente lee el correo, consulta el calendario y reserva una sala automáticamente",
+       "IA agéntica (agente)",
+       "«Automatizar tareas», «usar herramientas», «actuar»"
+      ],
+      [
+       "Clasificar miles de reseñas como positivas, negativas o neutras",
+       "Análisis de texto (sentimiento)",
+       "«Opinión», «positiva/negativa»"
+      ],
+      [
+       "Encontrar nombres de personas, lugares y organizaciones en noticias",
+       "Análisis de texto (entidades)",
+       "«Personas, lugares, fechas»"
+      ],
+      [
+       "Ocultar teléfonos y direcciones antes de compartir transcripciones",
+       "Análisis de texto (detección de PII)",
+       "«Datos personales», «redactar/ocultar»"
+      ],
+      [
+       "Transcribir automáticamente las llamadas del call center",
+       "Voz (speech to text / reconocimiento)",
+       "«Transcribir audio»"
+      ],
+      [
+       "Leer en voz alta las respuestas de un agente",
+       "Voz (text to speech / síntesis)",
+       "«Voz», «vocalizar», «audio de salida»"
+      ],
+      [
+       "Contar productos en una estantería a partir de la cámara",
+       "Visión por computador (detección de objetos)",
+       "«Ubicación de objetos», «cuadros delimitadores»"
+      ],
+      [
+       "Generar imágenes de producto a partir de una descripción",
+       "Visión / generación de imágenes (IA generativa)",
+       "«Crear imagen a partir de texto»"
+      ],
+      [
+       "Extraer importe, fecha y comercio de fotos de recibos para gastos",
+       "Extracción de información (OCR + campos)",
+       "«Formularios», «recibos», «facturas», «campos»"
+      ],
+      [
+       "Sacar puntos clave y tareas pendientes de grabaciones de reuniones",
+       "Extracción de información (audio/vídeo)",
+       "«Insights de grabaciones»"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En Azure estas cargas se cubren con **Microsoft Foundry** (catálogo de modelos, agentes) y **Foundry Tools**: Azure Language, Azure Speech, Azure Vision y Azure Content Understanding «in Foundry Tools». Cuando el caso está bien definido (p. ej. detectar PII, transcribir), una Foundry Tool con modelos precompilados da resultados más predecibles que un modelo generativo genérico."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Un **agente** tiene tres elementos según Microsoft Learn: un **modelo de lenguaje** (el «cerebro»), **instrucciones** (system prompt, su «descripción del puesto») y **herramientas** (de **conocimiento**, como búsqueda o bases de datos, y de **acción**, como enviar correos o actualizar calendarios). Si el escenario implica **ejecutar acciones**, no solo generar texto, es IA **agéntica**."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Inteligencia artificial",
+       "en": "Artificial intelligence (AI)",
+       "def": "Software que imita capacidades humanas como entender lenguaje, ver, oír, razonar o actuar."
+      },
+      {
+       "term": "IA estrecha",
+       "en": "Narrow AI",
+       "def": "IA diseñada para tareas acotadas. Es toda la IA actual, incluidos los LLM."
+      },
+      {
+       "term": "IA general",
+       "en": "Artificial general intelligence (AGI)",
+       "def": "IA hipotética capaz de aprender cualquier tarea intelectual humana. No existe hoy."
+      },
+      {
+       "term": "Feature / Label",
+       "en": "Feature / Label",
+       "def": "Atributos de entrada (x) / valor que se quiere predecir (y)."
+      },
+      {
+       "term": "Inferencia",
+       "en": "Inferencing",
+       "def": "Usar un modelo entrenado para obtener predicciones o generar contenido."
+      },
+      {
+       "term": "Modelo fundacional",
+       "en": "Foundation model",
+       "def": "Modelo grande pre-entrenado con datos generales que sirve de base y puede personalizarse."
+      },
+      {
+       "term": "LLM / SLM",
+       "en": "Large / Small language model",
+       "def": "Modelos de lenguaje grandes (potentes, costosos) o pequeños (rápidos, baratos, desplegables en local)."
+      },
+      {
+       "term": "Token",
+       "en": "Token",
+       "def": "Unidad mínima de texto que procesa un modelo: palabra, subpalabra, puntuación o secuencia de caracteres."
+      },
+      {
+       "term": "Embedding",
+       "en": "Embedding",
+       "def": "Vector numérico que representa el significado semántico de un texto; textos parecidos producen vectores cercanos."
+      },
+      {
+       "term": "Similitud coseno",
+       "en": "Cosine similarity",
+       "def": "Medida del ángulo entre dos vectores; cuanto más cerca de 1, más similares semánticamente."
+      },
+      {
+       "term": "Transformer",
+       "en": "Transformer",
+       "def": "Arquitectura de red neuronal basada en atención sobre la que se construyen los LLM."
+      },
+      {
+       "term": "Atención",
+       "en": "Attention",
+       "def": "Mecanismo que pondera cuánto influye cada token en el significado de otro."
+      },
+      {
+       "term": "Ventana de contexto",
+       "en": "Context window",
+       "def": "Máximo de tokens (entrada + salida) que el modelo maneja en una petición."
+      },
+      {
+       "term": "Temperatura",
+       "en": "Temperature",
+       "def": "Parámetro (0 a 2) que controla la aleatoriedad de la salida: baja = determinista, alta = creativa."
+      },
+      {
+       "term": "Alucinación",
+       "en": "Hallucination",
+       "def": "Respuesta segura pero falsa o no respaldada por fuentes."
+      },
+      {
+       "term": "Grounding / RAG",
+       "en": "Grounding / Retrieval-augmented generation",
+       "def": "Anclar la respuesta en datos fiables recuperados y añadidos al prompt en tiempo de ejecución."
+      },
+      {
+       "term": "Fine-tuning",
+       "en": "Fine-tuning",
+       "def": "Entrenamiento adicional de un modelo pre-entrenado con datos específicos; modifica sus pesos."
+      },
+      {
+       "term": "RLHF",
+       "en": "Reinforcement learning from human feedback",
+       "def": "Alineación del modelo con preferencias humanas mediante un reward model y aprendizaje por refuerzo."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "Una **alucinación** es contenido falso dicho con seguridad: el modelo genera lo más **probable**, no lo **verificado**. Ni el fine-tuning ni `temperature` 0 la eliminan.",
+    "**RAG** recupera fragmentos de tus fuentes y los añade al prompt: aporta datos privados o actualizados **sin cambiar los pesos** ni reentrenar.",
+    "**Fine-tuning** sí modifica los pesos: úsalo para estilo, tono o formato muy consistentes, no para hechos que cambian a menudo.",
+    "Un **agente** = **modelo** + **instrucciones** + **herramientas** (de conocimiento y de acción). Si el escenario exige **ejecutar acciones**, es IA agéntica.",
+    "Pistas: «transcribir» → **speech to text**; «ocultar datos personales» → detección de **PII** (análisis de texto); «recibos, facturas, campos» → **extracción de información**."
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "¿Qué diferencia hay entre IA estrecha e IA general?",
+   "back": "La estrecha resuelve tareas acotadas (toda la IA actual, incluidos los LLM). La general (AGI) sería capaz de cualquier tarea intelectual humana y hoy no existe."
+  },
+  {
+   "front": "Programación tradicional vs machine learning",
+   "back": "Tradicional: una persona escribe reglas. ML: el algoritmo aprende la función a partir de datos (y labels, si es supervisado)."
+  },
+  {
+   "front": "Feature vs label",
+   "back": "Feature (x): atributo de entrada. Label (y): valor que se quiere predecir."
+  },
+  {
+   "front": "¿Qué es la inferencia?",
+   "back": "Usar un modelo ya entrenado para predecir o generar sobre datos nuevos. La predicción se escribe ŷ."
+  },
+  {
+   "front": "Regresión",
+   "back": "Supervisado. Predice un valor numérico (precio, ventas, consumo)."
+  },
+  {
+   "front": "Clasificación binaria vs multiclase",
+   "back": "Binaria: una de dos clases (sí/no). Multiclase: una de varias clases excluyentes (especie de pingüino)."
+  },
+  {
+   "front": "Clustering",
+   "back": "No supervisado. Agrupa observaciones similares sin etiquetas previas (segmentación de clientes)."
+  },
+  {
+   "front": "Aprendizaje por refuerzo",
+   "back": "Un agente actúa en un entorno y aprende por prueba y error maximizando recompensas."
+  },
+  {
+   "front": "Fases del ciclo de vida de ML",
+   "back": "Ingesta, preparación, entrenamiento, evaluación, despliegue y gestión/monitorización (iterativo)."
+  },
+  {
+   "front": "¿Qué aprende una red neuronal durante el entrenamiento?",
+   "back": "Los pesos (weights), ajustados con descenso de gradiente y backpropagation para minimizar la pérdida."
+  },
+  {
+   "front": "LLM vs SLM",
+   "back": "Difieren en volumen de datos y número de parámetros. LLM: potente y generalista pero costoso. SLM: rápido, barato, apto para dispositivos y dominios concretos."
+  },
+  {
+   "front": "¿Qué es un token?",
+   "back": "La unidad mínima que procesa un LLM: palabra, subpalabra, puntuación o secuencia de caracteres. Precio, cuota (TPM) y contexto se miden en tokens."
+  },
+  {
+   "front": "¿Qué es un embedding?",
+   "back": "Un vector de números que representa el significado semántico. Textos parecidos → vectores cercanos (similitud coseno)."
+  },
+  {
+   "front": "Encoder vs decoder en el Transformer (versión Microsoft Learn)",
+   "back": "Encoder: crea embeddings contextuales con atención. Decoder: predice el siguiente token con atención enmascarada."
+  },
+  {
+   "front": "¿Para qué sirve la multi-head attention?",
+   "back": "Varias cabezas de atención en paralelo captan distintos tipos de relación entre tokens y se combinan."
+  },
+  {
+   "front": "¿Por qué el pre-entrenamiento de un LLM es auto-supervisado?",
+   "back": "Porque la etiqueta sale del propio texto: el siguiente token. No requiere etiquetado manual."
+  },
+  {
+   "front": "SFT vs RLHF",
+   "back": "SFT: enseña a seguir instrucciones con pares prompt/respuesta ideal. RLHF: alinea con preferencias humanas usando un reward model y refuerzo."
+  },
+  {
+   "front": "Efecto de bajar la temperatura",
+   "back": "Salidas más enfocadas, deterministas y repetibles. Útil en tareas factuales, legales o de extracción."
+  },
+  {
+   "front": "¿Temperature y top_p a la vez?",
+   "back": "Microsoft recomienda ajustar uno de los dos, no ambos. Los modelos de razonamiento (GPT-5, o-series) no admiten ninguno."
+  },
+  {
+   "front": "¿Qué es la ventana de contexto?",
+   "back": "El máximo de tokens que el modelo maneja en una petición, normalmente entrada + salida combinadas."
+  },
+  {
+   "front": "¿Qué es una alucinación?",
+   "back": "Una respuesta segura pero falsa o no respaldada, porque el modelo genera lo probable, no lo verificado."
+  },
+  {
+   "front": "RAG vs fine-tuning",
+   "back": "RAG aporta conocimiento en tiempo de ejecución sin cambiar pesos (datos actualizados/privados). Fine-tuning cambia pesos (estilo, formato, tarea especializada)."
+  },
+  {
+   "front": "Tres elementos de un agente",
+   "back": "Modelo de lenguaje (cerebro), instrucciones (system prompt) y herramientas (de conocimiento y de acción)."
+  },
+  {
+   "front": "Extraer campos de recibos escaneados: ¿qué carga de trabajo?",
+   "back": "Extracción de información (OCR + interpretación de campos), p. ej. con Azure Content Understanding."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s01-lab1",
+   "title": "Tokens y temperatura: del tokenizador local al playground de Foundry",
+   "goal": "Ver con tus propios ojos cómo se tokeniza un texto (y por qué el español gasta más tokens) y comprobar en el playground de Microsoft Foundry cómo la temperatura cambia la variabilidad de las respuestas.",
+   "minutes": 40,
+   "cost": "Parte A gratis (local). Parte B: céntimos por las llamadas al modelo; requiere suscripción de Azure.",
+   "prereqs": [
+    "Python 3.10+ con pip",
+    "Suscripción de Azure con permiso para crear recursos de Foundry (solo parte B)",
+    "Navegador con acceso a https://ai.azure.com"
+   ],
+   "steps": [
+    {
+     "title": "A1. Instala el tokenizador de OpenAI",
+     "detail": "`tiktoken` es la librería de tokenización BPE que usan los modelos GPT. `o200k_base` es la codificación de los modelos GPT-4o/GPT-4.1. Se ejecuta en local, sin Azure.",
+     "code": "python -m venv .venv\nsource .venv/bin/activate   # en Windows: .venv\\Scripts\\activate\npip install tiktoken",
+     "lang": "bash"
+    },
+    {
+     "title": "A2. Tokeniza frases en inglés y español",
+     "detail": "Guarda el script como `tokens.py` y ejecútalo. Observa: los IDs son enteros; las palabras comunes suelen ser un solo token; las raras se trocean en subpalabras; los espacios delante de una palabra suelen ir pegados al token.",
+     "code": "import tiktoken\n\nenc = tiktoken.get_encoding(\"o200k_base\")\n\nfrases = [\n    \"I heard a dog bark loudly at a cat\",\n    \"Escuché a un perro ladrar fuerte a un gato\",\n    \"unfriendliness\",\n    \"desafortunadamente, la electroencefalografía salió bien\",\n    \"26/09/2026 vs 26 de septiembre de 2026\",\n    \"def suma(a, b): return a + b\",\n]\n\nfor f in frases:\n    ids = enc.encode(f)\n    piezas = [enc.decode([i]) for i in ids]\n    print(f\"{len(ids):>3} tokens | {len(f):>3} chars | {f}\")\n    print(\"     \", piezas)\n    print(\"     \", ids)\n",
+     "lang": "python"
+    },
+    {
+     "title": "A3. Calcula la relación caracteres/token",
+     "detail": "Añade al final del script un cálculo de `len(texto)/len(ids)` para un párrafo largo en inglés y el mismo párrafo traducido al español. Anota cuál necesita más tokens: eso es lo que pagarías y lo que ocuparía en la ventana de contexto."
+    },
+    {
+     "title": "B1. Crea un proyecto en Microsoft Foundry",
+     "detail": "Entra en https://ai.azure.com, activa el conmutador **New Foundry** en la barra superior si aparece, y crea un proyecto nuevo. En **Advanced options** indica **Foundry resource**, **Subscription**, **Resource group** y una **Region** de la lista recomendada. Espera a que termine (varios minutos)."
+    },
+    {
+     "title": "B2. Despliega un modelo NO de razonamiento",
+     "detail": "Ve a **Discover** > pestaña **Models**, busca `gpt-4.1-mini` (o `gpt-4.1`) y pulsa **Deploy** con la configuración por defecto. Importante: los modelos de razonamiento como `gpt-5-mini` **no admiten temperatura**, así que para este experimento usa un modelo GPT-4.1. Al terminar se abre el playground del modelo."
+    },
+    {
+     "title": "B3. Fija las instrucciones",
+     "detail": "En el panel de **Instructions** escribe: `Eres un redactor publicitario. Responde solo con el eslogan, sin explicaciones.`"
+    },
+    {
+     "title": "B4. Prueba con temperatura baja",
+     "detail": "En los parámetros del modelo pon **Temperature** a 0 (o el mínimo permitido) y deja **Top P** en su valor por defecto. Envía 3 veces el mismo prompt, pulsando **New chat** entre cada envío para limpiar el historial: `Crea un eslogan para una cafetería de barrio en Sevilla.` Anota las tres respuestas."
+    },
+    {
+     "title": "B5. Prueba con temperatura alta",
+     "detail": "Sube **Temperature** a 1.5 y repite exactamente lo mismo (3 envíos con **New chat** entre ellos). Compara: con temperatura alta las respuestas deben ser más variadas y, a veces, menos coherentes."
+    },
+    {
+     "title": "B6. Provoca un corte por longitud",
+     "detail": "Baja el límite de tokens de salida (**Max output tokens** / **Max response**) a 20 y pide: `Explica en detalle qué es un Transformer.` Observa que la respuesta se corta. Esto es lo que el examen describe como «respuesta truncada → aumentar max tokens»."
+    },
+    {
+     "title": "B7. Mira el código equivalente",
+     "detail": "Abre la opción de ver código del playground (**View code** o similar). Verás que el playground llama a la **Responses API** con los mismos parámetros. Este es el puente entre el portal y tu aplicación.",
+     "code": "response = client.responses.create(\n    model=\"<tu-deployment>\",\n    input=[\n        {\"role\": \"system\", \"content\": \"Eres un redactor publicitario. Responde solo con el eslogan.\"},\n        {\"role\": \"user\", \"content\": \"Crea un eslogan para una cafetería de barrio en Sevilla.\"},\n    ],\n    temperature=1.5,\n    max_output_tokens=50,\n)\nprint(response.output_text)",
+     "lang": "python"
+    }
+   ],
+   "verify": [
+    "En la parte A ves que una misma frase en español ocupa más tokens que en inglés y que palabras largas se dividen en subpalabras.",
+    "Con temperatura 0 las tres respuestas son idénticas o casi idénticas; con 1.5 son claramente distintas.",
+    "Con Max output tokens = 20 la respuesta aparece cortada."
+   ],
+   "cleanup": "En el portal de Azure elimina el grupo de recursos que creaste para el proyecto (Resource groups > tu grupo > Delete resource group). Así se borran el recurso de Foundry, el proyecto y el despliegue. Para la parte A, basta con borrar la carpeta y el entorno virtual.",
+   "challenge": "Repite B4 y B5 cambiando solo **Top P** (0.1 frente a 1) con temperatura por defecto. ¿Ves un efecto parecido? ¿Por qué Microsoft recomienda no tocar ambos parámetros a la vez?"
+  },
+  {
+   "id": "s01-lab2",
+   "title": "Similitud semántica con embeddings en Python (mini búsqueda estilo RAG)",
+   "goal": "Desplegar un modelo de embeddings en Foundry, generar vectores para varias frases y calcular su similitud coseno para comprobar que el significado, no las palabras, determina la cercanía. Terminarás con el paso de recuperación de un RAG.",
+   "minutes": 35,
+   "cost": "Céntimos (los embeddings son muy baratos); requiere suscripción de Azure.",
+   "prereqs": [
+    "Suscripción de Azure",
+    "Un proyecto de Microsoft Foundry (puedes reutilizar el del lab 1)",
+    "Python 3.10+"
+   ],
+   "steps": [
+    {
+     "title": "1. Despliega el modelo de embeddings",
+     "detail": "En el portal de Foundry, **Discover** > **Models**, busca `text-embedding-3-small` y pulsa **Deploy**. Anota el **nombre del despliegue** (deployment name)."
+    },
+    {
+     "title": "2. Consigue endpoint y clave",
+     "detail": "En la página de detalles del despliegue (o en la página de inicio del proyecto) copia el **endpoint** del recurso y una **key**. Guárdalos como variables de entorno; nunca los escribas en el código.",
+     "code": "export AZURE_OPENAI_ENDPOINT=\"https://<tu-recurso>.openai.azure.com\"\nexport AZURE_OPENAI_API_KEY=\"<tu-clave>\"\nexport EMBEDDING_DEPLOYMENT=\"text-embedding-3-small\"",
+     "lang": "bash"
+    },
+    {
+     "title": "3. Instala dependencias",
+     "detail": "Usarás el SDK de OpenAI (compatible con los endpoints de Foundry) y numpy para el cálculo.",
+     "code": "pip install openai numpy",
+     "lang": "bash"
+    },
+    {
+     "title": "4. Genera embeddings y calcula similitud",
+     "detail": "Guarda como `similitud.py` y ejecútalo. El script pide los vectores de todas las frases en una sola llamada y compara cada par con similitud coseno.",
+     "code": "import os\nimport numpy as np\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=f\"{os.environ['AZURE_OPENAI_ENDPOINT']}/openai/v1/\",\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n)\n\nfrases = [\n    \"Mi perro no para de ladrar por las noches\",\n    \"El cachorro del vecino hace mucho ruido de madrugada\",\n    \"¿Cuánto puedo reclamar por un taxi en viajes de trabajo?\",\n    \"Límite de reembolso para transporte en desplazamientos de empresa\",\n    \"Receta de tortilla de patatas\",\n]\n\nresp = client.embeddings.create(model=os.environ[\"EMBEDDING_DEPLOYMENT\"], input=frases)\nvecs = np.array([d.embedding for d in resp.data])\nprint(\"Dimensiones de cada vector:\", vecs.shape[1])\n\ndef coseno(a, b):\n    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))\n\nfor i in range(len(frases)):\n    for j in range(i + 1, len(frases)):\n        print(f\"{coseno(vecs[i], vecs[j]):.3f}  |  {frases[i][:40]}  <->  {frases[j][:40]}\")\n",
+     "lang": "python"
+    },
+    {
+     "title": "5. Interpreta los resultados",
+     "detail": "Fíjate en que la pareja perro/cachorro y la pareja taxi/reembolso obtienen las puntuaciones más altas aunque apenas compartan palabras, y la receta queda lejos de todo. Eso es **similitud semántica**."
+    },
+    {
+     "title": "6. Convierte el script en un recuperador (la R de RAG)",
+     "detail": "Añade una pregunta de usuario, calcula su embedding y devuelve la frase más parecida. En un RAG real, ese fragmento recuperado se añadiría al prompt de un modelo de chat para generar una respuesta anclada.",
+     "code": "pregunta = \"¿Me pagan el Uber si voy a ver a un cliente?\"\nq = np.array(client.embeddings.create(model=os.environ[\"EMBEDDING_DEPLOYMENT\"], input=[pregunta]).data[0].embedding)\npuntuaciones = [coseno(q, v) for v in vecs]\nmejor = int(np.argmax(puntuaciones))\nprint(\"Fragmento recuperado:\", frases[mejor], f\"({puntuaciones[mejor]:.3f})\")",
+     "lang": "python"
+    }
+   ],
+   "verify": [
+    "El script imprime la dimensión de los vectores (por defecto 1536 para text-embedding-3-small).",
+    "Las parejas con significado parecido tienen mayor similitud coseno que las no relacionadas.",
+    "La pregunta sobre Uber recupera la frase del taxi o la del reembolso de transporte, aunque no contenga la palabra «taxi»."
+   ],
+   "cleanup": "Elimina el despliegue de embeddings en Foundry o, si no vas a seguir usándolo, borra el grupo de recursos completo desde el portal de Azure. Borra las variables de entorno con la clave.",
+   "challenge": "Pasa el parámetro `dimensions=256` a `client.embeddings.create` y compara los resultados: ¿se mantiene el orden de similitud? Después añade un modelo de chat que reciba el fragmento recuperado en el system prompt y genere la respuesta final con cita."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s01-q1",
+   "type": "single",
+   "q": "Una cadena de heladerías quiere predecir cuántos helados venderá cada tienda al día siguiente usando la temperatura prevista, la probabilidad de lluvia y el día de la semana. ¿Qué tipo de machine learning debe usar?",
+   "options": [
+    "Clasificación binaria",
+    "Regresión",
+    "Clustering",
+    "Clasificación multiclase"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El label a predecir es un **número** (unidades vendidas), así que es **regresión**, supervisado. La clasificación binaria predice una de dos clases, la multiclase una de varias categorías, y el clustering agrupa datos sin etiquetas: ninguna produce una cantidad numérica."
+  },
+  {
+   "id": "s01-q2",
+   "type": "single",
+   "q": "Un banco tiene el historial de préstamos de 10 años, con un campo que indica si cada cliente impagó o no. Quiere predecir si un nuevo solicitante impagará. ¿Qué técnica es la adecuada?",
+   "options": [
+    "Regresión",
+    "Clustering",
+    "Clasificación binaria",
+    "Aprendizaje por refuerzo"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Hay labels conocidos con **dos** resultados posibles (impaga / no impaga): **clasificación binaria**. La regresión predice valores numéricos; el clustering no usa labels; el aprendizaje por refuerzo aprende mediante recompensas en un entorno, no a partir de un histórico etiquetado."
+  },
+  {
+   "id": "s01-q3",
+   "type": "single",
+   "q": "Un equipo de marketing quiere descubrir qué grupos naturales de clientes existen según su comportamiento de compra. No tienen ninguna categoría definida de antemano. ¿Qué técnica deben usar?",
+   "options": [
+    "Clasificación multiclase",
+    "Clustering",
+    "Regresión",
+    "Supervised fine-tuning"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin categorías previas (sin labels) y con el objetivo de agrupar por similitud → **clustering**, aprendizaje no supervisado. La clasificación multiclase requiere clases ya conocidas y etiquetadas; la regresión predice números; el fine-tuning es una técnica para adaptar modelos pre-entrenados, no para segmentar datos."
+  },
+  {
+   "id": "s01-q4",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre machine learning, indica Sí o No.",
+   "statements": [
+    {
+     "text": "En un modelo que predice el precio de una vivienda, los metros cuadrados son un feature.",
+     "answer": true
+    },
+    {
+     "text": "En aprendizaje no supervisado, los datos de entrenamiento incluyen labels conocidos.",
+     "answer": false
+    },
+    {
+     "text": "La inferencia es el proceso de usar un modelo entrenado para predecir valores nuevos.",
+     "answer": true
+    },
+    {
+     "text": "Para evaluar un modelo de forma fiable se usan los mismos datos con los que se entrenó.",
+     "answer": false
+    }
+   ],
+   "explain": "Los metros cuadrados son un atributo de entrada (**feature**); el precio sería el label. El aprendizaje **no** supervisado se caracteriza precisamente por **no** tener labels. **Inferencia** = usar el modelo entrenado para predecir. Evaluar con los datos de entrenamiento da resultados falsamente optimistas; se evalúa con datos de **validación** que el modelo no ha visto."
+  },
+  {
+   "id": "s01-q5",
+   "type": "single",
+   "q": "Un robot de almacén aprende a colocar cajas probando distintos movimientos: recibe puntos positivos cuando la caja queda bien colocada y negativos cuando se cae. ¿Qué tipo de aprendizaje describe?",
+   "options": [
+    "Aprendizaje supervisado",
+    "Aprendizaje no supervisado",
+    "Aprendizaje por refuerzo",
+    "Aprendizaje auto-supervisado"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un agente que actúa en un entorno y aprende por **prueba y error** a partir de **recompensas** es **aprendizaje por refuerzo**. El supervisado necesita ejemplos etiquetados; el no supervisado busca estructura en datos sin etiquetas; el auto-supervisado (como el pre-entrenamiento de un LLM) obtiene la etiqueta del propio dato, sin recompensas."
+  },
+  {
+   "id": "s01-q6",
+   "type": "single",
+   "q": "¿Cuál de estos escenarios es más adecuado resolver con programación tradicional (reglas) que con machine learning?",
+   "options": [
+    "Detectar el sentimiento de comentarios en redes sociales",
+    "Calcular el importe de una factura aplicando un tipo de IVA fijo",
+    "Predecir la demanda de energía de la próxima semana",
+    "Identificar la especie de un pájaro en una foto"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Calcular un impuesto fijo es lógica **exacta y conocida**: basta con una regla y el resultado es 100 % predecible. Sentimiento, demanda energética y reconocimiento de especies dependen de patrones estadísticos complejos que es inviable codificar a mano, por lo que encajan con ML."
+  },
+  {
+   "id": "s01-q7",
+   "type": "single",
+   "q": "Durante el entrenamiento de una red neuronal, ¿qué es lo que realmente se ajusta en cada iteración para reducir la pérdida?",
+   "options": [
+    "El número de capas de la red",
+    "Los pesos (weights) de las conexiones entre neuronas",
+    "Los labels del conjunto de entrenamiento",
+    "La función de activación de la capa de salida"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El entrenamiento calcula la pérdida y, mediante **descenso de gradiente** y **backpropagation**, ajusta los **pesos**. El número de capas y la función de activación son decisiones de diseño (hiperparámetros/arquitectura) que no cambian en cada iteración. Los labels son los datos reales: modificarlos sería falsear el entrenamiento."
+  },
+  {
+   "id": "s01-q8",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones describen correctamente la diferencia entre un LLM y un SLM? (Selecciona DOS.)",
+   "options": [
+    "Un SLM es más adecuado para ejecutarse en dispositivos o aplicaciones locales",
+    "Un SLM no usa tokens",
+    "La diferencia se basa en el volumen de datos de entrenamiento y el número de parámetros",
+    "Un LLM siempre es más barato de usar que un SLM",
+    "Un SLM solo puede generar imágenes"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Microsoft Learn indica que la diferencia es el **volumen de datos y el número de variables (parámetros)**, y que los SLM encajan en dominios concretos y en **despliegues locales o en dispositivos**. Los SLM también trabajan con tokens; los LLM suelen ser **más** caros, no menos; y un SLM es un modelo de lenguaje, no de imágenes."
+  },
+  {
+   "id": "s01-q9",
+   "type": "single",
+   "q": "Una empresa necesita un asistente que funcione en tablets de técnicos de campo sin conexión a internet, para consultar procedimientos de un único tipo de maquinaria. ¿Qué tipo de modelo es la mejor opción inicial?",
+   "options": [
+    "Un LLM de frontera desplegado en la nube",
+    "Un small language model (SLM) desplegado en el dispositivo",
+    "Un modelo de difusión",
+    "Un modelo de embeddings sin modelo de chat"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin conexión y con un dominio acotado → **SLM** en el dispositivo: pequeño, rápido y ejecutable en local. Un LLM en la nube no funciona sin conexión; un modelo de difusión genera imágenes; un modelo de embeddings produce vectores, no respuestas en lenguaje natural."
+  },
+  {
+   "id": "s01-q10",
+   "type": "single",
+   "q": "¿Qué es un token en el contexto de un modelo de lenguaje?",
+   "options": [
+    "Una clave de API para autenticarse en Foundry",
+    "La unidad mínima de texto que procesa el modelo, que puede ser una palabra, parte de una palabra o un signo de puntuación",
+    "Siempre una palabra completa",
+    "Un vector de números que representa el significado de un documento"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un **token** es la unidad mínima que procesa el modelo: palabras, **subpalabras**, puntuación o secuencias de caracteres. No es siempre una palabra completa (las palabras raras se trocean). El vector que representa el significado es un **embedding**. Las claves de API a veces se llaman «tokens de acceso», pero no es el significado en IA generativa."
+  },
+  {
+   "id": "s01-q11",
+   "type": "single",
+   "q": "Una aplicación de soporte debe encontrar artículos de la base de conocimiento cuyo significado sea parecido a la pregunta del cliente, aunque no compartan las mismas palabras. ¿Qué necesita?",
+   "options": [
+    "Un modelo de embeddings y comparar vectores con similitud coseno",
+    "Una búsqueda por palabras clave exactas",
+    "Subir la temperatura del modelo de chat",
+    "Un modelo de generación de imágenes"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La búsqueda por **significado** se hace con **embeddings** y una medida como la **similitud coseno** (búsqueda vectorial). Las palabras clave exactas fallan cuando se usan sinónimos; la temperatura solo cambia la aleatoriedad de la generación; un modelo de imágenes no aplica."
+  },
+  {
+   "id": "s01-q12",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre embeddings, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Textos con significado similar producen vectores que apuntan en direcciones parecidas.",
+     "answer": true
+    },
+    {
+     "text": "Un modelo de embeddings genera la respuesta en lenguaje natural para el usuario.",
+     "answer": false
+    },
+    {
+     "text": "Los embeddings son la base de la búsqueda vectorial que usan muchas soluciones RAG.",
+     "answer": true
+    },
+    {
+     "text": "Se pueden comparar vectores generados por dos modelos de embeddings distintos sin problema.",
+     "answer": false
+    }
+   ],
+   "explain": "Los embeddings codifican significado: textos parecidos → vectores cercanos. Un modelo de embeddings devuelve **vectores**, no texto: la respuesta la genera un modelo de chat. Son la base de la búsqueda vectorial en RAG. Vectores de modelos distintos viven en espacios distintos y no son comparables."
+  },
+  {
+   "id": "s01-q13",
+   "type": "single",
+   "q": "Según Microsoft Learn, en la arquitectura Transformer simplificada, ¿qué hace el bloque encoder?",
+   "options": [
+    "Elige aleatoriamente el siguiente token",
+    "Crea embeddings contextuales aplicando atención para ver cómo influyen los tokens de alrededor",
+    "Convierte texto en voz",
+    "Divide el texto en tokens y asigna IDs"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El **encoder** crea embeddings aplicando **atención** (cada token se pondera según los tokens que lo rodean) y una red feed-forward. Predecir el siguiente token es tarea del **decoder**; dividir el texto en tokens lo hace el **tokenizador** antes de entrar al modelo; convertir texto en voz es síntesis de voz, otra carga de trabajo."
+  },
+  {
+   "id": "s01-q14",
+   "type": "single",
+   "q": "¿Qué problema resolvió el mecanismo de atención frente a las redes neuronales recurrentes (RNN)?",
+   "options": [
+    "Permitió que cada token se relacione directamente con cualquier otro token relevante y que la secuencia se procese en paralelo",
+    "Eliminó la necesidad de datos de entrenamiento",
+    "Hizo que los modelos no necesitaran tokenización",
+    "Garantizó que los modelos nunca alucinen"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Las RNN procesan token a token y pierden información lejana. La **atención** conecta directamente tokens relacionados aunque estén lejos y permite **paralelizar**, lo que hizo posible entrenar LLM a gran escala. No elimina los datos de entrenamiento, ni la tokenización, ni las alucinaciones."
+  },
+  {
+   "id": "s01-q15",
+   "type": "single",
+   "q": "¿Por qué se dice que el pre-entrenamiento de un LLM es auto-supervisado?",
+   "options": [
+    "Porque un equipo humano etiqueta cada frase",
+    "Porque el modelo aprende de recompensas dadas por un entorno",
+    "Porque la etiqueta se obtiene del propio texto: el modelo predice el siguiente token y lo compara con el real",
+    "Porque no usa redes neuronales"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En el pre-entrenamiento el modelo ve «La capital de Francia es» y debe predecir «París», que ya está en el texto: la **etiqueta sale de los propios datos**, sin etiquetado manual. El etiquetado humano sería supervisado; las recompensas son aprendizaje por refuerzo; y los LLM sí son redes neuronales (Transformer)."
+  },
+  {
+   "id": "s01-q16",
+   "type": "single",
+   "q": "Tras el pre-entrenamiento, un modelo base continúa textos muy bien pero no responde de forma fiable a instrucciones como «resume este correo en tres puntos». ¿Qué etapa de entrenamiento enseña ese comportamiento con ejemplos de prompt y respuesta ideal?",
+   "options": [
+    "RLHF",
+    "Supervised fine-tuning (SFT)",
+    "Clustering",
+    "Tokenización"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El **SFT** entrena con pares **prompt + respuesta ideal** para que el modelo aprenda a seguir instrucciones y responder preguntas. RLHF viene después y alinea con preferencias humanas mediante rankings y un reward model; clustering es una técnica no supervisada; la tokenización es un preprocesado, no una etapa de aprendizaje de comportamiento."
+  },
+  {
+   "id": "s01-q17",
+   "type": "multi",
+   "q": "¿Qué DOS elementos forman parte del proceso de RLHF? (Selecciona DOS.)",
+   "options": [
+    "Personas que ordenan varias respuestas a un mismo prompt según su preferencia",
+    "Un reward model que aprende a puntuar las respuestas",
+    "Un índice vectorial con documentos de la empresa",
+    "Reducir la temperatura a 0",
+    "Etiquetado de píxeles en imágenes"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "RLHF: (1) humanos **ordenan respuestas** y con esas preferencias se entrena un **reward model**; (2) el LLM se ajusta con refuerzo para maximizar la recompensa. El índice vectorial pertenece a RAG; la temperatura es un parámetro de inferencia; el etiquetado de píxeles es propio de la segmentación en visión."
+  },
+  {
+   "id": "s01-q18",
+   "type": "single",
+   "q": "Un bufete usa un modelo para redactar cláusulas contractuales y necesita que las respuestas sean lo más consistentes y predecibles posible entre ejecuciones. ¿Qué ajuste es el más adecuado en un modelo que admite este parámetro?",
+   "options": [
+    "Temperatura alta (p. ej. 1.5)",
+    "Temperatura baja (p. ej. 0.2)",
+    "Aumentar la ventana de contexto",
+    "Subir temperatura y top_p al máximo a la vez"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una **temperatura baja** hace la salida más enfocada y determinista; Microsoft la recomienda para documentos legales. La alta aumenta la variedad (útil en creatividad). La ventana de contexto no controla la aleatoriedad y es una característica del modelo. Además, Microsoft recomienda ajustar temperatura **o** top_p, no ambos."
+  },
+  {
+   "id": "s01-q19",
+   "type": "single",
+   "q": "Un desarrollador observa que las respuestas del modelo salen cortadas a mitad de frase. ¿Qué parámetro debe revisar primero?",
+   "options": [
+    "Temperature",
+    "Max output tokens",
+    "Top_p",
+    "El número de cabezas de atención"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una respuesta truncada indica que se alcanzó el **límite de tokens de salida**: hay que aumentar `max_output_tokens`. Temperatura y top_p controlan la aleatoriedad, no la longitud. El número de cabezas de atención es interno de la arquitectura del modelo y no se configura al usarlo."
+  },
+  {
+   "id": "s01-q20",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre la inferencia en LLM, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El modelo genera la respuesta de token en token, añadiendo cada token predicho a la secuencia de entrada.",
+     "answer": true
+    },
+    {
+     "text": "La ventana de contexto suele incluir tanto los tokens de entrada como los de salida.",
+     "answer": true
+    },
+    {
+     "text": "El modelo recuerda automáticamente las conversaciones anteriores aunque la aplicación no le reenvíe el historial.",
+     "answer": false
+    },
+    {
+     "text": "Los modelos de razonamiento de la serie GPT-5 permiten ajustar la temperatura igual que GPT-4.1.",
+     "answer": false
+    }
+   ],
+   "explain": "La generación es **autorregresiva**: cada token predicho se añade y se predice el siguiente. La ventana de contexto normalmente combina entrada y salida. El modelo **no tiene memoria** entre peticiones: la aplicación reenvía el historial. Los modelos de razonamiento (GPT-5, o-series) **no admiten** temperature ni top_p."
+  },
+  {
+   "id": "s01-q21",
+   "type": "single",
+   "q": "Un agente de RR. HH. responde con seguridad que la empresa ofrece 30 días de vacaciones, pero la política interna dice 23. El modelo nunca tuvo acceso a esa política. ¿Qué técnica resuelve mejor el problema de forma sostenible, sabiendo que la política cambia cada año?",
+   "options": [
+    "Fine-tuning anual del modelo con la política",
+    "RAG: recuperar la política vigente y añadirla al prompt en cada consulta",
+    "Bajar la temperatura a 0",
+    "Cambiar a un modelo con una ventana de contexto mayor sin aportarle la política"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El modelo **alucina** porque no conoce información privada. **RAG** aporta la política en tiempo de ejecución y basta con actualizar el índice cuando cambia, **sin reentrenar**. El fine-tuning cambia pesos, es caro y habría que repetirlo cada vez; bajar la temperatura no le da el dato que le falta; una ventana mayor no sirve si no se le pasa la política."
+  },
+  {
+   "id": "s01-q22",
+   "type": "multi",
+   "q": "Una empresa quiere que su modelo responda siempre con el tono de marca y en un formato JSON muy concreto, en millones de peticiones, y los prompts con decenas de ejemplos ya son demasiado largos y caros. ¿Qué DOS afirmaciones sobre el fine-tuning son correctas en este caso? (Selecciona DOS.)",
+   "options": [
+    "Modifica los pesos del modelo para ajustar estilo y formato",
+    "Permite usar prompts más cortos, reduciendo tokens por petición",
+    "Es la mejor forma de incorporar datos que cambian a diario",
+    "Elimina por completo las alucinaciones",
+    "No requiere datos de entrenamiento"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El fine-tuning **ajusta los pesos** con ejemplos de alta calidad y es ideal para **estilo, tono y formato**; al integrar los ejemplos en el modelo, los **prompts son más cortos** y baratos. No es adecuado para datos que cambian a diario (para eso RAG), no elimina las alucinaciones y sí requiere un conjunto de entrenamiento de calidad."
+  },
+  {
+   "id": "s01-q23",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre las limitaciones de la IA generativa, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Un LLM puede desconocer hechos posteriores a su fecha de corte de entrenamiento.",
+     "answer": true
+    },
+    {
+     "text": "RAG modifica los parámetros aprendidos del modelo.",
+     "answer": false
+    },
+    {
+     "text": "Pedir al modelo que cite sus fuentes ayuda a reducir las respuestas inventadas.",
+     "answer": true
+    },
+    {
+     "text": "Un modelo puede reproducir sesgos presentes en sus datos de entrenamiento.",
+     "answer": true
+    }
+   ],
+   "explain": "La **fecha de corte** limita lo que sabe el modelo. RAG **no** cambia los parámetros: añade contexto en tiempo de ejecución. Microsoft indica que pedir **citas** reduce la prevalencia de respuestas incorrectas porque el modelo tendría que fallar dos veces. Los **sesgos** de los datos pueden trasladarse al modelo."
+  },
+  {
+   "id": "s01-q24",
+   "type": "single",
+   "q": "Una aseguradora quiere que un sistema lea automáticamente los partes de accidente escaneados y extraiga la matrícula, la fecha y el importe de los daños en campos estructurados. ¿Qué carga de trabajo de IA es?",
+   "options": [
+    "IA generativa de imágenes",
+    "Extracción de información",
+    "Síntesis de voz",
+    "Clustering"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Extraer **campos** de documentos escaneados (OCR + interpretación de valores) es **extracción de información**, que en Azure cubre Azure Content Understanding. La generación de imágenes crea imágenes nuevas; la síntesis de voz convierte texto en audio; el clustering agrupa datos sin etiquetas."
+  },
+  {
+   "id": "s01-q25",
+   "type": "single",
+   "q": "Un asistente debe leer los correos entrantes, consultar el calendario del usuario y, si hay hueco, reservar una sala de reuniones y responder confirmando. ¿Qué describe mejor esta solución?",
+   "options": [
+    "Análisis de sentimiento",
+    "Un agente de IA con herramientas de conocimiento y de acción",
+    "Un modelo de regresión",
+    "Un modelo de embeddings"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Razona sobre lenguaje natural **y ejecuta acciones** (reservar, responder) usando herramientas: es un **agente** (IA agéntica), formado por modelo + instrucciones + herramientas. El sentimiento solo clasifica opiniones; la regresión predice números; un modelo de embeddings solo produce vectores."
+  },
+  {
+   "id": "s01-q26",
+   "type": "multi",
+   "q": "Relaciona escenarios con cargas de trabajo. ¿Qué DOS emparejamientos son correctos? (Selecciona DOS.)",
+   "options": [
+    "Transcribir las llamadas de un call center → Voz (speech to text)",
+    "Ocultar números de teléfono y direcciones en transcripciones → Visión por computador",
+    "Contar productos en una estantería a partir de una cámara → Visión por computador (detección de objetos)",
+    "Clasificar reseñas como positivas o negativas → Extracción de información de vídeo",
+    "Leer en voz alta un texto → Análisis de texto"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Transcribir audio es **reconocimiento de voz** (speech to text) y localizar y contar objetos en imágenes es **detección de objetos** (visión). Ocultar datos personales es **detección de PII** (análisis de texto); clasificar reseñas es **análisis de sentimiento** (análisis de texto); leer en voz alta es **síntesis de voz** (text to speech)."
+  },
+  {
+   "id": "s01-q27",
+   "type": "single",
+   "q": "¿Qué tipo de modelo genera imágenes partiendo de ruido aleatorio y eliminándolo paso a paso, guiado por la descripción del prompt?",
+   "options": [
+    "Un modelo de difusión",
+    "Un modelo de clustering",
+    "Un modelo de regresión",
+    "Un clasificador binario"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los **modelos de difusión** aprenden a eliminar ruido y, al generar, parten de ruido aleatorio que van refinando según el texto. Clustering, regresión y clasificación binaria son técnicas de ML predictivo que agrupan, predicen números o eligen entre dos clases; no generan imágenes."
+  },
+  {
+   "id": "s01-q28",
+   "type": "single",
+   "q": "En el catálogo de modelos de Foundry, ¿qué define a un modelo fundacional?",
+   "options": [
+    "Un modelo entrenado desde cero por cada cliente con sus propios datos",
+    "Un modelo grande pre-entrenado con datos generales que ofrece capacidades de lenguaje, razonamiento o multimodales de serie y puede desplegarse o personalizarse",
+    "Una regla escrita manualmente en el portal",
+    "Un modelo que solo sirve para clasificación de imágenes"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Microsoft Learn define los **foundation models** como modelos grandes **pre-entrenados** (GPT, Claude, Mistral...) con capacidades generales listas para usar, que pueden desplegarse directamente o personalizarse con fine-tuning. No se entrenan desde cero por cliente, no son reglas manuales y no se limitan a una tarea como clasificar imágenes."
+  },
+  {
+   "id": "s01-q29",
+   "type": "single",
+   "q": "Un modelo recibe la frase «El animal no cruzó la calle porque estaba cansado» y debe entender a qué se refiere «estaba cansado». ¿Qué mecanismo del Transformer le permite relacionar esa parte con «animal»?",
+   "options": [
+    "La codificación posicional",
+    "La atención (self-attention)",
+    "La función softmax de la capa de salida",
+    "La tokenización BPE"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La **atención** calcula cuánto influye cada token en otro y permite asignar más peso a «animal» que a «calle». La codificación posicional solo aporta el orden de los tokens; softmax convierte puntuaciones en probabilidades; la tokenización BPE divide el texto en tokens, pero no establece relaciones de significado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "Course AI-901T00-A: Introduction to AI in Azure",
+   "url": "https://learn.microsoft.com/en-us/training/courses/ai-901t00"
+  },
+  {
+   "title": "Learning path: Get started with AI applications and agents on Azure",
+   "url": "https://learn.microsoft.com/en-us/training/paths/get-started-ai-apps-agents/"
+  },
+  {
+   "title": "Learning path: AI concepts for developers and technology professionals",
+   "url": "https://learn.microsoft.com/en-us/training/paths/ai-concepts/"
+  },
+  {
+   "title": "Introduction to AI concepts - Generative AI and agents",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-ai-fundamentals/2-generative-ai"
+  },
+  {
+   "title": "Introduction to AI concepts - Text and natural language",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-ai-fundamentals/5-natural-language-processing"
+  },
+  {
+   "title": "Introduction to AI concepts - Speech",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-ai-fundamentals/4-speech"
+  },
+  {
+   "title": "Introduction to AI concepts - Computer vision",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-ai-fundamentals/3-computer-vision"
+  },
+  {
+   "title": "Introduction to AI concepts - Information extraction",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-ai-fundamentals/6-extract-insights"
+  },
+  {
+   "title": "Introduction to machine learning concepts - Machine learning models",
+   "url": "https://learn.microsoft.com/en-us/training/modules/fundamentals-machine-learning/2-what-is-machine-learning"
+  },
+  {
+   "title": "Introduction to machine learning concepts - Types of machine learning model",
+   "url": "https://learn.microsoft.com/en-us/training/modules/fundamentals-machine-learning/3-types-of-machine-learning"
+  },
+  {
+   "title": "Introduction to machine learning concepts - Deep learning",
+   "url": "https://learn.microsoft.com/en-us/training/modules/fundamentals-machine-learning/8-deep-learning"
+  },
+  {
+   "title": "Introduction to generative AI and agents - Large language models (LLMs)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/fundamentals-generative-ai/3-language-models"
+  },
+  {
+   "title": "Get started with generative AI and agents in Azure - Generative AI models",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-with-generative-ai-and-agents/2-generative-ai-models"
+  },
+  {
+   "title": "Get started with generative AI and agents in Azure - Using a generative AI model",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-with-generative-ai-and-agents/3-using-generative-ai-models"
+  },
+  {
+   "title": "Get started with computer vision in Azure - Image generation models",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-vision-azure/3-image-generation"
+  },
+  {
+   "title": "Introduction to retrieval-augmented generation concepts - Understand RAG",
+   "url": "https://learn.microsoft.com/en-us/training/modules/rag-fundamentals/2-understand-rag"
+  },
+  {
+   "title": "Understanding tokens (.NET AI docs)",
+   "url": "https://learn.microsoft.com/en-us/dotnet/ai/conceptual/understanding-tokens"
+  },
+  {
+   "title": "Azure OpenAI embeddings: cosine similarity",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry-classic/openai/concepts/understand-embeddings"
+  },
+  {
+   "title": "Prompt engineering techniques (temperature, top_p, grounding) - Microsoft Foundry",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/prompt-engineering"
+  },
+  {
+   "title": "Microsoft Foundry fine-tuning considerations (SFT, DPO, RFT)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/fine-tuning-considerations"
+  },
+  {
+   "title": "Azure OpenAI reasoning models (parámetros no soportados)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/reasoning"
+  },
+  {
+   "title": "Lab oficial: Get started with generative AI and agents in Microsoft Foundry",
+   "url": "https://microsoftlearning.github.io/mslearn-ai-fundamentals/Instructions/Exercises/02a-generative-ai.html"
+  },
+  {
+   "title": "Attention Is All You Need (artículo original del Transformer)",
+   "url": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+   "title": "AI-901 Study Guide and Exam Preparation (HiStack)",
+   "url": "https://www.histack.net/p/ai-901-study-guide-and-exam-preparation"
+  }
+ ]
+}

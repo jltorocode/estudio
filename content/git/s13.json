@@ -1,0 +1,2690 @@
+{
+ "id": "s13",
+ "order": 13,
+ "title": "Configuración, alias, atributos y hooks",
+ "domain": "experto",
+ "summary": "Cómo se organiza la configuración de Git en capas (system, global, local, worktree y command) y cómo diagnosticarla; identidad por carpeta con includeIf; las opciones que deja listas un profesional; alias simples y de shell; .gitattributes para fines de línea, binarios, drivers de diff y de merge y export-ignore; hooks del cliente escritos y probados de verdad (pre-commit, prepare-commit-msg, commit-msg, post-commit, pre-push), cómo compartirlos con core.hooksPath y plantillas, y frameworks como pre-commit y Husky; firma de commits con SSH o GPG y credential helpers.",
+ "goal": "Adaptar Git a tu forma de trabajar y a las reglas de tu equipo: configurar cada ajuste en la capa correcta, crear alias, definir .gitattributes y escribir hooks que bloqueen errores antes de que entren a la historia.",
+ "objectives": [
+  "Diagnosticar de qué capa y de qué archivo sale un valor de configuración con --show-origin y --show-scope, y corregirlo en la capa adecuada.",
+  "Configurar una identidad distinta por carpeta con includeIf y dejar listas las opciones globales de uso diario.",
+  "Crear alias de Git y alias de shell con ! que reciben argumentos.",
+  "Escribir un .gitattributes que normalice fines de línea, marque binarios y defina drivers de diff y de merge, y renormalizar un repositorio existente.",
+  "Escribir, activar y probar hooks commit-msg, pre-commit, prepare-commit-msg y pre-push que acepten o rechacen operaciones según reglas del equipo.",
+  "Compartir hooks versionados con core.hooksPath e instalarlos en repos nuevos con init.templateDir, y relacionarlos con pre-commit y Husky.",
+  "Configurar la firma de commits con SSH o GPG y elegir un credential helper seguro."
+ ],
+ "lessons": [
+  {
+   "id": "s13-l1",
+   "title": "Configuración por niveles: quién manda en tu Git",
+   "minutes": 18,
+   "goals": [
+    "Identificar los cinco ámbitos de configuración (system, global, local, worktree y command) y el archivo de cada uno.",
+    "Averiguar de qué archivo y de qué ámbito sale un valor con --show-origin y --show-scope.",
+    "Leer, escribir y borrar opciones con la sintaxis clásica y con los subcomandos get/set/unset/list de Git 2.46."
+   ],
+   "takeaways": [
+    "Git lee todas las capas y, para una clave de un solo valor, gana la última leída: command > worktree > local > global > system.",
+    "`git config clave valor` sin opción de ámbito escribe en `.git/config` del repo actual; para tu usuario necesitas `--global`.",
+    "`--show-origin` y `--show-scope` responden en segundos a «¿por qué Git se comporta así?».",
+    "El archivo es texto tipo INI: secciones, subsecciones entre comillas y nombres de clave que no distinguen mayúsculas.",
+    "Desde Git 2.46 existen `git config get/set/unset/list/edit`; `--get`, `--list`, `--unset`… siguen funcionando, pero la documentación las marca como obsoletas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s01 configuraste tu nombre, tu correo y la rama inicial con `git config --global`. Funcionó, pero quedaron preguntas abiertas: ¿dónde se guarda eso?, ¿qué pasa si un repositorio dice otra cosa?, ¿por qué en un proyecto tus commits salen con un correo viejo? En esta sección conviertes la configuración en una herramienta: primero el **modelo de capas**, después identidad por carpeta, alias, atributos por archivo y, sobre todo, **hooks**: programas que Git ejecuta por ti en momentos clave."
+    },
+    {
+     "type": "h",
+     "text": "El modelo mental: capas que se superponen"
+    },
+    {
+     "type": "p",
+     "text": "Git no tiene «una» configuración. Cada vez que ejecutas un comando, lee **varios archivos en orden**, del más general al más específico, y los superpone como transparencias. Si una clave aparece en varias capas, **gana la última que leyó** (la más específica). Así tu empresa puede fijar algo para todo el computador, tú lo ajustas para tu usuario y un proyecto concreto lo ajusta otra vez para sí mismo."
+    },
+    {
+     "type": "diagram",
+     "title": "Las capas de configuración, de la más general a la más específica",
+     "mermaid": "flowchart LR\n  S[\"system<br/>$(prefix)/etc/gitconfig<br/>todo el computador\"] --> G[\"global<br/>~/.gitconfig<br/>tu usuario\"]\n  G --> L[\"local<br/>.git/config<br/>este repositorio\"]\n  L --> W[\"worktree<br/>.git/config.worktree<br/>este árbol de trabajo\"]\n  W --> C[\"command<br/>git -c clave=valor<br/>solo este comando\"]\n  C --> R([\"Valor efectivo:<br/>gana el último leído\"])",
+     "caption": "Para una clave de un solo valor manda la capa de más a la derecha que la defina. Las claves multivalor (como `remote.origin.fetch` o `credential.helper`) acumulan los valores de todas las capas."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Ámbito",
+      "Archivo",
+      "Opción",
+      "Uso típico"
+     ],
+     "rows": [
+      [
+       "`system`",
+       "`$(prefix)/etc/gitconfig` (Git de Apple: `/etc/gitconfig`; Git for Windows: `C:\\Program Files\\Git\\etc\\gitconfig`; Homebrew: `/opt/homebrew/etc/gitconfig`)",
+       "`--system` (escribir requiere permisos de administrador)",
+       "Políticas de la máquina"
+      ],
+      [
+       "`global`",
+       "`~/.gitconfig` (y también `~/.config/git/config`, que se lee antes)",
+       "`--global`",
+       "Tu identidad, alias y preferencias"
+      ],
+      [
+       "`local`",
+       "`.git/config` del repositorio",
+       "`--local` (es lo que se usa al escribir sin opción)",
+       "Remotos, ramas, ajustes de ese proyecto"
+      ],
+      [
+       "`worktree`",
+       "`.git/config.worktree` (solo si `extensions.worktreeConfig=true`)",
+       "`--worktree`",
+       "Ajustes de un worktree concreto (s14)"
+      ],
+      [
+       "`command`",
+       "`git -c clave=valor …` o las variables `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, `GIT_CONFIG_VALUE_<n>`",
+       "—",
+       "Un cambio puntual para un solo comando"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Al **escribir** sin opción de ámbito, Git usa `.git/config` del repo en que estás. Error clásico: ejecutar `git config user.email nuevo@correo.cl` dentro de un proyecto «para arreglar la identidad» y luego descubrir que los demás repos siguen igual. Fuera de un repositorio, ese mismo comando falla con `fatal: not in a git directory`. Para tu usuario, siempre `--global`."
+    },
+    {
+     "type": "p",
+     "text": "Mira cómo se diagnostica un caso real: un repositorio copiado desde tu antiguo computador de la consultora trae en `.git/config` tu correo viejo. `git config user.email` te dice **qué valor** usa Git; `--show-origin` te dice **de qué archivo** sale y `--show-scope`, **de qué capa**. Con `--get-all` ves todos los valores que compiten."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo informe\ngit config user.email alumno@consultora-anterior.cl\nfecha '2026-09-01 10:00'\ncommit_archivo resumen.md '# Informe trimestral' 'docs: crea el informe'",
+     "cwd": "informe",
+     "code": "git config user.email\ngit config --show-origin user.email\ngit config --show-scope --show-origin --get-all user.email\ngit log -1 --format='%an <%ae>'\ngit config --list --show-scope",
+     "caption": "Dos valores compiten: `global` (el tuyo) y `local` (el viejo). Gana el local, y por eso el commit salió con el correo antiguo. En la lista completa verás también la capa `system` de la terminal de práctica (`core.pager=cat`)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En macOS, el Git de Apple (el que traen Xcode y las Command Line Tools) lee además un archivo propio dentro de su instalación (`…/usr/share/git-core/gitconfig`) con, por ejemplo, `credential.helper=osxkeychain`. `--show-scope` lo muestra con ámbito `unknown`. Es parte de la instalación: no lo edites; si quieres otro valor, defínelo en tu `~/.gitconfig`."
+    },
+    {
+     "type": "h",
+     "text": "Leer, escribir y borrar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Sintaxis clásica (funciona en todas las versiones)\ngit config --global user.name \"Ana Rojas\"     # escribir en ~/.gitconfig\ngit config user.name                          # leer el valor efectivo\ngit config --global --get-regexp '^alias\\.'   # buscar claves por patrón\ngit config --unset user.email                 # borrar (en .git/config)\ngit config --list --show-origin               # todo, con su archivo\ngit config --global --edit                    # abrir ~/.gitconfig en el editor\n\n# Subcomandos (desde Git 2.46): mismo resultado, sintaxis más clara\ngit config set --global user.name \"Ana Rojas\"\ngit config get user.name\ngit config get --all --show-names --regexp '^alias\\.'\ngit config unset user.email\ngit config list --show-scope\ngit config edit --global",
+     "caption": "Verás ambas formas en tutoriales y en el trabajo. La clásica sigue funcionando; en la terminal de práctica puedes usar cualquiera."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo demo\ncommit_archivo README.md '# Demo' 'docs: readme'",
+     "cwd": "demo",
+     "code": "git config --global fetch.prune yes\ngit config --global --get fetch.prune\ngit config --global --type=bool --get fetch.prune\ngit config set --global --type=bool rerere.enabled on\ngit config get --global rerere.enabled\ngit -c user.email=temporal@ejemplo.com config --show-scope user.email\ngit config --unset core.editor || echo \"código 5: esa clave no existía\"\ngit config --get nada.existe || echo \"código 1: clave no encontrada\"\ngit config --global --edit",
+     "caption": "Leído con `--type=bool`, `yes` sale como `true`; y `git config set --type=bool` guarda directamente el valor normalizado. Un valor pasado con `-c` tiene ámbito `command` y le gana a todo. Los códigos de salida importan en scripts: 1 = no existe la clave, 5 = intentaste borrar algo que no estaba. El último comando abre `~/.gitconfig` en el editor integrado: guárdalo sin cambios."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía del archivo"
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "# ~/.gitconfig — los comentarios empiezan con # o ;\n[user]\n\tname = Ana Rojas\n\temail = ana@ejemplo.com\n[init]\n\tdefaultBranch = main\n[alias]\n\tst = status -s\n\n# .git/config de un repositorio: subsecciones entre comillas\n[remote \"origin\"]\n\turl = https://github.com/ana/tienda.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main"
+    },
+    {
+     "type": "list",
+     "items": [
+      "En la línea de comandos una clave se escribe `sección.clave` o `sección.subsección.clave`: `user.email`, `remote.origin.url`, `branch.main.merge`.",
+      "Los nombres de sección y de clave **no distinguen mayúsculas** (`core.hooksPath` = `core.hookspath`); las **subsecciones sí** (`\"origin\"` ≠ `\"Origin\"`).",
+      "Booleanos: `true`/`yes`/`on`/`1` y `false`/`no`/`off`/`0`. Una clave escrita sin `= valor` se toma como `true`.",
+      "Si un valor necesita espacios al inicio o al final, va entre comillas dobles.",
+      "`git help --config` lista todas las variables que existen; `git help config` explica cada una."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: `user.email` está definido en system, global y local. ¿Cuál usa un commit? **El local**. ¿Y si ejecutas `git -c user.email=otra@x.cl commit …`? El de `-c`: su ámbito es `command`, el último en leerse."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Ámbito",
+       "en": "scope",
+       "def": "Capa de configuración de la que sale un valor: system, global, local, worktree o command."
+      },
+      {
+       "term": "Clave multivalor",
+       "en": "multi-valued variable",
+       "def": "Clave que puede repetirse y acumula valores, como `remote.origin.fetch` o `credential.helper`. Se lee con `--get-all` y se agrega con `--add`."
+      },
+      {
+       "term": "Configuración protegida",
+       "en": "protected configuration",
+       "def": "Los ámbitos system, global y command. Ciertas opciones de seguridad (por ejemplo `safe.directory`) solo se respetan ahí, para que un repositorio ajeno no pueda cambiarlas desde su `.git/config`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s13-l2",
+   "title": "Identidad por carpeta y opciones de un profesional",
+   "minutes": 18,
+   "goals": [
+    "Configurar una identidad distinta por carpeta con includeIf \"gitdir:\".",
+    "Aplicar las opciones globales de uso diario: pull.rebase, push.autoSetupRemote, fetch.prune, rerere.enabled, merge.conflictStyle y diff.algorithm.",
+    "Elegir un valor de core.autocrlf según el sistema operativo y saber cuándo manda .gitattributes."
+   ],
+   "takeaways": [
+    "`includeIf` inserta otro archivo de configuración solo si se cumple una condición: `gitdir:`, `gitdir/i:`, `onbranch:` o `hasconfig:remote.*.url:`.",
+    "El include debe quedar **después** de lo que quieres pisar: como siempre, gana lo último leído.",
+    "Un patrón `gitdir:` que termina en `/` cubre todos los repos de esa carpeta y sus subcarpetas; sin la barra final no coincide con los repos de adentro.",
+    "Las preferencias personales van en `--global`; lo que debe ser igual para todo el equipo (fines de línea, por ejemplo) va en el repo con `.gitattributes`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Trabajas para una empresa y además tienes proyectos personales. Si todos tus commits salen con el correo personal, los de la empresa no se asocian a tu cuenta corporativa en GitHub o GitLab (y al revés). Configurar `user.email` repo por repo es frágil: basta un clon nuevo para olvidarlo. La solución profesional es **`includeIf`**: «si el repositorio está dentro de `~/trabajo/`, lee además este otro archivo»."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo decide Git qué correo usar",
+     "mermaid": "flowchart TD\n  A[\"git commit en ~/trabajo/api/\"] --> B[\"Git lee ~/.gitconfig<br/>user.email = ana@gmail.com\"]\n  B --> C{\"¿La carpeta .git del repo<br/>coincide con gitdir:~/trabajo/?\"}\n  C -- \"sí\" --> D[\"Lee también ~/.gitconfig-trabajo<br/>user.email = ana@empresa.cl\"]\n  C -- \"no\" --> E[\"Se queda con lo leído\"]\n  D --> F[\"Commit con ana@empresa.cl\"]\n  E --> G[\"Commit con ana@gmail.com\"]"
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "# ~/.gitconfig\n[user]\n\tname = Ana Rojas\n\temail = ana@gmail.com\n[includeIf \"gitdir:~/trabajo/\"]      # al final: pisa lo anterior\n\tpath = ~/.gitconfig-trabajo\n\n# ~/.gitconfig-trabajo\n[user]\n\temail = ana@empresa.cl",
+     "caption": "El archivo incluido es un gitconfig normal: puede traer también `user.signingKey`, `core.sshCommand` o lo que necesites para ese contexto."
+    },
+    {
+     "type": "p",
+     "text": "Desde la línea de comandos no hace falta editar a mano: `git config --file ARCHIVO` escribe en un archivo cualquiera y la clave `includeIf.<condición>.path` crea la sección condicional (Git la agrega al final del archivo, justo donde debe ir)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p trabajo personal\ncd ~/trabajo && nuevo_repo api && commit_archivo README.md '# API' 'docs: readme'\ncd ~/personal && nuevo_repo blog && commit_archivo README.md '# Blog' 'docs: readme'",
+     "cwd": "",
+     "code": "git config --file ~/.gitconfig-trabajo user.email ana@empresa.cl\ngit config --global includeIf.gitdir:~/trabajo/.path ~/.gitconfig-trabajo\ncat ~/.gitconfig\ncd ~/trabajo/api\ngit config --show-origin user.email\ncd ~/personal/blog\ngit config --show-origin user.email",
+     "caption": "En `~/trabajo/api` el valor sale de `.gitconfig-trabajo`; en `~/personal/blog`, de `.gitconfig`. Ningún repo tiene nada en su `.git/config`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Condición",
+      "Se cumple si…",
+      "Ejemplo",
+      "Desde"
+     ],
+     "rows": [
+      [
+       "`gitdir:`",
+       "la carpeta `.git` del repo coincide con el patrón",
+       "`gitdir:~/trabajo/`",
+       "Git 2.13"
+      ],
+      [
+       "`gitdir/i:`",
+       "igual, sin distinguir mayúsculas (sistemas de archivos que no las distinguen)",
+       "`gitdir/i:~/Trabajo/`",
+       "Git 2.13"
+      ],
+      [
+       "`onbranch:`",
+       "la rama actual coincide con el patrón",
+       "`onbranch:release/`",
+       "Git 2.23"
+      ],
+      [
+       "`hasconfig:remote.*.url:`",
+       "algún remoto del repo tiene una URL que coincide",
+       "`hasconfig:remote.*.url:https://github.com/mi-empresa/**`",
+       "Git 2.36"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "`~/` al inicio del patrón se reemplaza por tu carpeta personal (HOME).",
+      "Si el patrón **termina en `/`**, Git le agrega `**`: coincide con esa carpeta y todo lo que tenga adentro, a cualquier profundidad.",
+      "Si el patrón no empieza con `~/`, `./` ni `/`, Git le antepone `**/`: `gitdir:trabajo/` coincide con cualquier carpeta llamada `trabajo`.",
+      "`hasconfig:remote.*.url:` es ideal cuando no ordenas los repos por carpeta: decide por la URL del remoto."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos errores típicos. **Uno:** `gitdir:~/trabajo` sin la barra final no coincide con `~/trabajo/api/.git`; el include no se aplica y ni te enteras. **Dos:** si editas a mano y dejas el `[includeIf]` *antes* del `[user]`, el correo personal vuelve a pisar al del trabajo. Comprueba siempre desde dentro del repo con `git config --show-origin user.email`."
+    },
+    {
+     "type": "h",
+     "text": "Opciones que un profesional deja listas"
+    },
+    {
+     "type": "p",
+     "text": "Estas opciones no cambian qué es Git, sino cuánto te cuesta usarlo. Todas se ponen una vez con `--global` y se olvidan. Ya conoces varias por las secciones anteriores; aquí las reunimos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Qué hace",
+      "Valor típico",
+      "Nota"
+     ],
+     "rows": [
+      [
+       "`pull.rebase`",
+       "`git pull` rebasa tus commits locales en vez de crear un merge (historia lineal)",
+       "`true`",
+       "s07 y s09"
+      ],
+      [
+       "`push.autoSetupRemote`",
+       "El primer `git push` de una rama nueva crea la rama remota y configura el upstream, sin `-u`",
+       "`true`",
+       "Desde Git 2.37"
+      ],
+      [
+       "`fetch.prune`",
+       "`git fetch` borra las ramas remotas (`origin/x`) que ya no existen en el servidor",
+       "`true`",
+       "Equivale a `--prune` siempre"
+      ],
+      [
+       "`rerere.enabled`",
+       "Recuerda cómo resolviste un conflicto y lo reaplica si vuelve a aparecer",
+       "`true`",
+       "A fondo en s15"
+      ],
+      [
+       "`merge.conflictStyle`",
+       "Muestra también la versión **base** dentro del conflicto",
+       "`zdiff3`",
+       "Desde Git 2.35 (s06)"
+      ],
+      [
+       "`diff.algorithm`",
+       "Algoritmo de `git diff`; `histogram` suele dar diffs más legibles que `myers` (el predeterminado)",
+       "`histogram`",
+       "También `patience` y `minimal`"
+      ],
+      [
+       "`rebase.autoStash`",
+       "Guarda y restaura tus cambios sin confirmar alrededor de un rebase",
+       "`true`",
+       "Cuidado: al restaurar puede haber conflictos"
+      ],
+      [
+       "`rebase.updateRefs`",
+       "Activa `--update-refs` por defecto (ramas apiladas)",
+       "`true`",
+       "Desde Git 2.38 (s09)"
+      ],
+      [
+       "`branch.sort`",
+       "Orden de `git branch`",
+       "`-committerdate`",
+       "Las ramas con actividad reciente, primero"
+      ],
+      [
+       "`help.autocorrect`",
+       "Qué hacer si escribes mal un comando",
+       "`prompt`",
+       "Sugiere y pregunta antes de ejecutar"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "`merge.conflictStyle zdiff3` es de las que más se agradecen. Mira el mismo conflicto de precios con el estilo por defecto y con `zdiff3`: la sección entre `|||||||` y `=======` es la **versión original**, así sabes qué cambió cada lado y no solo cómo quedó."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\nprintf 'cafe=1500\\nte=1200\\njugo=2000\\n' > precios.txt\ngit add . && git commit -q -m 'feat: precios iniciales'\ngit switch -q -c alza\nprintf 'cafe=1800\\nte=1200\\njugo=2200\\n' > precios.txt\ngit commit -qam 'feat: alza de precios'\ngit switch -q main\nprintf 'cafe=1600\\nte=1200\\njugo=2100\\n' > precios.txt\ngit commit -qam 'feat: ajuste por inflación'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\ncat precios.txt\ngit merge --abort\ngit config --global merge.conflictStyle zdiff3\ngit merge alza\ncat precios.txt\ngit merge --abort",
+     "caption": "Con `zdiff3` ves que el café valía 1500: `main` lo subió a 1600 y `alza` a 1800. Además, la línea `te=1200`, igual en ambos lados, queda fuera del conflicto."
+    },
+    {
+     "type": "h",
+     "text": "Fines de línea: core.autocrlf"
+    },
+    {
+     "type": "p",
+     "text": "Windows termina las líneas con dos caracteres (CRLF, `\\r\\n`); macOS y Linux con uno (LF, `\\n`). Si cada integrante del equipo guarda con su estilo, los diffs se llenan de líneas «cambiadas» que en realidad son iguales. `core.autocrlf` le dice a Git cómo convertir **en tu computador**:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Valor",
+      "Al guardar en el repositorio",
+      "Al sacar archivos al directorio de trabajo",
+      "Para quién"
+     ],
+     "rows": [
+      [
+       "`true`",
+       "CRLF → LF",
+       "LF → CRLF",
+       "Windows"
+      ],
+      [
+       "`input`",
+       "CRLF → LF",
+       "sin conversión",
+       "macOS y Linux"
+      ],
+      [
+       "`false`",
+       "sin conversión",
+       "sin conversión",
+       "Solo si el repo ya trae `.gitattributes`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "La recomendación moderna es que **el repositorio** traiga un `.gitattributes` con `* text=auto` (lección 4). Así la normalización no depende de que cada persona configure bien su `core.autocrlf`: el atributo `text` decide qué se normaliza a LF en el repositorio y, si está, `eol` decide el fin de línea en tu carpeta; `core.autocrlf` solo decide lo que los atributos dejan sin especificar."
+    }
+   ]
+  },
+  {
+   "id": "s13-l3",
+   "title": "Alias: tus propios comandos de Git",
+   "minutes": 14,
+   "goals": [
+    "Crear alias globales con git config --global alias.<nombre>.",
+    "Escribir alias de shell con ! que encadenan comandos o reciben argumentos.",
+    "Consultar, probar y borrar los alias existentes."
+   ],
+   "takeaways": [
+    "Un alias reemplaza la primera palabra: `git st` → `git status -s`; lo que escribas después se agrega al final.",
+    "Con `!` el alias es un comando de shell: admite `&&`, tuberías y funciones, y se ejecuta desde la **raíz** del repositorio.",
+    "Un alias con el nombre de un comando de Git se ignora: no puedes redefinir `git status`.",
+    "`git help <alias>` muestra en qué se expande; `git config --get-regexp '^alias\\.'` los lista todos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un alias es un atajo que guardas en la configuración: `alias.<nombre> = <expansión>`. Sirve para escribir menos, pero sobre todo para **encapsular buenas prácticas**: si tu `git lg` siempre muestra el grafo completo, lo mirarás más seguido. Los alias personales van en `--global`; recuerda que no viajan con el repositorio."
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "[alias]\n\tst = status -s\n\tlg = log --oneline --graph --all\n\tultimo = log -1 HEAD --stat\n\tunstage = restore --staged\n\tamend = commit --amend --no-edit\n\tempuja = push --force-with-lease",
+     "caption": "Algunos alias clásicos. La expansión se escribe **sin** la palabra `git`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ngit switch -q -c feature/carrito\nfecha '2026-09-02 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'feat: carrito vacío'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo estilos.css 'body { margin: 0; }' 'style: estilos base'",
+     "cwd": "tienda",
+     "code": "git config --global alias.st \"status -s\"\ngit config --global alias.lg \"log --oneline --graph --all\"\ngit config --global alias.ultimo \"log -1 HEAD --stat\"\ngit lg\ngit lg -n 2\ngit ultimo\ngit help lg\ngit config --global alias.status log\ngit status",
+     "caption": "`git lg -n 2` se expande a `git log --oneline --graph --all -n 2`. El último alias se guarda, pero Git lo ignora: `git status` sigue siendo status."
+    },
+    {
+     "type": "h",
+     "text": "Alias de shell con !"
+    },
+    {
+     "type": "p",
+     "text": "Si la expansión empieza con `!`, Git no la trata como argumentos de `git`, sino como un **comando de shell** (se ejecuta con `sh`). Eso abre la puerta a encadenar comandos, usar tuberías o escribir funciones. Reglas que conviene saber:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Se ejecuta desde la **raíz del repositorio**, no desde la carpeta en que estás; la variable `GIT_PREFIX` guarda la subcarpeta desde donde lo llamaste.",
+      "Los argumentos extra se agregan **al final** como parámetros posicionales (`$1`, `$2`…).",
+      "Si necesitas los argumentos en medio, usa el patrón de función: `!f() { …; }; f`.",
+      "Dentro de la expansión escribe `git` completo: `!git add -A && git commit -m`."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ngit switch -q -c feature/carrito\nfecha '2026-09-03 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'feat: carrito vacío'\ngit switch -q -c fix/typo main\nfecha '2026-09-02 10:00'\ncommit_archivo index.html '<h1>Tienda online</h1>' 'fix: título'\ngit switch -q main\nmkdir -p src",
+     "cwd": "tienda",
+     "code": "git config --global alias.ramas \"!git branch --sort=-committerdate --format='%(committerdate:short) %(refname:short)'\"\ngit ramas\ngit config --global alias.guardar \"!git add -A && git commit -m\"\necho 'Notas de la reunión' > notas.txt\ngit guardar \"docs: agrega notas de la reunión\"\ngit config --global alias.ultimos '!f() { git log --oneline -n \"${1:-3}\"; }; f'\ngit ultimos 2\ngit config --global alias.donde '!echo \"raíz: $(pwd)  prefijo: $GIT_PREFIX\"'\ncd src\ngit donde\ngit config --global --get-regexp '^alias\\.'",
+     "caption": "`git guardar \"mensaje\"` ejecuta `git add -A && git commit -m \"mensaje\"`: el argumento cae justo al final. `git donde`, lanzado desde `src/`, muestra que el alias corre en la raíz y que `GIT_PREFIX` es `src/`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un alias de shell es código que se ejecuta con tus permisos. No copies alias con `!` de internet sin leerlos, igual que no ejecutarías un script desconocido."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para borrar un alias: `git config --global --unset alias.ultimos`. Para ver solo uno: `git help ultimos` o `git config --global alias.ultimos`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Desde qué carpeta se ejecuta un alias que empieza con `!`? Desde la **raíz del repositorio**. ¿Y un alias sin `!`? Es un comando de Git normal, así que actúa desde donde estás, como cualquier `git …`."
+    }
+   ]
+  },
+  {
+   "id": "s13-l4",
+   "title": ".gitattributes: reglas por tipo de archivo",
+   "minutes": 22,
+   "goals": [
+    "Normalizar fines de línea con text, text=auto y eol, y renormalizar un repositorio existente.",
+    "Marcar archivos binarios y definir drivers de diff: los integrados y los de tipo textconv.",
+    "Configurar merge=ours para un archivo y export-ignore para git archive.",
+    "Verificar atributos con git check-attr y git ls-files --eol."
+   ],
+   "takeaways": [
+    "`.gitattributes` viaja con el repositorio: todo el equipo recibe las mismas reglas, a diferencia de `git config`.",
+    "`text=auto` normaliza a LF dentro del repositorio; `eol` decide el fin de línea en el directorio de trabajo.",
+    "`binary` equivale a `-diff -merge -text`: sin conversión, sin diff de texto y sin fusión línea a línea.",
+    "Los drivers (`diff=nombre`, `merge=nombre`) se **declaran** en `.gitattributes` pero se **definen** en `git config`; sin definición no hacen lo que esperas.",
+    "`git archive` usa los atributos del commit que empaqueta: confirma el `.gitattributes` antes de generar la release."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git config` guarda **tus** preferencias. `.gitattributes` guarda reglas **del proyecto** sobre rutas: cada línea es un patrón (como en `.gitignore`) seguido de atributos. Como es un archivo más del repositorio, se versiona y todo el equipo lo recibe al clonar."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "# .gitattributes\n# Normaliza todo lo que Git detecte como texto\n*                  text=auto\n# Scripts de shell siempre con LF; scripts de Windows con CRLF\n*.sh               text eol=lf\n*.bat              text eol=crlf\n# Binarios: sin conversión, sin diff de texto, sin merge línea a línea\n*.png              binary\n*.pdf              binary\n# Encabezados de hunk con el nombre de la función de Python\n*.py               diff=python\n# Archivo generado: sin diff de texto y colapsado en GitHub\npackage-lock.json  -diff linguist-generated\n# No va en el .zip o .tar de la release\n/tests             export-ignore\n.gitattributes     export-ignore",
+     "caption": "Un `.gitattributes` realista. Cada atributo puede estar activado (`text`), desactivado (`-text`), con valor (`eol=lf`) o sin especificar; `!text` lo devuelve a «sin especificar»."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Los patrones siguen las reglas de `.gitignore`, con dos diferencias: no hay negación con `!` y `carpeta/` **no** se aplica a lo que hay adentro (usa `carpeta/**`).",
+      "Si varias líneas coinciden, la de más abajo gana, atributo por atributo.",
+      "Precedencia: `.git/info/attributes` (solo tuyo, no se versiona) > `.gitattributes` de la misma carpeta > los de carpetas superiores > el global (`core.attributesFile`, por defecto `~/.config/git/attributes`) > el del sistema.",
+      "`git check-attr -a -- ruta` muestra qué atributos recibe un archivo y `git ls-files --eol` cómo están sus fines de línea."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Fines de línea: text y eol"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace text=auto con los fines de línea",
+     "mermaid": "flowchart LR\n  W1[\"Directorio de trabajo<br/>(Windows) CRLF\"] -- \"git add<br/>normaliza\" --> I[\"Index y repositorio<br/>siempre LF\"]\n  I -- \"checkout con eol=crlf\" --> W2[\"Directorio de trabajo<br/>CRLF\"]\n  I -- \"checkout con eol=lf\" --> W3[\"Directorio de trabajo<br/>LF\"]",
+     "caption": "Dentro del repositorio todo queda en LF; cada persona recibe en su carpeta el fin de línea que corresponde."
+    },
+    {
+     "type": "p",
+     "text": "Escenario real: Pedro trabajaba en Windows sin ninguna configuración y confirmó archivos con CRLF. Agregas el `.gitattributes` y **renormalizas**: `git add --renormalize .` vuelve a pasar todos los archivos rastreados por la conversión y deja el resultado en el index. En `git ls-files --eol`, `i/` es el index, `w/` el directorio de trabajo y `attr/` los atributos que se aplicaron."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sitio\nfecha '2026-09-10 10:00'\nautor 'Pedro Soto' 'pedro@ejemplo.com'\nprintf '<h1>Hola</h1>\\n' > index.html\nprintf 'const total = 1;\\r\\nconsole.info(total);\\r\\n' > app.js\nprintf '@echo off\\r\\necho Construyendo\\r\\n' > build.bat\nprintf '#!/bin/sh\\r\\necho Desplegando\\r\\n' > deploy.sh\nprintf '\\211PNG\\r\\n\\032\\n\\000\\000\\000\\rIHDR\\000\\000\\000\\001' > logo.png\ngit add . && git commit -q -m 'feat: sitio inicial'\nyo",
+     "cwd": "sitio",
+     "code": "git ls-files --eol\nprintf '* text=auto\\n*.sh text eol=lf\\n*.bat text eol=crlf\\n*.png binary\\n' > .gitattributes\ngit check-attr -a -- logo.png deploy.sh build.bat\ngit add --renormalize .\ngit add .gitattributes\ngit status -s\ngit commit -m \"chore: normaliza fines de línea con .gitattributes\"\ngit ls-files --eol",
+     "caption": "Tras el commit, todo el texto queda `i/lf` en el repositorio. Fíjate en `logo.png`: `binary` impidió cualquier conversión (una conversión CRLF→LF dentro de un PNG lo corrompería)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git add --renormalize .` solo actualiza el **index**: los archivos de tu carpeta siguen con CRLF (`w/crlf`) hasta que Git los vuelva a escribir en un checkout. Y avisa al equipo: es un commit que «toca» muchas líneas, conviene hacerlo solo y con un mensaje claro."
+    },
+    {
+     "type": "h",
+     "text": "Binarios y drivers de diff"
+    },
+    {
+     "type": "p",
+     "text": "Git adivina si un archivo es binario mirando su comienzo (por ejemplo, si trae bytes nulos). Con atributos decides tú: `-diff` produce `Binary files … differ`; `binary` además desactiva la conversión de fines de línea y la fusión línea a línea. Y si quieres **ver** qué cambió en un binario, un driver `textconv` lo convierte a texto solo para mostrar el diff: el archivo guardado no cambia."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sensor\nprintf 'FW\\000\\001\\002version=1.4.0\\000baudios=9600' > firmware.bin\ngit add . && git commit -q -m 'feat: firmware 1.4.0'\nprintf 'FW\\000\\001\\002version=1.5.0\\000baudios=9600' > firmware.bin",
+     "cwd": "sensor",
+     "code": "git diff\nprintf '*.bin diff=hex\\n' > .gitattributes\ngit config diff.hex.textconv \"hexdump -C\"\ngit diff\ngit diff --stat",
+     "caption": "Con el driver `hex`, `git diff` muestra el volcado hexadecimal (el cambio de versión se ve en la columna de la derecha). La definición `diff.hex.textconv` está en `.git/config`: quien clone el repo recibe el atributo, pero debe definir el driver por su cuenta."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Ejemplos del libro Pro Git (requieren instalar las herramientas)\necho '*.docx diff=word' >> .gitattributes\ngit config diff.word.textconv docx2txt\n\necho '*.png diff=exif' >> .gitattributes\ngit config diff.exif.textconv exiftool",
+     "caption": "Con `docx2txt` ves qué párrafos cambiaron en un Word; con `exiftool`, qué metadatos cambiaron en una imagen."
+    },
+    {
+     "type": "p",
+     "text": "También hay drivers de diff **integrados** que solo mejoran el encabezado de cada hunk (`@@ … @@ texto`): en vez de la última línea que empieza con una letra, muestran la función o sección real. Existen para `bash`, `cpp`, `csharp`, `css`, `golang`, `html`, `java`, `kotlin`, `markdown`, `php`, `python`, `ruby`, `rust`, `tex` y otros; se activan con el atributo, sin configurar nada más."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calc\nprintf 'class Calculadora:\\n    def __init__(self):\\n        self.total = 0\\n\\n    def sumar(self, n):\\n        a = 1\\n        b = 2\\n        c = 3\\n        self.total += n\\n        return self.total\\n' > calc.py\ngit add . && git commit -q -m 'feat: calculadora'\nprintf 'class Calculadora:\\n    def __init__(self):\\n        self.total = 0\\n\\n    def sumar(self, n):\\n        a = 1\\n        b = 2\\n        c = 3\\n        self.total += n * 2\\n        return self.total\\n' > calc.py",
+     "cwd": "calc",
+     "code": "git diff\nprintf '*.py diff=python\\n' > .gitattributes\ngit diff\ngit check-attr diff -- calc.py",
+     "caption": "Antes: `@@ -6,5 +6,5 @@ class Calculadora:`. Después: `@@ -6,5 +6,5 @@ def sumar(self, n):`, que es donde de verdad está el cambio."
+    },
+    {
+     "type": "h",
+     "text": "Estrategias de merge por archivo: merge=ours"
+    },
+    {
+     "type": "p",
+     "text": "A veces un archivo debe quedarse como está en cada rama, por ejemplo la configuración de entorno de `main` (producción) frente a la de `develop`. El atributo `merge=ours` asigna a ese archivo un driver llamado `ours`, y `git config merge.ours.driver true` lo define: el comando `true` no hace nada y termina bien, así que Git conserva tu versión y da el archivo por fusionado."
+    },
+    {
+     "type": "diagram",
+     "title": "merge=ours en acción",
+     "mermaid": "gitGraph\n  commit id: \"config prod\"\n  branch develop\n  commit id: \"config dev\"\n  commit id: \"api v2\"\n  checkout main\n  commit id: \"timeout prod\"\n  commit id: \"gitattributes\"\n  merge develop id: \"merge\"",
+     "caption": "El merge trae `api v2` desde `develop`, pero `config/entorno.env` conserva la versión de `main`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-01 10:00'\nescribir config/entorno.env 'ENTORNO=produccion'\ncommit_archivo app.py 'print(\"api v1\")' 'feat: api inicial'\ngit add . && git commit -q -m 'chore: configuración de producción'\ngit switch -q -c develop\nfecha '2026-09-02 10:00'\nescribir config/entorno.env 'ENTORNO=desarrollo'\ngit commit -qam 'chore: configuración de desarrollo'\ncommit_archivo app.py 'print(\"api v2\")' 'feat: api v2'\ngit switch -q main\nfecha '2026-09-03 10:00'\nprintf 'ENTORNO=produccion\\nTIMEOUT=30\\n' > config/entorno.env\ngit commit -qam 'chore: timeout en producción'",
+     "cwd": "api",
+     "code": "printf 'config/entorno.env merge=ours\\n' > .gitattributes\ngit config merge.ours.driver true\ngit add .gitattributes\ngit commit -m \"chore: conserva entorno.env de cada rama al fusionar\"\ngit merge --no-edit develop\ncat config/entorno.env\ncat app.py\ngit log --oneline --graph --all",
+     "caption": "Sin la línea `git config merge.ours.driver true`, el mismo merge termina en conflicto: Git no encuentra la definición del driver y usa la fusión de texto normal."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`merge=ours` solo actúa cuando **ambas** ramas modificaron el archivo desde la base común. Si solo la otra rama lo cambió, no hay nada que fusionar: Git toma su versión sin llamar al driver. No confundas este atributo con `git merge -s ours` (estrategia para todo el merge, s15)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Drivers de merge integrados: `text` (el normal, con marcadores de conflicto), `binary` (deja tu versión pero marca el archivo en conflicto para que decidas) y `union` (toma las líneas de ambos lados sin marcadores; el orden puede quedar mezclado, revisa el resultado).",
+      "Un driver propio se define con `merge.<nombre>.driver`, que recibe `%O` (base), `%A` (tu versión, donde debe dejar el resultado) y `%B` (la otra)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "export-ignore y los atributos de GitHub"
+    },
+    {
+     "type": "p",
+     "text": "`git archive` genera un `.zip` o `.tar` de un commit (lo usarás en s15). Con `export-ignore` excluyes rutas del paquete: tests, configuración de CI, el propio `.gitattributes`. Ojo: `git archive` lee los atributos **del árbol que empaqueta**, así que el `.gitattributes` debe estar confirmado (o usar `--worktree-attributes`)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "printf '/tests export-ignore\\n.gitattributes export-ignore\\n' > .gitattributes\ngit add .gitattributes\ngit commit -m \"chore: excluye tests del paquete de release\"\ngit check-attr export-ignore -- tests\ngit archive --format=zip -o ../reservas-1.2.0.zip HEAD"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Atributo de GitHub (Linguist)",
+      "Efecto en GitHub"
+     ],
+     "rows": [
+      [
+       "`linguist-generated`",
+       "No cuenta en las estadísticas de lenguajes y aparece colapsado en los diffs de pull requests"
+      ],
+      [
+       "`linguist-vendored`",
+       "Código de terceros: no cuenta en las estadísticas"
+      ],
+      [
+       "`linguist-documentation`",
+       "Documentación: no cuenta en las estadísticas"
+      ],
+      [
+       "`linguist-language=Nombre`",
+       "Fuerza el lenguaje con que se clasifica y resalta"
+      ],
+      [
+       "`linguist-detectable`",
+       "Cuenta en las estadísticas aunque sea de un tipo que normalmente se excluye"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los atributos `linguist-*` no hacen nada en tu Git local: los interpreta GitHub, y solo cuando el `.gitattributes` está confirmado en el repositorio."
+    }
+   ]
+  },
+  {
+   "id": "s13-l5",
+   "title": "Hooks: el ciclo de vida de un commit",
+   "minutes": 24,
+   "goals": [
+    "Ordenar los hooks del cliente que se ejecutan durante git commit y lo que recibe cada uno.",
+    "Escribir un hook commit-msg ejecutable que acepte o rechace mensajes.",
+    "Escribir un hook pre-commit que inspeccione solo el contenido preparado.",
+    "Saltarse los hooks con --no-verify y decidir cuándo es legítimo hacerlo."
+   ],
+   "takeaways": [
+    "Un hook es un programa en `.git/hooks/` con el nombre exacto del evento y **permiso de ejecución**; si no es ejecutable, Git lo ignora con un aviso.",
+    "`pre-commit`, `prepare-commit-msg` y `commit-msg` pueden abortar el commit saliendo con un código distinto de 0; `post-commit` solo notifica.",
+    "Git ejecuta los hooks desde la raíz del directorio de trabajo; `commit-msg` recibe en `$1` la ruta del archivo con el mensaje.",
+    "`--no-verify` (`-n`) salta `pre-commit` y `commit-msg`, pero no `prepare-commit-msg`.",
+    "`.git/hooks/` no se versiona ni se copia al clonar: cada clon empieza sin tus hooks."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un **hook** es un programa que Git ejecuta automáticamente en un momento concreto: antes de crear un commit, al escribir el mensaje, antes de publicar… Si el hook termina con código 0, Git sigue; si termina con otro código, los hooks «de antes» detienen la operación. Así un equipo automatiza reglas que las personas olvidan: no confirmar `console.log`, mensajes con formato, tests antes de publicar."
+    },
+    {
+     "type": "diagram",
+     "title": "Los hooks durante git commit",
+     "mermaid": "sequenceDiagram\n  actor Dev as Tú\n  participant Git\n  participant PC as pre-commit\n  participant PM as prepare-commit-msg\n  participant Ed as Editor\n  participant CM as commit-msg\n  participant PO as post-commit\n  Dev->>Git: git commit\n  Git->>PC: ¿se puede confirmar lo preparado?\n  PC-->>Git: 0 sigue, otro código aborta\n  Git->>PM: archivo del mensaje y origen\n  PM-->>Git: puede editar el mensaje propuesto\n  Git->>Ed: abre el editor si no usaste -m\n  Ed-->>Git: mensaje final\n  Git->>CM: archivo con el mensaje\n  CM-->>Git: 0 sigue, otro código aborta\n  Git->>Git: crea el commit\n  Git->>PO: aviso, ya no puede impedir nada",
+     "caption": "Todo lo que ocurre antes de «crea el commit» puede detenerlo; `post-commit` llega tarde para eso."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Hook",
+      "Cuándo corre",
+      "Qué recibe",
+      "¿Puede abortar?",
+      "¿Lo salta --no-verify?"
+     ],
+     "rows": [
+      [
+       "`pre-commit`",
+       "Antes de pedir el mensaje",
+       "Nada (inspecciona el index)",
+       "Sí",
+       "Sí"
+      ],
+      [
+       "`prepare-commit-msg`",
+       "Tras preparar el mensaje por defecto, antes del editor",
+       "`$1` archivo del mensaje, `$2` origen (`message`, `template`, `merge`, `squash` o `commit`), `$3` hash si el origen es `commit`",
+       "Sí",
+       "**No**"
+      ],
+      [
+       "`commit-msg`",
+       "Tras escribir el mensaje (también en `git merge`)",
+       "`$1` archivo del mensaje",
+       "Sí",
+       "Sí"
+      ],
+      [
+       "`post-commit`",
+       "Después de crear el commit",
+       "Nada",
+       "No",
+       "—"
+      ],
+      [
+       "`pre-merge-commit`",
+       "En `git merge`, antes del mensaje del merge",
+       "Nada",
+       "Sí",
+       "Sí (`git merge --no-verify`)"
+      ],
+      [
+       "`post-checkout`",
+       "Tras `git switch`/`checkout` (y al final de `git clone`)",
+       "`$1` HEAD anterior, `$2` HEAD nuevo, `$3` 1 si cambió de rama, 0 si fue un archivo",
+       "No (su código pasa a ser el del comando)",
+       "—"
+      ],
+      [
+       "`post-merge`",
+       "Tras un merge exitoso (incluido el de `git pull`)",
+       "`$1` 1 si fue squash",
+       "No",
+       "—"
+      ],
+      [
+       "`pre-rebase`",
+       "Antes de `git rebase`",
+       "`$1` upstream, `$2` rama (si no es la actual)",
+       "Sí",
+       "—"
+      ],
+      [
+       "`post-rewrite`",
+       "Tras `commit --amend` o `rebase`",
+       "`$1` amend o rebase; por stdin, pares viejo nuevo",
+       "No",
+       "—"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de un hook"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Nombre exacto**, sin extensión: `.git/hooks/commit-msg`. Los `*.sample` que trae `git init` son ejemplos desactivados; se activan quitándoles `.sample`.",
+      "**Ejecutable**: `chmod +x .git/hooks/commit-msg`. Si falta, Git avisa: `hint: The '.git/hooks/commit-msg' hook was ignored because it's not set as executable.`",
+      "**Shebang** en la primera línea (`#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`…): el hook puede estar en cualquier lenguaje.",
+      "Corre desde la **raíz del directorio de trabajo** y con variables como `GIT_DIR` o `GIT_INDEX_FILE` ya definidas, así que los `git …` de adentro apuntan al repo correcto.",
+      "Lo que imprime se muestra en tu terminal: escribe los errores en stderr (`>&2`) y explica **cómo arreglarlo**.",
+      "Si el commit no abrirá el editor, Git ejecuta los hooks con `GIT_EDITOR=:`."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En la terminal de práctica escribe un hook con `code .git/hooks/commit-msg` (se abre el editor integrado) o, en una línea, con `printf '#!/bin/sh\\n…' > .git/hooks/commit-msg`; después, `chmod +x`. En tu computador usa tu editor de siempre."
+    },
+    {
+     "type": "p",
+     "text": "Primer hook: `commit-msg` que exige **Conventional Commits** (`tipo(ámbito): descripción`, s08). El script lee la primera línea del archivo que Git le pasa en `$1` y la compara con una expresión regular. Los mensajes que empiezan con `Merge ` se dejan pasar para no romper los merges."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "#!/bin/sh\n# commit-msg: exige Conventional Commits en el asunto (la primera línea)\nasunto=$(head -n 1 \"$1\")\ncase \"$asunto\" in\n  \"Merge \"*) exit 0 ;;\nesac\npatron=\"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\"\nif echo \"$asunto\" | grep -qE \"$patron\"; then\n  exit 0\nfi\necho \"commit-msg: el asunto no sigue Conventional Commits: $asunto\" >&2\necho \"Formato: tipo(ámbito opcional): descripción, por ejemplo: feat(api): agrega login\" >&2\nexit 1\n",
+     "caption": "El contenido de `.git/hooks/commit-msg` que usa la demostración."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ncat > .git/hooks/commit-msg <<'FIN_ARCHIVO'\n#!/bin/sh\n# commit-msg: exige Conventional Commits en el asunto (la primera línea)\nasunto=$(head -n 1 \"$1\")\ncase \"$asunto\" in\n  \"Merge \"*) exit 0 ;;\nesac\npatron=\"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\"\nif echo \"$asunto\" | grep -qE \"$patron\"; then\n  exit 0\nfi\necho \"commit-msg: el asunto no sigue Conventional Commits: $asunto\" >&2\necho \"Formato: tipo(ámbito opcional): descripción, por ejemplo: feat(api): agrega login\" >&2\nexit 1\nFIN_ARCHIVO",
+     "cwd": "tienda",
+     "code": "ls -l .git/hooks\ngit commit --allow-empty -m \"arreglos varios\"\nchmod +x .git/hooks/commit-msg\ngit commit --allow-empty -m \"arreglos varios\"\ngit commit --allow-empty -m \"fix(api): corrige el timeout\"\ngit commit --allow-empty -m \"feat!: elimina la API v1\"\ngit commit --allow-empty --no-verify -m \"wip\"\ngit log --oneline",
+     "caption": "El primer intento pasa con un `hint`: el hook no era ejecutable. Después de `chmod +x`, «arreglos varios» se rechaza con código 1 y no se crea nada. `--no-verify` se salta el hook: por eso `wip` sí entró."
+    },
+    {
+     "type": "h",
+     "text": "pre-commit: revisar lo que vas a confirmar"
+    },
+    {
+     "type": "p",
+     "text": "La regla de oro de un `pre-commit`: revisar el **área de preparación**, no tu carpeta. Lo que se confirmará es el index; el directorio de trabajo puede tener cosas que no vas a incluir. `git diff --cached` muestra lo preparado; con `-U0` salen solo las líneas cambiadas y, filtrando las que empiezan con `+` (sin la cabecera `+++`), obtienes exactamente lo **agregado**."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "#!/bin/sh\n# pre-commit: bloquea console.log en las líneas agregadas y preparadas de JavaScript/TypeScript\nif git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\" | grep -q \"console\\.log\"; then\n  echo \"pre-commit: quita los console.log antes de confirmar\" >&2\n  exit 1\nfi\nexit 0\n",
+     "caption": "Un `pre-commit` que bloquea `console.log` solo en líneas agregadas y preparadas de archivos JavaScript y TypeScript. El pathspec `-- \"*.js\" …` evita falsos positivos en documentación, o en el propio hook si lo versionas."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo web\nfecha '2026-09-05 10:00'\nprintf 'export function saludar(nombre) {\\n  return \"Hola \" + nombre;\\n}\\n' > app.js\ngit add . && git commit -q -m 'feat: saludo'\ncat > .git/hooks/pre-commit <<'FIN_ARCHIVO'\n#!/bin/sh\n# pre-commit: bloquea console.log en las líneas agregadas y preparadas de JavaScript/TypeScript\nif git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\" | grep -q \"console\\.log\"; then\n  echo \"pre-commit: quita los console.log antes de confirmar\" >&2\n  exit 1\nfi\nexit 0\nFIN_ARCHIVO\nchmod +x .git/hooks/pre-commit",
+     "cwd": "web",
+     "code": "echo 'console.log(\"depurando\");' >> app.js\ngit add app.js\ngit commit -m \"feat: agrega depuración\"\ngit hook run pre-commit\ngit restore --staged app.js\ngit restore app.js\necho 'export const VERSION = \"1.0\";' >> app.js\ngit commit -am \"feat: expone la versión\"",
+     "caption": "`git hook run pre-commit` (desde Git 2.36) ejecuta el hook a mano, útil para probarlo sin intentar un commit."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En tus scripts usa `--no-color` (o comandos plumbing como `git diff-index`). Si alguien tiene `color.ui=always` en su configuración, `git diff` entrega códigos de color y tus `grep \"^+\"` dejan de coincidir sin dar ningún error. Es el típico hook que funciona en tu computador y falla en silencio en el de un compañero: la salida pensada para personas (colores, formato «bonito») puede cambiar con la configuración de cada uno; la de plumbing, `--no-color` o `--porcelain`, no."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los hooks del cliente son una **ayuda**, no una garantía: cualquiera puede usar `--no-verify` o simplemente no instalarlos. Las reglas que no se pueden saltar se imponen en el servidor (hooks `pre-receive`, s16) o en la integración continua."
+    },
+    {
+     "type": "p",
+     "text": "¿Cuándo es legítimo `--no-verify`? Cuando el hook se equivoca (un falso positivo), cuando haces un commit temporal en tu rama privada que luego vas a reescribir, o en emergencias. Nunca como costumbre: si lo usas a diario, el hook está mal diseñado y hay que arreglarlo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo notas\ncommit_archivo README.md '# Notas' 'docs: readme'\nprintf '#!/bin/sh\\necho \"post-commit: commit creado; recuerda publicarlo con git push\"\\n' > .git/hooks/post-commit\nchmod +x .git/hooks/post-commit",
+     "cwd": "notas",
+     "code": "cat .git/hooks/post-commit\ngit commit --allow-empty -m \"docs: agrega índice\"\ngit hook run post-commit\ngit hook run pre-commit\ngit hook run --ignore-missing pre-commit",
+     "caption": "`post-commit` solo informa: aunque terminara con error, el commit ya existiría. `git hook run` falla si el hook no existe, salvo con `--ignore-missing`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Tres respuestas que se preguntan mucho: `--no-verify` salta `pre-commit` y `commit-msg` (no `prepare-commit-msg`); un hook sin permiso de ejecución se ignora; `post-commit` no puede impedir un commit."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Hook",
+       "en": "hook",
+       "def": "Programa que Git ejecuta automáticamente en un punto de su funcionamiento. Los del cliente viven en `.git/hooks/` (o en `core.hooksPath`)."
+      },
+      {
+       "term": "Shebang",
+       "en": "shebang",
+       "def": "Primera línea `#!intérprete` de un script: indica con qué programa se ejecuta (`#!/bin/sh`, `#!/usr/bin/env python3`)."
+      },
+      {
+       "term": "Código de salida",
+       "en": "exit status",
+       "def": "Número con que termina un programa: 0 significa éxito; cualquier otro, fallo. Es lo que Git mira para seguir o abortar."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s13-l6",
+   "title": "Hooks en equipo: pre-push, core.hooksPath, plantillas y frameworks",
+   "minutes": 22,
+   "goals": [
+    "Escribir un hook pre-push que lea de su entrada estándar las referencias que se van a publicar.",
+    "Compartir hooks versionados en el repositorio con core.hooksPath y el bit de ejecución confirmado.",
+    "Instalar hooks por defecto en repos nuevos con init.templateDir.",
+    "Comparar los frameworks pre-commit y Husky con los hooks escritos a mano."
+   ],
+   "takeaways": [
+    "`pre-push` recibe el nombre y la URL del remoto como argumentos, y por stdin una línea por referencia: `<ref local> <sha local> <ref remota> <sha remota>`.",
+    "`core.hooksPath` hace que Git busque los hooks en otra carpeta (por ejemplo `.githooks/`, versionada) e ignore por completo `.git/hooks/`.",
+    "El bit de ejecución se versiona (modo `100755`): confírmalo para que el equipo reciba hooks ejecutables.",
+    "`init.templateDir` copia una plantilla en cada `git init` y `git clone`; volver a ejecutar `git init` en un repo existente agrega lo nuevo sin sobrescribir.",
+    "Husky configura `core.hooksPath=.husky/_`; el framework pre-commit instala su script en `.git/hooks/pre-commit`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los hooks de la lección anterior tienen un problema: viven en `.git/hooks/`, que **no se versiona** ni viaja al clonar. Esto es deliberado: si clonar un repositorio instalara hooks, cualquier proyecto podría ejecutar código en tu computador sin que lo pidieras. En esta lección ves cómo compartir hooks de forma explícita, además de otro hook muy usado: `pre-push`."
+    },
+    {
+     "type": "h",
+     "text": "pre-push: el último control antes de publicar"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué pasa durante git push",
+     "mermaid": "sequenceDiagram\n  actor Dev as Tú\n  participant Git as git push\n  participant PP as pre-push\n  participant S as Servidor\n  Dev->>Git: git push origin main\n  Git->>PP: argumentos: nombre y URL del remoto\n  Git->>PP: stdin: refs/heads/main SHA refs/heads/main SHA\n  alt el hook termina con 0\n    PP-->>Git: todo bien\n    Git->>S: envía objetos y actualiza las ramas\n  else termina con otro código\n    PP-->>Git: rechazo\n    Git-->>Dev: error: failed to push some refs\n  end"
+    },
+    {
+     "type": "p",
+     "text": "Por cada referencia que vas a publicar, `pre-push` recibe una línea `<ref local> <sha local> <ref remota> <sha remota>`. Si la rama remota todavía no existe, su SHA son puros ceros; si vas a borrar una rama remota, la ref local llega como `(delete)`. Un uso típico: impedir publicar directo en `main`, para que todo pase por un pull request."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "#!/bin/sh\n# pre-push: nadie publica directo en main\n# Git entrega por stdin una línea por referencia:\n# <ref local> <sha local> <ref remota> <sha remota>\nwhile read ref_local sha_local ref_remota sha_remota\ndo\n  if [ \"$ref_remota\" = \"refs/heads/main\" ]; then\n    echo \"pre-push: no publiques directo en main; sube una rama y abre un pull request\" >&2\n    exit 1\n  fi\ndone\nexit 0\n"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare ~/servidor/tienda.git\nnuevo_repo tienda\nfecha '2026-09-20 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ngit remote add origin ~/servidor/tienda.git\ngit push -q -u origin main\ngit switch -q -c feature/pagos\nfecha '2026-09-21 10:00'\ncommit_archivo pagos.js 'export const pagar = () => true;' 'feat: módulo de pagos'\ncat > .git/hooks/pre-push <<'FIN_ARCHIVO'\n#!/bin/sh\n# pre-push: nadie publica directo en main\n# Git entrega por stdin una línea por referencia:\n# <ref local> <sha local> <ref remota> <sha remota>\nwhile read ref_local sha_local ref_remota sha_remota\ndo\n  if [ \"$ref_remota\" = \"refs/heads/main\" ]; then\n    echo \"pre-push: no publiques directo en main; sube una rama y abre un pull request\" >&2\n    exit 1\n  fi\ndone\nexit 0\nFIN_ARCHIVO\nchmod +x .git/hooks/pre-push",
+     "cwd": "tienda",
+     "code": "git push origin feature/pagos:main\ngit push -u origin feature/pagos\ngit branch -vv\ngit log --oneline --graph --all",
+     "caption": "El primer push apuntaba a `refs/heads/main` del servidor y el hook lo detuvo antes de enviar nada. La rama `feature/pagos` sí se publica."
+    },
+    {
+     "type": "h",
+     "text": "Compartir hooks: core.hooksPath"
+    },
+    {
+     "type": "p",
+     "text": "La forma estándar de compartir hooks es **versionarlos** en una carpeta del proyecto (por convención `.githooks/`) y que cada persona, una vez, le diga a Git que los busque ahí: `git config core.hooksPath .githooks`. Una ruta relativa se interpreta desde la raíz del directorio de trabajo, que es donde corren los hooks."
+    },
+    {
+     "type": "diagram",
+     "title": "¿Dónde busca Git los hooks?",
+     "mermaid": "flowchart TD\n  Q{\"¿core.hooksPath definido?\"} -- \"no\" --> H[\".git/hooks/<br/>local, no se versiona\"]\n  Q -- \"sí\" --> P[\"La carpeta indicada<br/>por ejemplo .githooks/ versionada\"]\n  P --> N[\"Git ignora .git/hooks/ por completo\"]\n  T[\"init.templateDir<br/>~/.plantilla-git/hooks/\"] -- \"git init y git clone copian\" --> H"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo app-delivery\nautor 'Camila Fuentes' 'camila@ejemplo.com'\nfecha '2026-09-15 10:00'\nmkdir -p .githooks\nprintf 'export const TIMEOUT = 3000;\\n' > api.js\ncat > .githooks/pre-commit <<'FIN_ARCHIVO'\n#!/bin/sh\n# pre-commit: bloquea console.log en las líneas agregadas y preparadas de JavaScript/TypeScript\nif git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\" | grep -q \"console\\.log\"; then\n  echo \"pre-commit: quita los console.log antes de confirmar\" >&2\n  exit 1\nfi\nexit 0\nFIN_ARCHIVO\ngit add . && git commit -q -m 'chore: estructura inicial y hooks del equipo'\nyo",
+     "cwd": "app-delivery",
+     "code": "git ls-files -s .githooks\ngit config core.hooksPath .githooks\necho 'console.log(TIMEOUT);' >> api.js\ngit commit -am \"feat: registra el timeout\"\ngit reset --soft HEAD~1\ngit restore --staged api.js\ngit restore api.js\nchmod +x .githooks/pre-commit\ngit status -s\ngit diff\ngit commit -am \"chore: marca el hook pre-commit como ejecutable\"\ngit ls-files -s .githooks",
+     "caption": "Camila confirmó el hook con modo `100644`, así que Git lo ignoró y el `console.log` entró (lo deshicimos con `reset --soft`). Tras `chmod +x`, `git diff` muestra `old mode 100644` / `new mode 100755`: el permiso **se versiona**, y al confirmarlo todo el equipo recibe el hook ejecutable."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`core.hooksPath` es configuración local: cada persona debe ejecutarla una vez después de clonar (por eso Husky lo automatiza con el script `prepare` de npm). Y un efecto que sorprende: con `core.hooksPath` definido, los hooks que tenías en `.git/hooks/` **dejan de ejecutarse**."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para desactivar todos los hooks en un solo comando, la documentación de Git sugiere `git -c core.hooksPath=/dev/null …`. Úsalo con criterio, igual que `--no-verify`."
+    },
+    {
+     "type": "h",
+     "text": "Plantillas: init.templateDir"
+    },
+    {
+     "type": "p",
+     "text": "`git init` y `git clone` copian al nuevo `.git/` el contenido de una **carpeta de plantilla** (de ahí salen los `*.sample`). Con `init.templateDir` eliges tu propia plantilla: cada repo nuevo nace con tus hooks. Si ejecutas `git init` dentro de un repo existente, Git copia lo que falte **sin sobrescribir** nada; es la forma de agregar la plantilla a repos antiguos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p hooks-equipo proyectos\ncat > hooks-equipo/commit-msg <<'FIN_ARCHIVO'\n#!/bin/sh\n# Hook del equipo: rechaza mensajes que no dicen nada\nasunto=$(head -n 1 \"$1\")\ncase \"$asunto\" in\n  wip|WIP|cambios|arreglos|asdf|.)\n    echo \"commit-msg: el mensaje no describe el cambio: $asunto\" >&2\n    exit 1 ;;\nesac\nexit 0\nFIN_ARCHIVO\ncd proyectos && nuevo_repo api && commit_archivo app.py 'print(1)' 'feat: crea la API'",
+     "cwd": "",
+     "code": "mkdir -p ~/.plantilla-git/hooks\ncp ~/hooks-equipo/commit-msg ~/.plantilla-git/hooks/\nchmod +x ~/.plantilla-git/hooks/commit-msg\ngit config --global init.templateDir ~/.plantilla-git\ngit init ~/proyectos/pagos\nls -a ~/proyectos/pagos/.git\nls -l ~/proyectos/pagos/.git/hooks\ncd ~/proyectos/api\ngit init\ngit commit --allow-empty -m wip",
+     "caption": "El repo `pagos` nace con el hook. En `api`, el segundo `git init` responde `Reinitialized existing Git repository` y agrega el hook, que ya rechaza `wip`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Con una plantilla propia, Git copia **solo** lo que ella contiene: los repos nuevos ya no traen los `*.sample`, ni `description`, ni `info/exclude`. Y la plantilla se copia una vez: si después cambias el hook en `~/.plantilla-git`, los repos existentes conservan la versión vieja (a diferencia de `core.hooksPath`, que siempre lee la carpeta actual)."
+    },
+    {
+     "type": "h",
+     "text": "Frameworks: pre-commit y Husky"
+    },
+    {
+     "type": "p",
+     "text": "Escribir hooks a mano está bien para reglas simples. Cuando un equipo quiere formateadores, linters y comprobaciones de varios lenguajes, se usan **frameworks** que instalan y actualizan los hooks por ti."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Herramienta",
+      "Ecosistema",
+      "Instalación",
+      "Cómo se engancha a Git",
+      "Configuración"
+     ],
+     "rows": [
+      [
+       "pre-commit (pre-commit.com)",
+       "Multilenguaje (hecho en Python)",
+       "`pip install pre-commit` y luego `pre-commit install`",
+       "Escribe su script en `.git/hooks/pre-commit`",
+       "`.pre-commit-config.yaml` versionado"
+      ],
+      [
+       "Husky",
+       "JavaScript / Node",
+       "`npm install --save-dev husky` y `npx husky init`",
+       "Configura `core.hooksPath` = `.husky/_` al ejecutarse el script `prepare`",
+       "Un archivo por hook en `.husky/` (por ejemplo `.husky/pre-commit`)"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "yaml",
+     "code": "# .pre-commit-config.yaml\nrepos:\n  - repo: https://github.com/pre-commit/pre-commit-hooks\n    rev: v6.0.0\n    hooks:\n      - id: trailing-whitespace\n      - id: end-of-file-fixer\n      - id: check-yaml\n      - id: check-added-large-files",
+     "caption": "`pre-commit run --all-files` lo prueba sobre todo el repo, `pre-commit autoupdate` sube las versiones (`rev`) y `pre-commit install --hook-type commit-msg` instala también el hook de mensajes."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "npm install --save-dev husky\nnpx husky init          # crea .husky/pre-commit y el script \"prepare\": \"husky\" en package.json\necho \"npm test\" > .husky/pre-commit\ngit commit -m \"...\" -n  # como siempre, --no-verify salta los hooks\nHUSKY=0 git commit -m \"...\"   # Husky también se desactiva con esta variable"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Novedad de **Git 2.54** (abril de 2026): los hooks también se pueden declarar en la configuración, con `hook.<nombre>.event` y `hook.<nombre>.command`, y listar con `git hook list <evento>`; conviven con los de `.git/hooks/`, que corren al final. Tu Git 2.50 aún no los tiene: ahí existe `git hook run` (desde 2.36)."
+    }
+   ]
+  },
+  {
+   "id": "s13-l7",
+   "title": "Firmar commits y guardar credenciales",
+   "minutes": 16,
+   "goals": [
+    "Configurar la firma de commits y tags con SSH o GPG (gpg.format, user.signingKey, commit.gpgSign).",
+    "Verificar firmas con git log --show-signature, el formato %G? y git verify-commit.",
+    "Elegir un credential helper seguro según el sistema operativo."
+   ],
+   "takeaways": [
+    "`user.name` y `user.email` los escribe cualquiera; una **firma** prueba que el commit lo creó quien tiene la llave privada.",
+    "Desde Git 2.34 puedes firmar con tu llave SSH (`gpg.format ssh`); para verificar en local necesitas `gpg.ssh.allowedSignersFile`.",
+    "GitHub marca **Verified** cuando la llave pública está registrada en tu cuenta como llave de firma.",
+    "Usa el helper de credenciales del sistema (osxkeychain, Git Credential Manager, libsecret); `store` guarda en texto plano."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora, la identidad de un commit es solo texto: nombre y correo que cada uno configura como quiere. Nada impide hacer un commit a nombre de otra persona. Mira:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo kernel\ncommit_archivo README.md '# Mi kernel' 'docs: readme'",
+     "cwd": "kernel",
+     "code": "git -c user.name=\"Linus Torvalds\" -c user.email=torvalds@linux-foundation.org commit --allow-empty -m \"feat: apruebo este cambio\"\ngit log --format=\"%h %G? %an <%ae> %s\"\ngit verify-commit HEAD || echo \"sin firma: no hay nada que verificar\"",
+     "caption": "El commit dice ser de Linus, y Git no tiene cómo saber que es falso. `%G?` muestra `N` (sin firma) en ambos commits."
+    },
+    {
+     "type": "diagram",
+     "title": "Firmar y verificar",
+     "mermaid": "sequenceDiagram\n  actor Dev as Tú\n  participant Git\n  participant K as ssh-keygen o gpg\n  participant GH as GitHub\n  Dev->>Git: git commit -S\n  Git->>K: firma el contenido del commit con tu llave privada\n  K-->>Git: firma guardada en la cabecera gpgsig del commit\n  Dev->>GH: git push\n  GH->>GH: verifica con tu llave pública registrada\n  GH-->>Dev: insignia Verified",
+     "caption": "La firma forma parte del objeto commit: cambiar cualquier cosa (autor, mensaje, árbol) invalida la firma."
+    },
+    {
+     "type": "h",
+     "text": "Firmar con SSH (desde Git 2.34)"
+    },
+    {
+     "type": "p",
+     "text": "Si ya usas SSH para GitHub (s07), puedes firmar con esa misma llave. Es la opción más simple hoy. Los bloques siguientes son para **tu** computador: la terminal de práctica no permite ejecutar `ssh-keygen` ni `gpg`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# 1) Una llave (si ya tienes una para GitHub, puedes reutilizarla)\nssh-keygen -t ed25519 -C \"ana@ejemplo.com\"\n\n# 2) Decirle a Git que firme con SSH, y con qué llave\ngit config --global gpg.format ssh\ngit config --global user.signingkey ~/.ssh/id_ed25519.pub\ngit config --global commit.gpgsign true     # firmar todos los commits\ngit config --global tag.gpgSign true        # y todos los tags anotados\n\n# 3) Para verificar en tu computador: lista de firmantes de confianza\necho \"ana@ejemplo.com $(cat ~/.ssh/id_ed25519.pub)\" >> ~/.ssh/allowed_signers\ngit config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers\n\ngit commit -m \"feat: primer commit firmado\"\ngit log --show-signature -1\n# Good \"git\" signature for ana@ejemplo.com with ED25519 key SHA256:…",
+     "caption": "Sin `gpg.ssh.allowedSignersFile`, `git log --show-signature` responde `error: gpg.ssh.allowedSignersFile needs to be configured and exist for ssh signature verification`: la firma existe, pero Git no sabe en qué llaves confiar."
+    },
+    {
+     "type": "h",
+     "text": "Firmar con GPG"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "gpg --full-generate-key                        # crea la llave\ngpg --list-secret-keys --keyid-format=long     # copia el ID (p. ej. 3AA5C34371567BD2)\ngit config --global --unset gpg.format         # vuelve al formato por defecto: openpgp\ngit config --global user.signingkey 3AA5C34371567BD2\ngit commit -S -m \"feat: commit firmado con GPG\"   # -S firma este commit\ngit tag -s v1.0.0 -m \"Versión 1.0.0\"             # -s firma el tag\ngit verify-commit HEAD\ngit verify-tag v1.0.0"
+    },
+    {
+     "type": "p",
+     "text": "Para revisar las firmas de muchos commits de una vez, usa el marcador `%G?` de `git log --format` (por ejemplo `git log --format=\"%h %G? %an %s\"`):"
+    },
+    {
+     "type": "table",
+     "head": [
+      "`%G?`",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "`G`",
+       "Firma buena (válida)"
+      ],
+      [
+       "`B`",
+       "Firma mala: el contenido no coincide"
+      ],
+      [
+       "`U`",
+       "Firma buena, pero de validez desconocida (llave sin confianza establecida)"
+      ],
+      [
+       "`X` / `Y`",
+       "Firma buena que expiró / hecha con una llave expirada"
+      ],
+      [
+       "`R`",
+       "Firma buena hecha con una llave revocada"
+      ],
+      [
+       "`E`",
+       "No se pudo comprobar (por ejemplo, falta la llave)"
+      ],
+      [
+       "`N`",
+       "Sin firma"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En GitHub debes subir la llave pública como **Signing Key** (en SSH es un tipo distinto de la llave de autenticación, aunque puede ser la misma llave). Con eso tus commits muestran **Verified**. Con el *modo vigilante* activado, GitHub marca como **Unverified** también los commits **sin firma** que dicen ser tuyos: justo el caso de Linus de arriba."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si activas `commit.gpgsign true` y la llave no está disponible, **todos** tus commits fallan (con SSH verás, por ejemplo, `Couldn't load public key` y `fatal: failed to write commit object`). Configura y prueba con `git commit -S` antes de activarlo para siempre."
+    },
+    {
+     "type": "h",
+     "text": "Credenciales: que Git no te pida la clave cada vez"
+    },
+    {
+     "type": "p",
+     "text": "Con remotos HTTPS, Git necesita usuario y contraseña. En GitHub la «contraseña» es un **token** (o un inicio de sesión OAuth en el navegador): hace años que la contraseña de la cuenta no sirve para operaciones Git. Un **credential helper** es un programa que guarda esas credenciales para no escribirlas en cada `push`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Helper",
+      "Dónde guarda",
+      "Sistema",
+      "Comentario"
+     ],
+     "rows": [
+      [
+       "`osxkeychain`",
+       "Llavero de macOS",
+       "macOS",
+       "El Git de Apple ya lo trae configurado"
+      ],
+      [
+       "`manager` (Git Credential Manager)",
+       "Almacén seguro del sistema; admite OAuth",
+       "Windows, macOS y Linux",
+       "Viene incluido en Git for Windows"
+      ],
+      [
+       "`libsecret`",
+       "GNOME Keyring o KWallet",
+       "Linux",
+       "Se instala aparte según la distribución"
+      ],
+      [
+       "`cache`",
+       "Memoria; 900 segundos por defecto (`--timeout`)",
+       "macOS y Linux",
+       "Nada queda en disco; se borra al expirar o al reiniciar"
+      ],
+      [
+       "`store`",
+       "`~/.git-credentials` en **texto plano**",
+       "Cualquiera",
+       "Evítalo: cualquiera que lea el archivo tiene tu token"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git config --global credential.helper osxkeychain          # macOS\ngit config --global credential.helper manager              # Git Credential Manager\ngit config --global credential.helper 'cache --timeout=3600'\ngit config --global credential.https://github.com.username ana-rojas\ngit credential-cache exit                                  # olvida lo que había en memoria"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo demo\ncommit_archivo README.md '# Demo' 'docs: readme'",
+     "cwd": "demo",
+     "code": "git config --show-origin --show-scope --get-all credential.helper\ngit config --global --get-all credential.helper || echo \"no hay helper en tu ~/.gitconfig\"",
+     "caption": "En un Mac con el Git de Apple verás `osxkeychain` con ámbito `unknown`: viene del archivo interno de la instalación, no de tu `~/.gitconfig`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`credential.helper` es multivalor: Git prueba cada helper en orden hasta obtener usuario y contraseña. Un valor vacío (`credential.helper=` en una capa) **reinicia la lista**, útil para anular un helper definido en una capa inferior."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Con SSH (s07) no usas credential helper: la autenticación la hace tu llave, normalmente con `ssh-agent`. Muchos profesionales usan SSH para autenticarse y la misma llave para firmar."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s13-e1",
+   "title": "¿Con qué correo salen mis commits?",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Copiaste la carpeta `~/informe` desde el computador de la consultora donde trabajabas antes. Al revisar `git log` notas que tus commits en ese proyecto siguen saliendo con tu correo antiguo, `alumno@consultora-anterior.cl`, aunque tu configuración global es la correcta (`Alumno <alumno@cuaderno.local>`).",
+    "1. Averigua **de qué archivo y de qué ámbito** sale ese correo (`--show-origin`, `--show-scope`).\n2. Elimina la identidad que sobra (nombre y correo) **solo de ese repositorio**, para que rija tu identidad global. No toques tu `~/.gitconfig`.\n3. Confirma el cambio pendiente de `resumen.md` con el mensaje `docs: agrega las conclusiones del informe`."
+   ],
+   "setup": "nuevo_repo informe\ngit config user.name 'Alumno (Consultora)'\ngit config user.email alumno@consultora-anterior.cl\nfecha '2026-08-20 10:00'\ncommit_archivo resumen.md '# Informe trimestral' 'docs: crea el informe'\nfecha '2026-08-21 10:00'\ncommit_archivo datos.csv 'mes,ventas' 'docs: agrega los datos'\nprintf '# Informe trimestral\\n\\n## Conclusiones\\nLas ventas crecieron un 12 %%.\\n' > resumen.md",
+   "cwd": "informe",
+   "checks": [
+    {
+     "name": "El repo ya no define identidad propia",
+     "script": "git config --local --get user.email >/dev/null && falla \"Todavía hay un user.email en .git/config (ámbito local); bórralo de ese repo\"\ngit config --local --get user.name >/dev/null && falla \"Todavía hay un user.name en .git/config (ámbito local); bórralo de ese repo\"\n[ \"$(git config --global --get user.email)\" = \"alumno@cuaderno.local\" ] || falla \"Tu user.email global cambió: debe seguir siendo alumno@cuaderno.local\"\nexit 0"
+    },
+    {
+     "name": "El nuevo commit usa tu identidad global",
+     "script": "[ \"$(num_commits)\" -ge 3 ] || falla \"Falta confirmar el cambio de resumen.md\"\nmensaje_es HEAD \"docs: agrega las conclusiones del informe\"\n[ \"$(git log -1 --format=%ae)\" = \"alumno@cuaderno.local\" ] || falla \"El último commit sale como $(git log -1 --format='%an <%ae>'); debería usar tu identidad global\"\n[ \"$(git log -1 --format=%an)\" = \"Alumno\" ] || falla \"El nombre del autor del último commit debería ser Alumno (el global)\""
+    },
+    {
+     "name": "Cambio confirmado y árbol limpio",
+     "script": "git show HEAD:resumen.md | grep -q \"Conclusiones\" || falla \"El último commit no incluye las conclusiones de resumen.md\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git config --show-origin --show-scope user.email",
+    "git config --unset user.email",
+    "git config --unset user.name",
+    "git config --show-origin user.email",
+    "git commit -am \"docs: agrega las conclusiones del informe\""
+   ],
+   "hints": [
+    "Ejecuta `git config --show-origin --show-scope --get-all user.email`: verás dos valores que compiten y de qué archivo sale cada uno.",
+    "El valor viejo está en `.git/config` (ámbito local), y el local le gana al global. Bórralo con `git config --unset user.email` (sin `--global`), y lo mismo con `user.name`.",
+    "Comprueba con `git config --show-origin user.email` que ahora sale de `~/.gitconfig` y después confirma con `git commit -am \"docs: agrega las conclusiones del informe\"`."
+   ],
+   "explain": "El ámbito local (`.git/config`) se lee después del global (`~/.gitconfig`), así que cualquier `user.email` del repo le gana al tuyo. `--show-origin` te dice el archivo y `--show-scope` la capa. Al escribir o borrar sin opción, `git config` actúa sobre `.git/config`, que es justo lo que querías aquí. Con la sintaxis de Git 2.46 sería `git config unset user.email`. Si además quisieras corregir los commits antiguos ya hechos con el correo viejo, tendrías que reescribir la historia (s09 y s15): por eso conviene detectar el problema pronto. Para que no vuelva a pasar con un grupo de repos, la herramienta es `includeIf` (lección 2)."
+  },
+  {
+   "id": "s13-e2",
+   "title": "Tus primeros alias",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Escribes `git status -s` y `git log --oneline --graph --all` decenas de veces al día. Crea estos tres alias **globales** (en `~/.gitconfig`, para que funcionen en todos tus repos):",
+    "- `git st` → `status -s`\n- `git lg` → `log --oneline --graph --all`\n- `git ultimo` → `log -1 HEAD --stat` (el último commit con sus archivos)",
+    "Pruébalos en el repo `~/tienda`, que ya tiene un par de ramas."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ngit switch -q -c feature/carrito\nfecha '2026-09-02 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'feat: carrito vacío'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo estilos.css 'body { margin: 0; }' 'style: estilos base'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Alias st",
+     "script": "v=\"$(git config --global --get alias.st)\" || falla \"No existe el alias global st\"\ncase \"$v\" in \"status -s\"|\"status --short\") ;; *) falla \"alias.st tiene el valor «${v}»; debería ser «status -s» (sin la palabra git)\";; esac"
+    },
+    {
+     "name": "Alias lg",
+     "script": "v=\"$(git config --global --get alias.lg)\" || falla \"No existe el alias global lg\"\ncase \"$v\" in log*) ;; *) falla \"alias.lg debería empezar por log (la expansión se escribe sin la palabra git)\";; esac\nfor o in --oneline --graph --all; do case \" $v \" in *\" $o \"*) ;; *) falla \"A alias.lg le falta $o\";; esac; done\nexit 0"
+    },
+    {
+     "name": "Alias ultimo",
+     "script": "v=\"$(git config --global --get alias.ultimo)\" || falla \"No existe el alias global ultimo\"\ncase \"$v\" in log*) ;; *) falla \"alias.ultimo debería empezar por log\";; esac\ncase \" $v \" in *\" -1 \"*|*\" -n 1 \"*|*\" --max-count=1 \"*) ;; *) falla \"alias.ultimo debería mostrar solo un commit (-1)\";; esac\ncase \" $v \" in *\" --stat \"*) ;; *) falla \"A alias.ultimo le falta --stat\";; esac\nexit 0"
+    },
+    {
+     "name": "Son globales y funcionan",
+     "script": "[ -z \"$(git config --local --get-regexp '^alias\\.')\" ] || falla \"Hay alias en .git/config (ámbito local): deben ir en ~/.gitconfig con --global\"\ngit st >/dev/null 2>&1 && git lg >/dev/null 2>&1 && git ultimo >/dev/null 2>&1 || falla \"Algún alias no se ejecuta bien: pruébalos con git st, git lg y git ultimo\""
+    }
+   ],
+   "solution": [
+    "git config --global alias.st \"status -s\"",
+    "git config --global alias.lg \"log --oneline --graph --all\"",
+    "git config --global alias.ultimo \"log -1 HEAD --stat\"",
+    "git lg",
+    "git ultimo",
+    "git config --global --get-regexp '^alias\\.'"
+   ],
+   "hints": [
+    "La forma es `git config --global alias.NOMBRE \"expansión\"`. La expansión va sin la palabra `git`.",
+    "Las comillas son necesarias porque la expansión tiene espacios: `git config --global alias.lg \"log --oneline --graph --all\"`.",
+    "Revisa lo que quedó con `git config --global --get-regexp '^alias\\.'` y prueba cada alias."
+   ],
+   "explain": "Un alias sin `!` se expande dentro de Git: `git lg -n 3` pasa a ser `git log --oneline --graph --all -n 3`. Con `--global` quedan en `~/.gitconfig` y sirven en todos tus repos; sin `--global` quedarían en `.git/config` de `tienda` y en ningún otro. `git help lg` confirma la expansión. Otras formas equivalentes: `git config set --global alias.st \"status -s\"` (Git 2.46) o editar `~/.gitconfig` con `git config --global --edit` y escribir la sección `[alias]` a mano."
+  },
+  {
+   "id": "s13-e3",
+   "title": "Configura tu Git como un profesional",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Deja listas estas preferencias en tu configuración **global**:",
+    "- `pull.rebase` = `true`\n- `push.autoSetupRemote` = `true`\n- `fetch.prune` = `true`\n- `rerere.enabled` = `true`\n- `merge.conflictStyle` = `zdiff3`",
+    "Estás dentro de `~/proyecto`. Un script antiguo dejó en ese repo un valor que contradice tu preferencia de `pull.rebase`. Encuéntralo y haz que en este repo también rija tu valor global. Ninguna de estas opciones debe quedar en `.git/config`."
+   ],
+   "setup": "nuevo_repo proyecto\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Proyecto' 'docs: readme'\ngit config pull.rebase false",
+   "cwd": "proyecto",
+   "checks": [
+    {
+     "name": "Las cinco opciones están en tu configuración global",
+     "script": "for k in pull.rebase push.autoSetupRemote fetch.prune rerere.enabled; do\n  [ \"$(git config --global --type=bool --get $k 2>/dev/null)\" = \"true\" ] || falla \"Falta $k = true en tu configuración global (~/.gitconfig)\"\ndone\n[ \"$(git config --global --get merge.conflictStyle)\" = \"zdiff3\" ] || falla \"Falta merge.conflictStyle = zdiff3 en tu configuración global\""
+    },
+    {
+     "name": "No quedaron en el repo",
+     "script": "for k in push.autoSetupRemote fetch.prune rerere.enabled merge.conflictStyle; do\n  git config --local --get $k >/dev/null && falla \"$k quedó en .git/config (ámbito local); debe ir con --global\"\ndone\nexit 0"
+    },
+    {
+     "name": "En este repo rige tu pull.rebase global",
+     "script": "git config --local --get pull.rebase >/dev/null && falla \"En .git/config sigue pull.rebase = $(git config --local --get pull.rebase): bórralo para que rija tu valor global (ninguna de estas opciones debe quedar en el repo)\"\n[ \"$(git config --type=bool --get pull.rebase)\" = \"true\" ] || falla \"El pull.rebase efectivo en este repo no es true\""
+    }
+   ],
+   "solution": [
+    "git config --global pull.rebase true",
+    "git config --global push.autoSetupRemote true",
+    "git config --global fetch.prune true",
+    "git config --global rerere.enabled true",
+    "git config --global merge.conflictStyle zdiff3",
+    "git config --show-origin --show-scope pull.rebase",
+    "git config --unset pull.rebase",
+    "git config --list --show-scope"
+   ],
+   "hints": [
+    "Cada opción es un `git config --global clave valor`. Sin `--global` irían a `.git/config` del repo.",
+    "Después de configurar, pregunta `git config --show-origin pull.rebase`: ¿de qué archivo sale el valor que Git usa aquí?",
+    "El `pull.rebase false` de `.git/config` le gana al global. Bórralo con `git config --unset pull.rebase` y verifica con `git config --list --show-scope`."
+   ],
+   "explain": "Las preferencias personales van en `~/.gitconfig` para aplicarse a todos tus repos. Pero la capa local siempre gana, así que un valor olvidado en `.git/config` anula tu preferencia sin avisar: `--show-origin` y `--show-scope` son la forma de detectarlo. Qué aporta cada opción: `pull.rebase` evita merges innecesarios al traer cambios; `push.autoSetupRemote` (Git 2.37) permite publicar una rama nueva con un simple `git push`; `fetch.prune` limpia las ramas remotas borradas; `rerere.enabled` reutiliza resoluciones de conflictos (s15); `zdiff3` muestra la versión base en los conflictos. Git acepta también `yes`/`on`/`1` como verdadero; `--type=bool` lo normaliza a `true`."
+  },
+  {
+   "id": "s13-e4",
+   "title": "Activa un hook de ejemplo",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Cada `git init` deja en `.git/hooks/` varios hooks de ejemplo terminados en `.sample`, desactivados. Uno de ellos, `pre-commit.sample`, rechaza los commits que agregan líneas con **espacios al final**, un clásico que ensucia los diffs.",
+    "1. Activa ese hook en el repo `~/calculadora` (tiene que llamarse exactamente `pre-commit` y ser ejecutable).\n2. Intenta confirmar el archivo nuevo `calc.py`: el hook lo va a rechazar y te dirá en qué líneas está el problema.\n3. Corrige `calc.py` (quita los espacios al final de las líneas) y confírmalo con el mensaje `feat: agrega calculadora`."
+   ],
+   "setup": "nuevo_repo calculadora\nfecha '2026-09-02 10:00'\ncommit_archivo app.py 'print(\"Calculadora\")' 'feat: punto de entrada'\nprintf 'def sumar(a, b):   \\n    return a + b\\n\\ndef restar(a, b):\\n    return a - b \\n' > calc.py",
+   "cwd": "calculadora",
+   "checks": [
+    {
+     "name": "El hook pre-commit está activo",
+     "script": "[ -f .git/hooks/pre-commit ] || falla \"No existe .git/hooks/pre-commit (el nombre debe ser exacto, sin extensión)\"\n[ -x .git/hooks/pre-commit ] || falla \".git/hooks/pre-commit existe pero no es ejecutable: usa chmod +x .git/hooks/pre-commit\"\nhead -n 1 .git/hooks/pre-commit | grep -q '^#!' || falla \"La primera línea de .git/hooks/pre-commit debe ser el shebang, por ejemplo #!/bin/sh\"\nexit 0"
+    },
+    {
+     "name": "El hook bloquea espacios al final de línea",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nintenta() { mkdir -p \"$(dirname \"$1\")\"; printf \"%s\\n\" \"$2\" > \"$1\"; git add -- \"$1\"; git commit -q -m \"test: prueba del hook\" >/dev/null 2>&1; r=$?; git reset -q; return $r; }\nintenta prueba_ws.py \"x = 1   \" && falla \"El hook dejó pasar una línea con espacios al final\"\nintenta prueba_ok.py \"x = 1\" || falla \"El hook rechazó un archivo limpio\"\nexit 0"
+    },
+    {
+     "name": "calc.py confirmado y sin espacios finales",
+     "script": "git cat-file -e HEAD:calc.py 2>/dev/null || falla \"calc.py todavía no está confirmado\"\ngit show HEAD:calc.py | grep -q \"[[:space:]]$\" && falla \"El calc.py confirmado todavía tiene espacios al final de alguna línea\"\ngit show HEAD:calc.py | grep -q \"def restar\" || falla \"Al calc.py confirmado le falta la función restar\"\nmensaje_es HEAD \"feat: agrega calculadora\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "ls .git/hooks",
+    "cp .git/hooks/pre-commit.sample .git/hooks/pre-commit",
+    "git add calc.py",
+    "git commit -m \"feat: agrega calculadora\"",
+    "printf 'def sumar(a, b):\\n    return a + b\\n\\ndef restar(a, b):\\n    return a - b\\n' > calc.py",
+    "git add calc.py",
+    "git commit -m \"feat: agrega calculadora\""
+   ],
+   "hints": [
+    "Mira `ls -l .git/hooks`: el ejemplo se llama `pre-commit.sample`. Git solo ejecuta el que se llama exactamente `pre-commit`.",
+    "Cópialo con `cp .git/hooks/pre-commit.sample .git/hooks/pre-commit` (los ejemplos ya son ejecutables; si no, `chmod +x`). Luego `git add calc.py` y `git commit -m \"feat: agrega calculadora\"`.",
+    "El hook te muestra `calc.py:1: trailing whitespace.`: abre el archivo con `code calc.py`, borra los espacios del final de las líneas, guarda, y vuelve a `git add` y `git commit`."
+   ],
+   "explain": "El hook de ejemplo termina con `exec git diff-index --check --cached $against --`, la versión plumbing de `git diff --cached --check`: revisa lo **preparado** en busca de errores de espacios (espacios al final, espacio antes de tabulación, líneas vacías al final del archivo). Como sale con código distinto de 0, el commit se aborta y nada se crea. `mv` en vez de `cp` también sirve, pero `cp` conserva el ejemplo. Puedes probar el hook sin intentar un commit con `git hook run pre-commit`. Los editores suelen tener la opción «eliminar espacios al final al guardar»: la mejor defensa es no generarlos."
+  },
+  {
+   "id": "s13-e5",
+   "title": "Identidad de trabajo por carpeta con includeIf",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Todos tus proyectos de la empresa están en `~/trabajo/` y los personales en `~/personal/`. Quieres que **cualquier** repo dentro de `~/trabajo/` (los actuales y los que clones mañana) use en sus commits el correo `alumno@empresa.cl`, y que todo lo demás siga con tu correo personal `alumno@cuaderno.local`. Sin configurar nada repo por repo.",
+    "1. Crea el archivo `~/.gitconfig-trabajo` con `user.email = alumno@empresa.cl`.\n2. Haz que tu `~/.gitconfig` lo incluya solo para los repos dentro de `~/trabajo/`.\n3. En `~/trabajo/api-pagos` hay un arreglo pendiente en `montos.py`: confírmalo con el mensaje `fix: redondea los montos en vez de truncarlos` y comprueba con qué correo salió."
+   ],
+   "setup": "mkdir -p trabajo personal\ncd ~/trabajo && nuevo_repo api-pagos\nfecha '2026-09-14 09:00'\nprintf 'def redondear(monto):\\n    return int(monto)\\n' > montos.py\ngit add . && git commit -q -m 'feat: cálculo de montos'\nprintf 'def redondear(monto):\\n    return round(monto)\\n' > montos.py\ncd ~/personal && nuevo_repo blog\nfecha '2026-09-13 20:00'\ncommit_archivo index.md '# Mi blog' 'docs: primera entrada'",
+   "cwd": "trabajo/api-pagos",
+   "checks": [
+    {
+     "name": "Existe ~/.gitconfig-trabajo con el correo del trabajo",
+     "script": "[ -f \"$HOME/.gitconfig-trabajo\" ] || falla \"Falta el archivo ~/.gitconfig-trabajo\"\n[ \"$(git config --file \"$HOME/.gitconfig-trabajo\" --get user.email)\" = \"alumno@empresa.cl\" ] || falla \"~/.gitconfig-trabajo debe definir user.email = alumno@empresa.cl\""
+    },
+    {
+     "name": "~/.gitconfig lo incluye con includeIf \"gitdir:…\"",
+     "script": "git config --global --get-regexp \"^includeif\\.gitdir\" >/dev/null || falla \"Tu ~/.gitconfig no tiene ningún includeIf con condición gitdir:\"\n[ \"$(git config --global --get user.email)\" = \"alumno@cuaderno.local\" ] || falla \"Tu user.email global debe seguir siendo alumno@cuaderno.local\""
+    },
+    {
+     "name": "Dentro de ~/trabajo manda el correo del trabajo",
+     "script": "git -C \"$HOME/trabajo/api-pagos\" config --local --get user.email >/dev/null && falla \"api-pagos tiene user.email en su .git/config: la idea es no configurar repo por repo\"\n[ \"$(git -C \"$HOME/trabajo/api-pagos\" config user.email)\" = \"alumno@empresa.cl\" ] || falla \"Dentro de ~/trabajo/api-pagos, user.email debería ser alumno@empresa.cl\"\nd=\"$HOME/trabajo/zz-prueba-$$\"; git init -q \"$d\"; e=\"$(git -C \"$d\" config user.email)\"; rm -rf \"$d\"\n[ \"$e\" = \"alumno@empresa.cl\" ] || falla \"Un repo NUEVO dentro de ~/trabajo no toma el correo del trabajo: el patrón debe cubrir toda la carpeta (gitdir:~/trabajo/, con la barra final)\""
+    },
+    {
+     "name": "Fuera de ~/trabajo sigue el correo personal",
+     "script": "[ \"$(git -C \"$HOME/personal/blog\" config user.email)\" = \"alumno@cuaderno.local\" ] || falla \"En ~/personal/blog el correo debería seguir siendo alumno@cuaderno.local\""
+    },
+    {
+     "name": "El arreglo de montos.py salió con el correo del trabajo",
+     "script": "cd \"$HOME/trabajo/api-pagos\"\ngit show HEAD:montos.py | grep -q \"round\" || falla \"Falta confirmar el cambio de montos.py\"\nmensaje_es HEAD \"fix: redondea los montos en vez de truncarlos\"\n[ \"$(git log -1 --format=%ae)\" = \"alumno@empresa.cl\" ] || falla \"El último commit de api-pagos salió con $(git log -1 --format=%ae), no con alumno@empresa.cl\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git config --file ~/.gitconfig-trabajo user.email alumno@empresa.cl",
+    "git config --global includeIf.gitdir:~/trabajo/.path ~/.gitconfig-trabajo",
+    "cat ~/.gitconfig",
+    "git config --show-origin user.email",
+    "git commit -am \"fix: redondea los montos en vez de truncarlos\"",
+    "git log -1 --format='%an <%ae>'"
+   ],
+   "hints": [
+    "`git config --file ~/.gitconfig-trabajo user.email alumno@empresa.cl` crea el archivo con la sección `[user]`. También puedes escribirlo con `code ~/.gitconfig-trabajo`.",
+    "La clave de la inclusión condicional es `includeIf.gitdir:~/trabajo/.path` y su valor, la ruta del archivo a incluir. Úsala con `git config --global`.",
+    "El patrón debe terminar en `/` para cubrir todo lo que hay dentro de `~/trabajo`. Verifica desde el repo con `git config --show-origin user.email` antes de confirmar."
+   ],
+   "explain": "La sección que queda en tu `~/.gitconfig` es `[includeIf \"gitdir:~/trabajo/\"]` con `path = …/.gitconfig-trabajo`. Git la evalúa cada vez: si la carpeta `.git` del repo está dentro de `~/trabajo/` (la barra final equivale a `~/trabajo/**`), inserta ahí el contenido del otro archivo, y como está después de `[user]`, su correo gana. Sin la barra final el patrón no coincide con los repos de adentro. Alternativas: `hasconfig:remote.*.url:https://github.com/mi-empresa/**` si decides por la URL del remoto en vez de la carpeta, o `gitdir/i:` en sistemas de archivos que no distinguen mayúsculas. En el archivo incluido puedes agregar más cosas del contexto laboral, como `user.signingKey` para firmar con la llave de la empresa."
+  },
+  {
+   "id": "s13-e6",
+   "title": "commit-msg: exige Conventional Commits",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "El equipo de `~/tienda-online` genera el CHANGELOG a partir de los mensajes, así que todos deben seguir **Conventional Commits**. Escribe el hook `.git/hooks/commit-msg` que revise el **asunto** (la primera línea) del mensaje:",
+    "- Debe tener la forma `tipo: descripción` o `tipo(ámbito): descripción`, con `!` opcional antes de los dos puntos para cambios incompatibles (`feat!: …`).\n- Tipos válidos: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. El ámbito va en minúsculas, números o guiones.\n- Después de los dos puntos va **un espacio** y una descripción no vacía.\n- Los asuntos que empiezan con `Merge ` se aceptan (así los merges siguen funcionando).\n- Solo cuenta la primera línea: el cuerpo del mensaje es libre.\n- Si rechaza, que explique el formato esperado (en stderr) y salga con código 1.",
+    "Cuando funcione, confirma el archivo nuevo `carrito.js` con un mensaje válido que tu hook acepte.",
+    "Puedes escribir el hook con `code .git/hooks/commit-msg` y darle permiso de ejecución con `chmod +x`. Una expresión regular extendida que te sirve: ```bash\n^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\n```"
+   ],
+   "setup": "nuevo_repo tienda-online\nfecha '2026-09-08 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\nfecha '2026-09-09 10:00'\ncommit_archivo precios.js 'export const IVA = 0.19;' 'fix(precios): usa el IVA de Chile'\nprintf 'export const carrito = [];\\nexport const agregar = (p) => carrito.push(p);\\n' > carrito.js",
+   "cwd": "tienda-online",
+   "checks": [
+    {
+     "name": "El hook commit-msg existe y es ejecutable",
+     "script": "[ -f .git/hooks/commit-msg ] || falla \"No existe .git/hooks/commit-msg (el nombre debe ser exacto, sin extensión)\"\n[ -x .git/hooks/commit-msg ] || falla \".git/hooks/commit-msg existe pero no es ejecutable: usa chmod +x .git/hooks/commit-msg\"\nhead -n 1 .git/hooks/commit-msg | grep -q '^#!' || falla \"La primera línea de .git/hooks/commit-msg debe ser el shebang, por ejemplo #!/bin/sh\"\nexit 0"
+    },
+    {
+     "name": "Rechaza mensajes fuera de la convención",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nacepta() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 || falla \"El hook rechazó «${1}», que es un mensaje válido\"; }\nrechaza() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 && falla \"El hook dejó pasar «${1}»: debería rechazarlo\"; return 0; }\nrechaza \"arreglos varios\"\nrechaza \"Update README\"\nrechaza \"feature: agrega login\"\nrechaza \"feat:sin espacio\"\nrechaza \"Feat: con mayúscula\"\nexit 0"
+    },
+    {
+     "name": "Acepta mensajes válidos (y los merges)",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nacepta() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 || falla \"El hook rechazó «${1}», que es un mensaje válido\"; }\nrechaza() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 && falla \"El hook dejó pasar «${1}»: debería rechazarlo\"; return 0; }\nacepta \"feat: agrega login\"\nacepta \"fix(api): corrige el timeout\"\nacepta \"feat!: elimina la API v1\"\nacepta \"docs: explica la instalación\"\nacepta \"Merge branch 'feature/pagos'\""
+    },
+    {
+     "name": "Revisa solo el asunto (la primera línea)",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\ngit commit -q --allow-empty -m \"cambios\" -m \"feat: esto está en el cuerpo\" >/dev/null 2>&1 && falla \"El hook aceptó un asunto inválido porque encontró el patrón en otra línea: revisa solo la primera\"\ngit commit -q --allow-empty -m \"feat: asunto válido\" -m \"Cuerpo libre, sin formato.\" >/dev/null 2>&1 || falla \"El hook rechazó un commit con asunto válido y cuerpo libre\"\nexit 0"
+    },
+    {
+     "name": "carrito.js confirmado con un mensaje convencional",
+     "script": "git cat-file -e HEAD:carrito.js 2>/dev/null || falla \"carrito.js todavía no está confirmado\"\nmensaje HEAD | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+' || falla \"El asunto del último commit no sigue Conventional Commits: $(mensaje HEAD)\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "printf '#!/bin/sh\\n# commit-msg: exige Conventional Commits en el asunto (la primera línea)\\nasunto=$(head -n 1 \"$1\")\\ncase \"$asunto\" in\\n  \"Merge \"*) exit 0 ;;\\nesac\\npatron=\"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\"\\nif echo \"$asunto\" | grep -qE \"$patron\"; then\\n  exit 0\\nfi\\necho \"commit-msg: el asunto no sigue Conventional Commits: $asunto\" >&2\\necho \"Formato: tipo(ámbito opcional): descripción, por ejemplo: feat(api): agrega login\" >&2\\nexit 1\\n' > .git/hooks/commit-msg",
+    "chmod +x .git/hooks/commit-msg",
+    "git add carrito.js",
+    "git commit -m \"agrega carrito\"",
+    "git commit -m \"feat(carrito): agrega el carrito de compras\"",
+    "git log --oneline"
+   ],
+   "hints": [
+    "El hook recibe en `$1` la ruta del archivo con el mensaje. `head -n 1 \"$1\"` te da el asunto.",
+    "Compara el asunto con `grep -qE \"patrón\"`: si coincide, `exit 0`. Deja pasar primero los que empiezan con `Merge ` (por ejemplo con `case \"$asunto\" in \"Merge \"*) exit 0 ;; esac`). Si nada coincide, `echo \"…\" >&2` y `exit 1`.",
+    "No olvides el shebang `#!/bin/sh` en la primera línea ni `chmod +x .git/hooks/commit-msg`. Prueba con `git commit --allow-empty -m \"arreglos varios\"` (debe fallar) y con `git commit --allow-empty -m \"feat: prueba\"` (debe pasar; luego deshazlo con `git reset --soft HEAD~1`)."
+   ],
+   "explain": "Una solución: \n```bash\n#!/bin/sh\n# commit-msg: exige Conventional Commits en el asunto (la primera línea)\nasunto=$(head -n 1 \"$1\")\ncase \"$asunto\" in\n  \"Merge \"*) exit 0 ;;\nesac\npatron=\"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\"\nif echo \"$asunto\" | grep -qE \"$patron\"; then\n  exit 0\nfi\necho \"commit-msg: el asunto no sigue Conventional Commits: $asunto\" >&2\necho \"Formato: tipo(ámbito opcional): descripción, por ejemplo: feat(api): agrega login\" >&2\nexit 1\n```\nSi haces `grep -qE \"$patron\" \"$1\"` sobre todo el archivo, aceptarías un asunto malo cuando alguna línea del cuerpo coincide: por eso se aísla la primera línea. Con el editor, el archivo trae además comentarios `#` al final, que tampoco molestan porque solo miras la primera línea. Recuerda que `git commit --no-verify` se salta este hook: es una ayuda local; para imponer la regla de verdad se valida en el servidor o en CI (s16). En equipos JavaScript es común usar commitlint con Husky, que hace lo mismo con reglas configurables."
+  },
+  {
+   "id": "s13-e7",
+   "title": "Fines de línea y binarios con .gitattributes",
+   "level": "medio",
+   "minutes": 14,
+   "prompt": [
+    "Pedro, que trabaja en Windows sin ninguna configuración especial, subió varios archivos del sitio con fines de línea CRLF, y cada vez que alguien de macOS los toca el diff muestra el archivo completo como cambiado. Además está `img/logo.png`, que no debe sufrir ninguna conversión.",
+    "Crea un `.gitattributes` en la raíz de `~/sitio-web` con estas reglas:\n- todo lo que Git detecte como texto se normaliza (`text=auto`);\n- los `*.sh` siempre con LF en el directorio de trabajo;\n- los `*.bat` siempre con CRLF en el directorio de trabajo;\n- los `*.png` son binarios.",
+    "Luego **renormaliza** los archivos ya confirmados para que en el repositorio queden con LF y confirma todo (incluido `.gitattributes`) en un commit con un mensaje que empiece con `chore:`. Usa `git ls-files --eol` antes y después para ver el cambio."
+   ],
+   "setup": "nuevo_repo sitio-web\nfecha '2026-09-10 10:00'\nmkdir -p img scripts\nprintf '<h1>Sitio</h1>\\n' > index.html\ngit add . && git commit -q -m 'feat: portada'\nautor 'Pedro Soto' 'pedro@ejemplo.com'\nfecha '2026-09-11 16:00'\nprintf 'const total = 1;\\r\\nconsole.info(total);\\r\\n' > app.js\nprintf '@echo off\\r\\necho Construyendo\\r\\n' > scripts/build.bat\nprintf '#!/bin/sh\\r\\necho Desplegando\\r\\n' > scripts/deploy.sh\nprintf '\\211PNG\\r\\n\\032\\n\\000\\000\\000\\rIHDR\\000\\000\\000\\001\\000\\000\\000\\001' > img/logo.png\ngit add . && git commit -q -m 'feat: scripts, lógica y logo'\nyo",
+   "cwd": "sitio-web",
+   "checks": [
+    {
+     "name": ".gitattributes está confirmado",
+     "script": "git cat-file -e HEAD:.gitattributes 2>/dev/null || falla \"Falta confirmar .gitattributes\"\n[ -z \"$(git status --porcelain -- .gitattributes)\" ] || falla \".gitattributes tiene cambios sin confirmar\""
+    },
+    {
+     "name": "Los atributos son los pedidos",
+     "script": "v() { git check-attr \"$1\" -- \"$2\" | sed \"s/.*: //\"; }\ncase \"$(v text index.html)\" in auto|set) ;; *) falla \"index.html debería tener text=auto (regla * text=auto)\";; esac\n[ \"$(v eol scripts/deploy.sh)\" = \"lf\" ] || falla \"scripts/deploy.sh debería tener eol=lf\"\n[ \"$(v eol scripts/build.bat)\" = \"crlf\" ] || falla \"scripts/build.bat debería tener eol=crlf\"\n[ \"$(v text img/logo.png)\" = \"unset\" ] && [ \"$(v diff img/logo.png)\" = \"unset\" ] || falla \"img/logo.png debería ser binario (atributo binary)\""
+    },
+    {
+     "name": "El repositorio ya no guarda CRLF en archivos de texto",
+     "script": "cr=\"$(printf '\\r')\"\nfor f in app.js scripts/build.bat scripts/deploy.sh; do\n  git show \"HEAD:$f\" | grep -q \"$cr\" && falla \"En el último commit $f todavía tiene CRLF: renormaliza con git add --renormalize . y confirma\"\ndone\ngit ls-files --eol | grep -q \"i/crlf\" && falla \"git ls-files --eol todavía muestra archivos i/crlf en el index\"\nexit 0"
+    },
+    {
+     "name": "logo.png intacto y todo confirmado",
+     "script": "git cat-file -e HEAD:img/logo.png 2>/dev/null || falla \"img/logo.png ya no está en el último commit\"\n[ \"$(git log --format=%H -- img/logo.png | wc -l | tr -d \" \")\" = \"1\" ] || falla \"img/logo.png cambió en algún commit: un binario no debe convertirse\"\nmensaje HEAD | grep -q \"^chore\" || falla \"El mensaje del commit debería empezar con chore:\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git ls-files --eol",
+    "printf '* text=auto\\n*.sh text eol=lf\\n*.bat text eol=crlf\\n*.png binary\\n' > .gitattributes",
+    "git check-attr -a -- img/logo.png scripts/deploy.sh scripts/build.bat",
+    "git add --renormalize .",
+    "git add .gitattributes",
+    "git status -s",
+    "git commit -m \"chore: normaliza fines de línea con .gitattributes\"",
+    "git ls-files --eol"
+   ],
+   "hints": [
+    "Cada regla es una línea `patrón atributos`: `* text=auto`, `*.sh text eol=lf`, `*.bat text eol=crlf`, `*.png binary`. Escríbelas con `code .gitattributes`.",
+    "Comprueba con `git check-attr -a -- img/logo.png scripts/deploy.sh` que cada archivo recibe lo esperado.",
+    "Agregar el `.gitattributes` no cambia lo que ya está confirmado: ejecuta `git add --renormalize .`, agrega también `.gitattributes` (renormalize solo toca archivos rastreados) y confirma."
+   ],
+   "explain": "`text=auto` hace que Git guarde el texto con LF en el repositorio y convierta según `eol` (o según tu configuración) al escribir en tu carpeta. `binary` es una macro que equivale a `-diff -merge -text`: el PNG no se convierte, no se muestra como texto en los diffs y no se fusiona línea a línea. `git add --renormalize .` vuelve a pasar los archivos rastreados por la conversión: en el index quedan `i/lf`, aunque en tu carpeta sigan `w/crlf` hasta el próximo checkout. Hazlo en un commit aparte y avisa al equipo, porque cambia muchas líneas de una vez. Si alguien tenía cambios sin confirmar con CRLF, al actualizar verá diferencias: por eso se hace desde un árbol limpio."
+  },
+  {
+   "id": "s13-e8",
+   "title": "Los hooks del equipo no se ejecutan",
+   "level": "medio",
+   "minutes": 14,
+   "prompt": [
+    "En `~/app-delivery`, Camila dejó versionado en `.githooks/pre-commit` un hook que impide confirmar `console.log`. Pero nadie lo tiene activo: Git busca los hooks en `.git/hooks/` y, además, el archivo se confirmó **sin permiso de ejecución**.",
+    "1. Configura **este repo** para que Git use los hooks de `.githooks/`.\n2. Haz ejecutable el hook y confirma ese cambio de permisos (así el equipo lo recibe ejecutable).\n3. En `src/api.js` tienes un cambio pendiente: el nuevo timeout de 5000 ms, más un `console.log` de depuración que se te quedó. Intenta confirmarlo, deja que el hook te frene, quita el `console.log` y confirma el timeout con un mensaje convencional."
+   ],
+   "setup": "nuevo_repo app-delivery\nautor 'Camila Fuentes' 'camila@ejemplo.com'\nfecha '2026-09-15 10:00'\nmkdir -p src .githooks\nprintf 'export const TIMEOUT = 3000;\\n' > src/api.js\ncat > .githooks/pre-commit <<'FIN_ARCHIVO'\n#!/bin/sh\n# pre-commit: bloquea console.log en las líneas agregadas y preparadas de JavaScript/TypeScript\nif git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\" | grep -q \"console\\.log\"; then\n  echo \"pre-commit: quita los console.log antes de confirmar\" >&2\n  exit 1\nfi\nexit 0\nFIN_ARCHIVO\nprintf '# App de delivery\\n\\nLos hooks del equipo están en .githooks/.\\n' > README.md\ngit add . && git commit -q -m 'chore: estructura inicial y hooks del equipo'\nyo\nprintf 'export const TIMEOUT = 5000;\\nconsole.log(\"timeout\", TIMEOUT);\\n' > src/api.js",
+   "cwd": "app-delivery",
+   "checks": [
+    {
+     "name": "core.hooksPath apunta a .githooks",
+     "script": "v=\"$(git config --get core.hooksPath)\" || falla \"core.hooksPath no está configurado en este repo\"\na=\"$(cd \"$v\" 2>/dev/null && pwd -P)\"; b=\"$(cd .githooks && pwd -P)\"\n[ -n \"$a\" ] && [ \"$a\" = \"$b\" ] || falla \"core.hooksPath tiene el valor «${v}»; debe apuntar a la carpeta .githooks del repo\""
+    },
+    {
+     "name": "El hook es ejecutable y ese permiso está confirmado",
+     "script": "[ -x .githooks/pre-commit ] || falla \".githooks/pre-commit no es ejecutable (chmod +x)\"\nm=\"$(git ls-tree HEAD .githooks/pre-commit | cut -c1-6)\"\n[ \"$m\" = \"100755\" ] || falla \"En el último commit el hook tiene modo $m: confirma el cambio de permisos (100755)\""
+    },
+    {
+     "name": "El hook del equipo se ejecuta",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nintenta() { mkdir -p \"$(dirname \"$1\")\"; printf \"%s\\n\" \"$2\" > \"$1\"; git add -- \"$1\"; git commit -q -m \"test: prueba del hook\" >/dev/null 2>&1; r=$?; git reset -q; return $r; }\nintenta prueba.js \"console.log(1);\" && falla \"Un commit con console.log pasó: el hook del equipo no se está ejecutando\"\nexit 0"
+    },
+    {
+     "name": "Timeout confirmado sin console.log",
+     "script": "git show HEAD:src/api.js | grep -q \"5000\" || falla \"Falta confirmar el nuevo timeout (5000) de src/api.js\"\ngit show HEAD:src/api.js | grep -q \"console.log\" && falla \"El src/api.js confirmado contiene console.log\"\nmensaje HEAD | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+' || falla \"Usa un mensaje convencional (por ejemplo feat(api): …)\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git config core.hooksPath .githooks",
+    "chmod +x .githooks/pre-commit",
+    "git add .githooks/pre-commit",
+    "git commit -m \"chore: marca el hook pre-commit como ejecutable\"",
+    "git add src/api.js",
+    "git commit -m \"feat(api): sube el timeout a 5 segundos\"",
+    "printf 'export const TIMEOUT = 5000;\\n' > src/api.js",
+    "git add src/api.js",
+    "git commit -m \"feat(api): sube el timeout a 5 segundos\"",
+    "git ls-files -s .githooks"
+   ],
+   "hints": [
+    "La opción es `core.hooksPath`. Una ruta relativa se interpreta desde la raíz del repo: `git config core.hooksPath .githooks`.",
+    "`chmod +x .githooks/pre-commit` cambia el modo de 100644 a 100755, y Git lo ve como una modificación (`git diff` muestra `old mode`/`new mode`). Agrégalo y confírmalo solo, antes de tocar `src/api.js`.",
+    "Cuando el hook te frene, abre `src/api.js` con `code src/api.js`, borra la línea del `console.log`, guarda, `git add src/api.js` y vuelve a confirmar."
+   ],
+   "explain": "`.git/hooks/` no se versiona, así que la forma estándar de compartir hooks es una carpeta del proyecto más `core.hooksPath`, que cada persona configura una vez tras clonar (Husky lo automatiza en el script `prepare` de npm). El bit de ejecución forma parte de lo que Git guarda (modo `100755` frente a `100644`); si no lo confirmas, cada compañero tendría que hacer `chmod +x` a mano. Ojo: con `core.hooksPath` definido, Git deja de mirar `.git/hooks/`. Alternativa sin permisos: `git update-index --chmod=+x .githooks/pre-commit` cambia el modo directamente en el index (útil en Windows)."
+  },
+  {
+   "id": "s13-e9",
+   "title": "pre-push: nadie publica directo en main",
+   "level": "medio",
+   "minutes": 14,
+   "prompt": [
+    "En la tienda todo cambio debe pasar por un pull request, pero ya dos veces alguien publicó directo en `main` por error. Escribe un hook `.git/hooks/pre-push` en `~/tienda` que **rechace cualquier push cuyo destino sea la rama `main`** de cualquier remoto (sea `git push`, `git push origin main` o `git push origin otra-rama:main`) y deje pasar todo lo demás.",
+    "Recuerda: Git le entrega al hook por su entrada estándar una línea por referencia con cuatro campos (la rama `main` del servidor aparece como `refs/heads/main`): ```bash\n<ref local> <sha local> <ref remota> <sha remota>\n```",
+    "Después publica tu rama `feature/pagos` en `origin` dejándola con seguimiento (upstream)."
+   ],
+   "setup": "git init -q --bare ~/servidor/tienda.git\nnuevo_repo tienda\nfecha '2026-09-20 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\nfecha '2026-09-20 11:00'\ncommit_archivo README.md '# Tienda' 'docs: readme'\ngit remote add origin ~/servidor/tienda.git\ngit push -q -u origin main\ngit switch -q -c feature/pagos\nfecha '2026-09-21 10:00'\ncommit_archivo pagos.js 'export const pagar = () => true;' 'feat: módulo de pagos'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "El hook pre-push existe y es ejecutable",
+     "script": "[ -f .git/hooks/pre-push ] || falla \"No existe .git/hooks/pre-push (el nombre debe ser exacto, sin extensión)\"\n[ -x .git/hooks/pre-push ] || falla \".git/hooks/pre-push existe pero no es ejecutable: usa chmod +x .git/hooks/pre-push\"\nhead -n 1 .git/hooks/pre-push | grep -q '^#!' || falla \"La primera línea de .git/hooks/pre-push debe ser el shebang, por ejemplo #!/bin/sh\"\nexit 0"
+    },
+    {
+     "name": "Bloquea los push a main",
+     "script": "mkdir -p \"$TMPDIR\"; T=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"; git init -q --bare \"$T/srv.git\"\ngit push -q \"$T/srv.git\" HEAD:refs/heads/main >/dev/null 2>&1 && falla \"El hook dejó publicar en main (git push destino HEAD:main)\"\ngit push -q \"$T/srv.git\" feature/pagos:main >/dev/null 2>&1 && falla \"El hook dejó publicar en main (git push destino feature/pagos:main)\"\nexit 0"
+    },
+    {
+     "name": "Deja publicar otras ramas",
+     "script": "mkdir -p \"$TMPDIR\"; T=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"; git init -q --bare \"$T/srv.git\"\ngit push -q \"$T/srv.git\" HEAD:refs/heads/feature/prueba >/dev/null 2>&1 || falla \"El hook rechazó publicar en feature/prueba: solo debe bloquear main\""
+    },
+    {
+     "name": "feature/pagos publicada con seguimiento",
+     "script": "[ \"$(git -C \"$HOME/servidor/tienda.git\" rev-parse --verify -q refs/heads/feature/pagos)\" = \"$(git rev-parse feature/pagos)\" ] || falla \"La rama feature/pagos no está publicada (o no está al día) en origin\"\n[ \"$(git rev-parse --abbrev-ref feature/pagos@{upstream} 2>/dev/null)\" = \"origin/feature/pagos\" ] || falla \"feature/pagos no sigue a origin/feature/pagos (usa -u al publicar)\""
+    },
+    {
+     "name": "main del servidor quedó intacta",
+     "script": "[ \"$(git -C \"$HOME/servidor/tienda.git\" rev-list --count main)\" = \"2\" ] || falla \"La rama main del servidor cambió: no debía recibir commits\""
+    }
+   ],
+   "solution": [
+    "printf '#!/bin/sh\\n# pre-push: nadie publica directo en main\\n# Git entrega por stdin una línea por referencia:\\n# <ref local> <sha local> <ref remota> <sha remota>\\nwhile read ref_local sha_local ref_remota sha_remota\\ndo\\n  if [ \"$ref_remota\" = \"refs/heads/main\" ]; then\\n    echo \"pre-push: no publiques directo en main; sube una rama y abre un pull request\" >&2\\n    exit 1\\n  fi\\ndone\\nexit 0\\n' > .git/hooks/pre-push",
+    "chmod +x .git/hooks/pre-push",
+    "git push origin feature/pagos:main",
+    "git push -u origin feature/pagos",
+    "git branch -vv"
+   ],
+   "hints": [
+    "Lee la entrada con un bucle: `while read ref_local sha_local ref_remota sha_remota; do … done`.",
+    "Dentro del bucle compara `[ \"$ref_remota\" = \"refs/heads/main\" ]`; si coincide, explica el motivo con `echo \"…\" >&2` y `exit 1`. Al final del script, `exit 0`.",
+    "Prueba que bloquea con `git push origin feature/pagos:main` (debe fallar) y publica tu rama con `git push -u origin feature/pagos`."
+   ],
+   "explain": "Una solución:\n```bash\n#!/bin/sh\n# pre-push: nadie publica directo en main\n# Git entrega por stdin una línea por referencia:\n# <ref local> <sha local> <ref remota> <sha remota>\nwhile read ref_local sha_local ref_remota sha_remota\ndo\n  if [ \"$ref_remota\" = \"refs/heads/main\" ]; then\n    echo \"pre-push: no publiques directo en main; sube una rama y abre un pull request\" >&2\n    exit 1\n  fi\ndone\nexit 0\n```\nMirar la **ref remota** (tercer campo) es lo correcto: `git push origin feature/pagos:main` sale de una rama local que no se llama main, pero el destino sí lo es. Los argumentos `$1` (nombre del remoto) y `$2` (URL) no se necesitan aquí; si el push es a una URL sin nombre, ambos traen la URL. Como todo hook del cliente, `git push --no-verify` se lo salta: en GitHub o GitLab la regla definitiva es la **protección de rama** (s08) o un hook `pre-receive` en el servidor (s16). Un `pre-push` también se usa para correr los tests antes de publicar."
+  },
+  {
+   "id": "s13-e10",
+   "title": "pre-commit: sin console.log ni secretos",
+   "level": "dificil",
+   "minutes": 22,
+   "prompt": [
+    "En `~/panel-admin` quieres un `.git/hooks/pre-commit` que frene dos errores caros antes de que entren a la historia:",
+    "- **`console.log`** en código JavaScript o TypeScript nuevo (archivos `*.js`, `*.jsx`, `*.ts`, `*.tsx`).\n- **Secretos**: claves de acceso de AWS (`AKIA` seguido de 16 letras mayúsculas o dígitos, como el ejemplo de la documentación `AKIAIOSFODNN7EXAMPLE`) y llaves privadas (líneas que contienen `PRIVATE KEY-----`, como `-----BEGIN OPENSSH PRIVATE KEY-----`).",
+    "Reglas que tu hook debe respetar:\n- Revisa **solo las líneas agregadas** en lo **preparado** (el index), no tu carpeta: el código antiguo de `src/legacy/debug.js` tiene un `console.log` que se limpiará más adelante, y **borrar** un `console.log` debe estar permitido.\n- Si algo está bien preparado pero en tu carpeta hay cambios sin preparar con `console.log`, el commit debe pasar.\n- Al rechazar, que explique el motivo en stderr y salga con código 1.",
+    "Cuando funcione, confirma `src/usuarios.js` (ya lo escribiste, pero se te quedó un `console.log` de depuración) con un mensaje convencional.",
+    "Buena práctica obligatoria: en scripts usa `git diff --cached --no-color` (o comandos plumbing). Si alguien tiene `color.ui=always` en su configuración, sin `--no-color` la salida trae códigos de color y tus `grep` no encontrarían nada. Las comprobaciones prueban tu hook con `color.ui=always` activado, justamente para verificar esa robustez."
+   ],
+   "setup": "nuevo_repo panel-admin\nfecha '2026-09-10 10:00'\nmkdir -p src/legacy\nprintf 'export function iniciar() {\\n  return \"ok\";\\n}\\n' > src/app.js\nprintf 'export function depurar(x) {\\n  console.log(\"debug\", x);\\n  return x;\\n}\\n' > src/legacy/debug.js\ngit add . && git commit -q -m 'feat: panel inicial'\nprintf 'export function listarUsuarios(api) {\\n  const lista = api.get(\"/usuarios\");\\n  console.log(\"usuarios\", lista);\\n  return lista;\\n}\\n' > src/usuarios.js",
+   "cwd": "panel-admin",
+   "checks": [
+    {
+     "name": "El hook pre-commit existe y es ejecutable",
+     "script": "[ -f .git/hooks/pre-commit ] || falla \"No existe .git/hooks/pre-commit (el nombre debe ser exacto, sin extensión)\"\n[ -x .git/hooks/pre-commit ] || falla \".git/hooks/pre-commit existe pero no es ejecutable: usa chmod +x .git/hooks/pre-commit\"\nhead -n 1 .git/hooks/pre-commit | grep -q '^#!' || falla \"La primera línea de .git/hooks/pre-commit debe ser el shebang, por ejemplo #!/bin/sh\"\nexit 0"
+    },
+    {
+     "name": "Bloquea console.log agregado",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nintenta() { mkdir -p \"$(dirname \"$1\")\"; printf \"%s\\n\" \"$2\" > \"$1\"; git add -- \"$1\"; git commit -q -m \"test: prueba del hook\" >/dev/null 2>&1; r=$?; git reset -q; return $r; }\nintenta prueba.js \"console.log(\\\"hola\\\");\" && falla \"El hook dejó pasar un console.log agregado (¿usas git diff --cached --no-color? La prueba simula a un usuario con color.ui=always)\"\nexit 0"
+    },
+    {
+     "name": "Bloquea claves de AWS y llaves privadas",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nintenta() { mkdir -p \"$(dirname \"$1\")\"; printf \"%s\\n\" \"$2\" > \"$1\"; git add -- \"$1\"; git commit -q -m \"test: prueba del hook\" >/dev/null 2>&1; r=$?; git reset -q; return $r; }\nintenta config/aws.js \"const clave = \\\"AKIAIOSFODNN7EXAMPLE\\\";\" && falla \"El hook dejó pasar una clave de AWS (AKIA…)\"\nintenta deploy/llave \"-----BEGIN OPENSSH PRIVATE KEY-----\" && falla \"El hook dejó pasar una llave privada\"\nexit 0"
+    },
+    {
+     "name": "Permite borrar un console.log",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nprintf 'export function depurar(x) {\\n  return x;\\n}\\n' > src/legacy/debug.js\ngit add src/legacy/debug.js\ngit commit -q -m \"refactor: quita el log de depuración\" >/dev/null 2>&1 || falla \"El hook bloqueó un commit que ELIMINA un console.log: revisa solo las líneas agregadas (+)\""
+    },
+    {
+     "name": "Revisa lo preparado, no el directorio de trabajo",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nprintf 'export const x = 1;\\n' > limpio.js\ngit add limpio.js\nprintf 'console.log(x);\\n' >> limpio.js\ngit commit -q -m \"feat: agrega x\" >/dev/null 2>&1 || falla \"El hook rechazó un commit cuyo contenido PREPARADO está limpio (el console.log estaba solo en tu carpeta): usa git diff --cached\""
+    },
+    {
+     "name": "usuarios.js confirmado sin console.log",
+     "script": "git cat-file -e HEAD:src/usuarios.js 2>/dev/null || falla \"src/usuarios.js todavía no está confirmado\"\ngit show HEAD:src/usuarios.js | grep -q \"console.log\" && falla \"El src/usuarios.js confirmado contiene console.log\"\nmensaje HEAD | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+' || falla \"Usa un mensaje convencional, por ejemplo feat(usuarios): …\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "printf '#!/bin/sh\\n# pre-commit: revisa SOLO las líneas agregadas en el área de preparación\\nagregadas=$(git diff --cached --no-color -U0 | grep \"^+\" | grep -v \"^+++\")\\ncodigo=$(git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\")\\nif echo \"$codigo\" | grep -q \"console\\.log\"; then\\n  echo \"pre-commit: hay console.log en lo que vas a confirmar\" >&2\\n  exit 1\\nfi\\nif echo \"$agregadas\" | grep -qE \"AKIA[0-9A-Z]{16}|PRIVATE KEY-----\"; then\\n  echo \"pre-commit: parece un secreto (clave de AWS o llave privada); no lo confirmes\" >&2\\n  exit 1\\nfi\\nexit 0\\n' > .git/hooks/pre-commit",
+    "chmod +x .git/hooks/pre-commit",
+    "git add src/usuarios.js",
+    "git commit -m \"feat(usuarios): lista los usuarios desde la API\"",
+    "printf 'export function listarUsuarios(api) {\\n  const lista = api.get(\"/usuarios\");\\n  return lista;\\n}\\n' > src/usuarios.js",
+    "git add src/usuarios.js",
+    "git commit -m \"feat(usuarios): lista los usuarios desde la API\""
+   ],
+   "hints": [
+    "Las líneas agregadas y preparadas salen de `git diff --cached --no-color -U0`: son las que empiezan con `+`, sin contar la cabecera `+++ b/archivo`.",
+    "Guárdalas en una variable: `agregadas=$(git diff --cached --no-color -U0 | grep \"^+\" | grep -v \"^+++\")` y luego pregunta `echo \"$agregadas\" | grep -q \"console\\.log\"`.",
+    "Para limitar la búsqueda de `console.log` a JavaScript agrega un pathspec: `git diff --cached --no-color -U0 -- \"*.js\" \"*.ts\"`. Para los secretos (en todos los archivos) usa una expresión extendida: `grep -qE \"AKIA[0-9A-Z]{16}|PRIVATE KEY-----\"`. En cada caso: mensaje con `>&2` y `exit 1`; al final, `exit 0`."
+   ],
+   "explain": "Una solución:\n```bash\n#!/bin/sh\n# pre-commit: revisa SOLO las líneas agregadas en el área de preparación\nagregadas=$(git diff --cached --no-color -U0 | grep \"^+\" | grep -v \"^+++\")\ncodigo=$(git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\")\nif echo \"$codigo\" | grep -q \"console\\.log\"; then\n  echo \"pre-commit: hay console.log en lo que vas a confirmar\" >&2\n  exit 1\nfi\nif echo \"$agregadas\" | grep -qE \"AKIA[0-9A-Z]{16}|PRIVATE KEY-----\"; then\n  echo \"pre-commit: parece un secreto (clave de AWS o llave privada); no lo confirmes\" >&2\n  exit 1\nfi\nexit 0\n```\nTres trampas típicas: (1) `grep -r console.log .` revisa tu carpeta y el código viejo, no lo que vas a confirmar; (2) `git diff --cached | grep console.log` también ve las líneas **eliminadas** (`-`) y bloquearía justo la limpieza; (3) sin `--no-color`, si alguien tiene `color.ui=always`, las líneas empiezan con códigos de color y `^+` nunca coincide. Un detalle curioso: si versionaras este hook en `.githooks/`, su propia línea con el patrón `PRIVATE KEY-----` coincidiría y se bloquearía a sí mismo; las herramientas reales permiten excepciones (allowlists). En proyectos reales, para secretos se usan herramientas especializadas como gitleaks o el secret scanning de GitHub, que conocen cientos de formatos; y si un secreto ya llegó a la historia, bloquear el siguiente commit no basta: hay que **rotarlo** y purgarlo (s15)."
+  },
+  {
+   "id": "s13-e11",
+   "title": "prepare-commit-msg: el ticket de la rama en cada mensaje",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "En tu equipo las ramas llevan el ticket de Jira en el nombre (`feature/TIC-142-descuentos`, `fix/PAY-7-redondeo`) y cada mensaje debe empezar con ese ticket entre corchetes. Como a todos se les olvida, escribe un hook `.git/hooks/prepare-commit-msg` en `~/tienda` que lo agregue solo:",
+    "- Si el nombre de la rama actual contiene un ticket (una o más letras mayúsculas, un guion y uno o más dígitos, como `TIC-142`), el mensaje queda como `[TIC-142] mensaje original`: corchetes, ticket, un espacio y el mensaje.\n- Si el mensaje ya menciona ese ticket, no lo repite.\n- En ramas sin ticket (por ejemplo `main` o `docs/readme`), no toca nada.\n- No modifica los mensajes de merge ni los de `--amend` (segundo argumento `merge` o `commit`).",
+    "Después, confirma el archivo `descuentos.js` en la rama actual con `git commit -m \"Agrega descuento por volumen\"` y comprueba que el mensaje quedó con el ticket.",
+    "Pistas de shell: `git symbolic-ref --quiet --short HEAD` da el nombre de la rama y `grep -oE \"[A-Z]+-[0-9]+\"` extrae el ticket. El hook recibe en `$1` el archivo del mensaje y en `$2` su origen."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-22 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'feat: portada'\ngit switch -q -c feature/TIC-142-descuentos\nprintf 'export const descuento = (total) => (total > 100000 ? total * 0.1 : 0);\\n' > descuentos.js",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "El hook prepare-commit-msg existe y es ejecutable",
+     "script": "[ -f .git/hooks/prepare-commit-msg ] || falla \"No existe .git/hooks/prepare-commit-msg (el nombre debe ser exacto, sin extensión)\"\n[ -x .git/hooks/prepare-commit-msg ] || falla \".git/hooks/prepare-commit-msg existe pero no es ejecutable: usa chmod +x .git/hooks/prepare-commit-msg\"\nhead -n 1 .git/hooks/prepare-commit-msg | grep -q '^#!' || falla \"La primera línea de .git/hooks/prepare-commit-msg debe ser el shebang, por ejemplo #!/bin/sh\"\nexit 0"
+    },
+    {
+     "name": "Antepone el ticket de la rama",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\ngit switch -q -f -c feature/PAY-7-prueba || falla \"No se pudo crear la rama de prueba\"\ngit commit -q --allow-empty -m \"Agrega pago con tarjeta\" >/dev/null 2>&1 || falla \"El hook hizo fallar un commit normal\"\nm=\"$(git log -1 --format=%s)\"\n[ \"$m\" = \"[PAY-7] Agrega pago con tarjeta\" ] || falla \"En la rama feature/PAY-7-prueba el mensaje quedó «${m}»; se esperaba «[PAY-7] Agrega pago con tarjeta»\""
+    },
+    {
+     "name": "No repite el ticket si ya está",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\ngit switch -q -f -c fix/PAY-7-redondeo\ngit commit -q --allow-empty -m \"PAY-7 corrige el redondeo\" >/dev/null 2>&1\nm=\"$(git log -1 --format=%s)\"\n[ \"$m\" = \"PAY-7 corrige el redondeo\" ] || falla \"Si el mensaje ya menciona el ticket no se debe repetir (quedó «${m}»)\""
+    },
+    {
+     "name": "No toca ramas sin ticket",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\ngit switch -q -f -c docs/readme\ngit commit -q --allow-empty -m \"docs: actualiza el README\" >/dev/null 2>&1\nm=\"$(git log -1 --format=%s)\"\n[ \"$m\" = \"docs: actualiza el README\" ] || falla \"En una rama sin ticket el mensaje no debe cambiar (quedó «${m}»)\""
+    },
+    {
+     "name": "Tu commit de descuentos lleva el ticket",
+     "script": "m=\"$(git log -1 --format=%s feature/TIC-142-descuentos)\"\n[ \"$m\" = \"[TIC-142] Agrega descuento por volumen\" ] || falla \"El último commit de feature/TIC-142-descuentos dice «${m}»\"\ngit cat-file -e feature/TIC-142-descuentos:descuentos.js 2>/dev/null || falla \"descuentos.js no está en ese commit\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "printf '#!/bin/sh\\n# prepare-commit-msg: antepone el ticket de la rama, por ejemplo [TIC-142], al mensaje\\narchivo=\"$1\"\\norigen=\"$2\"\\n# No tocar merges ni mensajes reutilizados (--amend, -c, -C)\\ncase \"$origen\" in\\n  merge|commit) exit 0 ;;\\nesac\\nrama=$(git symbolic-ref --quiet --short HEAD) || exit 0\\nticket=$(echo \"$rama\" | grep -oE \"[A-Z]+-[0-9]+\" | head -n 1)\\n[ -z \"$ticket\" ] && exit 0\\n# Si el mensaje ya menciona el ticket (sin contar los comentarios), no lo repite\\ngrep -v \"^#\" \"$archivo\" | grep -q \"$ticket\" && exit 0\\nmensaje=$(cat \"$archivo\")\\necho \"[$ticket] $mensaje\" > \"$archivo\"\\nexit 0\\n' > .git/hooks/prepare-commit-msg",
+    "chmod +x .git/hooks/prepare-commit-msg",
+    "git add descuentos.js",
+    "git commit -m \"Agrega descuento por volumen\"",
+    "git log --oneline"
+   ],
+   "hints": [
+    "Estructura: guarda `$1` y `$2`; si `$2` es `merge` o `commit`, `exit 0`. Obtén la rama con `rama=$(git symbolic-ref --quiet --short HEAD) || exit 0`.",
+    "Extrae el ticket con `ticket=$(echo \"$rama\" | grep -oE \"[A-Z]+-[0-9]+\" | head -n 1)` y, si está vacío, `exit 0`. Si `grep -q \"$ticket\" \"$1\"` lo encuentra, tampoco hagas nada.",
+    "Para anteponerlo: `mensaje=$(cat \"$1\")` y `echo \"[$ticket] $mensaje\" > \"$1\"`. Recuerda el shebang y `chmod +x`."
+   ],
+   "explain": "Una solución:\n```bash\n#!/bin/sh\n# prepare-commit-msg: antepone el ticket de la rama, por ejemplo [TIC-142], al mensaje\narchivo=\"$1\"\norigen=\"$2\"\n# No tocar merges ni mensajes reutilizados (--amend, -c, -C)\ncase \"$origen\" in\n  merge|commit) exit 0 ;;\nesac\nrama=$(git symbolic-ref --quiet --short HEAD) || exit 0\nticket=$(echo \"$rama\" | grep -oE \"[A-Z]+-[0-9]+\" | head -n 1)\n[ -z \"$ticket\" ] && exit 0\n# Si el mensaje ya menciona el ticket (sin contar los comentarios), no lo repite\ngrep -v \"^#\" \"$archivo\" | grep -q \"$ticket\" && exit 0\nmensaje=$(cat \"$archivo\")\necho \"[$ticket] $mensaje\" > \"$archivo\"\nexit 0\n```\n`prepare-commit-msg` corre antes del editor y **no** lo salta `--no-verify`: es el lugar para completar mensajes, no para validarlos (eso es de `commit-msg`). Con `-m` el origen llega como `message`; con el editor, el archivo trae además comentarios `#` (entre ellos «On branch feature/TIC-142-…», que contiene el ticket): por eso la búsqueda ignora las líneas que empiezan con `#`. En un merge, el mensaje por defecto ya nombra la rama, y en un `--amend` el mensaje ya pasó por el hook: de ahí que se excluyan `merge` y `commit`."
+  },
+  {
+   "id": "s13-e12",
+   "title": "merge=ours: cada rama conserva su configuración",
+   "level": "dificil",
+   "minutes": 16,
+   "prompt": [
+    "En `~/api-reservas`, la rama `main` es producción y `develop` es desarrollo. Cada una tiene su propio `config/entorno.env` (URL de la API, timeout…), y **ambas** lo modificaron desde que se separaron. Cada vez que fusionan `develop` en `main` hay un conflicto en ese archivo y alguien termina subiendo la configuración de desarrollo a producción.",
+    "Configura el repositorio para que, al fusionar, `config/entorno.env` **conserve siempre la versión de la rama actual**, confirma esa regla en `main` y fusiona `develop` en `main` (con commit de merge). El resultado debe traer el código nuevo de `develop` (`app.py`) sin tocar la configuración de producción, y sin conflictos.",
+    "Necesitas dos piezas: un atributo en `.gitattributes` que asigne a ese archivo un driver de merge llamado `ours`, y la definición de ese driver en la configuración del repo."
+   ],
+   "setup": "nuevo_repo api-reservas\nfecha '2026-09-01 10:00'\nescribir config/entorno.env 'ENTORNO=produccion\nAPI_URL=https://api.reservas.cl'\ncommit_archivo app.py 'print(\"api v1\")' 'feat: api inicial'\ngit add . && git commit -q -m 'chore: configuración de producción'\ngit switch -q -c develop\nfecha '2026-09-02 10:00'\nescribir config/entorno.env 'ENTORNO=desarrollo\nAPI_URL=http://localhost:8000'\ngit commit -qam 'chore: configuración de desarrollo'\nfecha '2026-09-03 10:00'\ncommit_archivo app.py 'print(\"api v2 con reservas múltiples\")' 'feat: reservas múltiples'\ngit switch -q main\nfecha '2026-09-04 10:00'\nescribir config/entorno.env 'ENTORNO=produccion\nAPI_URL=https://api.reservas.cl\nTIMEOUT=30'\ngit commit -qam 'chore: timeout de producción'",
+   "cwd": "api-reservas",
+   "checks": [
+    {
+     "name": "entorno.env tiene merge=ours y el driver está definido",
+     "script": "[ \"$(git check-attr merge -- config/entorno.env | sed \"s/.*: //\")\" = \"ours\" ] || falla \"config/entorno.env no tiene el atributo merge=ours\"\ngit cat-file -e HEAD:.gitattributes 2>/dev/null || falla \"Falta confirmar .gitattributes\"\n[ -n \"$(git config --get merge.ours.driver)\" ] || falla \"Falta definir el driver: git config merge.ours.driver true\""
+    },
+    {
+     "name": "develop quedó fusionada en main con un commit de merge",
+     "script": "sin_operacion_en_curso\nsin_conflictos\nen_rama main\nancestro develop HEAD || falla \"develop todavía no está fusionada en main\"\nes_merge HEAD || falla \"El último commit de main debería ser un commit de merge\""
+    },
+    {
+     "name": "La configuración de producción sigue intacta",
+     "script": "c=\"$(contenido HEAD config/entorno.env)\"\necho \"$c\" | grep -q \"ENTORNO=produccion\" || falla \"config/entorno.env ya no dice ENTORNO=produccion\"\necho \"$c\" | grep -q \"TIMEOUT=30\" || falla \"Se perdió TIMEOUT=30 de la configuración de producción\"\necho \"$c\" | grep -q \"localhost\" && falla \"La configuración de desarrollo se coló en main\"\nexit 0"
+    },
+    {
+     "name": "El código nuevo de develop llegó",
+     "script": "contenido HEAD app.py | grep -q \"reservas múltiples\" || falla \"app.py no trae el cambio de develop\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "printf 'config/entorno.env merge=ours\\n' > .gitattributes",
+    "git config merge.ours.driver true",
+    "git add .gitattributes",
+    "git commit -m \"chore: conserva entorno.env de cada rama al fusionar\"",
+    "git merge --no-edit develop",
+    "cat config/entorno.env",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "La línea de `.gitattributes` es `config/entorno.env merge=ours`. Confírmala en `main` antes de fusionar.",
+    "El atributo solo nombra el driver; hay que definirlo: `git config merge.ours.driver true`. El comando `true` no hace nada y termina con éxito, así que tu versión queda como resultado.",
+    "Si ya empezaste el merge y tienes el conflicto, sal con `git merge --abort`, configura las dos piezas y vuelve a ejecutar `git merge --no-edit develop`."
+   ],
+   "explain": "Cuando ambas ramas cambiaron un archivo, Git llama al driver de merge que indique su atributo, con la base (`%O`), tu versión (`%A`) y la otra (`%B`). El driver `ours` definido como `true` deja `%A` sin tocar y termina con 0: el archivo se da por fusionado con tu versión. Sin `merge.ours.driver`, Git no encuentra la definición y hace la fusión de texto normal, con conflicto. Detalles que se preguntan: la definición del driver vive en `.git/config` (no viaja con el repo; cada persona debe configurarla), y si **solo** `develop` hubiera cambiado el archivo, Git tomaría su versión sin llamar al driver. No lo confundas con `git merge -s ours`, que descarta **todos** los cambios de la otra rama (s15). Para configuración por entorno, muchos equipos prefieren no versionar los valores reales y usar variables de entorno o plantillas (`entorno.env.example`)."
+  },
+  {
+   "id": "s13-e13",
+   "title": "Una plantilla para todos tus repos nuevos",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Tu equipo te pasó un hook `commit-msg` en `~/hooks-equipo/commit-msg` que rechaza mensajes que no dicen nada (`wip`, `cambios`, `arreglos`…). Quieres que **todo repo que crees o clones** lo traiga desde el primer momento.",
+    "1. Arma una plantilla en `~/.plantilla-git` con ese hook en `hooks/commit-msg`, ejecutable.\n2. Configura Git (a nivel global) para usar esa plantilla.\n3. Crea el repo nuevo `~/proyectos/pagos` y comprueba que nació con el hook.\n4. El repo existente `~/proyectos/api` también debe recibir el hook, sin copiarlo a mano a su `.git/hooks/`."
+   ],
+   "setup": "mkdir -p hooks-equipo proyectos\ncat > hooks-equipo/commit-msg <<'FIN_ARCHIVO'\n#!/bin/sh\n# Hook del equipo: rechaza mensajes que no dicen nada\nasunto=$(head -n 1 \"$1\")\ncase \"$asunto\" in\n  wip|WIP|cambios|arreglos|asdf|.)\n    echo \"commit-msg: el mensaje no describe el cambio: $asunto\" >&2\n    exit 1 ;;\nesac\nexit 0\nFIN_ARCHIVO\ncd ~/proyectos && nuevo_repo api\nfecha '2026-09-12 10:00'\ncommit_archivo app.py 'print(\"api\")' 'feat: crea la API'",
+   "cwd": "proyectos",
+   "checks": [
+    {
+     "name": "init.templateDir global apunta a ~/.plantilla-git",
+     "script": "v=\"$(git config --global --type=path --get init.templateDir)\" || falla \"init.templateDir no está en tu configuración global\"\nb=\"$(cd \"$HOME/.plantilla-git\" 2>/dev/null && pwd -P)\"; [ -n \"$b\" ] || falla \"No existe la carpeta ~/.plantilla-git\"\na=\"$(cd \"$v\" 2>/dev/null && pwd -P)\"\n[ \"$a\" = \"$b\" ] || falla \"init.templateDir tiene el valor «${v}»; debe ser ~/.plantilla-git\""
+    },
+    {
+     "name": "La plantilla trae hooks/commit-msg ejecutable",
+     "script": "[ -f \"$HOME/.plantilla-git/hooks/commit-msg\" ] || falla \"Falta ~/.plantilla-git/hooks/commit-msg\"\n[ -x \"$HOME/.plantilla-git/hooks/commit-msg\" ] || falla \"~/.plantilla-git/hooks/commit-msg no es ejecutable\""
+    },
+    {
+     "name": "~/proyectos/pagos nació con el hook",
+     "script": "[ -d \"$HOME/proyectos/pagos/.git\" ] || falla \"Falta crear el repo ~/proyectos/pagos con git init\"\n[ -f \"$HOME/proyectos/pagos/.git/hooks/commit-msg\" ] || falla \"~/proyectos/pagos no trae .git/hooks/commit-msg: si lo creaste antes de configurar la plantilla, ejecuta git init otra vez dentro\"\n[ -x \"$HOME/proyectos/pagos/.git/hooks/commit-msg\" ] || falla \"El commit-msg de pagos no es ejecutable (la plantilla lo tenía sin permiso; git init no sobrescribe lo que ya existe): usa chmod +x\""
+    },
+    {
+     "name": "~/proyectos/api recibió el hook y funciona",
+     "script": "[ -f \"$HOME/proyectos/api/.git/hooks/commit-msg\" ] || falla \"api no tiene el hook: vuelve a ejecutar git init dentro de ~/proyectos/api\"\n[ -x \"$HOME/proyectos/api/.git/hooks/commit-msg\" ] || falla \"El commit-msg de api no es ejecutable (la plantilla lo tenía sin permiso; git init no sobrescribe lo que ya existe): usa chmod +x\"\ncd \"$HOME/proyectos/api\"\nexport GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nacepta() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 || falla \"El hook rechazó «${1}», que es un mensaje válido\"; }\nrechaza() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 && falla \"El hook dejó pasar «${1}»: debería rechazarlo\"; return 0; }\nrechaza \"wip\"\nacepta \"docs: describe la API\""
+    }
+   ],
+   "solution": [
+    "mkdir -p ~/.plantilla-git/hooks",
+    "cp ~/hooks-equipo/commit-msg ~/.plantilla-git/hooks/commit-msg",
+    "chmod +x ~/.plantilla-git/hooks/commit-msg",
+    "git config --global init.templateDir ~/.plantilla-git",
+    "git init pagos",
+    "ls pagos/.git/hooks",
+    "cd api",
+    "git init",
+    "git commit --allow-empty -m wip"
+   ],
+   "hints": [
+    "La plantilla es una carpeta con la misma estructura que `.git/`: crea `~/.plantilla-git/hooks/` con `mkdir -p` y copia ahí el hook con `cp`. No olvides `chmod +x`.",
+    "La opción es `init.templateDir`: `git config --global init.templateDir ~/.plantilla-git`. A partir de ahí, `git init` y `git clone` copian la plantilla.",
+    "Para el repo que ya existía, entra en `~/proyectos/api` y ejecuta `git init` otra vez: es seguro, no sobrescribe nada y agrega lo que falte de la plantilla."
+   ],
+   "explain": "`git init` y `git clone` copian al nuevo `.git/` todo lo que haya en la carpeta de plantilla (salvo lo que empiece con punto). Con `init.templateDir` eliges esa carpeta; también se puede con `git init --template=…` o la variable `GIT_TEMPLATE_DIR`. Volver a ejecutar `git init` en un repo existente es seguro: no sobrescribe nada y agrega lo nuevo. Diferencias con `core.hooksPath`: la plantilla **copia** los hooks una vez (si luego los cambias, los repos antiguos conservan la versión vieja), mientras que `core.hooksPath` apunta a una carpeta que se lee siempre. Con una plantilla propia, los repos nuevos ya no reciben los `*.sample` ni `info/exclude`: solo lo que tu plantilla contiene."
+  },
+  {
+   "id": "s13-e14",
+   "title": "Proyecto: el kit de calidad del equipo",
+   "level": "proyecto",
+   "minutes": 35,
+   "prompt": [
+    "Eres la persona a cargo de la calidad en `reservas-api`. Tu clon está en `~/reservas-api` (remoto `origin` = `~/servidor/reservas.git`). Tienes que entregar, en una rama para pull request, un kit que todo el equipo reciba al actualizar:",
+    "1. Crea la rama `chore/kit-calidad` desde `main`.\n2. En la carpeta versionada `.githooks/`, crea dos hooks **ejecutables**:\n   - `commit-msg`: exige Conventional Commits en el asunto (tipos `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`; ámbito opcional; `!` opcional; un espacio tras los dos puntos) y acepta los asuntos que empiezan con `Merge `.\n   - `pre-commit`: rechaza los commits que **agregan** líneas con `console.log` en archivos `*.js` preparados (usa `--no-color`: las comprobaciones lo prueban con `color.ui=always` activado, como lo tendría un compañero con esa configuración). Los demás archivos no se revisan: un `README.md` puede mencionar `console.log` sin problema.\n3. Configura tu repo para usar `.githooks/` como carpeta de hooks.\n4. Crea `.gitattributes` con: `* text=auto`, `*.sh text eol=lf` y `*.png binary`.\n5. Confirma todo con mensajes convencionales (tus propios hooks deben dejarte pasar).\n6. Publica la rama en `origin` con seguimiento. `main` del servidor no debe cambiar.",
+    "Puedes reutilizar lo que escribiste en ejercicios anteriores. Para crear los archivos, `code .githooks/commit-msg` es lo más cómodo."
+   ],
+   "setup": "git init -q --bare ~/servidor/reservas.git\ngit clone -q ~/servidor/reservas.git ~/camila 2>/dev/null\ncd ~/camila\nautor 'Camila Fuentes' 'camila@ejemplo.com'\nfecha '2026-09-18 10:00'\nmkdir -p src scripts docs\nprintf 'export function reservar(sala) {\\n  return { sala, ok: true };\\n}\\n' > src/app.js\nprintf '#!/bin/sh\\necho \"Desplegando reservas-api\"\\n' > scripts/deploy.sh\nprintf '\\211PNG\\r\\n\\032\\n\\000\\000\\000\\rIHDR\\000\\000\\000\\002' > docs/diagrama.png\nprintf '# reservas-api\\n\\nAPI de reservas de salas.\\n' > README.md\ngit add . && git commit -q -m 'feat: API de reservas inicial'\nfecha '2026-09-19 12:00'\nprintf 'export function reservar(sala) {\\n  if (!sala) throw new Error(\"sala requerida\");\\n  return { sala, ok: true };\\n}\\n' > src/app.js\ngit commit -qam 'fix: valida la sala'\ngit push -q origin main\nyo\ngit clone -q ~/servidor/reservas.git ~/reservas-api",
+   "cwd": "reservas-api",
+   "checks": [
+    {
+     "name": "Rama chore/kit-calidad publicada con seguimiento",
+     "script": "en_rama chore/kit-calidad\n[ \"$(git -C \"$HOME/servidor/reservas.git\" rev-parse --verify -q refs/heads/chore/kit-calidad)\" = \"$(git rev-parse HEAD)\" ] || falla \"La rama chore/kit-calidad no está publicada en origin o no está al día\"\n[ \"$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null)\" = \"origin/chore/kit-calidad\" ] || falla \"La rama no sigue a origin/chore/kit-calidad (publica con -u)\"\n[ \"$(git -C \"$HOME/servidor/reservas.git\" rev-list --count main)\" = \"2\" ] || falla \"La rama main del servidor cambió: el kit debe ir solo en la rama\""
+    },
+    {
+     "name": "Hooks versionados y ejecutables en el commit",
+     "script": "for h in commit-msg pre-commit; do\n  m=\"$(git ls-tree HEAD .githooks/$h | cut -c1-6)\"\n  [ -n \"$m\" ] || falla \"Falta confirmar .githooks/$h\"\n  [ \"$m\" = \"100755\" ] || falla \".githooks/$h está confirmado con modo $m; debe ser 100755 (ejecutable)\"\ndone\nv=\"$(git config --get core.hooksPath)\" || falla \"core.hooksPath no está configurado\"\na=\"$(cd \"$v\" 2>/dev/null && pwd -P)\"; b=\"$(cd .githooks 2>/dev/null && pwd -P)\"\n[ -n \"$a\" ] && [ \"$a\" = \"$b\" ] || falla \"core.hooksPath tiene el valor «${v}»; debe apuntar a .githooks\""
+    },
+    {
+     "name": "commit-msg aplica Conventional Commits",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nacepta() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 || falla \"El hook rechazó «${1}», que es un mensaje válido\"; }\nrechaza() { git commit -q --allow-empty -m \"$1\" >/dev/null 2>&1 && falla \"El hook dejó pasar «${1}»: debería rechazarlo\"; return 0; }\nrechaza \"cambios varios\"\nrechaza \"feat:sin espacio\"\nacepta \"feat(salas): agrega reservas por hora\"\nacepta \"fix!: cambia el formato de fechas\"\nacepta \"Merge branch 'feature/x'\""
+    },
+    {
+     "name": "pre-commit bloquea console.log agregado",
+     "script": "export GIT_EDITOR=:\nmkdir -p \"$TMPDIR\"\nT=\"$(mktemp -d \"$TMPDIR/prueba.XXXXXX\")\"\ncp -R . \"$T/r\" 2>/dev/null || falla \"No se pudo copiar el repositorio para probar el hook\"\ncd \"$T/r\" || falla \"No se pudo entrar en la copia de prueba\"\n# Simula a un usuario con color.ui=always: un hook robusto usa plumbing o --no-color\ngit config color.ui always\ngit reset -q\nintenta() { mkdir -p \"$(dirname \"$1\")\"; printf \"%s\\n\" \"$2\" > \"$1\"; git add -- \"$1\"; git commit -q -m \"test: prueba del hook\" >/dev/null 2>&1; r=$?; git reset -q; return $r; }\nintenta src/prueba.js \"console.log(\\\"x\\\");\" && falla \"El pre-commit dejó pasar un console.log (¿usas git diff --cached --no-color? La prueba simula a un usuario con color.ui=always)\"\nintenta src/limpio.js \"export const y = 2;\" || falla \"El pre-commit rechazó un archivo limpio\"\nintenta docs/notas.md \"Evita console.log en producción.\" || falla \"El pre-commit bloqueó un .md: solo debe revisar archivos .js (¿se bloqueará también tu propio hook?)\"\nexit 0"
+    },
+    {
+     "name": ".gitattributes confirmado con las reglas pedidas",
+     "script": "git cat-file -e HEAD:.gitattributes 2>/dev/null || falla \"Falta confirmar .gitattributes\"\nv() { git check-attr \"$1\" -- \"$2\" | sed \"s/.*: //\"; }\ncase \"$(v text src/app.js)\" in auto|set) ;; *) falla \"src/app.js debería recibir text=auto\";; esac\n[ \"$(v eol scripts/deploy.sh)\" = \"lf\" ] || falla \"scripts/deploy.sh debería tener eol=lf\"\n[ \"$(v binary docs/diagrama.png)\" = \"set\" ] || falla \"docs/diagrama.png debería ser binary\""
+    },
+    {
+     "name": "Commits convencionales y nada pendiente",
+     "script": "git log --format=%s origin/main..HEAD | while read -r s; do echo \"$s\" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+' || { echo \"El commit «${s}» no sigue Conventional Commits\"; exit 1; }; done || exit 1\n[ \"$(git rev-list --count origin/main..HEAD)\" -ge 1 ] || falla \"La rama no tiene commits propios\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git switch -c chore/kit-calidad",
+    "mkdir .githooks",
+    "printf '#!/bin/sh\\n# commit-msg: exige Conventional Commits en el asunto (la primera línea)\\nasunto=$(head -n 1 \"$1\")\\ncase \"$asunto\" in\\n  \"Merge \"*) exit 0 ;;\\nesac\\npatron=\"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\([a-z0-9-]+\\))?!?: .+\"\\nif echo \"$asunto\" | grep -qE \"$patron\"; then\\n  exit 0\\nfi\\necho \"commit-msg: el asunto no sigue Conventional Commits: $asunto\" >&2\\necho \"Formato: tipo(ámbito opcional): descripción, por ejemplo: feat(api): agrega login\" >&2\\nexit 1\\n' > .githooks/commit-msg",
+    "printf '#!/bin/sh\\n# pre-commit: bloquea console.log en las líneas agregadas y preparadas de JavaScript/TypeScript\\nif git diff --cached --no-color -U0 -- \"*.js\" \"*.jsx\" \"*.ts\" \"*.tsx\" | grep \"^+\" | grep -v \"^+++\" | grep -q \"console\\.log\"; then\\n  echo \"pre-commit: quita los console.log antes de confirmar\" >&2\\n  exit 1\\nfi\\nexit 0\\n' > .githooks/pre-commit",
+    "chmod +x .githooks/commit-msg .githooks/pre-commit",
+    "git config core.hooksPath .githooks",
+    "printf '* text=auto\\n*.sh text eol=lf\\n*.png binary\\n' > .gitattributes",
+    "git add .githooks .gitattributes",
+    "git commit -m \"agrega kit\"",
+    "git commit -m \"chore: agrega hooks y atributos del equipo\"",
+    "git push -u origin chore/kit-calidad",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Orden recomendado: rama → hooks en `.githooks/` → `chmod +x` → `git config core.hooksPath .githooks` → `.gitattributes` → `git add` → commit → `git push -u`.",
+    "Los hooks son los de los ejercicios de commit-msg y pre-commit, pero ahora dentro de `.githooks/`. Limita el pre-commit a JavaScript con un pathspec: `git diff --cached --no-color -U0 -- \"*.js\"`. Pruébalos antes de confirmar: `git hook run pre-commit` y un commit con mensaje inválido que debe fallar.",
+    "Verifica el modo con `git ls-files -s .githooks` (debe decir 100755) y los atributos con `git check-attr -a -- scripts/deploy.sh docs/diagrama.png`. Publica con `git push -u origin chore/kit-calidad`."
+   ],
+   "explain": "Este kit reúne la sección: hooks versionados (`.githooks/` con modo `100755`), `core.hooksPath` local para activarlos, y `.gitattributes` para que el repositorio defina los fines de línea y los binarios en vez de depender de la configuración de cada persona. Al configurar `core.hooksPath` **antes** de confirmar, tu propio commit pasa por los hooks: si el primer intento con «agrega kit» fue rechazado, el kit funciona. Y aquí se ve por qué el `pre-commit` revisa solo `*.js`: el archivo del hook contiene el texto `console.log` en su mensaje de error, así que un hook que revisara todo se bloquearía a sí mismo al versionarlo. Queda un paso que Git no puede automatizar: cada compañero debe ejecutar `git config core.hooksPath .githooks` tras actualizar (anótalo en el README o en el pull request). En proyectos Node, Husky hace ese paso en `npm install`; en proyectos multilenguaje, el framework pre-commit cumple un rol parecido con `pre-commit install`. Y como todo lo del cliente se puede saltar con `--no-verify`, las mismas reglas deberían repetirse en CI o en el servidor (s16)."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿En qué orden lee Git las capas de configuración y cuál gana?",
+   "back": "system → global → local → worktree → command (`-c`). Para una clave de un solo valor gana la última leída: la más específica."
+  },
+  {
+   "front": "¿Dónde escribe `git config clave valor` si no indicas ámbito?",
+   "back": "En `.git/config` del repositorio actual (ámbito local). Fuera de un repo falla con `fatal: not in a git directory`."
+  },
+  {
+   "front": "¿Qué muestran `--show-origin` y `--show-scope`?",
+   "back": "El archivo del que sale cada valor y su capa (system, global, local, worktree, command). Son la forma de diagnosticar «¿por qué Git hace esto?»."
+  },
+  {
+   "front": "Equivalentes nuevos (Git 2.46) de `--get`, `--list`, `--unset` y `--edit`",
+   "back": "`git config get`, `git config list`, `git config unset` y `git config edit`. Además `git config set` para escribir."
+  },
+  {
+   "front": "¿Qué hace `[includeIf \"gitdir:~/trabajo/\"]` con `path = ~/.gitconfig-trabajo`?",
+   "back": "Incluye ese archivo solo en los repos cuya carpeta `.git` está dentro de `~/trabajo/` (la `/` final equivale a `~/trabajo/**`)."
+  },
+  {
+   "front": "Cuatro condiciones de `includeIf`",
+   "back": "`gitdir:`, `gitdir/i:` (sin distinguir mayúsculas), `onbranch:` (rama actual) y `hasconfig:remote.*.url:` (URL de algún remoto)."
+  },
+  {
+   "front": "¿Por qué el `[includeIf]` debe ir después de `[user]`?",
+   "back": "Porque el archivo incluido se inserta en ese punto y gana lo último leído. Si va antes, el `[user]` posterior lo vuelve a pisar."
+  },
+  {
+   "front": "`push.autoSetupRemote = true`",
+   "back": "El primer `git push` de una rama nueva la crea en el remoto y configura el upstream, sin escribir `-u`. Desde Git 2.37."
+  },
+  {
+   "front": "`merge.conflictStyle = zdiff3`",
+   "back": "En los conflictos muestra también la versión base (entre `|||||||` y `=======`) y saca del conflicto las líneas iguales en ambos lados. Desde Git 2.35."
+  },
+  {
+   "front": "`core.autocrlf`: valor típico en Windows y en macOS/Linux",
+   "back": "Windows: `true` (LF en el repo, CRLF en la carpeta). macOS/Linux: `input` (convierte CRLF→LF al guardar, sin convertir al sacar)."
+  },
+  {
+   "front": "¿Qué pasa con un alias cuya expansión empieza con `!`?",
+   "back": "Se ejecuta como comando de shell, desde la raíz del repositorio; los argumentos extra se agregan al final y `GIT_PREFIX` guarda la subcarpeta desde donde se llamó."
+  },
+  {
+   "front": "¿Puedes crear un alias llamado `status`?",
+   "back": "Se guarda, pero Git lo ignora: los alias que ocultan comandos existentes no se aplican."
+  },
+  {
+   "front": "¿Qué equivale a `binary` en `.gitattributes`?",
+   "back": "`-diff -merge -text`: sin conversión de fines de línea, sin diff de texto y sin fusión línea a línea."
+  },
+  {
+   "front": "`text=auto` frente a `eol=crlf`",
+   "back": "`text=auto` decide la normalización: el texto se guarda con LF en el repositorio. `eol` decide el fin de línea en el directorio de trabajo."
+  },
+  {
+   "front": "Después de agregar `* text=auto` a un repo con archivos CRLF confirmados…",
+   "back": "`git add --renormalize .` (actualiza el index), `git add .gitattributes` y un commit aparte. `git ls-files --eol` muestra el antes y el después."
+  },
+  {
+   "front": "¿Qué dos piezas necesita `merge=ours`?",
+   "back": "El atributo `archivo merge=ours` en `.gitattributes` y la definición del driver: `git config merge.ours.driver true`."
+  },
+  {
+   "front": "¿Qué hace un driver `textconv`?",
+   "back": "Convierte un archivo (normalmente binario) a texto solo para mostrar el diff: `*.docx diff=word` + `git config diff.word.textconv docx2txt`. El archivo guardado no cambia."
+  },
+  {
+   "front": "¿De dónde lee `git archive` el atributo `export-ignore`?",
+   "back": "Del árbol que empaqueta (el commit), no de tu carpeta: hay que confirmar `.gitattributes` antes, o usar `--worktree-attributes`."
+  },
+  {
+   "front": "Requisitos para que Git ejecute un hook del cliente",
+   "back": "Estar en `.git/hooks/` (o en `core.hooksPath`), con el nombre exacto del evento y permiso de ejecución. Sin permiso, Git lo ignora con un `hint`."
+  },
+  {
+   "front": "Orden de los hooks en `git commit`",
+   "back": "`pre-commit` → `prepare-commit-msg` → (editor) → `commit-msg` → se crea el commit → `post-commit`."
+  },
+  {
+   "front": "¿Qué hooks salta `git commit --no-verify` (`-n`)?",
+   "back": "`pre-commit` y `commit-msg`. No salta `prepare-commit-msg`."
+  },
+  {
+   "front": "¿Qué recibe el hook `commit-msg`?",
+   "back": "En `$1`, la ruta del archivo con el mensaje propuesto (normalmente `.git/COMMIT_EDITMSG`). Puede editarlo o rechazar el commit saliendo con código distinto de 0."
+  },
+  {
+   "front": "¿Qué recibe `pre-push` por la entrada estándar?",
+   "back": "Una línea por referencia: `<ref local> <sha local> <ref remota> <sha remota>`. Como argumentos, el nombre y la URL del remoto."
+  },
+  {
+   "front": "¿Por qué un `pre-commit` debe usar `git diff --cached --no-color`?",
+   "back": "`--cached`: revisa lo preparado, que es lo que se confirmará. `--no-color`: con `color.ui=always` la salida trae códigos de color y los `grep \"^+\"` fallan en silencio."
+  },
+  {
+   "front": "`core.hooksPath` frente a `init.templateDir`",
+   "back": "`core.hooksPath` hace que Git lea siempre los hooks de otra carpeta (e ignore `.git/hooks/`). `init.templateDir` copia una plantilla en cada `git init`/`git clone`: una copia única."
+  },
+  {
+   "front": "¿Cómo engancha Husky sus hooks? ¿Y el framework pre-commit?",
+   "back": "Husky configura `core.hooksPath` = `.husky/_` (en el script `prepare` de npm). pre-commit escribe su script en `.git/hooks/pre-commit` con `pre-commit install`."
+  },
+  {
+   "front": "Configuración mínima para firmar commits con SSH",
+   "back": "`gpg.format ssh`, `user.signingkey ~/.ssh/id_ed25519.pub` y `commit.gpgsign true` (o `git commit -S`). Para verificar en local: `gpg.ssh.allowedSignersFile`."
+  },
+  {
+   "front": "¿Qué significa `N` en `git log --format=%G?`?",
+   "back": "Commit sin firma. `G` es firma buena; `B`, mala; `E`, no se pudo comprobar."
+  },
+  {
+   "front": "Helper de credenciales que conviene evitar y por qué",
+   "back": "`store`: guarda usuario y token en `~/.git-credentials` en texto plano. Mejor osxkeychain, Git Credential Manager o libsecret."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s13-q1",
+   "type": "single",
+   "q": "`user.email` está definido en `~/.gitconfig` como `ana@gmail.com` y en `.git/config` del repo como `ana@empresa.cl`. ¿Con qué correo sale un `git commit` en ese repo?",
+   "options": [
+    "`ana@gmail.com`, porque global tiene prioridad",
+    "`ana@empresa.cl`, porque el ámbito local se lee después y gana",
+    "Git pregunta cuál usar",
+    "Los dos, como coautores"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git lee system → global → local → worktree → command, y para una clave de un solo valor gana la última leída. El local es más específico que el global."
+  },
+  {
+   "id": "s13-q2",
+   "type": "single",
+   "q": "Estás dentro de un repositorio y ejecutas:\n```bash\ngit config user.email nuevo@correo.cl\n```\n¿Dónde queda guardado?",
+   "options": [
+    "En `~/.gitconfig`",
+    "En `.git/config` de ese repositorio",
+    "En el archivo de sistema",
+    "En ningún lado: falta `--global`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Al escribir sin opción de ámbito, `git config` usa el ámbito local (`.git/config`). Para tu usuario hace falta `--global`."
+  },
+  {
+   "id": "s13-q3",
+   "type": "multi",
+   "q": "¿Cuáles de estos son ámbitos que puede mostrar `git config --show-scope`? (Selecciona todos los correctos.)",
+   "options": [
+    "`system`",
+    "`global`",
+    "`local`",
+    "`worktree`",
+    "`command`",
+    "`project`"
+   ],
+   "answer": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "explain": "Los ámbitos son system, global, local, worktree y command (valores pasados con `-c` o con las variables `GIT_CONFIG_COUNT`/`KEY`/`VALUE`). No existe un ámbito `project`."
+  },
+  {
+   "id": "s13-q4",
+   "type": "single",
+   "q": "Tus commits salen con un correo inesperado. ¿Qué comando te dice de qué archivo sale el valor que Git está usando?",
+   "options": [
+    "`git config --list`",
+    "`git config --show-origin user.email`",
+    "`git var GIT_COMMITTER_IDENT`",
+    "`git log --format=%ae`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--show-origin` antepone el archivo de origen a cada valor (y `--show-scope`, la capa). `--list` no dice de dónde viene cada cosa."
+  },
+  {
+   "id": "s13-q5",
+   "type": "yesno",
+   "q": "Sobre `includeIf`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`[includeIf \"gitdir:~/trabajo/\"]` se aplica también a `~/trabajo/clientes/api`.",
+     "answer": true
+    },
+    {
+     "text": "`[includeIf \"gitdir:~/trabajo\"]` (sin barra final) se aplica a `~/trabajo/api`.",
+     "answer": false
+    },
+    {
+     "text": "Si el `[includeIf]` está antes de `[user]` en `~/.gitconfig`, el correo del archivo incluido se impone igual.",
+     "answer": false
+    },
+    {
+     "text": "`onbranch:` permite incluir un archivo según la rama actual.",
+     "answer": true
+    }
+   ],
+   "explain": "La barra final equivale a `**`: toda la carpeta y sus subcarpetas. Sin barra, el patrón no coincide con los repos de adentro. El archivo incluido se inserta donde está la directiva y gana lo último leído, así que un `[user]` posterior lo pisa. `onbranch:` existe desde Git 2.23."
+  },
+  {
+   "id": "s13-q6",
+   "type": "single",
+   "q": "Con `push.autoSetupRemote = true`, creas la rama `feature/login` y ejecutas `git push`. ¿Qué pasa?",
+   "options": [
+    "Falla: la rama no tiene upstream",
+    "Se publica `feature/login` en el remoto y queda configurado su upstream",
+    "Se publica en `main`",
+    "Git pregunta a qué remoto publicar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Desde Git 2.37, `push.autoSetupRemote` supone `--set-upstream` cuando la rama actual no tiene upstream: equivale a `git push -u origin feature/login`."
+  },
+  {
+   "id": "s13-q7",
+   "type": "single",
+   "q": "¿Qué agrega `merge.conflictStyle = zdiff3` a los marcadores de conflicto?",
+   "options": [
+    "Colores en la terminal",
+    "La versión **base** (original) del fragmento, entre `|||||||` y `=======`",
+    "El nombre del autor de cada lado",
+    "Resuelve el conflicto automáticamente"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Como `diff3`, muestra la versión del ancestro común; además saca del conflicto las líneas iguales al principio o al final. Con la base a la vista sabes qué cambió cada lado."
+  },
+  {
+   "id": "s13-q8",
+   "type": "single",
+   "q": "Trabajas en macOS en un equipo mixto y el repositorio **no** tiene `.gitattributes`. ¿Qué valor de `core.autocrlf` recomienda la práctica habitual para ti?",
+   "options": [
+    "`true`",
+    "`input`",
+    "`crlf`",
+    "`always`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`input` convierte CRLF→LF al guardar en el repositorio (por si algún archivo llega con CRLF) y no convierte al sacar. `true` es para Windows. `crlf` y `always` no son valores de `core.autocrlf`."
+  },
+  {
+   "id": "s13-q9",
+   "type": "single",
+   "q": "Defines `git config --global alias.guardar '!git add -A && git commit -m'` y ejecutas `git guardar \"docs: notas\"`. ¿Qué ocurre?",
+   "options": [
+    "Error: los alias no admiten `&&`",
+    "Se ejecuta `git add -A && git commit -m \"docs: notas\"`",
+    "Se ejecuta `git add -A \"docs: notas\" && git commit -m`",
+    "Se crea un commit con el mensaje `guardar`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `!` el alias es un comando de shell y los argumentos se agregan al final como parámetros posicionales; aquí el mensaje queda justo después de `-m`."
+  },
+  {
+   "id": "s13-q10",
+   "type": "yesno",
+   "q": "Sobre los alias, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Un alias llamado `status` reemplaza al comando `git status`.",
+     "answer": false
+    },
+    {
+     "text": "Un alias con `!` se ejecuta desde la raíz del repositorio.",
+     "answer": true
+    },
+    {
+     "text": "`git help lg` muestra en qué se expande el alias `lg`.",
+     "answer": true
+    },
+    {
+     "text": "Los alias definidos con `--global` viajan con el repositorio al hacer push.",
+     "answer": false
+    }
+   ],
+   "explain": "Git ignora los alias que ocultan comandos existentes. Los alias de shell corren en la raíz (con `GIT_PREFIX` apuntando a la subcarpeta). `git help <alias>` responde `'lg' is aliased to '…'`. Los alias son configuración personal: nunca viajan con el repo."
+  },
+  {
+   "id": "s13-q11",
+   "type": "single",
+   "q": "¿A qué equivale el atributo `binary`?",
+   "options": [
+    "`-text`",
+    "`-diff -merge -text`",
+    "`text eol=lf`",
+    "`merge=ours`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`binary` es una macro integrada: `[attr]binary -diff -merge -text`. Sin conversión, sin diff de texto y sin fusión línea a línea."
+  },
+  {
+   "id": "s13-q12",
+   "type": "single",
+   "q": "¿Cuál es la principal ventaja de `.gitattributes` frente a `core.autocrlf` para los fines de línea?",
+   "options": [
+    "Es más rápido",
+    "Viaja con el repositorio: todo el equipo aplica las mismas reglas sin configurar nada",
+    "Funciona también con archivos binarios",
+    "Convierte los archivos ya confirmados automáticamente"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`core.autocrlf` depende de que cada persona lo configure bien en su computador; `.gitattributes` es un archivo versionado. Ojo: no cambia lo ya confirmado; para eso está `git add --renormalize .`."
+  },
+  {
+   "id": "s13-q13",
+   "type": "single",
+   "q": "Agregas `* text=auto` a un repo que ya tiene archivos confirmados con CRLF. ¿Qué haces para que en el repositorio queden con LF?",
+   "options": [
+    "Nada: se convierten solos en el próximo push",
+    "`git add --renormalize .`, agregar `.gitattributes` y confirmar",
+    "`git reset --hard`",
+    "`git config core.autocrlf true`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los atributos se aplican al pasar los archivos por `git add`. `--renormalize` vuelve a procesar todos los archivos rastreados; luego confirmas en un commit aparte."
+  },
+  {
+   "id": "s13-q14",
+   "type": "single",
+   "q": "Pusiste `config/app.env merge=ours` en `.gitattributes`, pero al fusionar sigue apareciendo un conflicto en ese archivo. ¿Qué falta con más probabilidad?",
+   "options": [
+    "Confirmar el merge con `--no-ff`",
+    "Definir el driver: `git config merge.ours.driver true`",
+    "Usar `git merge -s ours`",
+    "Marcar el archivo como `binary`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El atributo solo nombra un driver; sin la definición `merge.ours.driver`, Git hace la fusión de texto normal. `git merge -s ours` descartaría **todos** los cambios de la otra rama."
+  },
+  {
+   "id": "s13-q15",
+   "type": "single",
+   "q": "Con `merge=ours` bien configurado para `config/app.env`, fusionas `develop` en `main`. Desde la base común, **solo `develop`** modificó ese archivo. ¿Qué versión queda?",
+   "options": [
+    "La de `main`",
+    "La de `develop`",
+    "Un conflicto",
+    "El archivo se borra"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El driver solo se usa cuando ambos lados cambiaron el archivo. Si solo uno lo cambió, no hay fusión que hacer: Git toma el cambio de `develop` sin llamar al driver."
+  },
+  {
+   "id": "s13-q16",
+   "type": "single",
+   "q": "Agregaste `/tests export-ignore` a `.gitattributes` sin confirmarlo y ejecutas `git archive -o release.zip HEAD`. ¿Qué pasa con `tests/`?",
+   "options": [
+    "Se excluye",
+    "Se incluye: `git archive` lee los atributos del árbol de `HEAD`, que aún no tiene esa regla",
+    "El comando falla",
+    "Se incluye vacía"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git archive` usa los atributos del árbol que empaqueta. Confirma el `.gitattributes` primero o usa `--worktree-attributes`."
+  },
+  {
+   "id": "s13-q17",
+   "type": "single",
+   "q": "`git ls-files --eol` muestra:\n```bash\ni/lf    w/crlf  attr/text=auto  app.js\n```\n¿Qué significa?",
+   "options": [
+    "El archivo tiene CRLF en el repositorio y LF en tu carpeta",
+    "El archivo tiene LF en el index y CRLF en tu carpeta, con el atributo text=auto",
+    "El archivo es binario",
+    "Hay un conflicto de fines de línea"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`i/` es el index, `w/` el directorio de trabajo y `attr/` los atributos aplicados. Es lo normal tras `--renormalize` o en Windows con `eol=crlf`."
+  },
+  {
+   "id": "s13-q18",
+   "type": "single",
+   "q": "Escribiste `.git/hooks/pre-commit`, pero al confirmar ves:\n```bash\nhint: The '.git/hooks/pre-commit' hook was ignored because it's not set as executable.\n```\n¿Qué haces?",
+   "options": [
+    "Renombrarlo a `pre-commit.sh`",
+    "`chmod +x .git/hooks/pre-commit`",
+    "`git add .git/hooks/pre-commit`",
+    "`git config core.hooksPath .git/hooks`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git ignora los hooks sin permiso de ejecución. El nombre debe ser exacto y sin extensión, y `.git/hooks/` no se puede agregar al repositorio."
+  },
+  {
+   "id": "s13-q19",
+   "type": "multi",
+   "q": "¿Qué hooks pueden impedir que se cree un commit si terminan con un código distinto de 0? (Selecciona todos los correctos.)",
+   "options": [
+    "`pre-commit`",
+    "`prepare-commit-msg`",
+    "`commit-msg`",
+    "`post-commit`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Los tres primeros corren antes de crear el commit y lo abortan si fallan. `post-commit` corre después: solo sirve para notificar."
+  },
+  {
+   "id": "s13-q20",
+   "type": "single",
+   "q": "¿Qué hooks se salta `git commit --no-verify`?",
+   "options": [
+    "Todos los hooks",
+    "`pre-commit` y `commit-msg`",
+    "Solo `pre-commit`",
+    "`prepare-commit-msg` y `post-commit`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-n`/`--no-verify` evita `pre-commit` y `commit-msg`. `prepare-commit-msg` sigue corriendo (su propósito es preparar el mensaje, no validar)."
+  },
+  {
+   "id": "s13-q21",
+   "type": "single",
+   "q": "En un hook `commit-msg`, ¿qué contiene `$1`?",
+   "options": [
+    "El mensaje como texto",
+    "La ruta del archivo que contiene el mensaje propuesto",
+    "El hash del commit",
+    "El nombre de la rama"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git pasa la ruta del archivo (normalmente `.git/COMMIT_EDITMSG`). El hook lo lee (por ejemplo con `head -n 1 \"$1\"`) y puede editarlo o rechazarlo."
+  },
+  {
+   "id": "s13-q22",
+   "type": "single",
+   "q": "Ejecutas `git push origin feature/pagos:main`. ¿Qué línea recibe tu hook `pre-push` por la entrada estándar?",
+   "options": [
+    "`refs/heads/feature/pagos <sha> refs/heads/main <sha>`",
+    "`origin main`",
+    "`refs/heads/main <sha> refs/heads/feature/pagos <sha>`",
+    "Nada: los datos llegan como argumentos"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El formato es `<ref local> <sha local> <ref remota> <sha remota>`. Por eso, para proteger `main`, hay que mirar el tercer campo. Los argumentos son el nombre y la URL del remoto."
+  },
+  {
+   "id": "s13-q23",
+   "type": "single",
+   "q": "Tu compañero clonó el repo y tus hooks de `.git/hooks/` no se ejecutan en su computador. ¿Por qué?",
+   "options": [
+    "Porque su Git es más antiguo",
+    "Porque `.git/hooks/` no se versiona ni se copia al clonar",
+    "Porque falta `git config hooks.enabled true`",
+    "Porque los hooks solo corren en el servidor"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Nada de `.git/` (salvo los objetos y referencias) viaja al clonar. Es deliberado: clonar no debe poder ejecutar código en tu máquina. Para compartir hooks se versionan en una carpeta y se usa `core.hooksPath`."
+  },
+  {
+   "id": "s13-q24",
+   "type": "single",
+   "q": "Configuras `git config core.hooksPath .githooks`. ¿Qué pasa con el `pre-push` que tenías en `.git/hooks/`?",
+   "options": [
+    "Se ejecuta además de los de `.githooks/`",
+    "Deja de ejecutarse: Git busca los hooks solo en `.githooks/`",
+    "Se copia automáticamente a `.githooks/`",
+    "Git muestra un error"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`core.hooksPath` reemplaza la carpeta de hooks; `.git/hooks/` se ignora por completo."
+  },
+  {
+   "id": "s13-q25",
+   "type": "single",
+   "q": "Configuraste `init.templateDir` con un hook nuevo. ¿Cómo lo agregas a un repositorio que ya existía?",
+   "options": [
+    "No se puede; hay que clonarlo de nuevo",
+    "Ejecutando `git init` dentro del repo: copia lo que falte sin sobrescribir",
+    "Con `git config --reload`",
+    "Con `git pull`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Volver a ejecutar `git init` en un repo existente es seguro: no sobrescribe nada y agrega los archivos nuevos de la plantilla (responde `Reinitialized existing Git repository`)."
+  },
+  {
+   "id": "s13-q26",
+   "type": "single",
+   "q": "¿Cómo conecta Husky (v9) sus hooks con Git?",
+   "options": [
+    "Copiándolos a `.git/hooks/`",
+    "Configurando `core.hooksPath` para que apunte a `.husky/_`",
+    "Con `init.templateDir`",
+    "Con un servidor propio"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El comando `husky`, que se ejecuta en el script `prepare` de npm, hace `git config core.hooksPath .husky/_`. El framework pre-commit, en cambio, escribe su script en `.git/hooks/pre-commit` con `pre-commit install`."
+  },
+  {
+   "id": "s13-q27",
+   "type": "single",
+   "q": "Un `pre-commit` debe detectar `console.log` en lo que vas a confirmar. ¿Qué comando es la base correcta?",
+   "options": [
+    "`grep -r console.log .`",
+    "`git diff --cached --no-color -U0`, quedándote con las líneas que empiezan con `+`",
+    "`git diff`",
+    "`git log -p`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Lo que se confirma es el index: `--cached`. Las líneas agregadas empiezan con `+` (sin la cabecera `+++`), así no bloqueas cuando **borras** un `console.log`. `--no-color` evita que los códigos de color rompan el `grep`."
+  },
+  {
+   "id": "s13-q28",
+   "type": "single",
+   "q": "Un hook usa `git diff --cached | grep \"^+\"` y funciona en el computador de Ana, pero no detecta nada en el de Luis. Luis tiene `color.ui = always`. ¿Por qué falla?",
+   "options": [
+    "Porque `grep` no existe en su sistema",
+    "Porque la salida trae códigos de color antes del `+` y el patrón `^+` no coincide",
+    "Porque los hooks no se ejecutan con color",
+    "Porque `--cached` no existe en su versión"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `always`, Git colorea incluso cuando la salida va a una tubería. En scripts usa `--no-color` o comandos plumbing."
+  },
+  {
+   "id": "s13-q29",
+   "type": "yesno",
+   "q": "Sobre firma de commits, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`user.email` prueba quién hizo el commit.",
+     "answer": false
+    },
+    {
+     "text": "Desde Git 2.34 se pueden firmar commits con una llave SSH.",
+     "answer": true
+    },
+    {
+     "text": "Para verificar firmas SSH en local hace falta `gpg.ssh.allowedSignersFile`.",
+     "answer": true
+    },
+    {
+     "text": "`git log --format=%G?` muestra `N` para un commit sin firma.",
+     "answer": true
+    }
+   ],
+   "explain": "Nombre y correo son texto que cualquiera configura. La firma prueba la posesión de la llave privada. Con SSH, Git necesita la lista de firmantes permitidos para decidir en qué llaves confiar; `%G?` es `G` para una firma buena y `N` sin firma."
+  },
+  {
+   "id": "s13-q30",
+   "type": "single",
+   "q": "¿Qué configuración hace que **todos** tus commits se firmen con tu llave SSH?",
+   "options": [
+    "`gpg.format ssh`, `user.signingkey ~/.ssh/id_ed25519.pub` y `commit.gpgsign true`",
+    "`user.email` igual al de la llave",
+    "`credential.helper ssh`",
+    "`core.sshCommand ssh -S`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`gpg.format ssh` elige el formato, `user.signingkey` la llave y `commit.gpgsign true` firma cada commit (equivale a usar siempre `git commit -S`)."
+  },
+  {
+   "id": "s13-q31",
+   "type": "single",
+   "q": "¿Qué credential helper guarda tu token en **texto plano** en `~/.git-credentials`?",
+   "options": [
+    "`osxkeychain`",
+    "`manager`",
+    "`cache`",
+    "`store`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`store` es cómodo pero inseguro: cualquiera que lea el archivo obtiene tu token. `cache` lo guarda en memoria (900 s por defecto); `osxkeychain` y Git Credential Manager usan el almacén seguro del sistema."
+  },
+  {
+   "id": "s13-q32",
+   "type": "single",
+   "q": "¿Cuál es el equivalente moderno (Git 2.46) de `git config --get-regexp '^alias\\.'`?",
+   "options": [
+    "`git config list alias`",
+    "`git config get --all --show-names --regexp '^alias\\.'`",
+    "`git config alias --list`",
+    "`git alias`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La documentación indica que `--get-regexp` se reemplaza por `git config get --all --show-names --regexp`. La sintaxis clásica sigue funcionando."
+  },
+  {
+   "id": "s13-q33",
+   "type": "multi",
+   "q": "¿Qué ámbitos forman la «configuración protegida», donde ciertas opciones de seguridad (como `safe.directory`) se respetan? (Selecciona todos los correctos.)",
+   "options": [
+    "system",
+    "global",
+    "local",
+    "command"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "System, global y command se consideran bajo control del usuario o de un administrador. El `.git/config` de un repositorio (local) podría venir de alguien más, así que no puede cambiar esas opciones."
+  },
+  {
+   "id": "s13-q34",
+   "type": "single",
+   "q": "¿Qué hace `git -c core.hooksPath=/dev/null commit -m \"…\"`?",
+   "options": [
+    "Borra los hooks del repo",
+    "Crea el commit sin ejecutar ningún hook, solo en ese comando",
+    "Configura para siempre que no haya hooks",
+    "Falla porque `/dev/null` no es una carpeta"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-c` fija la opción solo para ese comando (ámbito command). Apuntar `core.hooksPath` a `/dev/null` desactiva todos los hooks; la documentación lo sugiere solo para usuarios expertos y por comando."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-config (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "githooks: hooks que usa Git",
+   "url": "https://git-scm.com/docs/githooks"
+  },
+  {
+   "title": "git-hook (git hook run)",
+   "url": "https://git-scm.com/docs/git-hook"
+  },
+  {
+   "title": "gitattributes",
+   "url": "https://git-scm.com/docs/gitattributes"
+  },
+  {
+   "title": "git-check-attr",
+   "url": "https://git-scm.com/docs/git-check-attr"
+  },
+  {
+   "title": "git-init: TEMPLATE DIRECTORY",
+   "url": "https://git-scm.com/docs/git-init"
+  },
+  {
+   "title": "gitcredentials",
+   "url": "https://git-scm.com/docs/gitcredentials"
+  },
+  {
+   "title": "git-credential-cache",
+   "url": "https://git-scm.com/docs/git-credential-cache"
+  },
+  {
+   "title": "git-credential-store",
+   "url": "https://git-scm.com/docs/git-credential-store"
+  },
+  {
+   "title": "git-verify-commit",
+   "url": "https://git-scm.com/docs/git-verify-commit"
+  },
+  {
+   "title": "Pro Git 8.1: Configuración de Git",
+   "url": "https://git-scm.com/book/en/v2/Customizing-Git-Git-Configuration"
+  },
+  {
+   "title": "Pro Git 8.2: Atributos de Git",
+   "url": "https://git-scm.com/book/en/v2/Customizing-Git-Git-Attributes"
+  },
+  {
+   "title": "Pro Git 8.3: Hooks de Git",
+   "url": "https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks"
+  },
+  {
+   "title": "Pro Git 2.7: Alias de Git",
+   "url": "https://git-scm.com/book/en/v2/Git-Basics-Git-Aliases"
+  },
+  {
+   "title": "Pro Git 7.4: Firmar tu trabajo",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Signing-Your-Work"
+  },
+  {
+   "title": "Pro Git 7.14: Almacenamiento de credenciales",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage"
+  },
+  {
+   "title": "Pro Git en español",
+   "url": "https://git-scm.com/book/es/v2"
+  },
+  {
+   "title": "Notas de versión de Git 2.13 (includeIf)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.13.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.34 (firma con SSH)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.34.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.35 (zdiff3)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.35.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.36 (includeIf hasconfig)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.36.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.46 (subcomandos de git config)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.46.0.adoc"
+  },
+  {
+   "title": "GitHub Blog: Highlights from Git 2.37 (push.autoSetupRemote)",
+   "url": "https://github.blog/2022-06-27-highlights-from-git-2-37/"
+  },
+  {
+   "title": "GitHub Blog: Highlights from Git 2.54 (hooks en la configuración)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-54/"
+  },
+  {
+   "title": "pre-commit (framework)",
+   "url": "https://pre-commit.com/"
+  },
+  {
+   "title": "Husky: Get started",
+   "url": "https://typicode.github.io/husky/get-started.html"
+  },
+  {
+   "title": "Husky: How to",
+   "url": "https://typicode.github.io/husky/how-to.html"
+  },
+  {
+   "title": "GitHub Docs: Telling Git about your signing key",
+   "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key"
+  },
+  {
+   "title": "GitHub Docs: About commit signature verification",
+   "url": "https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification"
+  },
+  {
+   "title": "GitHub Linguist: overrides con .gitattributes",
+   "url": "https://github.com/github-linguist/linguist/blob/main/docs/overrides.md"
+  },
+  {
+   "title": "Conventional Commits 1.0.0",
+   "url": "https://www.conventionalcommits.org/es/v1.0.0/"
+  }
+ ]
+}

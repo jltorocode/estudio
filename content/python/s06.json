@@ -1,0 +1,3265 @@
+{
+ "id": "s06",
+ "order": 6,
+ "title": "Funciones",
+ "domain": "basico",
+ "summary": "Aprenderás a empaquetar lógica en funciones reutilizables: cómo se definen y devuelven valores, cómo reciben argumentos (posicionales, nombrados, con valor por defecto, en número variable, solo posicionales o solo nombrados), dónde viven sus variables (LEGB) y cómo usarlas como objetos con lambda, map, filter y sorted. Terminarás con la recursión y con el oficio de diseñar funciones puras, documentadas y anotadas, la base de cualquier programa serio en Python.",
+ "goal": "Diseñar, documentar y probar funciones con firmas claras (valores por defecto, argumentos variables, solo posicionales y solo nombrados), razonar su ámbito y resolver problemas con funciones de orden superior y recursión.",
+ "objectives": [
+  "Definir funciones que devuelvan uno o varios valores y distinguir `return` de `print`.",
+  "Elegir el tipo de parámetro adecuado (posicional, nombrado, con valor por defecto, `*args`, `**kwargs`, solo posicional `/`, solo nombrado `*`) y predecir cómo se enlazan los argumentos.",
+  "Evitar la trampa del valor por defecto mutable usando `None` como centinela.",
+  "Predecir a qué variable se refiere cada nombre según la regla LEGB y usar `global` y `nonlocal` solo cuando esté justificado.",
+  "Usar funciones como objetos: pasarlas como argumento, guardarlas en diccionarios y devolverlas; aplicar `map`, `filter`, `sorted(key=)` y `lambda`.",
+  "Resolver problemas con recursión identificando caso base y caso recursivo, y decidir cuándo conviene una versión iterativa.",
+  "Documentar funciones con docstrings (PEP 257) y anotaciones de tipo básicas, y diseñarlas puras y con una sola responsabilidad."
+ ],
+ "lessons": [
+  {
+   "id": "s06-l1",
+   "title": "Definir y llamar funciones: def, return y paso de argumentos",
+   "minutes": 22,
+   "goals": [
+    "Definir y llamar funciones con `def` que devuelvan uno o varios valores.",
+    "Distinguir entre devolver un valor con `return` y mostrarlo con `print`.",
+    "Predecir si una función modifica el objeto que recibe o solo reasigna su nombre local."
+   ],
+   "takeaways": [
+    "`def` es una sentencia ejecutable: crea un objeto función y lo liga a un nombre; el cuerpo solo se ejecuta al llamarla.",
+    "Cada llamada crea sus propias variables locales; los argumentos se enlazan a los parámetros como en una asignación.",
+    "Una función siempre devuelve algo: sin `return`, o con `return` a secas, devuelve `None`.",
+    "`return a, b` devuelve una tupla que se desempaqueta al recibirla: `x, y = f()`.",
+    "Reasignar un parámetro no afecta a quien llama; mutar el objeto recibido (`lista.append`) sí."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora has usado funciones escritas por otros (`print`, `len`, `sorted`) y has escrito algunas mínimas dentro de `def main():`. Toca dominarlas. Una **función** es un bloque de código con nombre que recibe datos (**argumentos**), hace un trabajo y **devuelve** un resultado. Piensa en una receta: la escribes una vez y la cocinas tantas veces como quieras, con ingredientes distintos cada vez."
+    },
+    {
+     "type": "p",
+     "text": "¿Por qué son tan importantes? Por tres motivos: **reutilización** (no copias y pegas código), **abstracción** (quien la usa solo necesita saber *qué* hace, no *cómo*) y **pruebas** (una función pequeña se comprueba de forma aislada, que es justo lo que hacen los tests de esta plataforma)."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de una función"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def area_rectangulo(base, altura):\n    \"\"\"Devuelve el área de un rectángulo.\"\"\"\n    area = base * altura\n    return area\n\nresultado = area_rectangulo(3, 4)   # llamada: 3 y 4 son los argumentos\nprint(resultado)                     # 12\nprint(area_rectangulo(2.5, 2))       # 5.0",
+     "run": true,
+     "caption": "`base` y `altura` son parámetros; `3` y `4`, argumentos. La cadena entre triples comillas es el docstring (lección 7)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`def` + nombre en `snake_case` + paréntesis con los **parámetros** + dos puntos.",
+      "El **cuerpo** va indentado (4 espacios). Su primera línea puede ser un **docstring** que documenta la función.",
+      "`return expresión` termina la función en ese instante y entrega el valor a quien la llamó.",
+      "La **llamada** `nombre(argumentos)` es una expresión: vale lo que devuelva la función."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Parámetro",
+       "en": "parameter",
+       "def": "Nombre que aparece en la definición (`def f(base, altura)`). Dentro de la función es una variable local."
+      },
+      {
+       "term": "Argumento",
+       "en": "argument",
+       "def": "Valor concreto que se pasa en la llamada (`f(3, 4)`)."
+      },
+      {
+       "term": "Valor de retorno",
+       "en": "return value",
+       "def": "Objeto que `return` entrega a quien llamó a la función."
+      },
+      {
+       "term": "Llamada",
+       "en": "call",
+       "def": "Expresión `f(...)` que ejecuta el cuerpo de la función con unos argumentos."
+      }
+     ]
+    },
+    {
+     "type": "h",
+     "text": "`def` es una sentencia que se ejecuta"
+    },
+    {
+     "type": "p",
+     "text": "Cuando Python llega a un `def`, **no ejecuta el cuerpo**: crea un *objeto función* y lo guarda en una variable con ese nombre. El cuerpo solo se ejecuta cuando llamas a la función. Por eso una función puede usar otra definida más abajo, siempre que esta ya exista *en el momento de la llamada*."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def saludar():\n    return formatear(\"mundo\")   # formatear aún no existe... y no pasa nada\n\ndef formatear(nombre):\n    return f\"¡Hola, {nombre}!\"\n\nprint(saludar())        # cuando llamamos, formatear ya existe\nprint(type(saludar))    # <class 'function'>",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Qué ocurre en una llamada",
+     "mermaid": "sequenceDiagram\n  participant P as Programa principal\n  participant F as area_rectangulo\n  P->>F: llamada con los argumentos 3 y 4\n  Note over F: nuevas variables locales base=3 y altura=4\n  F->>F: area = base * altura\n  F-->>P: return 12\n  Note over P: resultado vale 12 y las locales de F desaparecen",
+     "caption": "Cada llamada tiene su propio espacio de variables locales, que se crea al entrar y se descarta al salir."
+    },
+    {
+     "type": "h",
+     "text": "`return`: salir con un valor"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`return` **termina** la función inmediatamente: el código que haya debajo no se ejecuta.",
+      "Puede haber varios `return`, por ejemplo uno por rama de un `if`. Resolver primero los casos especiales y salir se llama **cláusula de guarda** (*guard clause*).",
+      "Sin `return`, o con `return` sin expresión, la función devuelve `None`."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def clasificar_nota(nota):\n    if nota < 0 or nota > 100:\n        return \"inválida\"      # cláusula de guarda: descartamos lo raro primero\n    if nota >= 60:\n        return \"aprobado\"\n    return \"reprobado\"\n\ndef avisar(mensaje):\n    print(f\"[AVISO] {mensaje}\")   # no hay return\n\nprint(clasificar_nota(75), clasificar_nota(40), clasificar_nota(120))\nresultado = avisar(\"sin conexión\")\nprint(resultado)                  # None: avisar no devuelve nada",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Devolver varios valores"
+    },
+    {
+     "type": "p",
+     "text": "En rigor, Python no devuelve «varios valores»: `return a, b` construye **una tupla** `(a, b)`. Lo cómodo es desempaquetarla al recibirla, como aprendiste en s04."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def dividir(dividendo, divisor):\n    cociente = dividendo // divisor\n    resto = dividendo % divisor\n    return cociente, resto          # equivale a: return (cociente, resto)\n\npar = dividir(17, 5)\nprint(par, type(par))              # (3, 2) <class 'tuple'>\nc, r = dividir(17, 5)              # desempaquetado directo\nprint(f\"17 = 5 * {c} + {r}\")",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si devuelves más de tres o cuatro valores, `a, b, c, d, e = f()` se vuelve frágil: cualquier cambio de orden rompe a quien llama. En ese caso devuelve un diccionario con claves claras o, más adelante, una *dataclass* (s11)."
+    },
+    {
+     "type": "h",
+     "text": "`print` no es `return`"
+    },
+    {
+     "type": "p",
+     "text": "Es la confusión número uno al empezar. `print` **muestra** texto en pantalla para una persona; `return` **entrega** un valor al código que llamó para que siga trabajando con él. Una función que imprime pero no devuelve no se puede combinar con otras: su resultado es `None`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def doble_mal(x):\n    print(x * 2)        # muestra el valor, pero devuelve None\n\ndef doble_bien(x):\n    return x * 2        # devuelve el valor\n\na = doble_mal(5)        # imprime 10...\nprint(a)                # ...pero a vale None\nb = doble_bien(5) + 1   # con return se puede seguir calculando\nprint(b)                # 11",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si ves `TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'`, casi siempre es una función a la que le falta el `return`. Y recuerda que los tests de esta plataforma comprueban lo que la función **devuelve**, no lo que imprime, salvo que el enunciado diga otra cosa."
+    },
+    {
+     "type": "h",
+     "text": "Cómo llegan los argumentos: paso por asignación"
+    },
+    {
+     "type": "p",
+     "text": "Al llamar a `f(x)`, Python hace el equivalente a `parametro = x` en la nueva llamada: el parámetro pasa a ser **otro nombre para el mismo objeto** (recuerda el modelo de referencias de s02). El tutorial oficial lo describe como *call by object reference*. Consecuencias:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Si dentro **reasignas** el parámetro (`lista = [99]`), solo cambias a qué objeto apunta el nombre local: quien llamó no se entera.",
+      "Si **mutas** el objeto (`lista.append(99)`, `datos['k'] = 1`), el cambio se ve fuera, porque es el mismo objeto.",
+      "Los objetos inmutables (`int`, `str`, `tuple`) no se pueden mutar, así que una función nunca altera el original."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def reasignar(lista):\n    lista = [99]          # el nombre local apunta a una lista nueva\n\ndef mutar(lista):\n    lista.append(99)      # modifica el objeto compartido\n\nnumeros = [1, 2]\nreasignar(numeros)\nprint(numeros)            # [1, 2]      -> sin cambios\nmutar(numeros)\nprint(numeros)            # [1, 2, 99]  -> ¡cambió!",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Dos nombres, un mismo objeto",
+     "mermaid": "flowchart LR\n  N[\"numeros (en quien llama)\"] --> O[\"objeto lista [1, 2]\"]\n  L[\"lista (parámetro de mutar)\"] --> O\n  O -- \"append(99) lo muta\" --> M[\"el mismo objeto pasa a ser [1, 2, 99]\"]\n  R2[\"lista tras 'lista = [99]'\"] -.-> X[\"objeto nuevo [99], solo visible dentro\"]",
+     "caption": "Mutar el objeto se ve desde los dos nombres; reasignar el parámetro solo mueve la flecha local."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: «¿Python pasa los argumentos por valor o por referencia?». La respuesta precisa es **por asignación** (*call by object reference*): se pasa la referencia al objeto, por eso las mutaciones se ven fuera, pero reasignar el parámetro no afecta a quien llama. El bloque 4 del PCEP-30-02 (funciones y excepciones, un 28 % del examen) incluye justo lo de esta sección: definir e invocar funciones, `return` y `None`, recursión, parámetros frente a argumentos, paso posicional, nombrado y mixto, valores por defecto, ámbitos, ocultación de nombres y `global`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Buena práctica: si tu función modifica un argumento a propósito, indícalo en el nombre o en el docstring y devuelve `None`, como hace `list.sort()`. Si no quieres efectos secundarios, construye y devuelve un objeto nuevo."
+    }
+   ]
+  },
+  {
+   "id": "s06-l2",
+   "title": "Argumentos posicionales, nombrados y valores por defecto",
+   "minutes": 22,
+   "goals": [
+    "Llamar funciones combinando argumentos posicionales y nombrados sin provocar `TypeError`.",
+    "Definir parámetros con valores por defecto respetando las reglas de orden.",
+    "Aplicar el patrón `None` como centinela para evitar el valor por defecto mutable."
+   ],
+   "takeaways": [
+    "En la llamada, los posicionales van primero y se asignan por orden; los nombrados, por nombre y en cualquier orden.",
+    "Ningún parámetro puede recibir dos valores: con `def f(a, b)`, la llamada `f(1, a=2)` lanza `TypeError`.",
+    "Los valores por defecto se evalúan **una sola vez**, al ejecutarse el `def`, y se guardan en `__defaults__`.",
+    "Nunca uses `[]`, `{}` ni `set()` como valor por defecto: usa `None` y crea el objeto dentro.",
+    "Tras un parámetro con valor por defecto, los siguientes (hasta un `*`) también deben tenerlo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Las funciones útiles suelen tener varios parámetros, y algunos con un valor razonable «por defecto». Python ofrece dos maneras de pasar argumentos y un mecanismo de valores por defecto con una trampa famosa que todo profesional conoce."
+    },
+    {
+     "type": "h",
+     "text": "Posicionales y nombrados"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def describir_mascota(nombre, especie, edad):\n    return f\"{nombre} es un {especie} de {edad} años\"\n\nprint(describir_mascota(\"Toby\", \"perro\", 3))                      # posicionales: por orden\nprint(describir_mascota(edad=3, nombre=\"Toby\", especie=\"perro\"))  # nombrados: por nombre\nprint(describir_mascota(\"Toby\", edad=3, especie=\"perro\"))         # mezcla: posicionales primero",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Los **argumentos nombrados** (*keyword arguments*) hacen las llamadas autoexplicativas: `crear_usuario('ana', True, False)` no dice nada, mientras que `crear_usuario('ana', admin=True, activo=False)` se entiende solo."
+    },
+    {
+     "type": "h",
+     "text": "Cómo enlaza Python argumentos y parámetros"
+    },
+    {
+     "type": "p",
+     "text": "La referencia del lenguaje lo describe como un sistema de **casillas** (*slots*), una por parámetro:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Los argumentos posicionales llenan las primeras casillas, por orden.",
+      "Cada argumento nombrado llena la casilla con su nombre. Si ese nombre no existe → `TypeError: ... got an unexpected keyword argument`. Si la casilla ya estaba llena → `TypeError: ... got multiple values for argument`.",
+      "Las casillas vacías se rellenan con su valor por defecto.",
+      "Si queda alguna vacía sin valor por defecto → `TypeError: ... missing 1 required positional argument`."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "diagram",
+     "title": "Enlace de argumentos con parámetros",
+     "mermaid": "flowchart TD\n  A[\"Llamada f(...)\"] --> B[\"1. Los posicionales llenan casillas por orden\"]\n  B --> C{\"¿Sobran posicionales?\"}\n  C -- \"Sí\" --> E1[\"TypeError: takes N positional arguments\"]\n  C -- \"No\" --> D[\"2. Cada nombrado busca su casilla\"]\n  D --> F{\"¿Existe y está libre?\"}\n  F -- \"No existe\" --> E2[\"TypeError: unexpected keyword argument\"]\n  F -- \"Ya ocupada\" --> E3[\"TypeError: got multiple values\"]\n  F -- \"Sí\" --> G[\"3. Las vacías reciben su valor por defecto\"]\n  G --> H{\"¿Queda alguna vacía?\"}\n  H -- \"Sí\" --> E4[\"TypeError: missing required argument\"]\n  H -- \"No\" --> I[\"Se ejecuta el cuerpo\"]",
+     "caption": "Versión simplificada, sin `*args` ni `**kwargs`, que verás en la lección siguiente."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Llamada (con `def f(a, b)`)",
+      "Resultado",
+      "Motivo"
+     ],
+     "rows": [
+      [
+       "`f(1)`",
+       "`TypeError: f() missing 1 required positional argument: 'b'`",
+       "Falta un argumento obligatorio"
+      ],
+      [
+       "`f(1, 2, 3)`",
+       "`TypeError: f() takes 2 positional arguments but 3 were given`",
+       "Sobran posicionales"
+      ],
+      [
+       "`f(1, a=2)`",
+       "`TypeError: f() got multiple values for argument 'a'`",
+       "`a` recibe dos valores"
+      ],
+      [
+       "`f(1, c=3)`",
+       "`TypeError: f() got an unexpected keyword argument 'c'`",
+       "No existe el parámetro `c`"
+      ],
+      [
+       "`f(a=1, 2)`",
+       "`SyntaxError: positional argument follows keyword argument`",
+       "Posicional después de un nombrado"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`f(a=1, 2)` ni siquiera llega a ejecutarse: es un error de sintaxis. En una llamada, **todo argumento posicional va antes que cualquier nombrado**."
+    },
+    {
+     "type": "h",
+     "text": "Valores por defecto"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def potencia(base, exponente=2):\n    return base ** exponente\n\nprint(potencia(5))                     # 25 -> usa exponente=2\nprint(potencia(2, 10))                 # 1024\nprint(potencia(exponente=3, base=2))   # 8",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Regla sintáctica: después de un parámetro con valor por defecto, todos los siguientes (hasta un `*`, que verás en la próxima lección) deben tenerlo también. `def f(a=1, b):` produce `SyntaxError: parameter without a default follows parameter with a default`. Tiene lógica: si `a` fuera opcional y `b` obligatorio, ¿a cuál iría el 5 de `f(5)`?"
+    },
+    {
+     "type": "h",
+     "text": "¿Cuándo se evalúa el valor por defecto?"
+    },
+    {
+     "type": "p",
+     "text": "Una sola vez: **al ejecutarse la definición** (la sentencia `def`), no en cada llamada. El objeto resultante se guarda dentro de la función (puedes verlo en `funcion.__defaults__`) y se reutiliza en todas las llamadas que no pasen ese argumento."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "limite = 5\n\ndef comprobar(valor, maximo=limite):   # se evalúa AQUÍ: maximo vale 5\n    return valor <= maximo\n\nlimite = 100                           # cambiar la variable después no afecta\nprint(comprobar(50))                   # False: el valor por defecto sigue siendo 5\nprint(comprobar.__defaults__)          # (5,)",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "La trampa del valor por defecto mutable"
+    },
+    {
+     "type": "p",
+     "text": "Si el valor por defecto es mutable (una lista, un diccionario, un conjunto) y la función lo modifica, la modificación **persiste entre llamadas**, porque siempre es el mismo objeto:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def agregar(elemento, lista=[]):   # ¡ERROR! una sola lista para siempre\n    lista.append(elemento)\n    return lista\n\nprint(agregar(\"a\"))           # ['a']\nprint(agregar(\"b\"))           # ['a', 'b']  <- ¿qué hace aquí la 'a'?\nprint(agregar.__defaults__)   # (['a', 'b'],)  la lista vive dentro de la función",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Por qué la lista por defecto crece",
+     "mermaid": "flowchart LR\n  D[\"def agregar(elemento, lista=[])\"] -- \"se ejecuta una vez\" --> L[\"UNA lista guardada en __defaults__\"]\n  C1[\"agregar('a')\"] -- \"usa\" --> L\n  C2[\"agregar('b')\"] -- \"usa la misma\" --> L\n  L --> R[\"['a', 'b']: crece con cada llamada\"]",
+     "caption": "El valor por defecto no se «reinicia» en cada llamada: es un único objeto que vive tanto como la función."
+    },
+    {
+     "type": "p",
+     "text": "La solución idiomática es usar `None` como **centinela** (un valor que significa «no me pasaron nada») y crear el objeto nuevo dentro:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def agregar(elemento, lista=None):\n    if lista is None:      # compara con 'is', como recomienda PEP 8\n        lista = []         # lista NUEVA en cada llamada sin argumento\n    lista.append(elemento)\n    return lista\n\nprint(agregar(\"a\"))        # ['a']\nprint(agregar(\"b\"))        # ['b']\nmia = [\"x\"]\nprint(agregar(\"y\", mia))   # ['x', 'y'] -> si me pasan una lista, uso esa",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No escribas `lista = lista or []`: si quien llama pasa a propósito una lista **vacía** para que la rellenes, `or` la sustituye por otra nueva (una lista vacía es *falsy*) y quien llamó nunca ve los cambios. Compara siempre con `is None`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los valores inmutables (`0`, `''`, `None`, `True`, tuplas) son seguros como valor por defecto. La FAQ oficial menciona incluso un uso *intencionado* del defecto mutable: una caché privada (`def caro(x, *, _cache={})`). Funciona, pero es poco legible; en s12 verás `functools.cache`, que lo hace mejor."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Aparece en entrevistas y exámenes: si `def f(x, l=[]): l.append(x); return l`, ¿qué imprime `print(f(1), f(2))`? Respuesta: `[1, 2] [1, 2]`. Los dos argumentos de `print` son **el mismo objeto**, y cuando se imprime ya contiene ambos elementos."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Argumento posicional",
+       "en": "positional argument",
+       "def": "Argumento que se asigna al parámetro según su posición en la llamada."
+      },
+      {
+       "term": "Argumento nombrado",
+       "en": "keyword argument",
+       "def": "Argumento que se pasa como `nombre=valor` y se asigna al parámetro con ese nombre."
+      },
+      {
+       "term": "Valor por defecto",
+       "en": "default value",
+       "def": "Valor que toma un parámetro si la llamada no lo proporciona; se evalúa una sola vez, al definir la función."
+      },
+      {
+       "term": "Centinela",
+       "en": "sentinel",
+       "def": "Valor especial (normalmente `None`) que indica «no me han pasado nada»."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l3",
+   "title": "Firmas flexibles: *args, **kwargs, / y *",
+   "minutes": 25,
+   "goals": [
+    "Definir funciones que acepten un número variable de argumentos con `*args` y `**kwargs`.",
+    "Restringir cómo se pasan los argumentos con parámetros solo posicionales (`/`) y solo nombrados (`*`).",
+    "Desempaquetar listas y diccionarios en una llamada con `*` y `**`."
+   ],
+   "takeaways": [
+    "`*args` recoge los posicionales sobrantes en una **tupla**; `**kwargs`, los nombrados sobrantes en un **diccionario**.",
+    "Orden de una firma completa: `def f(solo_pos, /, normal, *args, solo_nom, **kwargs)`.",
+    "Lo que va antes de `/` solo se pasa por posición (desde 3.8); lo que va después de `*` o de `*args`, solo por nombre.",
+    "En una llamada, `*iterable` y `**diccionario` hacen lo contrario: reparten elementos como argumentos.",
+    "Usa parámetros solo nombrados para opciones y booleanos: la llamada se lee sola."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`print` acepta cualquier cantidad de valores; `sorted` exige que `key` y `reverse` se pasen por nombre; `len(obj=[1])` falla. Todo eso lo puedes hacer tú también con cuatro piezas de sintaxis."
+    },
+    {
+     "type": "h",
+     "text": "`*args`: número variable de posicionales"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def media(*numeros):\n    print(\"Recibo:\", numeros, type(numeros).__name__)\n    if not numeros:\n        return None\n    return sum(numeros) / len(numeros)\n\nprint(media(4, 8, 6))    # Recibo: (4, 8, 6) tuple -> 6.0\nprint(media())           # Recibo: () tuple -> None",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "El nombre `args` es solo una convención; lo que cuenta es el asterisco. Usa un nombre descriptivo cuando ayude (`*numeros`, `*rutas`)."
+    },
+    {
+     "type": "h",
+     "text": "`**kwargs`: número variable de nombrados"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def crear_etiqueta(nombre, **atributos):\n    partes = [f'{clave}=\"{valor}\"' for clave, valor in atributos.items()]\n    return f\"<{nombre} {' '.join(partes)}>\"\n\nprint(crear_etiqueta(\"img\", src=\"gato.png\", alt=\"Un gato\", width=200))\n# <img src=\"gato.png\" alt=\"Un gato\" width=\"200\">",
+     "run": true,
+     "caption": "El diccionario conserva el orden en que se escribieron los argumentos en la llamada (lo garantiza el lenguaje)."
+    },
+    {
+     "type": "h",
+     "text": "Parámetros solo nombrados: después de `*`"
+    },
+    {
+     "type": "p",
+     "text": "Cualquier parámetro que aparezca **después** de `*args` (o de un `*` suelto, si no quieres recoger posicionales) solo puede pasarse por nombre. Es lo ideal para opciones:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def unir(*palabras, separador=\" \", mayusculas=False):\n    texto = separador.join(palabras)\n    return texto.upper() if mayusculas else texto\n\nprint(unir(\"hola\", \"mundo\"))                 # hola mundo\nprint(unir(\"a\", \"b\", \"c\", separador=\"-\"))    # a-b-c\nprint(unir(\"sí\", \"claro\", mayusculas=True))  # SÍ CLARO\n\ndef conectar(servidor, *, puerto=443, cifrado=True):   # * suelto: sin *args\n    return f\"{servidor}:{puerto} cifrado={cifrado}\"\n\nprint(conectar(\"ejemplo.org\", puerto=8080))",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Sin el `*`, alguien podría escribir `conectar('ejemplo.org', 8080, False)`: funciona, pero ¿qué significa ese `False`? Obligar a escribir `cifrado=False` elimina la ambigüedad. Un parámetro solo nombrado **puede no tener valor por defecto**: entonces es obligatorio (`def f(*, clave)` exige llamar con `f(clave=...)`). Esta sintaxis existe desde Python 3.0 (PEP 3102)."
+    },
+    {
+     "type": "h",
+     "text": "Parámetros solo posicionales: antes de `/`"
+    },
+    {
+     "type": "p",
+     "text": "Desde Python 3.8 (PEP 570), los parámetros situados **antes** de una `/` solo pueden pasarse por posición. Muchas funciones integradas ya se comportaban así: `help(len)` muestra `len(obj, /)`, y por eso `len(obj=[1])` produce `TypeError: len() takes no keyword arguments`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def distancia(x1, y1, x2, y2, /):\n    return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5\n\nprint(distancia(0, 0, 3, 4))    # 5.0\n# distancia(x1=0, y1=0, x2=3, y2=4) -> TypeError:\n#   distancia() got some positional-only arguments passed as keyword arguments: ...\n\ndef registrar(nombre, /, **datos):\n    return nombre, datos\n\n# 'nombre' es solo posicional: la clave 'nombre' puede ir en **datos sin chocar\nprint(registrar(\"evento\", nombre=\"Ana\", edad=30))\n# ('evento', {'nombre': 'Ana', 'edad': 30})",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "¿Para qué sirve? Según el tutorial oficial: cuando los nombres de los parámetros no aportan significado, cuando quieres poder **renombrarlos** en el futuro sin romper el código de nadie (muy útil en bibliotecas) y cuando combinas posicionales con `**kwargs` y no quieres choques de nombres, como en el segundo ejemplo."
+    },
+    {
+     "type": "h",
+     "text": "La firma completa"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo de parámetro",
+      "Sintaxis",
+      "Cómo se pasa",
+      "Ejemplo real"
+     ],
+     "rows": [
+      [
+       "Solo posicional",
+       "antes de `/`",
+       "Solo por posición",
+       "`len(obj, /)`, `divmod(x, y, /)`"
+      ],
+      [
+       "Posicional o nombrado",
+       "sin marca (lo normal)",
+       "Por posición o por nombre",
+       "`def area(base, altura)`"
+      ],
+      [
+       "Variádico posicional",
+       "`*args`",
+       "Recoge los posicionales sobrantes (tupla)",
+       "`print(*objects, sep=' ', end='\\n')`"
+      ],
+      [
+       "Solo nombrado",
+       "después de `*` o de `*args`",
+       "Solo por nombre",
+       "`sorted(iterable, /, *, key=None, reverse=False)`"
+      ],
+      [
+       "Variádico nombrado",
+       "`**kwargs`",
+       "Recoge los nombrados sobrantes (dict)",
+       "`def crear_etiqueta(nombre, **atributos)`"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Orden obligatorio de los parámetros",
+     "mermaid": "flowchart LR\n  A[\"solo posicionales\"] --> S[\"/\"]\n  S --> B[\"posicionales o nombrados (con o sin valor por defecto)\"]\n  B --> C[\"*args o * suelto\"]\n  C --> D[\"solo nombrados\"]\n  D --> E[\"**kwargs\"]",
+     "caption": "Todas las piezas son opcionales, pero si aparecen, lo hacen en este orden."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def firma_completa(a, b, /, c, d=4, *args, e, f=6, **kwargs):\n    return a, b, c, d, args, e, f, kwargs\n\nprint(firma_completa(1, 2, 3, e=5))            # (1, 2, 3, 4, (), 5, 6, {})\nprint(firma_completa(1, 2, c=3, e=5, z=0))     # (1, 2, 3, 4, (), 5, 6, {'z': 0})\nprint(firma_completa(1, 2, 3, 40, 50, 60, e=5))\n# (1, 2, 3, 40, (50, 60), 5, 6, {})",
+     "run": true,
+     "caption": "Traza cada llamada con el sistema de casillas antes de mirar el resultado. Después prueba a romperla: `firma_completa(1, 2, 3)` o `firma_completa(a=1, b=2, c=3, e=5)`."
+    },
+    {
+     "type": "h",
+     "text": "Desempaquetar en la llamada: `*` y `**`"
+    },
+    {
+     "type": "p",
+     "text": "Es la operación inversa: si ya tienes los argumentos en una lista o un diccionario, `*` los reparte como posicionales y `**` como nombrados. Desde Python 3.5 (PEP 448) se pueden usar varios en la misma llamada."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def describir(nombre, edad, ciudad=\"Lima\"):\n    return f\"{nombre} ({edad}) - {ciudad}\"\n\ndatos = [\"Lucía\", 31]\nextra = {\"ciudad\": \"Quito\"}\nprint(describir(*datos))             # describir(\"Lucía\", 31)\nprint(describir(*datos, **extra))    # describir(\"Lucía\", 31, ciudad=\"Quito\")\n\nfor punto in [(1, 2), (3, 4)]:\n    print(*punto, sep=\" | \")         # print(1, 2, sep=\" | \")",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Reenviar argumentos"
+    },
+    {
+     "type": "p",
+     "text": "Combinando ambos sentidos puedes escribir funciones «envoltorio» que pasan todo lo que reciben a otra función sin conocer su firma. Es la base de los decoradores, que verás en s12."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def con_registro(funcion, *args, **kwargs):\n    print(f\"Llamando a {funcion.__name__} con {args} y {kwargs}\")\n    resultado = funcion(*args, **kwargs)     # reenvío tal cual\n    print(f\"Resultado: {resultado}\")\n    return resultado\n\ncon_registro(round, 3.14159, ndigits=2)\ncon_registro(sorted, [3, 1, 2], reverse=True)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`*args` y `**kwargs` son potentes, pero **ocultan la firma**: quien lee `def procesar(*args, **kwargs)` no sabe qué pasar, y un nombre mal escrito (`decimals=2` en vez de `decimales=2`) se acepta en silencio. Úsalos cuando la cantidad de argumentos sea realmente variable o para reenviar; si conoces los parámetros, escríbelos explícitamente y Python validará los nombres por ti."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Trampas típicas: (1) `def f(**kwargs, *args)` es `SyntaxError`, porque el orden es fijo; (2) dentro de la función, `args` es una **tupla** (no una lista) y `kwargs` un **dict**; (3) `f(*'abc')` pasa tres argumentos, `'a'`, `'b'` y `'c'`, porque una cadena es iterable; (4) `print(*[])` imprime una línea vacía: no pasa ningún argumento."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Parámetro variádico",
+       "en": "variadic parameter",
+       "def": "`*args` o `**kwargs`: recoge un número variable de argumentos posicionales o nombrados."
+      },
+      {
+       "term": "Solo posicional",
+       "en": "positional-only",
+       "def": "Parámetro situado antes de `/`; no se puede pasar por nombre."
+      },
+      {
+       "term": "Solo nombrado",
+       "en": "keyword-only",
+       "def": "Parámetro situado después de `*` o de `*args`; solo se puede pasar por nombre."
+      },
+      {
+       "term": "Desempaquetado",
+       "en": "unpacking",
+       "def": "Uso de `*` y `**` en una llamada para repartir los elementos de un iterable o de un diccionario como argumentos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l4",
+   "title": "Ámbito de las variables: LEGB, global y nonlocal",
+   "minutes": 22,
+   "goals": [
+    "Predecir a qué objeto se refiere cada nombre aplicando la regla LEGB.",
+    "Diagnosticar y corregir un `UnboundLocalError`.",
+    "Aplicar `global` y `nonlocal` solo cuando esté justificado, prefiriendo recibir y devolver valores."
+   ],
+   "takeaways": [
+    "Python busca cada nombre en este orden: Local, Enclosing (funciones que contienen a la actual), Global (módulo) y Built-in.",
+    "Si un nombre se **asigna** en cualquier punto de una función, es local en **toda** la función; se decide al compilar.",
+    "`global x` permite reasignar una variable del módulo; `nonlocal x`, una de la función que contiene a la actual.",
+    "Solo crean ámbito los módulos, las funciones, las clases y las comprensiones: `if`, `for` y `while` no.",
+    "No tapes nombres integrados (`list`, `sum`, `input`…) con tus variables."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cuando escribes `x` dentro de una función, ¿a qué `x` te refieres? ¿A la de la función, a una de fuera, a una integrada? Python lo decide con una regla fija que se resume en cuatro letras: **LEGB**."
+    },
+    {
+     "type": "p",
+     "text": "Un **espacio de nombres** (*namespace*) es una tabla que asocia nombres con objetos; la documentación dice literalmente que se implementan como diccionarios. Conviven varios a la vez: el de la llamada en curso, el de las funciones que la contienen, el del módulo y el de los integrados. El **ámbito** (*scope*) es la zona del código desde la que un espacio de nombres es accesible directamente."
+    },
+    {
+     "type": "diagram",
+     "title": "La regla LEGB",
+     "mermaid": "flowchart TB\n  L[\"L · Local: parámetros y variables de la llamada actual\"]\n  E[\"E · Enclosing: funciones que contienen a la actual\"]\n  G[\"G · Global: nombres del módulo (tu archivo)\"]\n  B[\"B · Built-in: print, len, sum, None...\"]\n  L -- \"¿no está? sube\" --> E\n  E -- \"¿no está? sube\" --> G\n  G -- \"¿no está? sube\" --> B\n  B -- \"¿tampoco?\" --> X[\"NameError\"]",
+     "caption": "Python busca de dentro hacia fuera y se queda con la primera coincidencia."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "x = \"global\"\n\ndef exterior():\n    x = \"enclosing\"\n    def interior():\n        x = \"local\"\n        print(\"interior ve:\", x)\n    interior()\n    print(\"exterior ve:\", x)\n\nexterior()\nprint(\"el módulo ve:\", x)\nprint(\"built-in:\", len)    # len no está en L, E ni G: se encuentra en B",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Leer está permitido; asignar crea una local"
+    },
+    {
+     "type": "p",
+     "text": "Una función puede **leer** variables de fuera sin declarar nada. Pero en cuanto **asigna** un nombre (`=`, `+=`, `for nombre in`, `def nombre`, `import nombre`…), ese nombre pasa a ser local **en toda la función**, incluso en las líneas anteriores a la asignación. Python lo decide al compilar la función, no línea a línea."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "contador = 0\n\ndef incrementar():\n    contador += 1      # lee contador... ¡pero es local porque se asigna aquí!\n    return contador\n\nincrementar()\n# UnboundLocalError: cannot access local variable 'contador'\n#                    where it is not associated with a value",
+     "caption": "Este ejemplo falla a propósito (por eso no tiene botón de ejecutar)."
+    },
+    {
+     "type": "p",
+     "text": "`contador += 1` equivale a `contador = contador + 1`: como hay asignación, `contador` es local; al intentar leerla, todavía no tiene valor. `UnboundLocalError` es una subclase de `NameError`."
+    },
+    {
+     "type": "h",
+     "text": "`global`: reasignar una variable del módulo"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "contador = 0\n\ndef incrementar():\n    global contador      # 'contador' se refiere a la del módulo\n    contador += 1\n\nincrementar()\nincrementar()\nprint(contador)          # 2",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`global` funciona, pero es una señal de alarma: cualquier función puede cambiar ese estado, los resultados dependen del orden en que se llamen las cosas y la función deja de ser reutilizable y fácil de probar. Casi siempre es mejor **recibir el valor y devolver el nuevo**: `contador = incrementar(contador)`."
+    },
+    {
+     "type": "p",
+     "text": "Ojo: para **mutar** un objeto global no hace falta `global`, porque no reasignas el nombre: `historial.append(x)` funciona sin declarar nada. Otra cosa es que sea buena idea."
+    },
+    {
+     "type": "h",
+     "text": "`nonlocal`: reasignar una variable de la función exterior"
+    },
+    {
+     "type": "p",
+     "text": "Una función definida dentro de otra (función **anidada**) puede leer las variables de la exterior; para **reasignarlas** necesita `nonlocal`. Además, la función interior **recuerda** esas variables aunque la exterior ya haya terminado: eso es un **closure** (clausura), que estudiarás a fondo en s12."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def crear_contador():\n    cuenta = 0               # variable de la función exterior (la E de LEGB)\n    def siguiente():\n        nonlocal cuenta      # sin esto: UnboundLocalError\n        cuenta += 1\n        return cuenta\n    return siguiente         # devolvemos la función, sin llamarla\n\nc1 = crear_contador()\nc2 = crear_contador()\nprint(c1(), c1(), c1())      # 1 2 3\nprint(c2())                  # 1 -> cada contador tiene su propia 'cuenta'",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Qué reasigna cada declaración",
+     "mermaid": "flowchart TB\n  subgraph MOD[\"Módulo (G)\"]\n    X[\"spam global\"]\n    subgraph EXT[\"def scope_test() (E)\"]\n      Y[\"spam de scope_test\"]\n      L1[\"do_local: spam = ... crea una local nueva\"]\n      L2[\"do_nonlocal: nonlocal spam\"]\n      L3[\"do_global: global spam\"]\n    end\n  end\n  L2 -- \"reasigna\" --> Y\n  L3 -- \"reasigna\" --> X",
+     "caption": "Sin declaración, asignar crea una variable local; nonlocal apunta a la función exterior y global al módulo."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def scope_test():\n    def do_local():\n        spam = \"local spam\"\n    def do_nonlocal():\n        nonlocal spam\n        spam = \"nonlocal spam\"\n    def do_global():\n        global spam\n        spam = \"global spam\"\n\n    spam = \"test spam\"\n    do_local()\n    print(\"After local assignment:\", spam)\n    do_nonlocal()\n    print(\"After nonlocal assignment:\", spam)\n    do_global()\n    print(\"After global assignment:\", spam)\n\nscope_test()\nprint(\"In global scope:\", spam)",
+     "run": true,
+     "caption": "Ejemplo del tutorial oficial (sección 9.2.1). Predice las cuatro líneas antes de ejecutarlo."
+    },
+    {
+     "type": "h",
+     "text": "Los bloques no crean ámbito"
+    },
+    {
+     "type": "p",
+     "text": "A diferencia de otros lenguajes, en Python `if`, `for`, `while` o `with` **no** crean un ámbito nuevo: una variable creada dentro de un `for` sigue existiendo después. Solo crean ámbito los módulos, las funciones (incluidas las `lambda`), las clases y las comprensiones, cuya variable de bucle no se escapa."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for i in range(3):\n    ultimo = i * 10\nprint(i, ultimo)            # 2 20 -> siguen vivas tras el bucle\n\ncuadrados = [n * n for n in range(4)]\nprint(cuadrados)            # [0, 1, 4, 9]\n# print(n)  -> NameError: la variable de la comprensión no se escapa",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "No tapes los nombres integrados"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "datos = [3, 1, 2]\nsum = 0                     # ¡tapamos el sum integrado en el ámbito global!\nfor d in datos:\n    sum += d\nprint(sum)                  # 6, parece que todo va bien...\n# sum([1, 2]) -> TypeError: 'int' object is not callable\ndel sum                     # borramos nuestro nombre y vuelve a verse el integrado\nprint(sum([1, 2]))          # 3",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Nombres que se tapan sin querer: `list`, `dict`, `str`, `id`, `input`, `max`, `min`, `sum`, `type`, `filter`. Si te hace falta uno parecido, usa un nombre más descriptivo (`total`, `identificador`) o añade un guion bajo final (`id_`), la convención habitual para evitar choques de nombres."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Clásico de examen: con `x = 5` en el módulo y una función `f` cuyo cuerpo es `print(x)` seguido de `x = 3`, la llamada `f()` no imprime 5: lanza `UnboundLocalError`, porque la asignación posterior convierte `x` en local para **toda** la función. El PCEP incluye explícitamente ámbitos, ocultación de nombres (*shadowing*) y la palabra clave `global`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Espacio de nombres",
+       "en": "namespace",
+       "def": "Tabla que asocia nombres con objetos: local, de funciones exteriores, global y de integrados."
+      },
+      {
+       "term": "Ámbito",
+       "en": "scope",
+       "def": "Región del código donde un espacio de nombres es accesible directamente."
+      },
+      {
+       "term": "Variable local",
+       "en": "local variable",
+       "def": "Nombre asignado dentro de una función (incluidos sus parámetros); existe mientras dura la llamada."
+      },
+      {
+       "term": "Clausura",
+       "en": "closure",
+       "def": "Función que recuerda variables de la función que la contenía aunque esta ya haya terminado."
+      },
+      {
+       "term": "Ocultación",
+       "en": "shadowing",
+       "def": "Un nombre local o global que tapa a otro del mismo nombre en un ámbito más externo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l5",
+   "title": "Funciones como objetos: orden superior, lambda, map, filter y sorted",
+   "minutes": 25,
+   "goals": [
+    "Pasar funciones como argumentos, guardarlas en estructuras de datos y devolverlas desde otras funciones.",
+    "Escribir funciones `lambda` breves y reconocer cuándo conviene más un `def`.",
+    "Aplicar `map`, `filter`, `sorted`, `min` y `max` con `key` para transformar, filtrar y ordenar por varios criterios."
+   ],
+   "takeaways": [
+    "Las funciones son objetos de primera clase: se asignan, se guardan en listas o diccionarios, se pasan y se devuelven.",
+    "Una función de orden superior recibe o devuelve funciones: `sorted(key=...)`, `map`, `filter`.",
+    "`lambda parámetros: expresión` crea una función anónima de una sola expresión; PEP 8 desaconseja asignarla a un nombre.",
+    "`map` y `filter` devuelven iteradores perezosos de un solo uso: conviértelos con `list()`; a menudo una comprensión es más legible.",
+    "Para ordenar por varios criterios, haz que `key` devuelva una tupla; para invertir un criterio numérico, niégalo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En Python una función es un objeto más, igual que un número o una lista. Por eso se dice que son **objetos de primera clase** (*first-class objects*): puedes asignarlas a variables, guardarlas en estructuras, pasarlas como argumento y devolverlas. Esto abre un estilo de programación muy expresivo."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def gritar(texto):\n    return texto.upper() + \"!\"\n\nhablar = gritar                  # SIN paréntesis: no la llamamos, la referenciamos\nprint(hablar(\"hola\"))            # HOLA!\nprint(hablar is gritar)          # True: dos nombres, una sola función\nprint(gritar.__name__)           # gritar: el objeto recuerda su nombre\nprint(callable(gritar), callable(42))   # True False",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`f` es la función; `f()` es **el resultado de llamarla**. Escribir `sorted(palabras, key=len())` en lugar de `key=len` es un error típico: `len()` sin argumentos falla, y aunque no fallara, estarías pasando un número, no una función."
+    },
+    {
+     "type": "h",
+     "text": "Tablas de funciones"
+    },
+    {
+     "type": "p",
+     "text": "Guardar funciones en un diccionario permite sustituir largas cadenas de `if/elif` por una búsqueda. Se suele llamar **tabla de despacho** (*dispatch table*):"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def sumar(a, b):\n    return a + b\n\ndef restar(a, b):\n    return a - b\n\ndef multiplicar(a, b):\n    return a * b\n\nOPERACIONES = {\"+\": sumar, \"-\": restar, \"*\": multiplicar}\n\ndef calcular(a, simbolo, b):\n    operacion = OPERACIONES.get(simbolo)   # una función... o None\n    if operacion is None:\n        return None\n    return operacion(a, b)\n\nprint(calcular(6, \"+\", 2), calcular(6, \"-\", 2), calcular(6, \"*\", 2), calcular(6, \"^\", 2))\n# 8 4 12 None",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Funciones de orden superior"
+    },
+    {
+     "type": "p",
+     "text": "Una **función de orden superior** (*higher-order function*) recibe funciones como argumento o devuelve una función. Ya usaste una: `sorted(lista, key=len)`. Escribir la tuya es sencillo:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def aplicar_dos_veces(funcion, valor):\n    return funcion(funcion(valor))\n\ndef incrementar(x):\n    return x + 1\n\nprint(aplicar_dos_veces(incrementar, 5))       # 7\nprint(aplicar_dos_veces(str.upper, \"hola\"))    # HOLA (los métodos también son funciones)\nprint(aplicar_dos_veces(lambda s: s + \"!\", \"ey\"))   # ey!!",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Una función que recibe otra función",
+     "mermaid": "flowchart LR\n  F[\"función: incrementar\"] --> HOF[\"aplicar_dos_veces(funcion, valor)\"]\n  V[\"valor: 5\"] --> HOF\n  HOF --> P1[\"incrementar(5) = 6\"]\n  P1 --> P2[\"incrementar(6) = 7\"]\n  P2 --> R[\"devuelve 7\"]",
+     "caption": "La función de orden superior no sabe qué hace `funcion`: solo sabe cuándo llamarla."
+    },
+    {
+     "type": "h",
+     "text": "`lambda`: funciones anónimas de una expresión"
+    },
+    {
+     "type": "p",
+     "text": "`lambda parámetros: expresión` crea una función sin nombre cuyo cuerpo es **una sola expresión**; no se escribe `return`, porque el valor de la expresión se devuelve automáticamente. Según la referencia, es solo una forma abreviada de un `def`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "cuadrado = lambda x: x * x            # solo para ilustrar: PEP 8 lo desaconseja\nprint(cuadrado(7))                    # 49\nprint((lambda a, b=10: a + b)(5))     # 15: se puede crear y llamar al vuelo\n\npalabras = [\"kiwi\", \"Manzana\", \"higo\", \"banana\"]\nprint(sorted(palabras))                            # las mayúsculas van antes (orden Unicode)\nprint(sorted(palabras, key=lambda p: p.lower()))   # alfabético sin distinguir mayúsculas\nprint(sorted(palabras, key=len))                   # por longitud; empates en su orden original",
+     "run": true
+    },
+    {
+     "type": "list",
+     "items": [
+      "Solo admite una **expresión**: nada de sentencias (`if` de bloque, bucles, `return`, asignaciones con `=`). La expresión condicional `a if c else b` sí está permitida.",
+      "No lleva anotaciones de tipo ni docstring, y en los *tracebacks* aparece como `<lambda>`.",
+      "PEP 8: «usa siempre una sentencia `def` en lugar de asignar una expresión lambda directamente a un nombre». Si merece un nombre, merece un `def`."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla práctica: usa `lambda` solo como argumento breve y desechable (`key=lambda a: a['edad']`). Si no cabe con comodidad en la línea o necesitas explicarla, escribe un `def` con un buen nombre."
+    },
+    {
+     "type": "h",
+     "text": "`map` y `filter`"
+    },
+    {
+     "type": "p",
+     "text": "`map(funcion, iterable)` aplica la función a cada elemento; `filter(predicado, iterable)` se queda con los elementos para los que el predicado (una función que devuelve verdadero o falso) es verdadero. Ambas devuelven un objeto **perezoso** (un *iterador*, que estudiarás en s12): no calcula nada hasta que lo recorres y solo se puede recorrer **una vez**. Para ver el resultado, conviértelo con `list()`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "precios = [10, 3.99, 100, 47.2]\ncon_impuesto = list(map(lambda p: round(p * 1.19, 2), precios))\nprint(con_impuesto)                              # [11.9, 4.75, 119.0, 56.17]\n\ncaros = list(filter(lambda p: p > 20, precios))\nprint(caros)                                     # [100, 47.2]\n\nprint(list(map(str.strip, [\"  a \", \"b  \"])))     # ['a', 'b']\nprint(list(map(pow, [2, 3, 4], [5, 2, 1])))      # varios iterables: [32, 9, 4]\nprint(list(filter(None, [0, 1, \"\", \"x\", None]))) # None = quedarse con lo truthy: [1, 'x']\n\ndobles = map(abs, [-1, -2])\nprint(list(dobles), list(dobles))    # [1, 2] [] -> ¡agotado tras la primera vuelta!",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Equivalencias con las comprensiones de s04: `list(map(f, xs))` equivale a `[f(x) for x in xs]`, y `list(filter(p, xs))` a `[x for x in xs if p(x)]`. La comunidad suele preferir la comprensión cuando habría que escribir una `lambda`, y `map` cuando ya existe una función con nombre (`map(str.strip, lineas)`)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Novedad de Python 3.14: `map()` admite el parámetro solo nombrado `strict=True`, igual que `zip()`. Con él, si los iterables tienen longitudes distintas se lanza `ValueError` en lugar de cortar en silencio en el más corto: `list(map(pow, [1, 2], [3], strict=True))` falla."
+    },
+    {
+     "type": "h",
+     "text": "Ordenar con `key`, también por varios criterios"
+    },
+    {
+     "type": "p",
+     "text": "`sorted`, `min` y `max` aceptan `key`: una función que se llama **una vez por elemento** y devuelve el valor por el que comparar. Como las tuplas se comparan elemento a elemento, devolver una tupla ordena por varios criterios a la vez."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "alumnos = [\n    {\"nombre\": \"Eva\", \"nota\": 8, \"edad\": 22},\n    {\"nombre\": \"Luis\", \"nota\": 9, \"edad\": 25},\n    {\"nombre\": \"Ana\", \"nota\": 8, \"edad\": 20},\n    {\"nombre\": \"Bea\", \"nota\": 9, \"edad\": 25},\n]\n# nota descendente (negando el número), luego edad ascendente y luego nombre\norden = sorted(alumnos, key=lambda a: (-a[\"nota\"], a[\"edad\"], a[\"nombre\"]))\nfor a in orden:\n    print(a[\"nombre\"], a[\"nota\"], a[\"edad\"])\n\nmejor = max(alumnos, key=lambda a: a[\"nota\"])   # con empate, el primero que encuentra\nprint(\"Mejor:\", mejor[\"nombre\"])                # Luis",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "¿Y si el criterio que hay que invertir es un texto, que no se puede negar? Aprovecha que `sorted` es **estable** (los elementos que empatan conservan su orden relativo) y ordena en varias pasadas, **del criterio menos importante al más importante**. La documentación garantiza que `reverse=True` también conserva la estabilidad."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "personas = [(\"Eva\", \"Quito\"), (\"Ana\", \"Lima\"), (\"Luis\", \"Quito\"), (\"Bea\", \"Lima\")]\npaso1 = sorted(personas, key=lambda p: p[0])                # secundario: nombre A→Z\npaso2 = sorted(paso1, key=lambda p: p[1], reverse=True)     # principal: ciudad Z→A\nprint(paso2)\n# [('Eva', 'Quito'), ('Luis', 'Quito'), ('Ana', 'Lima'), ('Bea', 'Lima')]",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa de las funciones creadas en un bucle: `funciones = [lambda: i for i in range(3)]` crea tres lambdas que devuelven **2** las tres, porque buscan `i` cuando se *llaman*, no cuando se crean. El remedio clásico, que recoge la FAQ oficial, es capturar el valor con un parámetro por defecto: `lambda i=i: i`. Lo entenderás del todo al estudiar closures en s12."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: ¿qué devuelve `sorted(['b', 'A', 'c'])`? → `['A', 'b', 'c']`, porque las mayúsculas tienen puntos de código menores. ¿Qué devuelve `lista.sort()`? → `None`: ordena en su lugar (*in place*). `sorted` devuelve siempre una lista **nueva**."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Objeto de primera clase",
+       "en": "first-class object",
+       "def": "Valor que se puede asignar, guardar, pasar como argumento y devolver. En Python, las funciones lo son."
+      },
+      {
+       "term": "Función de orden superior",
+       "en": "higher-order function",
+       "def": "Función que recibe funciones como argumento o devuelve una función."
+      },
+      {
+       "term": "Función anónima",
+       "en": "lambda",
+       "def": "Función sin nombre definida con `lambda parámetros: expresión`."
+      },
+      {
+       "term": "Predicado",
+       "en": "predicate",
+       "def": "Función que devuelve verdadero o falso; se usa para filtrar."
+      },
+      {
+       "term": "Función clave",
+       "en": "key function",
+       "def": "Función de un argumento que indica por qué valor comparar al ordenar o buscar el mínimo o el máximo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l6",
+   "title": "Recursión: casos base y pila de llamadas",
+   "minutes": 25,
+   "goals": [
+    "Escribir funciones recursivas identificando el caso base y el caso recursivo.",
+    "Trazar la pila de llamadas de una función recursiva y explicar cuándo aparece `RecursionError`.",
+    "Comparar soluciones recursivas e iterativas y elegir la adecuada según la profundidad y el costo."
+   ],
+   "takeaways": [
+    "Una función recursiva se llama a sí misma con un problema más pequeño hasta llegar a un caso base que se resuelve directamente.",
+    "Cada llamada en curso ocupa un marco en la pila; CPython limita la profundidad (1000 por defecto, `sys.getrecursionlimit()`).",
+    "CPython no elimina la recursión de cola: si la profundidad crece con el tamaño de los datos, usa un bucle.",
+    "La recursión brilla con estructuras anidadas (listas dentro de listas, árboles) y con divide y vencerás.",
+    "Repetir subproblemas (Fibonacci ingenuo) cuesta un tiempo exponencial; memorizar resultados lo vuelve lineal."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una función **recursiva** es la que se llama a sí misma. Parece un truco de magia, pero es una forma natural de pensar cuando un problema contiene versiones más pequeñas de sí mismo: el factorial de 5 es 5 por el factorial de 4; el tamaño de una carpeta es la suma de lo que contiene, incluidas sus subcarpetas."
+    },
+    {
+     "type": "p",
+     "text": "Toda recursión correcta tiene dos partes:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Caso base**: una entrada tan sencilla que se responde sin recursión (`factorial(0)` vale 1). Sin él, la función se llamaría sin fin.",
+      "**Caso recursivo**: reduce el problema y se llama a sí misma con la versión reducida (`n * factorial(n - 1)`), acercándose siempre al caso base."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def factorial(n):\n    \"\"\"Devuelve n! para un entero n >= 0.\"\"\"\n    if n <= 1:                      # caso base\n        return 1\n    return n * factorial(n - 1)     # caso recursivo: un problema más pequeño\n\nprint(factorial(5))     # 120\nprint(factorial(0))     # 1\nprint(factorial(30))    # los int de Python no se desbordan",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "La pila de llamadas"
+    },
+    {
+     "type": "p",
+     "text": "Cada llamada en curso tiene su propio **marco** (*frame*) con sus variables locales. Los marcos se apilan: la llamada más reciente queda arriba y es la primera en terminar (el último en entrar es el primero en salir). Así se ve `factorial(3)`:"
+    },
+    {
+     "type": "diagram",
+     "title": "Pila de llamadas de factorial(3)",
+     "mermaid": "sequenceDiagram\n  participant M as Programa\n  participant F3 as factorial(3)\n  participant F2 as factorial(2)\n  participant F1 as factorial(1)\n  M->>F3: llamada con n = 3\n  F3->>F2: necesita factorial(2)\n  F2->>F1: necesita factorial(1)\n  Note over F1: caso base, devuelve 1 sin recursión\n  F1-->>F2: devuelve 1\n  F2-->>F3: devuelve 2 * 1 = 2\n  F3-->>M: devuelve 3 * 2 = 6",
+     "caption": "Las llamadas «bajan» hasta el caso base y los resultados «suben» multiplicándose."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def factorial_trazado(n, nivel=0):\n    margen = \"  \" * nivel\n    print(f\"{margen}→ factorial({n})\")\n    if n <= 1:\n        resultado = 1\n    else:\n        resultado = n * factorial_trazado(n - 1, nivel + 1)\n    print(f\"{margen}← factorial({n}) = {resultado}\")\n    return resultado\n\nfactorial_trazado(4)",
+     "run": true,
+     "caption": "La indentación muestra la profundidad de la pila en cada momento."
+    },
+    {
+     "type": "h",
+     "text": "El límite de recursión"
+    },
+    {
+     "type": "p",
+     "text": "La pila no es infinita. CPython impone un límite de profundidad para evitar que una recursión infinita desborde la pila de C y cuelgue el intérprete: por defecto, 1000 marcos. Si lo superas, obtienes `RecursionError`. Lo consultas con `sys.getrecursionlimit()` y lo cambias con `sys.setrecursionlimit()`, aunque la documentación advierte que el máximo depende de la plataforma y que un límite demasiado alto puede provocar un cierre abrupto."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import sys\nprint(sys.getrecursionlimit())   # 1000 salvo que alguien lo haya cambiado",
+     "run": true
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def cuenta_regresiva(n):\n    if n == 0:\n        return \"¡Despegue!\"\n    return cuenta_regresiva(n - 1)\n\ncuenta_regresiva(10_000)\n# RecursionError: maximum recursion depth exceeded",
+     "caption": "Falla a propósito: 10 000 marcos superan el límite."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los dos errores de recursión más comunes: **olvidar el caso base** o escribir un caso recursivo que **no se acerca** a él (por ejemplo, `factorial(n + 1)`, o `factorial(n - 1)` con un `n` negativo cuando el caso base es `n == 0`). Ambos acaban en `RecursionError`. Por eso es más robusto escribir `n <= 1` que `n == 1`."
+    },
+    {
+     "type": "p",
+     "text": "En lenguajes como Scheme, la **recursión de cola** (cuando la llamada recursiva es lo último que hace la función) se optimiza para no gastar pila. **CPython no lo hace**, y es una decisión consciente: Guido van Rossum explicó en 2009 que eliminarla destruiría los *tracebacks* útiles y que la recursión no es la base de toda la programación. Conclusión práctica: si la profundidad crece con el tamaño de los datos (recorrer una lista de 100 000 elementos), usa un bucle."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def factorial_iterativo(n):\n    resultado = 1\n    for i in range(2, n + 1):\n        resultado *= i\n    return resultado\n\nprint(factorial_iterativo(5), factorial_iterativo(0))    # 120 1\nfactorial_iterativo(3000)    # sin problema; factorial(3000) recursivo lanzaría RecursionError\nprint(len(str(factorial_iterativo(1000))), \"cifras tiene 1000!\")",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Criterio",
+      "Recursión",
+      "Iteración"
+     ],
+     "rows": [
+      [
+       "Datos anidados o árboles",
+       "Natural y clara",
+       "Necesita gestionar una pila a mano"
+      ],
+      [
+       "Profundidad grande (miles de niveles)",
+       "`RecursionError`",
+       "Sin problema"
+      ],
+      [
+       "Memoria extra",
+       "Un marco por nivel",
+       "Normalmente constante"
+      ],
+      [
+       "Velocidad en CPython",
+       "Cada llamada tiene un costo",
+       "Suele ser más rápida"
+      ],
+      [
+       "Divide y vencerás (Hanói, ordenaciones)",
+       "Suele ser más legible",
+       "Puede resultar enrevesada"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Donde la recursión brilla: estructuras anidadas"
+    },
+    {
+     "type": "p",
+     "text": "Para recorrer datos cuya forma se repite dentro de sí misma (listas que contienen listas, carpetas con subcarpetas, JSON anidado), la recursión es la herramienta natural: el código tiene la misma forma que los datos."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def suma_anidada(datos):\n    \"\"\"Suma todos los números de una lista que puede contener listas.\"\"\"\n    total = 0\n    for elemento in datos:\n        if isinstance(elemento, list):      # ¿una sublista? -> recursión\n            total += suma_anidada(elemento)\n        else:                                # un número -> se suma sin más\n            total += elemento\n    return total\n\nprint(suma_anidada([1, [2, 3], [[4], 5], []]))   # 15",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`isinstance(obj, tipo)` devuelve `True` si `obj` es de ese tipo (lo estudiarás a fondo en s10). Fíjate en que aquí el caso base es implícito: una lista sin sublistas no provoca más llamadas."
+    },
+    {
+     "type": "h",
+     "text": "El costo oculto: subproblemas repetidos"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "llamadas = 0\n\ndef fib(n):\n    global llamadas          # aquí global solo sirve para medir\n    llamadas += 1\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\nprint(fib(20), \"con\", llamadas, \"llamadas\")    # 6765 con 21891 llamadas",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de llamadas de fib(4)",
+     "mermaid": "flowchart TD\n  A[\"fib(4)\"] --> B[\"fib(3)\"]\n  A --> C[\"fib(2)\"]\n  B --> D[\"fib(2)\"]\n  B --> E[\"fib(1)\"]\n  C --> F[\"fib(1)\"]\n  C --> G[\"fib(0)\"]\n  D --> H[\"fib(1)\"]\n  D --> I[\"fib(0)\"]",
+     "caption": "fib(2) ya se calcula dos veces con n = 4; fib(40) necesitaría más de 300 millones de llamadas."
+    },
+    {
+     "type": "p",
+     "text": "La solución es **memorizar** (*memoization*): guardar cada resultado la primera vez y reutilizarlo después. Con un diccionario y el patrón `None` de la lección 2, el costo pasa de exponencial a lineal:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def fib_memo(n, memo=None):\n    if memo is None:\n        memo = {}\n    if n < 2:\n        return n\n    if n not in memo:\n        memo[n] = fib_memo(n - 1, memo) + fib_memo(n - 2, memo)\n    return memo[n]\n\nprint(fib_memo(100))    # 354224848179261915075, al instante",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En s12 verás `@functools.cache`, que añade memorización a cualquier función con una sola línea, y en s15 la programación dinámica, que lleva esta misma idea mucho más lejos."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En entrevistas es habitual que pidan la versión recursiva **y** la iterativa, con su costo. Factorial recursivo: O(n) en tiempo y O(n) en pila. Fibonacci ingenuo: exponencial (crece más o menos como 1,6ⁿ). Fibonacci con memoria: O(n). Fibonacci iterativo: O(n) en tiempo y O(1) en memoria."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Recursión",
+       "en": "recursion",
+       "def": "Técnica en la que una función se llama a sí misma sobre un problema más pequeño."
+      },
+      {
+       "term": "Caso base",
+       "en": "base case",
+       "def": "Entrada que se resuelve directamente, sin nuevas llamadas recursivas."
+      },
+      {
+       "term": "Pila de llamadas",
+       "en": "call stack",
+       "def": "Estructura donde se apilan los marcos de las llamadas en curso; la última en entrar es la primera en salir."
+      },
+      {
+       "term": "Memorización",
+       "en": "memoization",
+       "def": "Guardar los resultados ya calculados para no repetir trabajo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l7",
+   "title": "Diseñar buenas funciones: docstrings, anotaciones y pureza",
+   "minutes": 22,
+   "goals": [
+    "Documentar funciones con docstrings que sigan las convenciones de PEP 257.",
+    "Añadir anotaciones de tipo básicas a parámetros y valores de retorno.",
+    "Distinguir funciones puras de funciones con efectos secundarios y refactorizar hacia una sola responsabilidad."
+   ],
+   "takeaways": [
+    "El docstring es la primera sentencia de la función; va entre triples comillas dobles y empieza con una frase breve, en forma de orden, que termina en punto.",
+    "`help(f)` y `f.__doc__` muestran el docstring: es documentación que viaja con el código.",
+    "Las anotaciones (`def f(x: int) -> str`) no se comprueban al ejecutar; las aprovechan los editores y los verificadores como mypy (s13). Desde 3.14 se evalúan de forma diferida.",
+    "Una función pura depende solo de sus argumentos y no cambia nada fuera: es fácil de probar y reutilizar.",
+    "Una función, una responsabilidad: separa el cálculo de la entrada/salida y de la presentación."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Escribir funciones que funcionan es el principio. Escribir funciones que **otras personas (y tú dentro de seis meses) entienden, prueban y reutilizan** es el oficio. Para eso tienes tres herramientas: documentación, anotaciones y buen diseño."
+    },
+    {
+     "type": "h",
+     "text": "Docstrings (PEP 257)"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def precio_final(precio, descuento=0.0):\n    \"\"\"Devuelve el precio tras aplicar un descuento.\n\n    precio: importe original (>= 0).\n    descuento: fracción entre 0 y 1 (0.2 significa un 20 %).\n    El resultado se redondea a 2 decimales.\n    \"\"\"\n    return round(precio * (1 - descuento), 2)\n\nprint(precio_final(80, 0.25))                 # 60.0\nprint(precio_final.__doc__.splitlines()[0])   # la línea de resumen\nhelp(precio_final)                            # la ayuda que verá quien use tu función",
+     "run": true
+    },
+    {
+     "type": "list",
+     "items": [
+      "Usa siempre `\"\"\"triple comilla doble\"\"\"`, aunque quepa en una línea.",
+      "Primera línea: un resumen breve **en forma de orden** («Devuelve…», «Calcula…»), que termina en punto. No repitas la firma (`suma(a, b) -> int`): eso ya se ve con `help`.",
+      "Si necesitas más, deja una línea en blanco y explica argumentos, valor devuelto, efectos secundarios, errores posibles y restricciones.",
+      "El docstring cuenta **qué hace y cómo se usa**; los comentarios `#` explican el **porqué** de detalles concretos del código."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Python 3.13, el compilador elimina la indentación común de cada línea del docstring, lo que reduce el tamaño de los `.pyc`. En s13 verás estilos más estructurados (Google, NumPy) y `doctest`, que ejecuta como pruebas los ejemplos escritos dentro del docstring."
+    },
+    {
+     "type": "h",
+     "text": "Anotaciones de tipo básicas"
+    },
+    {
+     "type": "p",
+     "text": "Puedes indicar el tipo esperado de cada parámetro con `: tipo` y el del resultado con `-> tipo`. Son **metadatos**: Python no los comprueba al ejecutar ni cambian lo que hace la función. Los aprovechan el editor (autocompletado, avisos) y verificadores estáticos como mypy o pyright, que estudiarás en s13."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def doble(x: int) -> int:\n    return x * 2\n\nprint(doble(4))               # 8\nprint(doble(\"ja\"))            # jaja -> ¡sin error! las anotaciones no se imponen\nprint(doble.__annotations__)  # {'x': <class 'int'>, 'return': <class 'int'>}",
+     "run": true
+    },
+    {
+     "type": "list",
+     "items": [
+      "Tipos simples: `int`, `float`, `str`, `bool`.",
+      "Colecciones con el tipo de sus elementos: `list[int]`, `dict[str, float]`, `tuple[int, int]` (desde 3.9, PEP 585).",
+      "Alternativas con `|`: `int | None` cuando la función puede devolver `None` (desde 3.10, PEP 604).",
+      "Estilo PEP 8: espacio tras los dos puntos y alrededor de `->`. Con anotación y valor por defecto, espacios alrededor de `=` (`veces: int = 2`); sin anotación, sin espacios (`veces=2`)."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def extremos(numeros: list[float]) -> tuple[float, float] | None:\n    \"\"\"Devuelve (mínimo, máximo) o None si la lista está vacía.\"\"\"\n    if not numeros:\n        return None\n    return min(numeros), max(numeros)\n\nprint(extremos([3.5, 1.0, 7.25]))    # (1.0, 7.25)\nprint(extremos([]))                  # None",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "**Novedad de Python 3.14 (PEP 649 y PEP 749):** las anotaciones ya no se evalúan al ejecutar el `def`, sino de forma **diferida**, solo cuando alguien las consulta (al leer `__annotations__` o con el nuevo módulo `annotationlib`). Definir funciones anotadas cuesta menos y puedes mencionar tipos que se definen más abajo en el archivo sin escribirlos entre comillas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def procesar(pedido: Pedido) -> Factura:   # Pedido y Factura aún no existen\n    ...\n\nprint(\"Definida sin error\")   # hasta 3.13 este def lanzaba NameError",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Funciones puras y efectos secundarios"
+    },
+    {
+     "type": "p",
+     "text": "Una función es **pura** si (1) su resultado depende solo de sus argumentos y (2) no produce **efectos secundarios** (*side effects*): no imprime, no lee de `input`, no modifica sus argumentos ni variables globales, no escribe archivos. Con las mismas entradas, siempre devuelve la misma salida."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Impura: depende de una variable global y modifica su argumento\ntasa = 0.19\ndef aplicar_impuesto_impuro(precios):\n    for i in range(len(precios)):\n        precios[i] = precios[i] * (1 + tasa)\n\n# Pura: todo lo que necesita entra por parámetros y devuelve algo nuevo\ndef aplicar_impuesto(precios, tasa=0.19):\n    return [round(p * (1 + tasa), 2) for p in precios]\n\noriginales = [10, 20]\nprint(aplicar_impuesto(originales), originales)   # [11.9, 23.8] [10, 20]",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Función pura frente a función con efectos",
+     "mermaid": "flowchart LR\n  subgraph PURA[\"Función pura\"]\n    A1[\"argumentos\"] --> F1[\"cálculo\"] --> R1[\"valor devuelto\"]\n  end\n  subgraph IMPURA[\"Función con efectos secundarios\"]\n    A2[\"argumentos\"] --> F2[\"cálculo\"]\n    G2[\"variables globales\"] --> F2\n    F2 --> R2[\"valor devuelto\"]\n    F2 --> S2[\"pantalla, archivos, argumentos mutados\"]\n  end",
+     "caption": "Todo lo que entra y sale de una función pura está a la vista en su firma."
+    },
+    {
+     "type": "p",
+     "text": "Un programa necesita efectos (mostrar resultados, guardar datos), así que no se trata de eliminarlos, sino de **arrinconarlos**: un núcleo de funciones puras que calculan y una capa fina que se encarga de la entrada y la salida. Es exactamente lo que te piden los ejercicios: funciones que devuelven valores y, si hace falta, un `main()` que imprime."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Antes: una sola función pedía los datos, calculaba e imprimía.\n# Después: cada función tiene una única responsabilidad.\ndef leer_notas(texto):\n    return [float(x) for x in texto.split()]\n\ndef media(valores):\n    return sum(valores) / len(valores) if valores else None\n\ndef formatear_media(valor):\n    return \"Sin notas\" if valor is None else f\"Media: {valor:.2f}\"\n\ndef main():\n    texto = input(\"Notas separadas por espacios: \")\n    print(formatear_media(media(leer_notas(texto))))\n\nmain()",
+     "run": true,
+     "stdin": [
+      "7 8.5 9"
+     ],
+     "caption": "Solo `main` toca la entrada/salida; las otras tres se prueban con una línea cada una."
+    },
+    {
+     "type": "h",
+     "text": "Lista de comprobación de una buena función"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Nombre**: verbo + complemento en `snake_case` (`calcular_total`); las que devuelven `bool`, como pregunta (`es_valido`, `tiene_permiso`).",
+      "**Tamaño**: si no cabe en una pantalla o necesitas la conjunción «y» para describirla, divídela.",
+      "**Parámetros**: pocos (tres o cuatro suele ser razonable); opciones y booleanos, solo nombrados detrás de `*`.",
+      "**Retorno coherente**: según PEP 8, o todos los `return` devuelven una expresión o ninguno; si en alguna rama no hay nada que devolver, escribe `return None` explícito.",
+      "**Sin sorpresas**: no mutes los argumentos salvo que sea el propósito declarado; nada de valores por defecto mutables ni de `global`.",
+      "**Documentada**: docstring y anotaciones en las funciones que otros van a usar."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un parámetro booleano que cambia radicalmente lo que hace una función (`procesar(datos, True)`) suele indicar que hay **dos funciones** escondidas en una. Como mínimo, hazlo solo nombrado para que la llamada se lea: `procesar(datos, simulacion=True)`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas frecuentes en exámenes y entrevistas: qué devuelve una función sin `return` (`None`), si las anotaciones se comprueban al ejecutar (no), en qué atributo se guarda el docstring (`__doc__`) y «¿qué es una función pura y por qué facilita las pruebas?»."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Docstring",
+       "en": "docstring",
+       "def": "Cadena literal que es la primera sentencia de una función, clase o módulo; se guarda en `__doc__`."
+      },
+      {
+       "term": "Anotación",
+       "en": "annotation",
+       "def": "Metadato opcional sobre el tipo de un parámetro o del valor de retorno; no se impone al ejecutar."
+      },
+      {
+       "term": "Función pura",
+       "en": "pure function",
+       "def": "Función cuyo resultado depende solo de sus argumentos y que no produce efectos secundarios."
+      },
+      {
+       "term": "Efecto secundario",
+       "en": "side effect",
+       "def": "Cualquier cambio observable fuera de la función: imprimir, escribir archivos, mutar argumentos o globales."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s06-e1",
+   "title": "Resumen de una lista (varios valores de retorno)",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `resumen(numeros)`, que recibe una lista de números y **devuelve** (no imprime) una tupla `(minimo, maximo, media)`, con la media redondeada a 2 decimales mediante `round`.",
+    "Si la lista está vacía, devuelve `None`: no se puede calcular una media sin datos.",
+    "La función no debe modificar la lista que recibe ni imprimir nada."
+   ],
+   "examples": [
+    {
+     "call": "resumen([4, 8, 6])",
+     "result": "(4, 8, 6.0)"
+    },
+    {
+     "call": "resumen([1, 2, 2])",
+     "result": "(1, 2, 1.67)"
+    },
+    {
+     "call": "resumen([])",
+     "result": "None"
+    }
+   ],
+   "starter": "def resumen(numeros):\n    # Devuelve (minimo, maximo, media) o None si la lista está vacía\n    pass\n",
+   "solution": "def resumen(numeros):\n    \"\"\"Devuelve (mínimo, máximo, media redondeada a 2 decimales) o None si no hay datos.\"\"\"\n    if not numeros:\n        return None\n    media = round(sum(numeros) / len(numeros), 2)\n    return min(numeros), max(numeros), media\n",
+   "tests": [
+    {
+     "name": "Lista normal",
+     "code": "r = resumen([4, 8, 6])\nassert r == (4, 8, 6.0), f\"resumen([4, 8, 6]) debería devolver (4, 8, 6.0) y devolvió {r!r}\""
+    },
+    {
+     "name": "Devuelve una tupla",
+     "code": "r = resumen([1, 2])\nassert type(r) is tuple, f\"Debe devolver una tupla (valores separados por comas en el return), no {type(r).__name__}\"\nassert len(r) == 3, \"La tupla debe tener exactamente 3 elementos: mínimo, máximo y media\""
+    },
+    {
+     "name": "Se puede desempaquetar",
+     "code": "minimo, maximo, media = resumen([10, -3, 7, 1])\nassert (minimo, maximo, media) == (-3, 10, 3.75), f\"Con [10, -3, 7, 1] se esperaba (-3, 10, 3.75) y se obtuvo {(minimo, maximo, media)!r}\""
+    },
+    {
+     "name": "Redondea la media a 2 decimales",
+     "code": "r = resumen([1, 2, 2])\nassert r == (1, 2, 1.67), f\"La media de [1, 2, 2] es 1.666…, redondeada a 2 decimales 1.67; obtuve {r!r}\""
+    },
+    {
+     "name": "Un solo elemento",
+     "code": "assert resumen([2.5]) == (2.5, 2.5, 2.5), \"Con un único número, mínimo, máximo y media coinciden\""
+    },
+    {
+     "name": "Lista vacía devuelve None",
+     "code": "r = resumen([])\nassert r is None, f\"Con una lista vacía debe devolver None, no {r!r}\""
+    },
+    {
+     "name": "No imprime nada",
+     "code": "salida = capturar(resumen, [1, 2, 3])\nassert salida == \"\", f\"La función debe devolver el resultado, no imprimirlo. Imprimió: {salida!r}\""
+    },
+    {
+     "name": "No modifica la lista recibida",
+     "code": "datos = [3, 1, 2]\nresumen(datos)\nassert datos == [3, 1, 2], f\"La lista original no debe cambiar; ahora vale {datos!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por el caso especial: si la lista está vacía (`if not numeros:`), devuelve `None` y la función termina ahí.",
+    "`min`, `max`, `sum` y `len` hacen casi todo el trabajo. Para devolver varios valores, sepáralos con comas en el `return`."
+   ],
+   "explain": "La **cláusula de guarda** `if not numeros: return None` resuelve primero el caso especial y deja el resto limpio (además, evita el `ZeroDivisionError` de dividir entre `len([])` y el `ValueError` de `min([])`). `return a, b, c` construye una tupla que quien llama puede desempaquetar: `mn, mx, med = resumen(datos)`.\n\nComplejidad: O(n). `min`, `max` y `sum` recorren la lista una vez cada una; podrías hacerlo en una sola pasada con un bucle, pero las integradas están escritas en C y el código resulta más claro. Fíjate en el contrato: devuelve una tupla **o** `None` (con anotaciones, `tuple[float, float, float] | None`), así que quien llama debe comprobarlo con `if r is None:` antes de desempaquetar."
+  },
+  {
+   "id": "s06-e2",
+   "title": "Formatear precios con valores por defecto",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Completa `formatear_precio(importe, simbolo=\"$\", decimales=2, simbolo_delante=True)`, que devuelve una **cadena** con el importe escrito con exactamente `decimales` decimales y el símbolo indicado.",
+    "Por defecto, el símbolo va delante y pegado al número (`\"$12.50\"`). Si `simbolo_delante` es falso, va detrás, separado por un espacio (`\"12.50 pts\"`, útil para puntos o créditos).",
+    "Respeta la firma dada: los tests llaman a la función por posición, por nombre y mezclando ambos."
+   ],
+   "examples": [
+    {
+     "call": "formatear_precio(12.5)",
+     "result": "'$12.50'"
+    },
+    {
+     "call": "formatear_precio(1999, \"$\", 0)",
+     "result": "'$1999'"
+    },
+    {
+     "call": "formatear_precio(3.14159, decimales=3)",
+     "result": "'$3.142'"
+    },
+    {
+     "call": "formatear_precio(250, \"pts\", 0, simbolo_delante=False)",
+     "result": "'250 pts'"
+    }
+   ],
+   "starter": "def formatear_precio(importe, simbolo=\"$\", decimales=2, simbolo_delante=True):\n    # Devuelve el importe con 'decimales' decimales y el símbolo delante (o detrás)\n    pass\n",
+   "solution": "def formatear_precio(importe, simbolo=\"$\", decimales=2, simbolo_delante=True):\n    \"\"\"Devuelve el importe formateado con su símbolo.\"\"\"\n    numero = f\"{importe:.{decimales}f}\"\n    if simbolo_delante:\n        return f\"{simbolo}{numero}\"\n    return f\"{numero} {simbolo}\"\n",
+   "tests": [
+    {
+     "name": "Solo con los valores por defecto",
+     "code": "r = formatear_precio(12.5)\nassert r == \"$12.50\", f\"formatear_precio(12.5) debería devolver '$12.50' y devolvió {r!r}\""
+    },
+    {
+     "name": "Símbolo y decimales por posición",
+     "code": "r = formatear_precio(1999, \"$\", 0)\nassert r == \"$1999\", f\"Con 0 decimales no hay punto decimal: se esperaba '$1999' y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Decimales por nombre",
+     "code": "r = formatear_precio(3.14159, decimales=3)\nassert r == \"$3.142\", f\"Con decimales=3 se esperaba '$3.142' y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Símbolo detrás",
+     "code": "r = formatear_precio(12.5, \"pts\", simbolo_delante=False)\nassert r == \"12.50 pts\", f\"Con simbolo_delante=False el símbolo va detrás tras un espacio: '12.50 pts'. Obtuve {r!r}\""
+    },
+    {
+     "name": "Redondeo al quitar decimales",
+     "code": "r = formatear_precio(9.99, \"$\", 0)\nassert r == \"$10\", f\"9.99 con 0 decimales se redondea a '$10'; obtuve {r!r}\""
+    },
+    {
+     "name": "Cero y negativos",
+     "code": "assert formatear_precio(0) == \"$0.00\", \"El cero también lleva sus decimales: '$0.00'\"\nr = formatear_precio(-5.5, \"pts\", simbolo_delante=False)\nassert r == \"-5.50 pts\", f\"Los negativos conservan el signo: '-5.50 pts'; obtuve {r!r}\""
+    },
+    {
+     "name": "Argumentos nombrados en cualquier orden",
+     "code": "r = formatear_precio(simbolo_delante=False, decimales=1, importe=2, simbolo=\"pts\")\nassert r == \"2.0 pts\", f\"Los argumentos nombrados pueden ir en cualquier orden; se esperaba '2.0 pts' y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Devuelve una cadena y no imprime",
+     "code": "assert isinstance(formatear_precio(1), str), \"La función debe devolver una cadena (str)\"\nassert capturar(formatear_precio, 1) == \"\", \"La función no debe imprimir nada: usa return\""
+    }
+   ],
+   "hints": [
+    "Los valores por defecto ya están en la firma: si la llamada no pasa un argumento, el parámetro toma ese valor automáticamente. Tu trabajo es usarlos.",
+    "En una f-string, la precisión puede venir de otra variable anidando llaves: `f\"{importe:.{decimales}f}\"`.",
+    "Construye primero el número formateado y después decide con un `if` dónde va el símbolo."
+   ],
+   "explain": "Los valores por defecto hacen que la llamada más habitual sea la más corta (`formatear_precio(12.5)`), y los argumentos nombrados permiten cambiar solo lo que interesa (`decimales=3`) sin escribir los anteriores. La especificación de formato `.{decimales}f` (s05) redondea y rellena con ceros: `f\"{9.99:.0f}\"` da `'10'`.\n\nVersión pro: `simbolo_delante` es un booleano de configuración, así que conviene hacerlo **solo nombrado** (lección 3): `def formatear_precio(importe, simbolo=\"$\", decimales=2, *, simbolo_delante=True)`. Así nadie puede escribir `formatear_precio(5, \"pts\", 2, False)`, donde el `False` no dice nada. Esta solución también pasaría todos los tests."
+  },
+  {
+   "id": "s06-e3",
+   "title": "Factorial iterativo y recursivo",
+   "level": "facil",
+   "minutes": 12,
+   "prompt": [
+    "Escribe dos versiones del factorial (`n! = 1 · 2 · … · n`, con `0! = 1`) para un entero `n >= 0`:",
+    "1) `factorial_iterativo(n)`, con un bucle `for` y un acumulador. 2) `factorial_recursivo(n)`, que se llama a sí misma, con su caso base y su caso recursivo.",
+    "No uses `math.factorial`: el objetivo es que implementes el cálculo. La versión iterativa debe funcionar también con números grandes, como 2000."
+   ],
+   "examples": [
+    {
+     "call": "factorial_iterativo(5)",
+     "result": "120"
+    },
+    {
+     "call": "factorial_recursivo(0)",
+     "result": "1"
+    },
+    {
+     "call": "factorial_recursivo(10)",
+     "result": "3628800"
+    }
+   ],
+   "starter": "def factorial_iterativo(n):\n    # Usa un bucle for y un acumulador\n    pass\n\n\ndef factorial_recursivo(n):\n    # Caso base y caso recursivo\n    pass\n",
+   "solution": "def factorial_iterativo(n):\n    \"\"\"Devuelve n! usando un bucle.\"\"\"\n    resultado = 1\n    for i in range(2, n + 1):\n        resultado *= i\n    return resultado\n\n\ndef factorial_recursivo(n):\n    \"\"\"Devuelve n! usando recursión.\"\"\"\n    if n <= 1:\n        return 1\n    return n * factorial_recursivo(n - 1)\n",
+   "tests": [
+    {
+     "name": "Casos base: 0! y 1!",
+     "code": "for f in (factorial_iterativo, factorial_recursivo):\n    try:\n        r0 = f(0)\n    except RecursionError:\n        raise AssertionError(f\"{f.__name__}(0) provoca RecursionError: el caso base no cubre n = 0\")\n    assert r0 == 1, f\"{f.__name__}(0) debe ser 1 (por definición, 0! = 1), no {r0!r}\"\n    assert f(1) == 1, f\"{f.__name__}(1) debe ser 1\""
+    },
+    {
+     "name": "Valor típico: 5! = 120",
+     "code": "assert factorial_iterativo(5) == 120, f\"factorial_iterativo(5) debe ser 120, no {factorial_iterativo(5)!r}\"\nassert factorial_recursivo(5) == 120, f\"factorial_recursivo(5) debe ser 120, no {factorial_recursivo(5)!r}\""
+    },
+    {
+     "name": "Número mediano: 25!",
+     "code": "esperado = 15511210043330985984000000\nassert factorial_iterativo(25) == esperado, \"factorial_iterativo(25) no es correcto\"\nassert factorial_recursivo(25) == esperado, \"factorial_recursivo(25) no es correcto\""
+    },
+    {
+     "name": "Ambas versiones coinciden de 0 a 30",
+     "code": "for n in range(31):\n    assert factorial_iterativo(n) == factorial_recursivo(n), f\"Las dos versiones dan resultados distintos para n = {n}\""
+    },
+    {
+     "name": "La recursiva se llama a sí misma",
+     "code": "assert \"factorial_recursivo\" in factorial_recursivo.__code__.co_names, \"factorial_recursivo debe llamarse a sí misma (caso recursivo)\""
+    },
+    {
+     "name": "La iterativa aguanta números grandes",
+     "code": "import math\nassert \"factorial_iterativo\" not in factorial_iterativo.__code__.co_names, \"factorial_iterativo no debe ser recursiva: usa un bucle\"\nassert factorial_iterativo(2000) == math.factorial(2000), \"factorial_iterativo(2000) no coincide con el valor correcto\""
+    },
+    {
+     "name": "Sin math.factorial",
+     "code": "for f in (factorial_iterativo, factorial_recursivo):\n    nombres = f.__code__.co_names\n    assert \"math\" not in nombres and \"factorial\" not in nombres, f\"{f.__name__} debe calcular el factorial por sí misma, sin math.factorial\""
+    }
+   ],
+   "hints": [
+    "Iterativo: empieza con `resultado = 1` y multiplícalo por cada número de 2 a n (`range(2, n + 1)`). Para n = 0 y n = 1 el bucle no se ejecuta y devuelve 1, que es lo correcto.",
+    "Recursivo: si `n <= 1`, devuelve 1 (caso base); si no, devuelve `n * factorial_recursivo(n - 1)`."
+   ],
+   "explain": "Las dos versiones hacen n − 1 multiplicaciones: O(n) en tiempo. La diferencia está en la memoria: la recursiva apila un marco por nivel (O(n) de pila) y con n ≈ 1000 choca con el límite de recursión (`RecursionError`); la iterativa usa memoria constante aparte del propio número, que crece. Por eso el test de 2000! solo se exige a la iterativa.\n\nEl caso base `n <= 1` cubre a la vez 0 y 1. En código real usarías `math.factorial(n)`, implementada en C con un algoritmo más eficiente que multiplicar uno a uno; otra alternativa compacta es `math.prod(range(1, n + 1))` (desde 3.8)."
+  },
+  {
+   "id": "s06-e4",
+   "title": "Desactiva la trampa del valor por defecto",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Esta función debería añadir un evento a un historial y devolverlo, pero tiene un fallo clásico: los historiales de llamadas distintas se mezclan.",
+    "Código actual:\n```python\ndef registrar(evento, historial=[]):\n    historial.append(evento)\n    return historial\n```",
+    "Corrígela para que: (1) si no se pasa `historial`, devuelva una lista **nueva** que solo contiene `evento`; (2) si se pasa una lista (aunque esté vacía), añada el evento a **esa misma** lista y la devuelva. El valor por defecto de `historial` debe ser `None`."
+   ],
+   "examples": [
+    {
+     "call": "registrar(\"inicio\")",
+     "result": "['inicio']"
+    },
+    {
+     "call": "registrar(\"fin\")",
+     "result": "['fin']"
+    },
+    {
+     "call": "registrar(\"compra\", [\"login\"])",
+     "result": "['login', 'compra']"
+    }
+   ],
+   "starter": "def registrar(evento, historial=[]):\n    historial.append(evento)\n    return historial\n",
+   "solution": "def registrar(evento, historial=None):\n    \"\"\"Añade evento al historial dado (o a uno nuevo) y lo devuelve.\"\"\"\n    if historial is None:\n        historial = []\n    historial.append(evento)\n    return historial\n",
+   "tests": [
+    {
+     "name": "Primera llamada sin historial",
+     "code": "r = registrar(\"inicio\")\nassert r == [\"inicio\"], f\"Sin historial debe devolver ['inicio'] y devolvió {r!r}\""
+    },
+    {
+     "name": "Las llamadas sin historial son independientes",
+     "code": "a = registrar(\"a\")\nb = registrar(\"b\")\nassert a == [\"a\"] and b == [\"b\"], f\"Cada llamada sin historial debe empezar con una lista vacía nueva; obtuve {a!r} y {b!r}\""
+    },
+    {
+     "name": "No comparten el mismo objeto",
+     "code": "a = registrar(\"x\")\nb = registrar(\"y\")\nassert a is not b, \"Dos llamadas sin historial devuelven el MISMO objeto lista: el valor por defecto se está reutilizando\""
+    },
+    {
+     "name": "Usa el historial recibido",
+     "code": "h = [\"login\"]\nr = registrar(\"compra\", h)\nassert r == [\"login\", \"compra\"], f\"Debe añadir el evento al final del historial recibido; obtuve {r!r}\"\nassert r is h, \"Si te pasan una lista, añade el evento a ESA lista y devuélvela (no una copia)\""
+    },
+    {
+     "name": "Respeta un historial vacío recibido",
+     "code": "h = []\nr = registrar(\"x\", h)\nassert h == [\"x\"] and r is h, \"Si te pasan una lista vacía, debes usar esa misma lista: una lista vacía no es lo mismo que None\""
+    },
+    {
+     "name": "El valor por defecto es None",
+     "code": "assert registrar.__defaults__ == (None,), f\"El valor por defecto de historial debe ser None; ahora es {registrar.__defaults__!r}\""
+    },
+    {
+     "name": "Muchas llamadas seguidas",
+     "code": "for i in range(5):\n    r = registrar(i)\n    assert r == [i], f\"En la llamada {i} se esperaba [{i}] y se obtuvo {r!r}\""
+    }
+   ],
+   "hints": [
+    "El `[]` de la firma se evalúa una sola vez, al ejecutarse el `def`, así que todas las llamadas comparten esa misma lista (compruébalo con `registrar.__defaults__`).",
+    "Usa `historial=None` y, dentro, crea la lista solo si `historial is None`. No uses `historial or []` ni `if not historial`: una lista vacía recibida debe respetarse."
+   ],
+   "explain": "Los valores por defecto se evalúan **una vez**, al definir la función, y se guardan en `registrar.__defaults__`. Con `historial=[]`, todas las llamadas sin argumento mutan la misma lista. El patrón idiomático es usar `None` como centinela y crear el objeto dentro de la función, en cada llamada.\n\n¿Por qué `is None` y no `if not historial`? Porque una lista vacía también es *falsy*: con `historial = historial or []`, quien pasa `[]` para que la rellenes recibiría otra lista distinta y nunca vería el evento (el test «Respeta un historial vacío recibido» lo detecta). Nota de diseño: esta función muta su argumento a propósito; si no quisieras efectos secundarios, devolverías `historial + [evento]`, una lista nueva."
+  },
+  {
+   "id": "s06-e5",
+   "title": "Fibonacci: iterativo, con memoria y serie",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "La sucesión de Fibonacci empieza por F(0) = 0 y F(1) = 1, y cada término es la suma de los dos anteriores: 0, 1, 1, 2, 3, 5, 8, 13…",
+    "1) `fibonacci_iterativo(n)`: devuelve F(n) con un bucle, sin recursión.",
+    "2) `fibonacci_memo(n, memo=None)`: devuelve F(n) de forma **recursiva**, guardando en el diccionario `memo` cada resultado calculado (`memo[k] = F(k)`, al menos para k de 2 a n) para no repetir trabajo. Si no se pasa `memo`, crea uno nuevo en cada llamada (nada de `memo={}` en la firma). Si se pasa, aunque esté vacío, úsalo: los tests llaman a `fibonacci_memo(10, m)` con `m = {}` y comprueban que queda relleno.",
+    "3) `serie_fibonacci(n)`: devuelve la lista con los `n` primeros términos, `[F(0), F(1), …, F(n-1)]`."
+   ],
+   "examples": [
+    {
+     "call": "fibonacci_iterativo(10)",
+     "result": "55"
+    },
+    {
+     "call": "fibonacci_memo(50)",
+     "result": "12586269025"
+    },
+    {
+     "call": "serie_fibonacci(6)",
+     "result": "[0, 1, 1, 2, 3, 5]"
+    }
+   ],
+   "starter": "def fibonacci_iterativo(n):\n    pass\n\n\ndef fibonacci_memo(n, memo=None):\n    pass\n\n\ndef serie_fibonacci(n):\n    pass\n",
+   "solution": "def fibonacci_iterativo(n):\n    \"\"\"Devuelve F(n) con un bucle: O(n) tiempo y O(1) memoria.\"\"\"\n    anterior, actual = 0, 1\n    for _ in range(n):\n        anterior, actual = actual, anterior + actual\n    return anterior\n\n\ndef fibonacci_memo(n, memo=None):\n    \"\"\"Devuelve F(n) recursivamente, guardando los resultados en memo.\"\"\"\n    if memo is None:\n        memo = {}\n    if n < 2:\n        return n\n    if n not in memo:\n        memo[n] = fibonacci_memo(n - 1, memo) + fibonacci_memo(n - 2, memo)\n    return memo[n]\n\n\ndef serie_fibonacci(n):\n    \"\"\"Devuelve la lista [F(0), F(1), ..., F(n-1)].\"\"\"\n    serie = []\n    anterior, actual = 0, 1\n    for _ in range(n):\n        serie.append(anterior)\n        anterior, actual = actual, anterior + actual\n    return serie\n",
+   "tests": [
+    {
+     "name": "Iterativo: primeros valores",
+     "code": "esperados = [0, 1, 1, 2, 3, 5, 8, 13]\nobtenidos = [fibonacci_iterativo(i) for i in range(8)]\nassert obtenidos == esperados, f\"F(0)..F(7) deberían ser {esperados} y son {obtenidos}\""
+    },
+    {
+     "name": "Iterativo: valores grandes",
+     "code": "assert fibonacci_iterativo(20) == 6765, \"F(20) debe ser 6765\"\nassert fibonacci_iterativo(200) == 280571172992510140037611932413038677189525, \"F(200) no es correcto\"\nassert \"fibonacci_iterativo\" not in fibonacci_iterativo.__code__.co_names, \"fibonacci_iterativo no debe llamarse a sí misma: usa un bucle\""
+    },
+    {
+     "name": "Memo: casos base y valores típicos",
+     "code": "assert fibonacci_memo(0) == 0 and fibonacci_memo(1) == 1, \"Casos base: F(0) = 0 y F(1) = 1\"\nassert fibonacci_memo(10) == 55, f\"fibonacci_memo(10) debe ser 55, no {fibonacci_memo(10)!r}\""
+    },
+    {
+     "name": "Memo: es recursiva",
+     "code": "assert \"fibonacci_memo\" in fibonacci_memo.__code__.co_names, \"fibonacci_memo debe ser recursiva (llamarse a sí misma)\""
+    },
+    {
+     "name": "Memo: rellena el diccionario recibido",
+     "code": "m = {}\nr = fibonacci_memo(10, m)\nassert r == 55, \"fibonacci_memo(10, m) debe devolver 55\"\nfaltan = [k for k in range(2, 11) if m.get(k) != fibonacci_iterativo(k)]\nassert not faltan, f\"Tras calcular F(10), memo debería contener F(k) para k = 2..10; faltan o están mal: {faltan}\""
+    },
+    {
+     "name": "Memo: rápido con n grande",
+     "code": "m = {}\nfibonacci_memo(12, m)\nassert len(m) >= 10, \"memo no se está rellenando: pasa el MISMO diccionario en las llamadas recursivas (si no, con n grande tardaría una eternidad)\"\nassert fibonacci_memo(300) == fibonacci_iterativo(300), \"fibonacci_memo(300) no coincide con la versión iterativa\""
+    },
+    {
+     "name": "Memo: sin estado compartido entre llamadas",
+     "code": "assert fibonacci_memo.__defaults__ == (None,), \"El valor por defecto de memo debe ser None (crea el diccionario dentro)\"\nassert fibonacci_memo(5) == 5 and fibonacci_memo(6) == 8, \"Llamadas consecutivas sin memo deben dar F(5) = 5 y F(6) = 8\""
+    },
+    {
+     "name": "Serie: casos normales y bordes",
+     "code": "assert serie_fibonacci(0) == [], \"serie_fibonacci(0) debe ser una lista vacía\"\nassert serie_fibonacci(1) == [0], \"serie_fibonacci(1) debe ser [0]\"\nassert serie_fibonacci(8) == [0, 1, 1, 2, 3, 5, 8, 13], f\"serie_fibonacci(8) es incorrecta: {serie_fibonacci(8)!r}\""
+    }
+   ],
+   "hints": [
+    "Iterativo: guarda los dos últimos valores en dos variables y avanza con una asignación múltiple: `anterior, actual = actual, anterior + actual`.",
+    "Memo: tras el caso base (`n < 2`), consulta si `n` ya está en `memo`; si no, calcúlalo con dos llamadas recursivas, **pasando siempre el mismo diccionario** `memo`, y guárdalo.",
+    "Serie: no llames a `fibonacci_iterativo(i)` para cada i (repetirías trabajo); genera los términos en un único bucle, como en la versión iterativa."
+   ],
+   "explain": "La versión ingenua `fib(n - 1) + fib(n - 2)` recalcula los mismos subproblemas una y otra vez: su número de llamadas crece exponencialmente (≈ 1,6ⁿ) y con n = 300 no terminaría nunca. Con `memo` cada F(k) se calcula una sola vez: O(n) en tiempo, aunque con O(n) de profundidad de pila (fibonacci_memo(2000) chocaría con el límite de recursión). La iterativa es O(n) en tiempo y O(1) en memoria: la mejor opción en Python.\n\nFíjate en `memo=None` + `if memo is None: memo = {}`: el mismo patrón de la trampa del valor por defecto. Curiosamente, aquí `memo={}` en la firma «funcionaría» como caché permanente entre llamadas, pero es un truco poco legible; en s12 verás `@functools.cache`, la forma profesional. Para la serie, `[fibonacci_iterativo(i) for i in range(n)]` es correcta pero O(n²)."
+  },
+  {
+   "id": "s06-e6",
+   "title": "Firma blindada con / y *",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `crear_usuario` para dar de alta usuarios con una firma que impida llamadas ambiguas:",
+    "• `nombre` y `email`: obligatorios y **solo posicionales**. • `rol`: posicional o nombrado, con valor por defecto `\"lector\"`. • `admin` (por defecto `False`) y `activo` (por defecto `True`): **solo nombrados**.",
+    "Devuelve un diccionario con las claves `nombre`, `email`, `rol`, `admin` y `activo`. Normaliza los datos: el nombre sin espacios sobrantes y con la inicial de cada palabra en mayúscula (`str.title`), y el email sin espacios y en minúsculas.",
+    "Cualquier llamada que no respete la firma (nombre por nombre, `admin` por posición, un parámetro inexistente…) debe producir el `TypeError` que Python lanza por sí solo. No uses `*args` ni `**kwargs`."
+   ],
+   "examples": [
+    {
+     "call": "crear_usuario(\" ana lópez \", \"ANA@Mail.com\")",
+     "result": "{'nombre': 'Ana López', 'email': 'ana@mail.com', 'rol': 'lector', 'admin': False, 'activo': True}"
+    },
+    {
+     "call": "crear_usuario(\"Luis\", \"luis@correo.com\", \"editor\", admin=True)[\"admin\"]",
+     "result": "True"
+    },
+    {
+     "call": "crear_usuario(nombre=\"Ana\", email=\"ana@correo.com\")",
+     "result": "TypeError"
+    }
+   ],
+   "starter": "def crear_usuario(nombre, email, rol=\"lector\", admin=False, activo=True):\n    # 1) Añade / y * en los lugares adecuados de la firma\n    # 2) Devuelve el diccionario con los datos normalizados\n    pass\n",
+   "solution": "def crear_usuario(nombre, email, /, rol=\"lector\", *, admin=False, activo=True):\n    \"\"\"Devuelve un diccionario con los datos del usuario normalizados.\"\"\"\n    return {\n        \"nombre\": nombre.strip().title(),\n        \"email\": email.strip().lower(),\n        \"rol\": rol,\n        \"admin\": admin,\n        \"activo\": activo,\n    }\n",
+   "setup": "def lanza_type_error(funcion, *args, **kwargs):\n    try:\n        funcion(*args, **kwargs)\n    except TypeError:\n        return True\n    return False\n",
+   "tests": [
+    {
+     "name": "Llamada mínima con normalización",
+     "code": "r = crear_usuario(\" ana lópez \", \"ANA@Mail.com \")\nesperado = {\"nombre\": \"Ana López\", \"email\": \"ana@mail.com\", \"rol\": \"lector\", \"admin\": False, \"activo\": True}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "rol por posición o por nombre",
+     "code": "assert crear_usuario(\"Luis\", \"luis@correo.com\", \"editor\")[\"rol\"] == \"editor\", \"rol debe poder pasarse por posición\"\nassert crear_usuario(\"Luis\", \"luis@correo.com\", rol=\"admin\")[\"rol\"] == \"admin\", \"rol debe poder pasarse por nombre\""
+    },
+    {
+     "name": "Opciones por nombre",
+     "code": "u = crear_usuario(\"Eva\", \"eva@correo.com\", admin=True, activo=False)\nassert u[\"admin\"] is True and u[\"activo\"] is False, f\"admin y activo deben tomar los valores pasados por nombre; obtuve {u!r}\""
+    },
+    {
+     "name": "nombre y email solo por posición",
+     "code": "assert lanza_type_error(crear_usuario, nombre=\"Ana\", email=\"ana@correo.com\"), \"Pasar nombre y email por nombre debería dar TypeError: hazlos solo posicionales\""
+    },
+    {
+     "name": "admin y activo solo por nombre",
+     "code": "assert lanza_type_error(crear_usuario, \"Ana\", \"ana@correo.com\", \"lector\", True), \"Pasar admin por posición debería dar TypeError: hazlos solo nombrados\""
+    },
+    {
+     "name": "Faltan argumentos obligatorios",
+     "code": "assert lanza_type_error(crear_usuario, \"Ana\"), \"Sin email la llamada debería fallar con TypeError\""
+    },
+    {
+     "name": "Parámetro inexistente",
+     "code": "assert lanza_type_error(crear_usuario, \"Ana\", \"ana@correo.com\", edad=30), \"Un parámetro desconocido (edad) debería dar TypeError: no uses **kwargs\""
+    },
+    {
+     "name": "No imprime nada",
+     "code": "assert capturar(crear_usuario, \"Ana\", \"ana@correo.com\") == \"\", \"La función debe devolver el diccionario, no imprimir\""
+    }
+   ],
+   "hints": [
+    "Todo lo que va **antes** de `/` es solo posicional; todo lo que va **después** de `*` es solo nombrado.",
+    "La firma queda con el orden: dos parámetros, `/`, `rol` con su valor por defecto, `*` y las dos opciones con su valor por defecto.",
+    "Para normalizar: `nombre.strip().title()` y `email.strip().lower()`."
+   ],
+   "explain": "La firma `def crear_usuario(nombre, email, /, rol=\"lector\", *, admin=False, activo=True)` documenta y hace cumplir cómo se usa la función: los datos principales van por posición (sus nombres podrían cambiar sin romper a nadie) y los interruptores booleanos van obligatoriamente por nombre, así que `crear_usuario(\"Ana\", \"ana@correo.com\", admin=True)` se lee sola y `crear_usuario(\"Ana\", \"ana@correo.com\", \"lector\", True)` es imposible.\n\nNo hace falta escribir ni una línea de validación: el mecanismo de enlace de argumentos de Python lanza el `TypeError` adecuado. Si hubieras usado `**kwargs`, un error tipográfico como `amdin=True` se aceptaría en silencio. Detalle: `str.title()` pone en mayúscula la inicial de cada palabra, pero tiene rarezas con apóstrofos (`\"o'neil\".title()` da `\"O'Neil\"`, aunque `\"it's\".title()` da `\"It'S\"`)."
+  },
+  {
+   "id": "s06-e7",
+   "title": "Calculadora con tabla de funciones y **opciones",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `calcular(operacion, *numeros, **opciones)`, que aplica una operación a todos los números recibidos.",
+    "Operaciones: `\"suma\"`, `\"producto\"`, `\"maximo\"`, `\"minimo\"` y `\"media\"`. Opciones admitidas: `absoluto` (si es verdadero, se toma el valor absoluto del resultado) y `decimales` (si está presente, se redondea el resultado con `round`). Primero se aplica `absoluto` y después `decimales`.",
+    "Devuelve `None` si la operación no existe, si no se pasa ningún número o si llega alguna opción no admitida.",
+    "Pista de diseño: en lugar de una cadena de `if/elif`, usa un diccionario que asocie cada nombre de operación con una función."
+   ],
+   "examples": [
+    {
+     "call": "calcular(\"suma\", 1, 2, 3)",
+     "result": "6"
+    },
+    {
+     "call": "calcular(\"media\", 1, 2, 4, decimales=2)",
+     "result": "2.33"
+    },
+    {
+     "call": "calcular(\"producto\", -2, 3, absoluto=True)",
+     "result": "6"
+    },
+    {
+     "call": "calcular(\"potencia\", 2, 3)",
+     "result": "None"
+    }
+   ],
+   "starter": "def calcular(operacion, *numeros, **opciones):\n    # operacion: \"suma\", \"producto\", \"maximo\", \"minimo\" o \"media\"\n    # opciones admitidas: absoluto (bool) y decimales (int)\n    pass\n",
+   "solution": "def producto(numeros):\n    resultado = 1\n    for n in numeros:\n        resultado *= n\n    return resultado\n\n\ndef media(numeros):\n    return sum(numeros) / len(numeros)\n\n\nOPERACIONES = {\n    \"suma\": sum,\n    \"producto\": producto,\n    \"maximo\": max,\n    \"minimo\": min,\n    \"media\": media,\n}\nOPCIONES_VALIDAS = {\"absoluto\", \"decimales\"}\n\n\ndef calcular(operacion, *numeros, **opciones):\n    \"\"\"Aplica la operación a los números y devuelve el resultado, o None si no es posible.\"\"\"\n    funcion = OPERACIONES.get(operacion)\n    if funcion is None or not numeros:\n        return None\n    for clave in opciones:\n        if clave not in OPCIONES_VALIDAS:\n            return None\n    resultado = funcion(numeros)\n    if opciones.get(\"absoluto\", False):\n        resultado = abs(resultado)\n    if \"decimales\" in opciones:\n        resultado = round(resultado, opciones[\"decimales\"])\n    return resultado\n",
+   "tests": [
+    {
+     "name": "Suma y producto",
+     "code": "assert calcular(\"suma\", 1, 2, 3) == 6, \"calcular('suma', 1, 2, 3) debe ser 6\"\nassert calcular(\"producto\", 2, 3, 4) == 24, \"calcular('producto', 2, 3, 4) debe ser 24\""
+    },
+    {
+     "name": "Máximo y mínimo",
+     "code": "assert calcular(\"maximo\", 3, 9, 2) == 9, \"El máximo de 3, 9, 2 es 9\"\nassert calcular(\"minimo\", 3, 9, 2) == 2, \"El mínimo de 3, 9, 2 es 2\""
+    },
+    {
+     "name": "Media con decimales",
+     "code": "r = calcular(\"media\", 1, 2, 4, decimales=2)\nassert r == 2.33, f\"La media de 1, 2, 4 con 2 decimales es 2.33; obtuve {r!r}\""
+    },
+    {
+     "name": "Opción absoluto (y orden de las opciones)",
+     "code": "assert calcular(\"producto\", -2, 3, absoluto=True) == 6, \"Con absoluto=True, el producto de -2 y 3 debe ser 6\"\nassert calcular(\"suma\", -2.345, absoluto=True, decimales=1) == 2.3, \"Primero valor absoluto y después redondeo: 2.3\"\nassert calcular(\"suma\", -1, -1, absoluto=False) == -2, \"Con absoluto=False no se toca el signo\""
+    },
+    {
+     "name": "Un solo número",
+     "code": "assert calcular(\"media\", 7) == 7, \"La media de un único número es ese número\"\nassert calcular(\"maximo\", 5) == 5, \"El máximo de un único número es ese número\""
+    },
+    {
+     "name": "Argumentos desempaquetados",
+     "code": "numeros = [5, 10, 15]\nopciones = {\"decimales\": 0}\nassert calcular(\"media\", *numeros, **opciones) == 10, \"calcular('media', *[5, 10, 15], **{'decimales': 0}) debe ser 10\""
+    },
+    {
+     "name": "Operación desconocida o sin números",
+     "code": "assert calcular(\"potencia\", 2, 3) is None, \"Una operación desconocida debe devolver None\"\nassert calcular(\"suma\") is None, \"Sin números debe devolver None\""
+    },
+    {
+     "name": "Opción no admitida",
+     "code": "r = calcular(\"suma\", 1, 2, redondeo=2)\nassert r is None, f\"Una opción desconocida (redondeo) debe devolver None; obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Dentro de la función, `numeros` es una tupla y `opciones` un diccionario. `sum`, `max` y `min` ya aceptan una tupla; solo tienes que escribir el producto y la media.",
+    "Crea un diccionario `{\"suma\": sum, ...}` y obtén la función con `.get(operacion)`: si devuelve `None`, la operación no existe.",
+    "Para detectar opciones no admitidas, recorre las claves de `opciones` y comprueba que cada una está en un conjunto de claves válidas."
+   ],
+   "explain": "La **tabla de despacho** (`OPERACIONES`) sustituye cinco ramas `if/elif` por una búsqueda en un diccionario: añadir una operación nueva es añadir una línea. Funciona porque las funciones son objetos: `sum`, `max` y las tuyas se guardan como valores y se llaman después con `funcion(numeros)`.\n\n`*numeros` recoge los posicionales en una tupla y `**opciones` los nombrados en un diccionario; la comprobación de claves se puede escribir también con conjuntos: `if opciones.keys() - OPCIONES_VALIDAS: return None`.\n\nReflexión de diseño: este ejercicio usa `**opciones` para practicar, pero en código real sería mejor una firma explícita, `def calcular(operacion, /, *numeros, absoluto=False, decimales=None)`. Así Python valida los nombres por ti (un `redondeo=2` daría `TypeError` automáticamente) y la firma se documenta sola."
+  },
+  {
+   "id": "s06-e8",
+   "title": "Ordenar alumnos por varios criterios",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Cada alumno es un diccionario con las claves `nombre`, `nota` y `edad`. Escribe dos funciones:",
+    "1) `ordenar_alumnos(alumnos)`: devuelve una **lista nueva** ordenada por nota de mayor a menor; con igual nota, por edad de menor a mayor; y con igual nota y edad, por nombre en orden alfabético **sin distinguir mayúsculas de minúsculas**. No debe modificar la lista original.",
+    "2) `mejores(alumnos, n=3)`: devuelve la lista con los **nombres** de los `n` primeros alumnos según ese mismo orden (menos si no hay tantos).",
+    "En los ejemplos y en los tests, `datos()` devuelve esta lista:\n```python\n[\n    {\"nombre\": \"Luis\", \"nota\": 7.5, \"edad\": 21},\n    {\"nombre\": \"ana\", \"nota\": 9, \"edad\": 22},\n    {\"nombre\": \"Beto\", \"nota\": 9, \"edad\": 22},\n    {\"nombre\": \"Carla\", \"nota\": 9, \"edad\": 19},\n    {\"nombre\": \"Dani\", \"nota\": 5, \"edad\": 30},\n]\n```"
+   ],
+   "examples": [
+    {
+     "call": "[a[\"nombre\"] for a in ordenar_alumnos(datos())]",
+     "result": "['Carla', 'ana', 'Beto', 'Luis', 'Dani']"
+    },
+    {
+     "call": "mejores(datos(), 2)",
+     "result": "['Carla', 'ana']"
+    },
+    {
+     "call": "mejores([])",
+     "result": "[]"
+    }
+   ],
+   "starter": "def ordenar_alumnos(alumnos):\n    pass\n\n\ndef mejores(alumnos, n=3):\n    pass\n",
+   "solution": "def clave_alumno(alumno):\n    \"\"\"Clave de orden: nota descendente, edad ascendente y nombre sin distinguir mayúsculas.\"\"\"\n    return (-alumno[\"nota\"], alumno[\"edad\"], alumno[\"nombre\"].casefold())\n\n\ndef ordenar_alumnos(alumnos):\n    \"\"\"Devuelve una lista nueva con los alumnos ordenados.\"\"\"\n    return sorted(alumnos, key=clave_alumno)\n\n\ndef mejores(alumnos, n=3):\n    \"\"\"Devuelve los nombres de los n mejores alumnos.\"\"\"\n    return [alumno[\"nombre\"] for alumno in ordenar_alumnos(alumnos)[:n]]\n",
+   "setup": "def datos():\n    return [\n        {\"nombre\": \"Luis\", \"nota\": 7.5, \"edad\": 21},\n        {\"nombre\": \"ana\", \"nota\": 9, \"edad\": 22},\n        {\"nombre\": \"Beto\", \"nota\": 9, \"edad\": 22},\n        {\"nombre\": \"Carla\", \"nota\": 9, \"edad\": 19},\n        {\"nombre\": \"Dani\", \"nota\": 5, \"edad\": 30},\n    ]\n\ndef nombres(lista):\n    return [a[\"nombre\"] for a in lista]\n",
+   "tests": [
+    {
+     "name": "Orden completo con empates",
+     "code": "r = nombres(ordenar_alumnos(datos()))\nesperado = [\"Carla\", \"ana\", \"Beto\", \"Luis\", \"Dani\"]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r}\""
+    },
+    {
+     "name": "Nota de mayor a menor",
+     "code": "notas = [a[\"nota\"] for a in ordenar_alumnos(datos())]\nassert notas == sorted(notas, reverse=True), f\"Las notas deben ir de mayor a menor: {notas}\""
+    },
+    {
+     "name": "Desempate por edad",
+     "code": "r = nombres(ordenar_alumnos([\n    {\"nombre\": \"Zoe\", \"nota\": 8, \"edad\": 18},\n    {\"nombre\": \"Abel\", \"nota\": 8, \"edad\": 25},\n]))\nassert r == [\"Zoe\", \"Abel\"], f\"Con la misma nota, primero el más joven: se esperaba ['Zoe', 'Abel'] y se obtuvo {r}\""
+    },
+    {
+     "name": "Nombre sin distinguir mayúsculas",
+     "code": "r = nombres(ordenar_alumnos([\n    {\"nombre\": \"Beto\", \"nota\": 6, \"edad\": 20},\n    {\"nombre\": \"ana\", \"nota\": 6, \"edad\": 20},\n]))\nassert r == [\"ana\", \"Beto\"], f\"'ana' va antes que 'Beto' si no se distinguen mayúsculas; obtuve {r}\""
+    },
+    {
+     "name": "Devuelve una lista nueva y no modifica la original",
+     "code": "original = datos()\ncopia = datos()\nr = ordenar_alumnos(original)\nassert original == copia, \"ordenar_alumnos no debe modificar la lista que recibe (usa sorted, no .sort)\"\nassert r is not original, \"Debe devolver una lista nueva\""
+    },
+    {
+     "name": "Lista vacía",
+     "code": "assert ordenar_alumnos([]) == [], \"Ordenar una lista vacía devuelve []\"\nassert mejores([]) == [], \"mejores([]) debe devolver []\""
+    },
+    {
+     "name": "mejores con n por defecto y explícito",
+     "code": "assert mejores(datos()) == [\"Carla\", \"ana\", \"Beto\"], f\"Por defecto, los 3 mejores; obtuve {mejores(datos())}\"\nassert mejores(datos(), 1) == [\"Carla\"], \"mejores(datos(), 1) debe ser ['Carla']\"\nassert mejores(datos(), n=0) == [], \"Con n=0 la lista está vacía\""
+    },
+    {
+     "name": "mejores con n mayor que la lista",
+     "code": "assert mejores(datos(), 10) == [\"Carla\", \"ana\", \"Beto\", \"Luis\", \"Dani\"], \"Si n supera el número de alumnos, se devuelven todos\""
+    }
+   ],
+   "hints": [
+    "`sorted` con `key` devuelve una lista nueva. Si la función clave devuelve una **tupla**, se ordena por el primer elemento, luego por el segundo, etc.",
+    "Para ordenar la nota de mayor a menor dentro de una tupla, niega el número (`-alumno[\"nota\"]`). Para ignorar mayúsculas, compara `nombre.casefold()`.",
+    "`mejores` puede reutilizar `ordenar_alumnos` y un corte `[:n]`, que nunca falla aunque n sea mayor que la lista."
+   ],
+   "explain": "La clave `(-nota, edad, nombre.casefold())` resume los tres criterios porque las tuplas se comparan elemento a elemento: solo si empatan en el primero se mira el segundo, y así sucesivamente. Negar la nota invierte ese criterio sin afectar a los demás (con `reverse=True` se invertirían todos). `casefold()` (s05) es la versión agresiva de `lower()` pensada para comparar sin distinguir mayúsculas.\n\nDefinir la clave como función con nombre (`clave_alumno`) en lugar de una `lambda` larga la hace reutilizable y fácil de probar. Costo: O(n log n); la función clave se llama una sola vez por elemento. Si un criterio fuera un texto que hay que invertir, no se podría negar: entonces se ordena en varias pasadas estables, del criterio menos importante al más importante."
+  },
+  {
+   "id": "s06-e9",
+   "title": "Validador de contraseñas configurable",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `validar_contrasena(clave, *, longitud_minima=8, exigir_digito=True, exigir_mayuscula=True, exigir_simbolo=False)`, que devuelve la **lista de problemas** encontrados (vacía si la clave es válida). Los parámetros de configuración son **solo nombrados**.",
+    "Mensajes, en este orden y solo si aplican: `\"demasiado corta\"` (menos de `longitud_minima` caracteres), `\"falta un dígito\"`, `\"falta una mayúscula\"`, `\"falta un símbolo\"` (un símbolo es cualquier carácter que no sea letra, dígito ni espacio en blanco) y `\"contiene espacios\"` (esta regla se aplica siempre).",
+    "Escribe también `es_valida(clave, **reglas)`, que devuelve `True` o `False` **reenviando** las reglas recibidas a `validar_contrasena`."
+   ],
+   "examples": [
+    {
+     "call": "validar_contrasena(\"Segura123\")",
+     "result": "[]"
+    },
+    {
+     "call": "validar_contrasena(\"abc\")",
+     "result": "['demasiado corta', 'falta un dígito', 'falta una mayúscula']"
+    },
+    {
+     "call": "validar_contrasena(\"Segura123\", exigir_simbolo=True)",
+     "result": "['falta un símbolo']"
+    },
+    {
+     "call": "es_valida(\"abc\", longitud_minima=3, exigir_digito=False, exigir_mayuscula=False)",
+     "result": "True"
+    }
+   ],
+   "starter": "def validar_contrasena(clave, longitud_minima=8, exigir_digito=True, exigir_mayuscula=True, exigir_simbolo=False):\n    # Haz que las opciones sean solo nombradas y devuelve la lista de problemas\n    pass\n\n\ndef es_valida(clave, **reglas):\n    pass\n",
+   "solution": "def contiene(texto, condicion):\n    \"\"\"Devuelve True si algún carácter de texto cumple la condición.\"\"\"\n    for caracter in texto:\n        if condicion(caracter):\n            return True\n    return False\n\n\ndef es_simbolo(caracter):\n    return not caracter.isalnum() and not caracter.isspace()\n\n\ndef validar_contrasena(clave, *, longitud_minima=8, exigir_digito=True,\n                       exigir_mayuscula=True, exigir_simbolo=False):\n    \"\"\"Devuelve la lista de problemas de la clave (vacía si es válida).\"\"\"\n    problemas = []\n    if len(clave) < longitud_minima:\n        problemas.append(\"demasiado corta\")\n    if exigir_digito and not contiene(clave, str.isdigit):\n        problemas.append(\"falta un dígito\")\n    if exigir_mayuscula and not contiene(clave, str.isupper):\n        problemas.append(\"falta una mayúscula\")\n    if exigir_simbolo and not contiene(clave, es_simbolo):\n        problemas.append(\"falta un símbolo\")\n    if contiene(clave, str.isspace):\n        problemas.append(\"contiene espacios\")\n    return problemas\n\n\ndef es_valida(clave, **reglas):\n    \"\"\"Devuelve True si la clave no tiene ningún problema con esas reglas.\"\"\"\n    return not validar_contrasena(clave, **reglas)\n",
+   "setup": "def lanza_type_error(funcion, *args, **kwargs):\n    try:\n        funcion(*args, **kwargs)\n    except TypeError:\n        return True\n    return False\n",
+   "tests": [
+    {
+     "name": "Contraseña válida con la configuración por defecto",
+     "code": "r = validar_contrasena(\"Segura123\")\nassert r == [], f\"'Segura123' cumple las reglas por defecto; se esperaba [] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Varios problemas en el orden indicado",
+     "code": "r = validar_contrasena(\"abc\")\nesperado = [\"demasiado corta\", \"falta un dígito\", \"falta una mayúscula\"]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Cadena vacía",
+     "code": "r = validar_contrasena(\"\")\nassert r == [\"demasiado corta\", \"falta un dígito\", \"falta una mayúscula\"], f\"Una clave vacía incumple longitud, dígito y mayúscula; obtuve {r!r}\""
+    },
+    {
+     "name": "Configuración personalizada",
+     "code": "r = validar_contrasena(\"abcdef\", longitud_minima=6, exigir_digito=False, exigir_mayuscula=False)\nassert r == [], f\"Con esas reglas relajadas 'abcdef' es válida; obtuve {r!r}\"\nr = validar_contrasena(\"Ab1\", longitud_minima=4)\nassert r == [\"demasiado corta\"], f\"'Ab1' tiene 3 caracteres y el mínimo es 4; obtuve {r!r}\""
+    },
+    {
+     "name": "Símbolos",
+     "code": "assert validar_contrasena(\"Segura123\", exigir_simbolo=True) == [\"falta un símbolo\"], \"Sin símbolos debe avisar con 'falta un símbolo'\"\nassert validar_contrasena(\"Segura_123!\", exigir_simbolo=True) == [], \"'_' y '!' son símbolos: la clave es válida\""
+    },
+    {
+     "name": "Espacios",
+     "code": "r = validar_contrasena(\"Mi Clave 123\")\nassert r == [\"contiene espacios\"], f\"Los espacios siempre son un problema; obtuve {r!r}\"\nr = validar_contrasena(\"Mi Clave 123\", exigir_simbolo=True)\nassert r == [\"falta un símbolo\", \"contiene espacios\"], f\"Un espacio no cuenta como símbolo; obtuve {r!r}\""
+    },
+    {
+     "name": "Letras con tilde y eñe",
+     "code": "r = validar_contrasena(\"Ñandú2024\")\nassert r == [], f\"'Ñ' es una mayúscula válida; se esperaba [] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Las opciones son solo nombradas",
+     "code": "assert lanza_type_error(validar_contrasena, \"abc\", 3), \"validar_contrasena('abc', 3) debe dar TypeError: la configuración va detrás de *\""
+    },
+    {
+     "name": "es_valida reenvía las reglas",
+     "code": "assert es_valida(\"Segura123\") is True, \"es_valida('Segura123') debe ser True\"\nassert es_valida(\"abc\") is False, \"es_valida('abc') debe ser False\"\nassert es_valida(\"abc\", longitud_minima=3, exigir_digito=False, exigir_mayuscula=False) is True, \"es_valida debe pasar las reglas recibidas a validar_contrasena\""
+    }
+   ],
+   "hints": [
+    "Coloca un `*` en la firma justo después de `clave`: todo lo que va detrás pasa a ser solo nombrado.",
+    "Empieza con `problemas = []` y añade cada mensaje con un `if` independiente, en el orden pedido. Para saber si hay algún dígito, recorre la clave con un bucle (o `any([c.isdigit() for c in clave])`).",
+    "Una función auxiliar `contiene(texto, condicion)` que reciba `str.isdigit`, `str.isupper`… evita repetir el mismo bucle cuatro veces. `es_valida` solo tiene que llamar a `validar_contrasena(clave, **reglas)`."
+   ],
+   "explain": "Devolver la **lista de problemas** en lugar de un simple `bool` permite dar al usuario un mensaje útil; `es_valida` se construye encima con `not problemas` (una lista vacía es *falsy*). El `*` de la firma obliga a escribir `exigir_simbolo=True`, que se entiende sin mirar la documentación.\n\nLa función auxiliar `contiene(texto, condicion)` es una función de orden superior: recibe el criterio como argumento (`str.isdigit`, `str.isupper` o tu `es_simbolo`) y sale del bucle en cuanto encuentra un carácter que lo cumple. `es_valida(clave, **reglas)` muestra el reenvío de argumentos: no necesita conocer las reglas, solo las pasa. Si alguien escribe mal una regla (`longitud=3`), `validar_contrasena` lanzará `TypeError`, justo lo que queremos. En s12 verás `any(c.isdigit() for c in clave)`, que hace lo mismo con una expresión generadora."
+  },
+  {
+   "id": "s06-e10",
+   "title": "Contador con memoria (nonlocal)",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `crear_contador(inicio=0, paso=1)`, que **devuelve una tupla con dos funciones**: `siguiente` y `reiniciar`.",
+    "Cada llamada a `siguiente()` devuelve el valor actual y después avanza `paso` unidades: la primera devuelve `inicio`, la segunda `inicio + paso`, etc. `reiniciar()` vuelve a dejar el contador en `inicio` (y devuelve `None`).",
+    "Cada contador creado debe ser independiente de los demás. No uses variables globales: guarda el estado en la función exterior y modifícalo con `nonlocal`."
+   ],
+   "examples": [
+    {
+     "call": "siguiente, reiniciar = crear_contador(); [siguiente(), siguiente(), siguiente()]",
+     "result": "[0, 1, 2]"
+    },
+    {
+     "call": "siguiente, _ = crear_contador(10, 5); [siguiente(), siguiente()]",
+     "result": "[10, 15]"
+    },
+    {
+     "call": "reiniciar(); siguiente()",
+     "result": "0"
+    }
+   ],
+   "starter": "def crear_contador(inicio=0, paso=1):\n    # Define aquí dentro siguiente() y reiniciar() y devuélvelas\n    pass\n",
+   "solution": "def crear_contador(inicio=0, paso=1):\n    \"\"\"Devuelve las funciones (siguiente, reiniciar) de un contador nuevo.\"\"\"\n    actual = inicio\n\n    def siguiente():\n        nonlocal actual\n        valor = actual\n        actual += paso\n        return valor\n\n    def reiniciar():\n        nonlocal actual\n        actual = inicio\n\n    return siguiente, reiniciar\n",
+   "tests": [
+    {
+     "name": "Devuelve dos funciones",
+     "code": "r = crear_contador()\nassert isinstance(r, tuple) and len(r) == 2, \"crear_contador debe devolver una tupla (siguiente, reiniciar)\"\nassert callable(r[0]) and callable(r[1]), \"Los dos elementos de la tupla deben ser funciones\""
+    },
+    {
+     "name": "Cuenta desde 0 de uno en uno",
+     "code": "siguiente, _ = crear_contador()\nr = [siguiente(), siguiente(), siguiente()]\nassert r == [0, 1, 2], f\"Se esperaba [0, 1, 2] y se obtuvo {r}\""
+    },
+    {
+     "name": "inicio y paso personalizados",
+     "code": "siguiente, _ = crear_contador(10, 5)\nr = [siguiente(), siguiente(), siguiente()]\nassert r == [10, 15, 20], f\"Con inicio=10 y paso=5 se esperaba [10, 15, 20] y se obtuvo {r}\""
+    },
+    {
+     "name": "paso por nombre y paso negativo",
+     "code": "siguiente, _ = crear_contador(paso=2)\nassert [siguiente(), siguiente()] == [0, 2], \"crear_contador(paso=2) debe contar 0, 2, …\"\nsiguiente, _ = crear_contador(3, -1)\nr = [siguiente() for _ in range(4)]\nassert r == [3, 2, 1, 0], f\"Con paso -1 se cuenta de forma descendente: se esperaba [3, 2, 1, 0] y se obtuvo {r}\""
+    },
+    {
+     "name": "Los contadores son independientes",
+     "code": "sig_a, _ = crear_contador()\nsig_b, _ = crear_contador(100)\nsig_a(); sig_a()\nassert sig_b() == 100, \"Avanzar un contador no debe afectar a otro\"\nassert sig_a() == 2, \"Cada contador conserva su propio estado\""
+    },
+    {
+     "name": "reiniciar vuelve al inicio",
+     "code": "siguiente, reiniciar = crear_contador(5)\nsiguiente(); siguiente(); siguiente()\nr = reiniciar()\nassert r is None, \"reiniciar() no debe devolver nada (None)\"\nassert siguiente() == 5, \"Tras reiniciar, siguiente() debe devolver de nuevo el valor inicial\"\nassert siguiente() == 6, \"Tras reiniciar, el contador sigue avanzando con normalidad\""
+    },
+    {
+     "name": "reiniciar solo afecta a su contador",
+     "code": "sig_a, rei_a = crear_contador()\nsig_b, rei_b = crear_contador()\nsig_a(); sig_a(); sig_b(); sig_b()\nrei_a()\nassert sig_a() == 0 and sig_b() == 2, \"reiniciar un contador no debe tocar a los demás\""
+    }
+   ],
+   "hints": [
+    "Dentro de `crear_contador` guarda el valor en una variable (por ejemplo, `actual = inicio`) y define dentro las dos funciones.",
+    "Para **reasignar** `actual` desde una función interior necesitas `nonlocal actual`; sin eso Python la trata como local y obtendrás `UnboundLocalError`.",
+    "Devuelve las funciones sin llamarlas: `return siguiente, reiniciar` (sin paréntesis)."
+   ],
+   "explain": "Cada llamada a `crear_contador` crea un espacio de nombres nuevo con su propia variable `actual`; las funciones interiores la **recuerdan** aunque `crear_contador` ya haya terminado. Eso es un *closure*, y es la razón de que los contadores sean independientes sin usar ni una variable global.\n\n`nonlocal actual` es imprescindible porque `actual += paso` es una asignación: sin la declaración, `actual` sería local de `siguiente` y leerla antes de asignarla lanzaría `UnboundLocalError`. En cambio, `inicio` y `paso` solo se leen y no necesitan declaración (regla LEGB). En s10 verás que esto mismo se suele modelar con una clase (`self.actual`), y en s12 profundizarás en los closures."
+  },
+  {
+   "id": "s06-e11",
+   "title": "Aplanar listas anidadas y medir su profundidad",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Una lista puede contener otras listas, que a su vez contienen listas, a cualquier profundidad. Escribe dos funciones **recursivas**:",
+    "1) `aplanar(anidada)`: devuelve una lista **nueva** con todos los elementos que no son listas, en el mismo orden en que aparecen. Solo se «abren» las listas: las cadenas, tuplas, diccionarios, etc., se conservan como un único elemento. No debe modificar la lista original.",
+    "2) `profundidad(dato)`: si `dato` no es una lista, vale 0; si es una lista, vale 1 más la mayor profundidad de sus elementos (una lista vacía vale 1).",
+    "Usa `isinstance(x, list)` para saber si algo es una lista (lo verás a fondo en s10)."
+   ],
+   "examples": [
+    {
+     "call": "aplanar([1, [2, 3], [4, [5, [6]]]])",
+     "result": "[1, 2, 3, 4, 5, 6]"
+    },
+    {
+     "call": "aplanar([\"ab\", (1, 2), [None]])",
+     "result": "['ab', (1, 2), None]"
+    },
+    {
+     "call": "profundidad([1, [2, [3]], []])",
+     "result": "3"
+    },
+    {
+     "call": "profundidad(7)",
+     "result": "0"
+    }
+   ],
+   "starter": "def aplanar(anidada):\n    pass\n\n\ndef profundidad(dato):\n    pass\n",
+   "solution": "def aplanar(anidada):\n    \"\"\"Devuelve una lista plana con los elementos no-lista, en orden.\"\"\"\n    plana = []\n    for elemento in anidada:\n        if isinstance(elemento, list):\n            plana.extend(aplanar(elemento))   # caso recursivo\n        else:\n            plana.append(elemento)            # caso base: un elemento simple\n    return plana\n\n\ndef profundidad(dato):\n    \"\"\"Devuelve el nivel máximo de anidamiento de listas (0 si no es lista).\"\"\"\n    if not isinstance(dato, list):\n        return 0\n    maxima = 0\n    for elemento in dato:\n        maxima = max(maxima, profundidad(elemento))\n    return 1 + maxima\n",
+   "tests": [
+    {
+     "name": "Aplanar un caso típico",
+     "code": "r = aplanar([1, [2, 3], [4, [5, [6]]]])\nassert r == [1, 2, 3, 4, 5, 6], f\"Se esperaba [1, 2, 3, 4, 5, 6] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Listas vacías",
+     "code": "assert aplanar([]) == [], \"aplanar([]) debe devolver []\"\nr = aplanar([[], [[]], [[], []]])\nassert r == [], f\"Listas que solo contienen listas vacías se aplanan a []; obtuve {r!r}\""
+    },
+    {
+     "name": "Solo se abren las listas",
+     "code": "r = aplanar([\"ab\", (1, 2), [None, {\"k\": 1}], [[True, False]]])\nesperado = [\"ab\", (1, 2), None, {\"k\": 1}, True, False]\nassert r == esperado, f\"Las cadenas, tuplas y diccionarios no se abren: se esperaba {esperado!r} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Anidamiento muy profundo",
+     "code": "x = [7]\nfor _ in range(100):\n    x = [x]\nassert aplanar(x) == [7], \"Con 100 niveles de anidamiento debe devolver [7]\""
+    },
+    {
+     "name": "No modifica la original y devuelve una lista nueva",
+     "code": "original = [1, [2, [3]], 4]\nplana = [1, 2, 3]\nr = aplanar(original)\nassert original == [1, [2, [3]], 4], f\"La lista original no debe cambiar; ahora vale {original!r}\"\nr2 = aplanar(plana)\nassert r2 == plana and r2 is not plana, \"Incluso si la lista ya es plana, debe devolverse una lista nueva\""
+    },
+    {
+     "name": "Profundidad: casos básicos",
+     "code": "assert profundidad(7) == 0, \"Algo que no es una lista tiene profundidad 0\"\nassert profundidad(\"hola\") == 0, \"Una cadena no es una lista: profundidad 0\"\nassert profundidad([]) == 1, \"Una lista vacía tiene profundidad 1\"\nassert profundidad([1, 2, 3]) == 1, \"Una lista plana tiene profundidad 1\""
+    },
+    {
+     "name": "Profundidad: se queda con la rama más profunda",
+     "code": "r = profundidad([1, [2, [3]], []])\nassert r == 3, f\"profundidad([1, [2, [3]], []]) debe ser 3 y es {r!r}\"\nassert profundidad([[[]], 1]) == 3, \"profundidad([[[]], 1]) debe ser 3\""
+    },
+    {
+     "name": "Profundidad con anidamiento grande",
+     "code": "x = []\nfor _ in range(100):\n    x = [x]\nassert profundidad(x) == 101, \"100 envoltorios alrededor de [] dan profundidad 101\""
+    }
+   ],
+   "hints": [
+    "Recorre la lista: si el elemento es una lista, el problema se repite en pequeño (llamada recursiva); si no, es un caso base y se añade tal cual.",
+    "En `aplanar`, añade el resultado de la llamada recursiva con `extend`, no con `append` (que metería la lista entera como un solo elemento).",
+    "En `profundidad`, el caso base es «no es una lista → 0». Para una lista, calcula la profundidad de cada elemento, quédate con la mayor y súmale 1."
+   ],
+   "explain": "Las dos funciones tienen **la misma forma que los datos**: una lista anidada es una lista cuyos elementos son valores simples u otras listas anidadas, y el código trata cada caso por separado. El caso base de `aplanar` está implícito (un elemento simple se añade sin recursión) y el de `profundidad` es explícito (no-lista → 0). Fíjate en que `profundidad([])` vale 1 porque el bucle no se ejecuta y `maxima` se queda en 0.\n\nCoste: `aplanar` hace una llamada por cada lista y `extend` copia los elementos una vez por nivel, O(n·d) en el peor caso; una variante O(n) pasa una lista acumuladora a una función auxiliar (`_aplanar_en(anidada, destino)`). La profundidad de recursión es igual al anidamiento: con más de unos 1000 niveles habría `RecursionError`, y la alternativa sería un bucle con una pila explícita. En s12 verás una versión con generadores y `yield from`."
+  },
+  {
+   "id": "s06-e12",
+   "title": "Torres de Hanói",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Hay tres varillas y `n` discos de distinto tamaño apilados en la varilla de origen, del mayor (abajo) al menor (arriba). El objetivo es pasarlos todos a la varilla de destino moviendo **un disco cada vez** y **sin poner nunca un disco sobre otro más pequeño**.",
+    "Escribe `hanoi(n, origen=\"A\", destino=\"C\", auxiliar=\"B\")`, que devuelve la **lista de movimientos** de la solución óptima, cada uno como una tupla `(desde, hasta)`. Con `n = 0` no hay nada que mover.",
+    "Idea clave: para mover n discos de origen a destino, mueve los n − 1 de arriba a la varilla auxiliar, mueve el disco grande a destino y vuelve a poner los n − 1 encima."
+   ],
+   "examples": [
+    {
+     "call": "hanoi(1)",
+     "result": "[('A', 'C')]"
+    },
+    {
+     "call": "hanoi(2)",
+     "result": "[('A', 'B'), ('A', 'C'), ('B', 'C')]"
+    },
+    {
+     "call": "len(hanoi(10))",
+     "result": "1023"
+    }
+   ],
+   "starter": "def hanoi(n, origen=\"A\", destino=\"C\", auxiliar=\"B\"):\n    # Devuelve la lista de movimientos (desde, hasta)\n    pass\n",
+   "solution": "def hanoi(n, origen=\"A\", destino=\"C\", auxiliar=\"B\"):\n    \"\"\"Devuelve la lista de movimientos (desde, hasta) para mover n discos.\"\"\"\n    if n == 0:\n        return []\n    movimientos = hanoi(n - 1, origen, auxiliar, destino)     # n-1 discos al auxiliar\n    movimientos.append((origen, destino))                      # el disco grande\n    movimientos.extend(hanoi(n - 1, auxiliar, destino, origen))  # n-1 discos encima\n    return movimientos\n",
+   "setup": "def es_solucion_valida(n, movimientos, origen=\"A\", destino=\"C\", auxiliar=\"B\"):\n    \"\"\"Simula los movimientos y comprueba que son legales y terminan en destino.\"\"\"\n    varillas = {origen: list(range(n, 0, -1)), destino: [], auxiliar: []}\n    for desde, hasta in movimientos:\n        if not varillas[desde]:\n            return False\n        disco = varillas[desde].pop()\n        if varillas[hasta] and varillas[hasta][-1] < disco:\n            return False\n        varillas[hasta].append(disco)\n    return varillas[destino] == list(range(n, 0, -1))\n",
+   "tests": [
+    {
+     "name": "Cero discos",
+     "code": "try:\n    r = hanoi(0)\nexcept RecursionError:\n    raise AssertionError(\"hanoi(0) provoca RecursionError: el caso base debe ser n == 0 (sin discos no hay nada que mover)\")\nassert r == [], f\"Con 0 discos no hay movimientos: se esperaba [] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Un disco",
+     "code": "assert hanoi(1) == [(\"A\", \"C\")], f\"Con 1 disco basta un movimiento de A a C; obtuve {hanoi(1)!r}\""
+    },
+    {
+     "name": "Dos discos",
+     "code": "r = hanoi(2)\nassert r == [(\"A\", \"B\"), (\"A\", \"C\"), (\"B\", \"C\")], f\"Movimientos para 2 discos incorrectos: {r!r}\""
+    },
+    {
+     "name": "Tres discos: secuencia exacta",
+     "code": "esperado = [(\"A\", \"C\"), (\"A\", \"B\"), (\"C\", \"B\"), (\"A\", \"C\"), (\"B\", \"A\"), (\"B\", \"C\"), (\"A\", \"C\")]\nr = hanoi(3)\nassert r == esperado, f\"Para 3 discos se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Número mínimo de movimientos: 2^n - 1",
+     "code": "for n in range(1, 11):\n    r = len(hanoi(n))\n    assert r == 2 ** n - 1, f\"Con {n} discos la solución óptima tiene {2 ** n - 1} movimientos, no {r}\""
+    },
+    {
+     "name": "Movimientos legales (simulación con 6 discos)",
+     "code": "assert es_solucion_valida(6, hanoi(6)), \"Algún movimiento es ilegal (disco grande sobre pequeño o varilla vacía) o los discos no acaban en C\""
+    },
+    {
+     "name": "Nombres de varillas personalizados",
+     "code": "r = hanoi(2, \"X\", \"Z\", \"Y\")\nassert r == [(\"X\", \"Y\"), (\"X\", \"Z\"), (\"Y\", \"Z\")], f\"Con origen X, destino Z y auxiliar Y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Argumentos nombrados",
+     "code": "r = hanoi(4, destino=\"B\", auxiliar=\"C\")\nassert es_solucion_valida(4, r, \"A\", \"B\", \"C\"), \"hanoi(4, destino='B', auxiliar='C') debe llevar los 4 discos de A a B legalmente\""
+    }
+   ],
+   "hints": [
+    "Caso base: con 0 discos, la lista de movimientos está vacía.",
+    "Caso recursivo: las tres fases son (1) `hanoi(n - 1, origen, auxiliar, destino)`, (2) el movimiento `(origen, destino)` y (3) `hanoi(n - 1, auxiliar, destino, origen)`. Fíjate en cómo cambian los papeles de las varillas.",
+    "Junta las tres partes en una sola lista, con `+` o con `append` y `extend`."
+   ],
+   "explain": "Hanói es el ejemplo de manual de **divide y vencerás**: no hace falta imaginar cada movimiento, solo confiar en que la llamada recursiva resuelve el problema con n − 1 discos (el «salto de fe» recursivo). Las varillas cambian de papel en cada nivel, y por eso se pasan como parámetros con valores por defecto.\n\nEl número de movimientos cumple M(n) = 2·M(n − 1) + 1, es decir, M(n) = 2ⁿ − 1: costo **exponencial** en tiempo, que es inevitable porque la propia solución tiene ese tamaño. La profundidad de recursión, en cambio, es solo n, así que no hay riesgo de `RecursionError`. Existe una solución iterativa, pero es bastante menos intuitiva: aquí la recursión gana en claridad."
+  },
+  {
+   "id": "s06-e13",
+   "title": "Tubería de funciones",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `tuberia(*funciones)`, que **devuelve una nueva función** de un argumento que aplica las funciones recibidas de izquierda a derecha: `tuberia(f, g, h)(x)` equivale a `h(g(f(x)))`. Si no recibe ninguna función, la tubería devuelve el valor tal cual (función identidad).",
+    "La tubería no debe ejecutar nada al crearse, solo cuando se la llama, y debe poder reutilizarse con distintos valores.",
+    "Escribe también `transformar_todos(valores, *funciones)`, que devuelve una **lista** con el resultado de pasar cada valor por la tubería formada por `funciones`."
+   ],
+   "examples": [
+    {
+     "call": "tuberia(str.strip, str.lower, len)(\"  HoLa  \")",
+     "result": "4"
+    },
+    {
+     "call": "tuberia(lambda x: x + 1, lambda x: x * 2)(5)",
+     "result": "12"
+    },
+    {
+     "call": "tuberia()(42)",
+     "result": "42"
+    },
+    {
+     "call": "transformar_todos([\" a\", \"B \"], str.strip, str.lower)",
+     "result": "['a', 'b']"
+    }
+   ],
+   "starter": "def tuberia(*funciones):\n    # Define una función interior que aplique las funciones en orden y devuélvela\n    pass\n\n\ndef transformar_todos(valores, *funciones):\n    pass\n",
+   "solution": "def tuberia(*funciones):\n    \"\"\"Devuelve una función que aplica las funciones de izquierda a derecha.\"\"\"\n    def ejecutar(valor):\n        for funcion in funciones:\n            valor = funcion(valor)\n        return valor\n    return ejecutar\n\n\ndef transformar_todos(valores, *funciones):\n    \"\"\"Pasa cada valor por la tubería y devuelve la lista de resultados.\"\"\"\n    procesar = tuberia(*funciones)\n    return list(map(procesar, valores))\n",
+   "tests": [
+    {
+     "name": "Una sola función",
+     "code": "t1 = tuberia(str.upper)\nassert callable(t1), \"tuberia debe devolver una función (algo que se pueda llamar)\"\nassert t1(\"hola\") == \"HOLA\", \"tuberia(str.upper)('hola') debe ser 'HOLA'\""
+    },
+    {
+     "name": "El orden es de izquierda a derecha",
+     "code": "r = tuberia(lambda x: x + 1, lambda x: x * 2)(5)\nassert r == 12, f\"Primero +1 (6) y después *2 (12). Se obtuvo {r!r}: ¿las aplicas en orden inverso?\""
+    },
+    {
+     "name": "Varias funciones integradas",
+     "code": "r = tuberia(str.strip, str.lower, len)(\"  HoLa  \")\nassert r == 4, f\"strip → lower → len sobre '  HoLa  ' debe dar 4; obtuve {r!r}\""
+    },
+    {
+     "name": "Sin funciones: identidad",
+     "code": "identidad = tuberia()\nassert identidad(42) == 42, \"tuberia() debe devolver el valor sin cambios\"\nlista = [1, 2]\nassert identidad(lista) is lista, \"La identidad devuelve exactamente el mismo objeto\""
+    },
+    {
+     "name": "No ejecuta nada al crearse",
+     "code": "llamadas = []\ndef anotar(x):\n    llamadas.append(x)\n    return x\nt2 = tuberia(anotar, anotar)\nassert llamadas == [], \"Crear la tubería no debe llamar a ninguna función todavía\"\nt2(\"a\")\nassert llamadas == [\"a\", \"a\"], f\"Al llamar a la tubería, cada función se ejecuta una vez; registro: {llamadas}\""
+    },
+    {
+     "name": "Reutilizable",
+     "code": "a_texto = tuberia(abs, str)\nassert a_texto(-3) == \"3\" and a_texto(4) == \"4\", \"La misma tubería debe poder usarse con distintos valores\""
+    },
+    {
+     "name": "transformar_todos",
+     "code": "assert transformar_todos([\" a\", \"B \"], str.strip, str.lower) == [\"a\", \"b\"], \"Debe aplicar la tubería a cada valor\"\nassert transformar_todos([-1, 2, -3], abs, lambda x: x * 10) == [10, 20, 30], \"abs y luego *10 a cada número\""
+    },
+    {
+     "name": "transformar_todos: bordes",
+     "code": "assert transformar_todos([], abs) == [], \"Sin valores, el resultado es []\"\nr = transformar_todos([1, 2])\nassert r == [1, 2] and isinstance(r, list), \"Sin funciones, devuelve los mismos valores en una lista\""
+    }
+   ],
+   "hints": [
+    "Dentro de `tuberia`, define una función interior `def ejecutar(valor):` y devuélvela **sin llamarla** (`return ejecutar`).",
+    "La función interior recorre `funciones` (una tupla que recuerda gracias al closure) y va reasignando `valor = funcion(valor)`. Con cero funciones, el bucle no se ejecuta y devuelve el valor intacto.",
+    "`transformar_todos` puede construir la tubería una vez con `tuberia(*funciones)` (desempaquetando) y aplicarla con `map` o con una comprensión."
+   ],
+   "explain": "`tuberia` es una función de orden superior en los dos sentidos: **recibe** funciones y **devuelve** una función. La función interior `ejecutar` recuerda la tupla `funciones` aunque `tuberia` ya haya terminado (un closure); aquí no hace falta `nonlocal` porque `funciones` solo se lee, y reasignar `valor` es reasignar un parámetro local de `ejecutar`.\n\nEn `transformar_todos(valores, *funciones)`, la llamada `tuberia(*funciones)` desempaqueta la tupla recibida para reenviarla. Costo: O(len(valores) · len(funciones)) llamadas. Ojo con el orden: en matemáticas, la composición `(f ∘ g)(x) = f(g(x))` aplica primero la de la derecha; una «tubería» (como `|` en la terminal) aplica primero la de la izquierda. En s12 verás la versión de una línea con `functools.reduce`."
+  },
+  {
+   "id": "s06-e14",
+   "title": "Proyecto: kit de estadística descriptiva",
+   "level": "proyecto",
+   "minutes": 45,
+   "prompt": [
+    "Vas a construir una pequeña biblioteca de estadística a base de **funciones puras**, pequeñas y con una sola responsabilidad, que se apoyan unas en otras. Ninguna debe imprimir ni modificar la lista que recibe.",
+    "1) `media(datos)`: media aritmética; `None` si no hay datos. 2) `mediana(datos)`: el valor central de los datos ordenados; con una cantidad par, la media de los dos centrales; `None` si no hay datos.",
+    "3) `moda(datos)`: lista **ordenada** con el valor o los valores más frecuentes (si todos aparecen lo mismo, todos son moda); `[]` si no hay datos.",
+    "4) `varianza(datos, *, muestral=False)`: media de los cuadrados de las desviaciones respecto a la media. La poblacional divide entre n y la muestral entre n − 1. Devuelve `None` si no hay datos o si es muestral con menos de 2 datos. 5) `desviacion(datos, *, muestral=False)`: raíz cuadrada de la varianza (o `None`).",
+    "6) `resumen(datos, *, decimales=2)`: diccionario con las claves `\"n\"`, `\"media\"`, `\"mediana\"`, `\"moda\"` y `\"desviacion\"` (poblacional). Los números se redondean con `round(valor, decimales)` y los `None` se quedan como `None`. `muestral` y `decimales` son **solo nombrados**."
+   ],
+   "examples": [
+    {
+     "call": "mediana([5, 1, 3, 2])",
+     "result": "2.5"
+    },
+    {
+     "call": "moda([1, 2, 2, 3, 3])",
+     "result": "[2, 3]"
+    },
+    {
+     "call": "varianza([2, 4, 4, 4, 5, 5, 7, 9])",
+     "result": "4.0"
+    },
+    {
+     "call": "resumen([2, 4, 4, 4, 5, 5, 7, 9])",
+     "result": "{'n': 8, 'media': 5.0, 'mediana': 4.5, 'moda': [4], 'desviacion': 2.0}"
+    }
+   ],
+   "starter": "def media(datos):\n    pass\n\n\ndef mediana(datos):\n    pass\n\n\ndef moda(datos):\n    pass\n\n\ndef varianza(datos, muestral=False):\n    pass\n\n\ndef desviacion(datos, muestral=False):\n    pass\n\n\ndef resumen(datos, decimales=2):\n    pass\n",
+   "solution": "def media(datos):\n    \"\"\"Devuelve la media aritmética o None si no hay datos.\"\"\"\n    if not datos:\n        return None\n    return sum(datos) / len(datos)\n\n\ndef mediana(datos):\n    \"\"\"Devuelve el valor central de los datos ordenados o None si no hay datos.\"\"\"\n    if not datos:\n        return None\n    ordenados = sorted(datos)          # sorted: no toca la lista original\n    mitad = len(ordenados) // 2\n    if len(ordenados) % 2 == 1:\n        return ordenados[mitad]\n    return (ordenados[mitad - 1] + ordenados[mitad]) / 2\n\n\ndef moda(datos):\n    \"\"\"Devuelve la lista ordenada de los valores más frecuentes.\"\"\"\n    if not datos:\n        return []\n    frecuencias = {}\n    for valor in datos:\n        frecuencias[valor] = frecuencias.get(valor, 0) + 1\n    maxima = max(frecuencias.values())\n    return sorted([valor for valor, veces in frecuencias.items() if veces == maxima])\n\n\ndef varianza(datos, *, muestral=False):\n    \"\"\"Devuelve la varianza poblacional (o muestral) o None si no se puede calcular.\"\"\"\n    n = len(datos)\n    if n == 0 or (muestral and n < 2):\n        return None\n    m = media(datos)\n    suma_cuadrados = sum([(x - m) ** 2 for x in datos])\n    divisor = n - 1 if muestral else n\n    return suma_cuadrados / divisor\n\n\ndef desviacion(datos, *, muestral=False):\n    \"\"\"Devuelve la desviación típica o None si no se puede calcular.\"\"\"\n    v = varianza(datos, muestral=muestral)\n    if v is None:\n        return None\n    return v ** 0.5\n\n\ndef _redondear(valor, decimales):\n    if valor is None:\n        return None\n    return round(valor, decimales)\n\n\ndef resumen(datos, *, decimales=2):\n    \"\"\"Devuelve un diccionario con las principales medidas de los datos.\"\"\"\n    return {\n        \"n\": len(datos),\n        \"media\": _redondear(media(datos), decimales),\n        \"mediana\": _redondear(mediana(datos), decimales),\n        \"moda\": moda(datos),\n        \"desviacion\": _redondear(desviacion(datos), decimales),\n    }\n",
+   "setup": "import math\n\ndef lanza_type_error(funcion, *args, **kwargs):\n    try:\n        funcion(*args, **kwargs)\n    except TypeError:\n        return True\n    return False\n\nCLASICO = [2, 4, 4, 4, 5, 5, 7, 9]\n",
+   "tests": [
+    {
+     "name": "media: normal, negativos y vacía",
+     "code": "assert media([1, 2, 3, 4]) == 2.5, \"media([1, 2, 3, 4]) debe ser 2.5\"\nassert media([-1.5, 1.5]) == 0.0, \"media([-1.5, 1.5]) debe ser 0.0\"\nassert media([]) is None, \"media([]) debe ser None\""
+    },
+    {
+     "name": "mediana: cantidad impar y par",
+     "code": "assert mediana([3, 1, 2]) == 2, \"Con cantidad impar, la mediana es el central de los datos ordenados: 2\"\nr = mediana([5, 1, 3, 2])\nassert r == 2.5, f\"Con cantidad par es la media de los dos centrales (2 y 3): 2.5; obtuve {r!r}\"\nassert mediana([7]) == 7 and mediana([]) is None, \"mediana([7]) es 7 y mediana([]) es None\""
+    },
+    {
+     "name": "mediana no modifica los datos",
+     "code": "datos = [9, 1, 5]\nmediana(datos)\nassert datos == [9, 1, 5], f\"mediana no debe reordenar la lista original (usa sorted, no .sort); ahora vale {datos!r}\""
+    },
+    {
+     "name": "moda: una, varias, todas y vacía",
+     "code": "assert moda([1, 2, 2, 3]) == [2], \"La moda de [1, 2, 2, 3] es [2]\"\nassert moda([3, 3, 1, 1, 2]) == [1, 3], \"Si hay empate, todas las modas ordenadas: [1, 3]\"\nassert moda([5, 4, 6]) == [4, 5, 6], \"Si todos aparecen una vez, todos son moda (ordenados)\"\nassert moda([]) == [], \"moda([]) debe ser []\"\nassert moda([\"b\", \"a\", \"b\"]) == [\"b\"], \"La moda también funciona con cadenas\""
+    },
+    {
+     "name": "varianza y desviación poblacionales",
+     "code": "assert math.isclose(varianza(CLASICO), 4.0), f\"La varianza poblacional de {CLASICO} es 4.0; obtuve {varianza(CLASICO)!r}\"\nassert math.isclose(desviacion(CLASICO), 2.0), f\"La desviación poblacional de {CLASICO} es 2.0; obtuve {desviacion(CLASICO)!r}\"\nassert varianza([5]) == 0.0, \"Con un solo dato, la varianza poblacional es 0.0\""
+    },
+    {
+     "name": "varianza y desviación muestrales",
+     "code": "assert math.isclose(varianza(CLASICO, muestral=True), 32 / 7), \"La varianza muestral divide entre n - 1: 32 / 7\"\nassert math.isclose(desviacion(CLASICO, muestral=True), (32 / 7) ** 0.5), \"La desviación muestral es la raíz de la varianza muestral\""
+    },
+    {
+     "name": "Casos sin cálculo posible devuelven None",
+     "code": "assert varianza([]) is None and desviacion([]) is None, \"Sin datos, varianza y desviación son None\"\nassert varianza([5], muestral=True) is None, \"La varianza muestral necesita al menos 2 datos\"\nassert desviacion([5], muestral=True) is None, \"La desviación muestral necesita al menos 2 datos\""
+    },
+    {
+     "name": "muestral y decimales son solo nombrados",
+     "code": "assert lanza_type_error(varianza, [1, 2], True), \"varianza([1, 2], True) debe dar TypeError: muestral es solo nombrado\"\nassert lanza_type_error(desviacion, [1, 2], True), \"desviacion([1, 2], True) debe dar TypeError\"\nassert lanza_type_error(resumen, [1, 2], 3), \"resumen([1, 2], 3) debe dar TypeError: decimales es solo nombrado\""
+    },
+    {
+     "name": "resumen con decimales por defecto",
+     "code": "r = resumen(CLASICO)\nesperado = {\"n\": 8, \"media\": 5.0, \"mediana\": 4.5, \"moda\": [4], \"desviacion\": 2.0}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "resumen con decimales=1",
+     "code": "r = resumen([1, 2, 2, 3, 10], decimales=1)\nesperado = {\"n\": 5, \"media\": 3.6, \"mediana\": 2, \"moda\": [2], \"desviacion\": 3.3}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "resumen de una lista vacía",
+     "code": "r = resumen([])\nesperado = {\"n\": 0, \"media\": None, \"mediana\": None, \"moda\": [], \"desviacion\": None}\nassert r == esperado, f\"Con una lista vacía se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Nada imprime y nada modifica los datos",
+     "code": "datos = [4, 1, 3, 1]\ncopia = list(datos)\nfor f in (media, mediana, moda, varianza, desviacion, resumen):\n    salida = capturar(f, datos)\n    assert salida == \"\", f\"{f.__name__} no debe imprimir nada; imprimió {salida!r}\"\nassert datos == copia, f\"Alguna función modificó la lista de datos: ahora vale {datos!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por `media` y `mediana`, y reutilízalas: `varianza` necesita la media y `desviacion` solo tiene que llamar a `varianza` y sacar la raíz (`** 0.5`).",
+    "Para la mediana, trabaja sobre `sorted(datos)` (una copia ordenada). Con `mitad = len(ordenados) // 2`: si la cantidad es impar, el central es `ordenados[mitad]`; si es par, promedia `ordenados[mitad - 1]` y `ordenados[mitad]`.",
+    "Para la moda, cuenta con un diccionario `{valor: veces}` (usa `get(valor, 0) + 1`), busca la frecuencia máxima y quédate con los valores que la alcanzan. En `resumen`, una función auxiliar que redondee solo si el valor no es `None` evita repetir código."
+   ],
+   "explain": "La clave del proyecto es el **diseño**: cada función hace una cosa, es pura (no imprime ni muta) y se apoya en las demás (`desviacion` → `varianza` → `media`). Así cada pieza se prueba por separado y `resumen` queda como una simple composición. Las opciones (`muestral`, `decimales`) son solo nombradas porque un `True` o un `3` sueltos en la llamada no dirían nada.\n\nDetalles técnicos: `sorted` evita modificar la lista del usuario (con `.sort()` fallaría el último test); la moda con diccionario es O(n) y la mediana O(n log n) por la ordenación. La varianza muestral divide entre n − 1 (corrección de Bessel) porque estima la de una población a partir de una muestra.\n\nEn la vida real usarías el módulo `statistics` (s07): `mean`, `median`, `multimode`, `pvariance`, `variance`, `pstdev` y `stdev`, que además cuidan la precisión numérica. Escribirlas tú primero es la mejor forma de entender qué hacen."
+  },
+  {
+   "id": "s06-e15",
+   "title": "Proyecto: mini evaluador de expresiones anidadas",
+   "level": "proyecto",
+   "minutes": 50,
+   "prompt": [
+    "Vas a construir un pequeño evaluador de expresiones matemáticas representadas con listas anidadas, al estilo del lenguaje Lisp. Una expresión puede ser: un **número** (se evalúa a sí mismo), una **cadena** (el nombre de una variable) o una **lista** `[operador, arg1, arg2, …]` cuyos argumentos son, a su vez, expresiones.",
+    "Operadores: `\"+\"` (suma de todos los argumentos), `\"*\"` (producto de todos), `\"-\"` (con un argumento cambia el signo; con más, resta al primero todos los demás), `\"/\"` (divide el primero entre los siguientes, en orden), `\"max\"` y `\"min\"` (el mayor y el menor; también con un solo argumento). Puedes suponer que cada lista tiene un operador y al menos un argumento.",
+    "1) `evaluar(expr, variables=None)`: devuelve el valor numérico. `variables` es un diccionario nombre → valor. Si se usa una variable o un operador que no existe, debe producirse un `KeyError`, y una división entre cero, el `ZeroDivisionError` habitual. No hace falta que escribas código para esos errores: basta con buscar en diccionarios y dividir.",
+    "2) `a_texto(expr)`: devuelve la expresión en notación habitual con paréntesis: los operadores binarios como `(a + b + c)`, el cambio de signo como `(-a)` y `max`/`min` como funciones: `max(a, b)`.",
+    "3) `variables_usadas(expr)`: devuelve la lista **ordenada y sin repetidos** de los nombres de variables que aparecen.",
+    "Ejemplo:\n```python\nexpr = [\"+\", \"x\", [\"*\", 2, \"y\"], [\"-\", 3]]\nevaluar(expr, {\"x\": 1, \"y\": 4})   # 1 + 2*4 + (-3) = 6\na_texto(expr)                     # '(x + (2 * y) + (-3))'\nvariables_usadas(expr)            # ['x', 'y']\n```"
+   ],
+   "examples": [
+    {
+     "call": "evaluar([\"+\", 1, [\"*\", 2, 3]])",
+     "result": "7"
+    },
+    {
+     "call": "evaluar([\"-\", 10, 3, 2])",
+     "result": "5"
+    },
+    {
+     "call": "evaluar([\"max\", 3, [\"min\", 10, 7], 5])",
+     "result": "7"
+    },
+    {
+     "call": "a_texto([\"max\", 1, [\"-\", \"a\"]])",
+     "result": "'max(1, (-a))'"
+    }
+   ],
+   "starter": "def evaluar(expr, variables=None):\n    pass\n\n\ndef a_texto(expr):\n    pass\n\n\ndef variables_usadas(expr):\n    pass\n",
+   "solution": "def sumar(*valores):\n    return sum(valores)\n\n\ndef multiplicar(*valores):\n    resultado = 1\n    for valor in valores:\n        resultado *= valor\n    return resultado\n\n\ndef restar(primero, *resto):\n    if not resto:\n        return -primero\n    for valor in resto:\n        primero -= valor\n    return primero\n\n\ndef dividir(primero, *resto):\n    for valor in resto:\n        primero /= valor\n    return primero\n\n\ndef maximo(*valores):\n    return max(valores)    # max(valores) y no max(*valores): funciona con un solo valor\n\n\ndef minimo(*valores):\n    return min(valores)\n\n\nOPERADORES = {\n    \"+\": sumar,\n    \"*\": multiplicar,\n    \"-\": restar,\n    \"/\": dividir,\n    \"max\": maximo,\n    \"min\": minimo,\n}\n\n\ndef evaluar(expr, variables=None):\n    \"\"\"Evalúa una expresión anidada y devuelve su valor numérico.\"\"\"\n    if variables is None:\n        variables = {}\n    if isinstance(expr, str):\n        return variables[expr]                 # KeyError si la variable no existe\n    if isinstance(expr, list):\n        operador, *argumentos = expr\n        funcion = OPERADORES[operador]         # KeyError si el operador no existe\n        valores = [evaluar(arg, variables) for arg in argumentos]\n        return funcion(*valores)\n    return expr                                # un número se evalúa a sí mismo\n\n\ndef a_texto(expr):\n    \"\"\"Devuelve la expresión en notación habitual con paréntesis.\"\"\"\n    if not isinstance(expr, list):\n        return str(expr)\n    operador, *argumentos = expr\n    partes = [a_texto(arg) for arg in argumentos]\n    if operador in (\"max\", \"min\"):\n        return f\"{operador}({', '.join(partes)})\"\n    if operador == \"-\" and len(partes) == 1:\n        return f\"(-{partes[0]})\"\n    return \"(\" + f\" {operador} \".join(partes) + \")\"\n\n\ndef recoger_variables(expr, encontradas):\n    \"\"\"Añade al conjunto encontradas las variables de expr.\"\"\"\n    if isinstance(expr, str):\n        encontradas.add(expr)\n    elif isinstance(expr, list):\n        for arg in expr[1:]:\n            recoger_variables(arg, encontradas)\n\n\ndef variables_usadas(expr):\n    \"\"\"Devuelve la lista ordenada y sin repetidos de variables de la expresión.\"\"\"\n    encontradas = set()\n    recoger_variables(expr, encontradas)\n    return sorted(encontradas)\n",
+   "setup": "def lanza(tipo_error, funcion, *args, **kwargs):\n    try:\n        funcion(*args, **kwargs)\n    except tipo_error:\n        return True\n    except Exception:\n        return False\n    return False\n",
+   "tests": [
+    {
+     "name": "Números sueltos",
+     "code": "assert evaluar(5) == 5 and evaluar(2.5) == 2.5, \"Un número se evalúa a sí mismo\""
+    },
+    {
+     "name": "Suma y producto con varios argumentos",
+     "code": "assert evaluar([\"+\", 1, 2, 3]) == 6, \"['+', 1, 2, 3] debe valer 6\"\nassert evaluar([\"*\", 2, 3, 4]) == 24, \"['*', 2, 3, 4] debe valer 24\"\nassert evaluar([\"+\", 7]) == 7, \"['+', 7] debe valer 7\""
+    },
+    {
+     "name": "Expresiones anidadas",
+     "code": "r = evaluar([\"+\", 1, [\"*\", 2, 3]])\nassert r == 7, f\"['+', 1, ['*', 2, 3]] debe valer 7 y vale {r!r}\"\nr = evaluar([\"*\", [\"+\", 1, 2], [\"+\", 3, 4]])\nassert r == 21, f\"(1 + 2) * (3 + 4) debe valer 21 y vale {r!r}\""
+    },
+    {
+     "name": "Resta y cambio de signo",
+     "code": "assert evaluar([\"-\", 10, 3, 2]) == 5, \"['-', 10, 3, 2] es 10 - 3 - 2 = 5\"\nassert evaluar([\"-\", 4]) == -4, \"['-', 4] con un solo argumento cambia el signo: -4\""
+    },
+    {
+     "name": "División",
+     "code": "assert evaluar([\"/\", 20, 2, 5]) == 2.0, \"['/', 20, 2, 5] es 20 / 2 / 5 = 2.0\"\nassert evaluar([\"/\", 1, 4]) == 0.25, \"['/', 1, 4] es 0.25\""
+    },
+    {
+     "name": "max y min, incluso con un argumento",
+     "code": "assert evaluar([\"max\", 3, [\"min\", 10, 7], 5]) == 7, \"max(3, min(10, 7), 5) debe valer 7\"\nassert evaluar([\"max\", 5]) == 5 and evaluar([\"min\", -2]) == -2, \"max y min con un solo argumento devuelven ese valor\""
+    },
+    {
+     "name": "Variables",
+     "code": "expr = [\"+\", \"x\", [\"*\", 2, \"y\"], [\"-\", 3]]\nr = evaluar(expr, {\"x\": 1, \"y\": 4})\nassert r == 6, f\"Con x=1 e y=4 la expresión vale 6; obtuve {r!r}\"\nassert evaluar(\"z\", {\"z\": 9}) == 9, \"Una variable sola se evalúa a su valor\""
+    },
+    {
+     "name": "Errores: variable, operador y división entre cero",
+     "code": "assert lanza(KeyError, evaluar, [\"+\", \"x\", 1], {}), \"Una variable inexistente debe producir KeyError\"\nassert lanza(KeyError, evaluar, [\"+\", \"x\", 1]), \"Sin diccionario de variables, usar una variable debe producir KeyError\"\nassert lanza(KeyError, evaluar, [\"^\", 2, 3]), \"Un operador desconocido debe producir KeyError\"\nassert lanza(ZeroDivisionError, evaluar, [\"/\", 1, [\"-\", 2, 2]]), \"Dividir entre cero debe producir ZeroDivisionError\""
+    },
+    {
+     "name": "Expresión muy anidada",
+     "code": "expr = 0\nfor _ in range(150):\n    expr = [\"+\", 1, expr]\nassert evaluar(expr) == 150, \"150 sumas anidadas de 1 deben dar 150\""
+    },
+    {
+     "name": "a_texto",
+     "code": "assert a_texto(7) == \"7\" and a_texto(\"z\") == \"z\", \"Números y variables se escriben tal cual\"\nr = a_texto([\"+\", 1, [\"*\", 2, \"x\"]])\nassert r == \"(1 + (2 * x))\", f\"Se esperaba '(1 + (2 * x))' y se obtuvo {r!r}\"\nassert a_texto([\"-\", \"y\"]) == \"(-y)\", \"El cambio de signo se escribe '(-y)'\"\nassert a_texto([\"max\", 1, \"a\", 3]) == \"max(1, a, 3)\", \"max y min se escriben como funciones: 'max(1, a, 3)'\"\nassert a_texto([\"/\", \"a\", \"b\", 2]) == \"(a / b / 2)\", \"Los binarios con varios argumentos: '(a / b / 2)'\""
+    },
+    {
+     "name": "variables_usadas",
+     "code": "assert variables_usadas([\"+\", \"b\", [\"*\", \"a\", \"b\"], 3]) == [\"a\", \"b\"], \"Debe devolver ['a', 'b']: ordenadas y sin repetir\"\nassert variables_usadas(5) == [], \"Un número no usa variables\"\nassert variables_usadas(\"x\") == [\"x\"], \"Una variable sola: ['x']\"\nassert variables_usadas([\"max\", \"max\", 1]) == [\"max\"], \"Una variable puede llamarse como un operador si está en posición de argumento\""
+    },
+    {
+     "name": "Sin efectos secundarios",
+     "code": "assert evaluar.__defaults__ == (None,), \"El valor por defecto de variables debe ser None\"\nexpr = [\"+\", \"x\", [\"-\", 3]]\ncopia = [\"+\", \"x\", [\"-\", 3]]\nvars_ = {\"x\": 2}\nassert capturar(evaluar, expr, vars_) == \"\", \"evaluar no debe imprimir nada\"\nassert expr == copia and vars_ == {\"x\": 2}, \"evaluar no debe modificar la expresión ni las variables\""
+    }
+   ],
+   "hints": [
+    "Las tres funciones siguen el mismo esquema recursivo: si `expr` es una lista, procesa sus argumentos llamándote a ti misma; si no, es un caso base (número o variable). Separa operador y argumentos con `operador, *argumentos = expr`.",
+    "Para evaluar, crea un diccionario `OPERADORES` que asocie cada símbolo con una función que reciba `*valores`, evalúa los argumentos y llama a `OPERADORES[operador](*valores)`. Buscar con corchetes ya lanza `KeyError` si la clave no existe. Cuidado: `max(5)` falla; `max((5,))` no.",
+    "En `a_texto`, construye primero la lista de textos de los argumentos y únelos con `f\" {operador} \".join(...)`. En `variables_usadas`, acumula en un conjunto con una función auxiliar recursiva y al final devuelve `sorted(conjunto)`."
+   ],
+   "explain": "Este proyecto reúne toda la sección: **recursión** sobre una estructura anidada (tres funciones con el mismo esquema: casos base para números y variables, caso recursivo para listas), **tabla de despacho** con funciones como valores, parámetros **variádicos** (`restar(primero, *resto)`), **desempaquetado** en la llamada (`funcion(*valores)`) y en la asignación (`operador, *argumentos = expr`), y el patrón `variables=None`.\n\nFíjate en cómo se gestionan los errores sin escribir código de errores: `variables[expr]` y `OPERADORES[operador]` lanzan `KeyError` por sí solos y la división lanza `ZeroDivisionError`. En s08 aprenderás a capturarlos y a convertirlos en mensajes propios. Otro detalle sutil: `maximo(*valores)` llama a `max(valores)` con la tupla, porque `max(5)` intentaría recorrer el número y fallaría.\n\nCoste: cada nodo de la expresión se visita una vez, O(n), y la profundidad de recursión es la del anidamiento. Esta es, en miniatura, la idea de un intérprete real: primero un analizador convierte el texto en un árbol (verás uno en s19) y luego una función recursiva como `evaluar` lo recorre."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué devuelve una función que termina sin ejecutar ningún `return`?",
+   "back": "`None`. También lo devuelve un `return` sin expresión."
+  },
+  {
+   "front": "¿Qué devuelve `return a, b`?",
+   "back": "Una sola tupla `(a, b)`, que se puede desempaquetar al recibirla: `x, y = f()`."
+  },
+  {
+   "front": "Diferencia entre parámetro y argumento",
+   "back": "Parámetro: el nombre en la definición (`def f(x)`). Argumento: el valor que se pasa en la llamada (`f(3)`)."
+  },
+  {
+   "front": "¿Python pasa los argumentos por valor o por referencia?",
+   "back": "Por asignación (*call by object reference*): el parámetro es otro nombre para el mismo objeto. Mutarlo se ve fuera; reasignarlo, no."
+  },
+  {
+   "front": "¿Cuándo se evalúa el valor por defecto de un parámetro?",
+   "back": "Una sola vez, cuando se ejecuta el `def`. Se guarda en `funcion.__defaults__` y se reutiliza en cada llamada."
+  },
+  {
+   "front": "Patrón para un parámetro opcional que debe ser una lista nueva en cada llamada",
+   "back": "`def f(x, lista=None):` y dentro `if lista is None: lista = []`."
+  },
+  {
+   "front": "¿Por qué no usar `lista = lista or []` como centinela?",
+   "back": "Porque una lista vacía recibida a propósito es *falsy* y se sustituiría por otra nueva; quien llamó no vería los cambios."
+  },
+  {
+   "front": "Regla de orden en una llamada con argumentos posicionales y nombrados",
+   "back": "Los posicionales siempre van antes que los nombrados; `f(a=1, 2)` es `SyntaxError`."
+  },
+  {
+   "front": "¿Qué tipo tienen `args` y `kwargs` en `def f(*args, **kwargs)`?",
+   "back": "`args` es una tupla con los posicionales sobrantes; `kwargs`, un dict con los nombrados sobrantes (en el orden de la llamada)."
+  },
+  {
+   "front": "¿Qué significa la `/` en `def f(a, b, /, c)`?",
+   "back": "`a` y `b` son solo posicionales: no se pueden pasar por nombre. Existe desde Python 3.8 (PEP 570)."
+  },
+  {
+   "front": "¿Qué significa un `*` suelto en `def f(a, *, b)`?",
+   "back": "Los parámetros posteriores (`b`) son solo nombrados: hay que escribir `f(1, b=2)`. Viene de PEP 3102 (Python 3.0)."
+  },
+  {
+   "front": "Orden completo de los tipos de parámetro",
+   "back": "solo posicionales, `/`, normales (con o sin valor por defecto), `*args` o `*`, solo nombrados, `**kwargs`."
+  },
+  {
+   "front": "¿Qué hacen `*` y `**` en una llamada?",
+   "back": "Desempaquetan: `f(*lista)` reparte los elementos como posicionales y `f(**dic)` los pares clave-valor como nombrados."
+  },
+  {
+   "front": "¿Qué significa LEGB?",
+   "back": "El orden de búsqueda de nombres: Local, Enclosing (funciones exteriores), Global (módulo) y Built-in."
+  },
+  {
+   "front": "¿Por qué `x += 1` dentro de una función puede lanzar `UnboundLocalError`?",
+   "back": "Porque asignar `x` en cualquier punto de la función la convierte en local en toda la función, y se lee antes de tener valor."
+  },
+  {
+   "front": "`global` frente a `nonlocal`",
+   "back": "`global x` reasigna la `x` del módulo; `nonlocal x` reasigna la `x` de la función que contiene a la actual."
+  },
+  {
+   "front": "¿Crean ámbito propio `if`, `for` y `while`?",
+   "back": "No. Solo los módulos, las funciones (y lambdas), las clases y las comprensiones."
+  },
+  {
+   "front": "¿Qué es un objeto de primera clase?",
+   "back": "Un valor que se puede asignar, guardar en estructuras, pasar como argumento y devolver. Las funciones de Python lo son."
+  },
+  {
+   "front": "¿Qué es una función de orden superior?",
+   "back": "Una función que recibe funciones como argumento o devuelve una función: `sorted(key=...)`, `map`, `filter`."
+  },
+  {
+   "front": "Limitaciones de `lambda`",
+   "back": "Solo una expresión: sin sentencias, sin anotaciones ni docstring. En los tracebacks aparece como `<lambda>`."
+  },
+  {
+   "front": "¿Qué dice PEP 8 sobre `cuadrado = lambda x: x * x`?",
+   "back": "Que se use siempre `def` en lugar de asignar una lambda a un nombre: así la función tiene un nombre útil en los tracebacks."
+  },
+  {
+   "front": "¿Qué devuelven `map` y `filter`?",
+   "back": "Iteradores perezosos de un solo uso; se convierten con `list()`. Tras recorrerlos una vez quedan agotados."
+  },
+  {
+   "front": "Novedad de `map()` en Python 3.14",
+   "back": "El parámetro solo nombrado `strict=True`, que lanza `ValueError` si los iterables tienen distinta longitud."
+  },
+  {
+   "front": "¿Cómo ordenar por nota descendente y nombre ascendente?",
+   "back": "`sorted(datos, key=lambda a: (-a['nota'], a['nombre']))`: una tupla como clave y el número negado."
+  },
+  {
+   "front": "¿Qué garantiza la estabilidad de `sorted`?",
+   "back": "Que los elementos con clave igual conservan su orden relativo; permite ordenar en varias pasadas, del criterio menos al más importante."
+  },
+  {
+   "front": "Partes de una función recursiva",
+   "back": "Caso base (se resuelve sin recursión) y caso recursivo (se llama con un problema más pequeño que se acerca al caso base)."
+  },
+  {
+   "front": "Límite de recursión por defecto en CPython",
+   "back": "1000 marcos; se consulta con `sys.getrecursionlimit()`. Superarlo lanza `RecursionError`."
+  },
+  {
+   "front": "¿Optimiza CPython la recursión de cola?",
+   "back": "No, por decisión de diseño (conservar tracebacks completos). Para profundidades grandes se usa un bucle."
+  },
+  {
+   "front": "Costo de Fibonacci recursivo ingenuo y con memoria",
+   "back": "Ingenuo: exponencial (≈ 1,6ⁿ llamadas). Con memoria (diccionario): O(n)."
+  },
+  {
+   "front": "Convenciones básicas de un docstring (PEP 257)",
+   "back": "Triple comilla doble; primera línea breve, en forma de orden y terminada en punto; línea en blanco antes de los detalles. Se guarda en `__doc__`."
+  },
+  {
+   "front": "¿Comprueba Python las anotaciones de tipo al ejecutar?",
+   "back": "No. Son metadatos para editores y verificadores (mypy, pyright). Desde 3.14 se evalúan de forma diferida (PEP 649/749)."
+  },
+  {
+   "front": "¿Qué es una función pura?",
+   "back": "La que depende solo de sus argumentos y no tiene efectos secundarios: con las mismas entradas, siempre la misma salida."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s06-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f():\n    x = 1\n\nprint(f())\n```",
+   "options": [
+    "`1`",
+    "`None`",
+    "`x`",
+    "Nada: lanza un error"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La función no tiene `return`, así que devuelve `None`. Asignar `x = 1` crea una variable local que desaparece al terminar la llamada."
+  },
+  {
+   "id": "s06-q2",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef doble(x):\n    print(x * 2)\n\nr = doble(4)\nprint(r)\n```",
+   "options": [
+    "`8` y después `8`",
+    "`8` y después `None`",
+    "Solo `None`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`doble` **imprime** 8 pero no devuelve nada, así que `r` vale `None`. `print` no es `return`."
+  },
+  {
+   "id": "s06-q3",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f(x):\n    return\n    print(\"hola\")\n\nprint(f(3))\n```",
+   "options": [
+    "`hola` y después `None`",
+    "`None`",
+    "`3`",
+    "`SyntaxError` por código inalcanzable"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`return` sin expresión termina la función y devuelve `None`; la línea posterior nunca se ejecuta. El código inalcanzable no es un error de sintaxis."
+  },
+  {
+   "id": "s06-q4",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef cambiar(lista):\n    lista.append(4)\n    lista = [0]\n    lista.append(5)\n\nnums = [1, 2, 3]\ncambiar(nums)\nprint(nums)\n```",
+   "options": [
+    "`[1, 2, 3]`",
+    "`[1, 2, 3, 4]`",
+    "`[0, 5]`",
+    "`[1, 2, 3, 4, 5]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El primer `append` muta el objeto compartido. Después `lista = [0]` solo reasigna el nombre local, así que el segundo `append` afecta a otra lista. Paso por asignación."
+  },
+  {
+   "id": "s06-q5",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef agregar(x, lista=[]):\n    lista.append(x)\n    return lista\n\nagregar(1)\nagregar(2)\nprint(agregar(3))\n```",
+   "options": [
+    "`[3]`",
+    "`[1, 2, 3]`",
+    "`[1]`",
+    "`[[1], [2], [3]]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El valor por defecto `[]` se crea una sola vez, al ejecutarse el `def`, y todas las llamadas comparten esa lista. Es la trampa del valor por defecto mutable."
+  },
+  {
+   "id": "s06-q6",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 1\ndef f(y=x):\n    return y\n\nx = 2\nprint(f())\n```",
+   "options": [
+    "`1`",
+    "`2`",
+    "`None`",
+    "`NameError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El valor por defecto se evalúa al ejecutar el `def`, cuando `x` valía 1. Reasignar `x` después no cambia el valor ya guardado en `f.__defaults__`."
+  },
+  {
+   "id": "s06-q7",
+   "type": "single",
+   "q": "¿Qué produce `def f(a=1, b): pass`?",
+   "options": [
+    "Una función válida en la que `b` es obligatorio",
+    "`SyntaxError`: un parámetro sin valor por defecto no puede seguir a uno que lo tiene",
+    "`TypeError` al llamarla",
+    "Una función en la que `b` vale `None` por defecto"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Tras un parámetro con valor por defecto, todos los siguientes (hasta un `*`) deben tenerlo. Python lo rechaza al compilar: `parameter without a default follows parameter with a default`."
+  },
+  {
+   "id": "s06-q8",
+   "type": "multi",
+   "q": "Con `def h(a, b):`, ¿qué llamadas lanzan `TypeError`? (Selecciona TRES.)",
+   "options": [
+    "`h(1)`",
+    "`h(1, 2, 3)`",
+    "`h(1, b=2)`",
+    "`h(b=2, a=1)`",
+    "`h(1, a=2)`"
+   ],
+   "answer": [
+    0,
+    1,
+    4
+   ],
+   "explain": "`h(1)` deja `b` sin valor; `h(1, 2, 3)` pasa demasiados posicionales; `h(1, a=2)` da dos valores a `a`. Las otras dos son válidas: los nombrados pueden ir en cualquier orden."
+  },
+  {
+   "id": "s06-q9",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef contar(texto, letra=\"a\"):\n    return texto.count(letra)\n\nprint(contar(letra=\"o\", texto=\"ojo rojo\"))\n```",
+   "options": [
+    "`0`",
+    "`2`",
+    "`4`",
+    "`TypeError`: el orden de los argumentos es incorrecto"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Los argumentos nombrados se asignan por nombre, en cualquier orden. 'ojo rojo' contiene cuatro letras 'o'."
+  },
+  {
+   "id": "s06-q10",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f(a, b=2, *args, c=4, **kw):\n    return a, b, args, c, kw\n\nprint(f(1, 3, 5, 6, d=7))\n```",
+   "options": [
+    "`(1, 3, (5, 6), 4, {'d': 7})`",
+    "`(1, 2, (3, 5, 6), 4, {'d': 7})`",
+    "`(1, 3, [5, 6], 7, {})`",
+    "`TypeError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los posicionales llenan `a` y `b` (1 y 3); los sobrantes van a la tupla `args`; `c` es solo nombrado y conserva su 4; `d=7` no corresponde a ningún parámetro y acaba en `kw`."
+  },
+  {
+   "id": "s06-q11",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f(*args, **kwargs):\n    print(len(args), len(kwargs))\n\nf(1, *[2, 3], x=4, **{\"y\": 5})\n```",
+   "options": [
+    "`1 1`",
+    "`2 2`",
+    "`3 2`",
+    "`3 1`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`*[2, 3]` se desempaqueta en dos posicionales más (3 en total) y `**{'y': 5}` añade un nombrado al `x=4` (2 en total). Desde 3.5 se pueden combinar varios desempaquetados."
+  },
+  {
+   "id": "s06-q12",
+   "type": "single",
+   "q": "Con `def f(a, /, b):`, ¿qué llamada falla?",
+   "options": [
+    "`f(1, 2)`",
+    "`f(1, b=2)`",
+    "`f(a=1, b=2)`",
+    "`f(*[1, 2])`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`a` es solo posicional (está antes de `/`), así que no puede pasarse por nombre: `TypeError: f() got some positional-only arguments passed as keyword arguments: 'a'`."
+  },
+  {
+   "id": "s06-q13",
+   "type": "multi",
+   "q": "Con `def g(x, *, y, z=0):`, ¿qué llamadas son válidas? (Selecciona DOS.)",
+   "options": [
+    "`g(1, 2)`",
+    "`g(1, y=2)`",
+    "`g(x=1, y=2, z=3)`",
+    "`g(1)`",
+    "`g(1, 2, 3)`"
+   ],
+   "answer": [
+    1,
+    2
+   ],
+   "explain": "`y` y `z` son solo nombrados, e `y` además es obligatorio (no tiene valor por defecto). Por eso `g(1, 2)` y `g(1, 2, 3)` fallan por pasar posicionales de más, y `g(1)` por faltar `y`."
+  },
+  {
+   "id": "s06-q14",
+   "type": "single",
+   "q": "¿Qué firma hace que `detallado` solo pueda pasarse por nombre?",
+   "options": [
+    "`def informe(datos, detallado=False):`",
+    "`def informe(datos, /, detallado=False):`",
+    "`def informe(datos, *, detallado=False):`",
+    "`def informe(*, datos, detallado):`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Todo lo que va después de un `*` suelto es solo nombrado. La opción con `/` hace solo posicional a `datos`, pero `detallado` seguiría admitiéndose por posición. La última obliga también a pasar `datos` por nombre."
+  },
+  {
+   "id": "s06-q15",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación sobre `*args` y `**kwargs`.",
+   "statements": [
+    {
+     "text": "Dentro de la función, `args` es una lista.",
+     "answer": false
+    },
+    {
+     "text": "Dentro de la función, `kwargs` es un diccionario.",
+     "answer": true
+    },
+    {
+     "text": "`def f(**kwargs, *args):` es una definición válida.",
+     "answer": false
+    },
+    {
+     "text": "Los nombres `args` y `kwargs` son obligatorios.",
+     "answer": false
+    },
+    {
+     "text": "En una llamada se pueden usar varios `*` y varios `**`.",
+     "answer": true
+    }
+   ],
+   "explain": "`args` es una tupla y `kwargs` un dict; los nombres son pura convención (lo que importa son los asteriscos). El orden de la firma es fijo: `*args` va antes que `**kwargs`. Desde Python 3.5 (PEP 448) se admiten varios desempaquetados en una llamada."
+  },
+  {
+   "id": "s06-q16",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef potencia(base, exp=2):\n    return base ** exp\n\nargs = (3,)\nopciones = {\"exp\": 3}\nprint(potencia(*args, **opciones))\n```",
+   "options": [
+    "`9`",
+    "`27`",
+    "`(3,) ** 3`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`*args` pasa 3 como `base` y `**opciones` pasa `exp=3`: `3 ** 3` = 27."
+  },
+  {
+   "id": "s06-q17",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este código?\n```python\ntotal = 10\ndef sumar():\n    total = total + 1\n    return total\n\nprint(sumar())\n```",
+   "options": [
+    "Imprime `11`",
+    "Imprime `10`",
+    "Lanza `UnboundLocalError`",
+    "Lanza `NameError` porque `total` no existe"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Como `total` se asigna dentro de la función, es local en toda ella, y se intenta leer antes de tener valor: `UnboundLocalError: cannot access local variable 'total' where it is not associated with a value`."
+  },
+  {
+   "id": "s06-q18",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 0\ndef inc():\n    global n\n    n += 1\n\ninc()\ninc()\nprint(n)\n```",
+   "options": [
+    "`0`",
+    "`1`",
+    "`2`",
+    "`UnboundLocalError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`global n` hace que la asignación afecte a la variable del módulo; tras dos llamadas vale 2."
+  },
+  {
+   "id": "s06-q19",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef exterior():\n    n = 0\n    def interior():\n        nonlocal n\n        n += 5\n    interior()\n    interior()\n    return n\n\nprint(exterior())\n```",
+   "options": [
+    "`0`",
+    "`5`",
+    "`10`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`nonlocal n` permite a `interior` reasignar la `n` de `exterior`. Dos llamadas suman 10."
+  },
+  {
+   "id": "s06-q20",
+   "type": "single",
+   "q": "¿En qué orden busca Python un nombre?",
+   "options": [
+    "Global, Local, Built-in, Enclosing",
+    "Local, Enclosing, Global, Built-in",
+    "Built-in, Global, Enclosing, Local",
+    "Local, Global, Enclosing, Built-in"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Regla LEGB: primero el ámbito local, luego las funciones que lo contienen, después el módulo y por último los nombres integrados. Si no aparece en ninguno, `NameError`."
+  },
+  {
+   "id": "s06-q21",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nfor i in range(3):\n    pass\nprint(i)\n```",
+   "options": [
+    "`0`",
+    "`2`",
+    "`3`",
+    "`NameError`: `i` no existe fuera del bucle"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los bucles no crean ámbito propio: `i` sigue existiendo tras el `for` con su último valor, 2."
+  },
+  {
+   "id": "s06-q22",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación sobre ámbitos.",
+   "statements": [
+    {
+     "text": "Una variable asignada dentro de un `if` de una función es local de esa función.",
+     "answer": true
+    },
+    {
+     "text": "Asignar `list = [1, 2]` en el módulo tapa la función integrada `list` en ese módulo.",
+     "answer": true
+    },
+    {
+     "text": "Para hacer `append` sobre una lista global dentro de una función hace falta `global`.",
+     "answer": false
+    },
+    {
+     "text": "`nonlocal` puede referirse a una variable global del módulo.",
+     "answer": false
+    }
+   ],
+   "explain": "El `if` no crea ámbito, así que la variable es local de la función. Mutar un objeto global no reasigna el nombre y no necesita `global`. `nonlocal` solo busca en funciones exteriores; si el nombre no existe en ninguna, es `SyntaxError`."
+  },
+  {
+   "id": "s06-q23",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nfs = []\nfor i in range(3):\n    fs.append(lambda: i)\nprint([f() for f in fs])\n```",
+   "options": [
+    "`[0, 1, 2]`",
+    "`[2, 2, 2]`",
+    "`[3, 3, 3]`",
+    "`[None, None, None]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las lambdas buscan `i` cuando se llaman, no cuando se crean; para entonces el bucle terminó e `i` vale 2. El arreglo clásico es `lambda i=i: i`."
+  },
+  {
+   "id": "s06-q24",
+   "type": "multi",
+   "q": "¿Qué afirmaciones sobre `lambda` son correctas? (Selecciona DOS.)",
+   "options": [
+    "Su cuerpo es una única expresión",
+    "Puede contener varias sentencias separadas por `;`",
+    "Sus parámetros pueden tener valores por defecto",
+    "Siempre es más rápida que una función definida con `def`",
+    "Puede llevar docstring"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Una lambda admite la misma lista de parámetros que un `def` (incluidos los valores por defecto), pero su cuerpo es una sola expresión, sin sentencias ni docstring. No es más rápida: es solo una forma abreviada de definir una función."
+  },
+  {
+   "id": "s06-q25",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nm = map(lambda x: x * 2, [1, 2, 3])\nprint(list(m), list(m))\n```",
+   "options": [
+    "`[2, 4, 6] [2, 4, 6]`",
+    "`[2, 4, 6] []`",
+    "`[] []`",
+    "`<map object> <map object>`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`map` devuelve un iterador perezoso de un solo uso: la primera conversión a lista lo agota y la segunda ya no encuentra elementos."
+  },
+  {
+   "id": "s06-q26",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(list(filter(None, [0, 1, \"\", \"a\", [], [0]])))\n```",
+   "options": [
+    "`[0, 1, '', 'a', [], [0]]`",
+    "`[1, 'a', [0]]`",
+    "`[1, 'a']`",
+    "`[0, '', []]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `None` como función, `filter` se queda con los elementos *truthy*. `[0]` es una lista no vacía, así que es verdadera aunque contenga un cero."
+  },
+  {
+   "id": "s06-q27",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndatos = [(\"b\", 2), (\"a\", 2), (\"c\", 1)]\nprint(sorted(datos, key=lambda t: (-t[1], t[0])))\n```",
+   "options": [
+    "`[('c', 1), ('a', 2), ('b', 2)]`",
+    "`[('a', 2), ('b', 2), ('c', 1)]`",
+    "`[('b', 2), ('a', 2), ('c', 1)]`",
+    "`[('a', 2), ('c', 1), ('b', 2)]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La clave ordena primero por el número de mayor a menor (está negado) y, en caso de empate, por la letra en orden alfabético."
+  },
+  {
+   "id": "s06-q28",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\npalabras = [\"sol\", \"luna\", \"mar\", \"cielo\"]\nprint(max(palabras, key=len), min(palabras, key=len))\n```",
+   "options": [
+    "`cielo mar`",
+    "`cielo sol`",
+    "`sol cielo`",
+    "`luna sol`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`max` y `min` con `key=len` comparan longitudes. Con empates (`sol` y `mar` tienen 3 letras), devuelven el primero que encuentran: `sol`."
+  },
+  {
+   "id": "s06-q29",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nnums = [3, 1, 2]\nr = nums.sort()\nprint(r, nums)\n```",
+   "options": [
+    "`[1, 2, 3] [1, 2, 3]`",
+    "`None [1, 2, 3]`",
+    "`None [3, 1, 2]`",
+    "`[1, 2, 3] [3, 1, 2]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`list.sort()` ordena en su lugar (un efecto secundario) y, como es costumbre en esos casos, devuelve `None`. `sorted(nums)` devolvería una lista nueva."
+  },
+  {
+   "id": "s06-q30",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f(n):\n    if n == 0:\n        return 0\n    return n + f(n - 1)\n\nprint(f(4))\n```",
+   "options": [
+    "`4`",
+    "`10`",
+    "`24`",
+    "`RecursionError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "f(4) = 4 + f(3) = 4 + 3 + f(2) = … = 4 + 3 + 2 + 1 + 0 = 10. El caso base `n == 0` detiene la recursión."
+  },
+  {
+   "id": "s06-q31",
+   "type": "single",
+   "q": "¿Qué ocurre si llamas a `f(-1)` con la función de la pregunta anterior (caso base `n == 0`, caso recursivo `f(n - 1)`)?",
+   "options": [
+    "Devuelve `-1`",
+    "Devuelve `0`",
+    "Lanza `RecursionError`: nunca alcanza el caso base",
+    "Entra en un bucle infinito que nunca termina"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Desde -1, `n - 1` se aleja del 0 y la recursión no se detiene hasta superar el límite de profundidad (1000 por defecto): `RecursionError`. Un caso base `n <= 0` lo evitaría."
+  },
+  {
+   "id": "s06-q32",
+   "type": "single",
+   "q": "¿Cuál es el costo aproximado del Fibonacci recursivo ingenuo `fib(n - 1) + fib(n - 2)` sin memoria?",
+   "options": [
+    "O(n)",
+    "O(n log n)",
+    "O(n²)",
+    "Exponencial"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Cada llamada genera dos más y los subproblemas se repiten; el número de llamadas crece aproximadamente como 1,6ⁿ. Con un diccionario de memoria baja a O(n)."
+  },
+  {
+   "id": "s06-q33",
+   "type": "single",
+   "q": "¿Qué afirmación sobre la recursión en CPython es correcta?",
+   "options": [
+    "Optimiza la recursión de cola, así que no hay límite de profundidad",
+    "El límite de profundidad por defecto es 1000 y superarlo lanza `RecursionError`",
+    "`sys.setrecursionlimit` puede subir el límite sin ningún riesgo",
+    "La recursión siempre es más rápida que un bucle equivalente"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "CPython no elimina la recursión de cola. El límite por defecto es 1000 (`sys.getrecursionlimit()`); subirlo demasiado puede provocar un cierre abrupto del intérprete, y cada llamada tiene un costo, así que un bucle suele ser más rápido."
+  },
+  {
+   "id": "s06-q34",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación sobre anotaciones y docstrings.",
+   "statements": [
+    {
+     "text": "Si llamas a `def f(x: int)` con una cadena, Python lanza `TypeError` automáticamente.",
+     "answer": false
+    },
+    {
+     "text": "Las anotaciones pueden consultarse en el atributo `__annotations__`.",
+     "answer": true
+    },
+    {
+     "text": "En Python 3.14 las anotaciones se evalúan de forma diferida (PEP 649/749).",
+     "answer": true
+    },
+    {
+     "text": "El docstring se guarda en el atributo `__doc__`.",
+     "answer": true
+    },
+    {
+     "text": "PEP 257 recomienda que la primera línea del docstring repita la firma de la función.",
+     "answer": false
+    }
+   ],
+   "explain": "Las anotaciones son metadatos y no se imponen al ejecutar; desde 3.14 se evalúan solo cuando se consultan. El docstring vive en `__doc__`, y PEP 257 pide una primera línea breve, en forma de orden, que no repita la firma."
+  },
+  {
+   "id": "s06-q35",
+   "type": "single",
+   "q": "¿Cuál de estas funciones es pura?",
+   "options": [
+    "`def f(x): print(x); return x * 2`",
+    "`def f(lista): lista.append(0); return lista`",
+    "`def f(x, y): return x * y + 1`",
+    "`def f(x): global total; total += x; return total`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Solo `x * y + 1` depende exclusivamente de sus argumentos y no cambia nada fuera. Las demás imprimen, mutan un argumento o modifican una variable global: efectos secundarios."
+  },
+  {
+   "id": "s06-q36",
+   "type": "single",
+   "q": "¿Qué primera línea de docstring sigue mejor PEP 257?",
+   "options": [
+    "`\"\"\"calcular_media(datos) -> float\"\"\"`",
+    "`\"\"\"Esta función calcula la media\"\"\"`",
+    "`\"\"\"Devuelve la media aritmética de los datos.\"\"\"`",
+    "`'''media'''`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "PEP 257 pide triples comillas dobles y una frase breve en forma de orden («Devuelve…») que termine en punto, sin repetir la firma ni describir con «Esta función…»."
+  },
+  {
+   "id": "s06-q37",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef aplicar(f, x):\n    return f(f(x))\n\nprint(aplicar(lambda s: s + \"!\", \"hola\"))\n```",
+   "options": [
+    "`hola!`",
+    "`hola!!`",
+    "`!!hola`",
+    "`TypeError`: no se puede pasar una lambda como argumento"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`aplicar` es una función de orden superior: recibe la lambda y la aplica dos veces, añadiendo dos signos de exclamación."
+  },
+  {
+   "id": "s06-q38",
+   "type": "single",
+   "q": "¿Qué hace `list(map(pow, [1, 2], [3], strict=True))` en Python 3.14?",
+   "options": [
+    "Devuelve `[1]`",
+    "Devuelve `[1, 2]`",
+    "Lanza `ValueError` porque los iterables tienen longitudes distintas",
+    "Lanza `TypeError` porque `map` no admite `strict`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Desde 3.14, `map` acepta el parámetro solo nombrado `strict`. Con `strict=True`, si un iterable se agota antes que otro se lanza `ValueError`; sin él, `map` se detendría en el más corto y devolvería `[1]`."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Tutorial de Python: definir funciones y más sobre funciones (4.8–4.10)",
+   "url": "https://docs.python.org/3/tutorial/controlflow.html#defining-functions"
+  },
+  {
+   "title": "Tutorial de Python: ámbitos y espacios de nombres (9.2)",
+   "url": "https://docs.python.org/3/tutorial/classes.html#python-scopes-and-namespaces"
+  },
+  {
+   "title": "Referencia del lenguaje: definiciones de funciones",
+   "url": "https://docs.python.org/3/reference/compound_stmts.html#function-definitions"
+  },
+  {
+   "title": "Referencia del lenguaje: llamadas (enlace de argumentos) y lambdas",
+   "url": "https://docs.python.org/3/reference/expressions.html#calls"
+  },
+  {
+   "title": "Referencia del lenguaje: modelo de ejecución, nombres y enlaces",
+   "url": "https://docs.python.org/3/reference/executionmodel.html"
+  },
+  {
+   "title": "Funciones integradas: map, filter, sorted, min, max, callable",
+   "url": "https://docs.python.org/3/library/functions.html"
+  },
+  {
+   "title": "Módulo sys: getrecursionlimit y setrecursionlimit",
+   "url": "https://docs.python.org/3/library/sys.html#sys.setrecursionlimit"
+  },
+  {
+   "title": "Sorting Techniques (HOWTO de ordenación)",
+   "url": "https://docs.python.org/3/howto/sorting.html"
+  },
+  {
+   "title": "Programming FAQ (valores por defecto compartidos, UnboundLocalError, lambdas en bucles, /)",
+   "url": "https://docs.python.org/3/faq/programming.html"
+  },
+  {
+   "title": "Glosario de Python: argument, parameter, lambda, nested scope",
+   "url": "https://docs.python.org/3/glossary.html"
+  },
+  {
+   "title": "What's New in Python 3.12 (límite de recursión, PEP 709)",
+   "url": "https://docs.python.org/3/whatsnew/3.12.html"
+  },
+  {
+   "title": "What's New in Python 3.13 (indentación de docstrings)",
+   "url": "https://docs.python.org/3/whatsnew/3.13.html"
+  },
+  {
+   "title": "What's New in Python 3.14 (PEP 649/749, map strict)",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "PEP 8 – Style Guide for Python Code",
+   "url": "https://peps.python.org/pep-0008/"
+  },
+  {
+   "title": "PEP 257 – Docstring Conventions",
+   "url": "https://peps.python.org/pep-0257/"
+  },
+  {
+   "title": "PEP 570 – Python Positional-Only Parameters",
+   "url": "https://peps.python.org/pep-0570/"
+  },
+  {
+   "title": "PEP 3102 – Keyword-Only Arguments",
+   "url": "https://peps.python.org/pep-3102/"
+  },
+  {
+   "title": "PEP 448 – Additional Unpacking Generalizations",
+   "url": "https://peps.python.org/pep-0448/"
+  },
+  {
+   "title": "PEP 3107 – Function Annotations",
+   "url": "https://peps.python.org/pep-3107/"
+  },
+  {
+   "title": "PEP 585 – Type Hinting Generics In Standard Collections",
+   "url": "https://peps.python.org/pep-0585/"
+  },
+  {
+   "title": "PEP 604 – Allow writing union types as X | Y",
+   "url": "https://peps.python.org/pep-0604/"
+  },
+  {
+   "title": "PEP 649 – Deferred Evaluation Of Annotations Using Descriptors",
+   "url": "https://peps.python.org/pep-0649/"
+  },
+  {
+   "title": "PEP 749 – Implementing PEP 649",
+   "url": "https://peps.python.org/pep-0749/"
+  },
+  {
+   "title": "Guido van Rossum – Tail Recursion Elimination (Neopythonic, 2009)",
+   "url": "http://neopythonic.blogspot.com/2009/04/tail-recursion-elimination.html"
+  },
+  {
+   "title": "Python Institute – PCEP-30-02 Exam Syllabus (bloque 4: funciones)",
+   "url": "https://pythoninstitute.org/pcep-exam-syllabus"
+  }
+ ]
+}

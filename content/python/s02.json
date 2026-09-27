@@ -1,0 +1,3435 @@
+{
+ "id": "s02",
+ "order": 2,
+ "title": "Variables, tipos y operadores",
+ "domain": "basico",
+ "summary": "Aprendes cómo maneja Python los datos: nombres que apuntan a objetos, los tipos básicos (`int`, `float`, `complex`, `bool`, `None` y `str`), las conversiones entre ellos y los operadores que los combinan. Es la base de todo lo demás: dominar la división entera con negativos, la precisión de los float, el cortocircuito de `and`/`or` o la diferencia entre `is` y `==` te ahorrará los errores más comunes (y las trampas de examen).",
+ "goal": "Predecir el valor y el tipo de cualquier expresión con los tipos básicos de Python y escribir cálculos correctos, bien nombrados y presentados con f-strings.",
+ "objectives": [
+  "Explicar la asignación con el modelo de nombres que referencian objetos, usando `id()` y `type()`.",
+  "Nombrar variables y constantes según las reglas del lenguaje y las convenciones de PEP 8.",
+  "Operar con `int`, `float` y `complex`, anticipando los límites de precisión de los float y comparándolos con `math.isclose()`.",
+  "Convertir entre tipos con `int()`, `float()`, `str()` y `bool()`, y determinar el valor de verdad de cualquier objeto básico.",
+  "Calcular con operadores aritméticos, de asignación aumentada y de bits, respetando precedencia y asociatividad.",
+  "Construir expresiones booleanas con comparaciones encadenadas, `and`/`or`/`not`, `is` e `in`, y predecir su resultado.",
+  "Presentar resultados con f-strings básicas y resolver cálculos con el módulo `math`."
+ ],
+ "lessons": [
+  {
+   "id": "s02-l1",
+   "title": "Variables: nombres que apuntan a objetos",
+   "minutes": 25,
+   "goals": [
+    "Explicar con el modelo de referencias qué ocurre al asignar un valor, reasignarlo y asignar un nombre a otro.",
+    "Inspeccionar la identidad y el tipo de un objeto con `id()` y `type()`.",
+    "Aplicar asignación múltiple, desempaquetado e intercambio de valores sin variable auxiliar.",
+    "Elegir nombres válidos y legibles según las reglas del lenguaje y la guía de estilo PEP 8."
+   ],
+   "takeaways": [
+    "Una variable es un nombre que referencia a un objeto: asignar enlaza, nunca copia.",
+    "Todo objeto tiene identidad (`id`), tipo (`type`) y valor; con objetos inmutables, «cambiar» una variable es apuntarla a otro objeto.",
+    "En `x = expresión` primero se evalúa la expresión completa; por eso `a, b = b, a` intercambia sin variable auxiliar.",
+    "Python tiene tipado dinámico (los nombres no tienen tipo) y fuerte (`\"3\" + 4` es un `TypeError`, no `\"34\"`).",
+    "Nombres en `snake_case`, constantes en MAYÚSCULAS y nunca palabras reservadas ni nombres integrados como `str` o `list`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En muchos cursos se dice que una variable es una **caja** donde guardas un valor. En Python esa imagen engaña. Es mucho más exacto pensar en **etiquetas**: los datos viven en **objetos** y una variable es solo un **nombre** que apunta a (hace *referencia* a) un objeto. Varias etiquetas pueden estar pegadas al mismo objeto, y una etiqueta se puede despegar y pegar en otro."
+    },
+    {
+     "type": "p",
+     "text": "Cuando escribes `edad = 30`, Python hace dos cosas, en este orden: (1) evalúa el lado derecho y obtiene un objeto `int` con valor 30; (2) **enlaza** (*binds*) el nombre `edad` a ese objeto. El signo `=` no significa «es igual a» como en matemáticas, sino **«haz que este nombre apunte a esto»**."
+    },
+    {
+     "type": "diagram",
+     "title": "Nombres y objetos",
+     "mermaid": "flowchart LR\n  subgraph N[\"Nombres\"]\n    edad[\"edad\"]\n    anios[\"anios\"]\n    nombre[\"nombre\"]\n  end\n  subgraph O[\"Objetos en memoria\"]\n    o1[\"int · valor 30 · id 4401\"]\n    o2[\"str · valor 'Ana' · id 4480\"]\n  end\n  edad --> o1\n  anios --> o1\n  nombre --> o2",
+     "caption": "Tras `edad = 30`, `anios = edad` y `nombre = \"Ana\"`, dos nombres comparten el mismo objeto 30. Los id son inventados: los reales cambian en cada ejecución."
+    },
+    {
+     "type": "p",
+     "text": "Según el manual de referencia de Python, **todo objeto tiene tres características**:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Identidad**: lo distingue de cualquier otro objeto y no cambia mientras el objeto existe. La obtienes con `id(obj)` (en CPython es su dirección de memoria).",
+      "**Tipo**: determina qué valores puede tener y qué operaciones admite. Lo obtienes con `type(obj)` y tampoco cambia nunca.",
+      "**Valor**: el dato en sí. En los objetos **inmutables** (números, cadenas, `bool`, `None`, tuplas) el valor no puede cambiar; en los **mutables** (listas, diccionarios… en s04) sí."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "edad = 30\nanios = edad            # no copia nada: otro nombre para el MISMO objeto\n\nprint(type(edad))               # <class 'int'>\nprint(id(edad) == id(anios))    # True: mismo objeto\nprint(edad is anios)            # True: 'is' compara identidades\n\nedad = edad + 1         # se crea un objeto NUEVO (31) y 'edad' pasa a apuntarle\nprint(edad, anios)      # 31 30 -> 'anios' sigue apuntando al 30\nprint(edad is anios)    # False",
+     "run": true,
+     "caption": "Cambia los valores y vuelve a ejecutar: reasignar `edad` nunca afecta a `anios`."
+    },
+    {
+     "type": "diagram",
+     "title": "Reasignar no modifica el objeto",
+     "mermaid": "flowchart LR\n  subgraph A[\"Antes: edad = edad + 1\"]\n    e1[\"edad\"] --> v30[\"int 30\"]\n    a1[\"anios\"] --> v30\n  end\n  subgraph B[\"Después\"]\n    e2[\"edad\"] --> v31[\"int 31 (objeto nuevo)\"]\n    a2[\"anios\"] --> v30b[\"int 30 (el de antes)\"]\n  end",
+     "caption": "El 30 no se «convierte» en 31: los enteros son inmutables. Se crea otro objeto y solo se mueve la etiqueta `edad`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Asignar nunca copia.** Con enteros o cadenas no lo notas, porque son inmutables. Pero con objetos mutables, como las listas (s04), dos nombres que apuntan al mismo objeto «ven» los cambios que se hacen a través del otro. Es el famoso *aliasing* (dos alias para un mismo objeto), una fuente clásica de errores. Quédate ya con el modelo de etiquetas y te ahorrarás muchos disgustos."
+    },
+    {
+     "type": "h",
+     "text": "El lado derecho se evalúa primero"
+    },
+    {
+     "type": "p",
+     "text": "En `x = x + 1` no hay ninguna contradicción: primero se calcula `x + 1` con el valor actual de `x` y después se enlaza el nombre al resultado. Por la misma razón, usar un nombre antes de asignarlo es un error: todavía no apunta a nada."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(total)\n# NameError: name 'total' is not defined\ntotal = 0",
+     "caption": "Python ejecuta de arriba abajo: en la línea 1 `total` todavía no existe."
+    },
+    {
+     "type": "h",
+     "text": "Asignación múltiple, desempaquetado e intercambio"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Encadenada: varios nombres, UN mismo objeto\nx = y = z = 0\nprint(x, y, z)\n\n# Desempaquetado: tantos nombres como valores\nnombre, edad, ciudad = \"Ana\", 30, \"Santiago\"\nprint(nombre, edad, ciudad)\n\n# Intercambio sin variable auxiliar\na, b = 1, 2\na, b = b, a\nprint(a, b)   # 2 1",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "¿Por qué funciona el intercambio? Porque Python **evalúa por completo el lado derecho antes de asignar**: `b, a` construye una *tupla* (una secuencia inmutable de valores; la verás a fondo en s04) con los valores `(2, 1)` y después la **desempaqueta**, de izquierda a derecha, en `a` y `b`. En C o Java necesitarías una variable temporal."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo se ejecuta `a, b = b, a`",
+     "mermaid": "flowchart LR\n  I[\"a = 1, b = 2\"] --> R[\"1. Evalúa el lado derecho: (2, 1)\"]\n  R --> A[\"2. Enlaza a con 2\"]\n  A --> B[\"3. Enlaza b con 1\"]\n  B --> F[\"a = 2, b = 1\"]",
+     "caption": "Como el lado derecho ya está calculado, reasignar `a` en el paso 2 no afecta al paso 3."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El número de nombres y de valores debe coincidir: `x, y = 1, 2, 3` lanza `ValueError: too many values to unpack (expected 2, got 3)` y `x, y, z = 1, 2` lanza `ValueError: not enough values to unpack (expected 3, got 2)`. Y cuidado con `x = y = valor`: con inmutables es inofensivo, pero `a = b = []` haría que ambos nombres compartieran **la misma** lista."
+    },
+    {
+     "type": "h",
+     "text": "Tipado dinámico… pero fuerte"
+    },
+    {
+     "type": "p",
+     "text": "**Dinámico** significa que los nombres no tienen tipo: el tipo lo tiene el objeto, y un mismo nombre puede apuntar ahora a un `int` y después a un `str`. No declaras tipos (aunque podrás *anotarlos*, lo verás en s06 y s13). **Fuerte** significa que Python no convierte por su cuenta entre tipos incompatibles: sumar texto y número es un error, no una suposición."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "dato = 42\nprint(type(dato))          # <class 'int'>\ndato = \"cuarenta y dos\"\nprint(type(dato))          # <class 'str'>: mismo nombre, otro objeto\n\nprint(4 * 3.75 - 1)        # 14.0: entre números sí hay conversión (int -> float)\nprint(\"Edad: \" + str(30))  # entre texto y número, conviertes tú",
+     "run": true
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "\"Edad: \" + 30\n# TypeError: can only concatenate str (not \"int\") to str",
+     "caption": "En JavaScript `\"3\" + 4` da `\"34\"`; Python prefiere avisarte con un error antes que adivinar."
+    },
+    {
+     "type": "h",
+     "text": "Cómo nombrar: reglas del lenguaje"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Solo letras, dígitos y guion bajo `_`, y **no** puede empezar por dígito: `nota1` sí, `1nota` no.",
+      "Distingue mayúsculas y minúsculas: `edad`, `Edad` y `EDAD` son tres nombres distintos.",
+      "Sin espacios ni guiones: `mi-edad` se interpreta como `mi - edad` (una resta).",
+      "No puede ser una **palabra reservada** (`if`, `for`, `class`, `True`…).",
+      "Se admiten letras Unicode (`año = 2026` es válido), pero en este curso usaremos ASCII (`anio`), como exige PEP 8 para la biblioteca estándar: así se escribe igual con cualquier teclado."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import keyword\n\nprint(len(keyword.kwlist))      # 35 palabras reservadas en Python 3.14\nprint(keyword.kwlist)\nprint(keyword.softkwlist)       # reservadas «suaves»: ['_', 'case', 'match', 'type']\nprint(keyword.iskeyword(\"for\"), keyword.iskeyword(\"For\"))   # True False",
+     "run": true,
+     "caption": "`import` carga un módulo de la biblioteca estándar; lo verás a fondo en s07."
+    },
+    {
+     "type": "p",
+     "text": "Las **palabras reservadas suaves** (*soft keywords*) solo son especiales en un contexto concreto: `match`, `case` y `_` dentro de la sentencia `match` (desde 3.10) y `type` en la sentencia `type` (desde 3.12). Fuera de ahí son nombres normales; por eso `type()` sigue siendo una función."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Qué nombras",
+      "Convención (PEP 8)",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "Variables y funciones",
+       "`snake_case`: minúsculas separadas por `_`",
+       "`precio_total`, `calcular_imc`"
+      ],
+      [
+       "Constantes (solo por convención)",
+       "`MAYUSCULAS_CON_GUIONES`",
+       "`IVA`, `LIMITE_INTENTOS`"
+      ],
+      [
+       "Clases (s10)",
+       "`CapWords`",
+       "`CuentaBancaria`"
+      ],
+      [
+       "Uso interno",
+       "un `_` inicial",
+       "`_cache`"
+      ],
+      [
+       "Choque con una palabra reservada",
+       "un `_` final",
+       "`class_`, `type_`"
+      ],
+      [
+       "Nombres de una letra que debes evitar",
+       "`l`, `O`, `I` (se confunden con 1 y 0)",
+       "—"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No **sombrees** (*shadowing*) los nombres integrados. Si escribes `str = \"hola\"` o `print = 5`, tapas la función original, y más adelante `str(42)` fallará con `TypeError: 'str' object is not callable`. Los más «pisados»: `list`, `str`, `sum`, `max`, `min`, `id`, `type`, `input`. Si te pasa, `del nombre` borra tu variable y vuelve a verse el integrado."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "str = \"texto\"         # ¡mala idea! tapa la clase integrada str\n# str(42)             # si lo descomentas: TypeError: 'str' object is not callable\ndel str               # borra TU nombre; vuelve a verse el integrado\nprint(str(42) + \"!\")  # 42!",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Buenos nombres ahorran comentarios. Incluye la unidad cuando la haya (`peso_kg`, `altura_cm`, `tiempo_s`) y nombra los booleanos como preguntas (`es_valido`, `tiene_descuento`). En 1999 la sonda Mars Climate Orbiter se perdió porque dos equipos mezclaron unidades anglosajonas y métricas."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica del PCEP: ¿qué identificadores son válidos? `_1` sí; `For` sí (no es `for`); `for` no; `1_` no; `mi_var2` sí; `mi var` no. Y otra: tras `a = 5`, `b = a`, `a = 7`, ¿cuánto vale `b`? Sigue valiendo **5**."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Variable / nombre",
+       "en": "name",
+       "def": "Identificador enlazado a un objeto. No contiene el dato: lo referencia."
+      },
+      {
+       "term": "Objeto",
+       "en": "object",
+       "def": "Dato en memoria con identidad, tipo y valor."
+      },
+      {
+       "term": "Enlazar",
+       "en": "bind",
+       "def": "Hacer que un nombre apunte a un objeto; es lo que hace `=`."
+      },
+      {
+       "term": "Inmutable",
+       "en": "immutable",
+       "def": "Objeto cuyo valor no puede cambiar: `int`, `float`, `str`, `bool`, `None`, tuplas."
+      },
+      {
+       "term": "Tipado dinámico",
+       "en": "dynamic typing",
+       "def": "Los tipos pertenecen a los objetos, no a los nombres."
+      },
+      {
+       "term": "Tipado fuerte",
+       "en": "strong typing",
+       "def": "No hay conversiones implícitas entre tipos incompatibles."
+      },
+      {
+       "term": "Palabra reservada",
+       "en": "keyword",
+       "def": "Palabra con significado especial que no puede usarse como nombre."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l2",
+   "title": "Números: int, float y complex",
+   "minutes": 25,
+   "goals": [
+    "Escribir literales enteros en decimal, binario, octal y hexadecimal, usando `_` como separador visual.",
+    "Explicar por qué `0.1 + 0.2 != 0.3` a partir de la representación binaria IEEE 754.",
+    "Comparar floats con `math.isclose()` y redondear con `round()` teniendo en cuenta el redondeo del banquero.",
+    "Crear números complejos y obtener su parte real, su parte imaginaria y su módulo."
+   ],
+   "takeaways": [
+    "`int` no tiene límite de tamaño; el `_` en los literales solo mejora la lectura (`1_000_000`).",
+    "`float` es binario de 64 bits: la mayoría de decimales son aproximaciones, por eso `0.1 + 0.2 != 0.3`.",
+    "Compara floats con `math.isclose()` (con `abs_tol` si comparas con 0), nunca con `==`.",
+    "`round()` redondea los empates al par (`round(2.5) == 2`) y sin segundo argumento devuelve `int`.",
+    "Para dinero: centavos enteros o `decimal.Decimal`, nunca floats sin más."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Python trae tres tipos numéricos integrados: `int` (enteros), `float` (números reales en punto flotante, también llamado coma flotante) y `complex` (complejos). El cuarto, `bool`, es en realidad un subtipo de `int` (lo verás en la próxima lección). Todos son **inmutables**."
+    },
+    {
+     "type": "diagram",
+     "title": "Mapa de los tipos numéricos",
+     "mermaid": "mindmap\n  root((\"Números en Python\"))\n    i[\"int\"]\n      i1[\"Precisión arbitraria\"]\n      i2[\"Literales 0b, 0o, 0x\"]\n      b[\"bool\"]\n        b1[\"True vale 1\"]\n        b2[\"False vale 0\"]\n    f[\"float\"]\n      f1[\"IEEE 754 de 64 bits\"]\n      f2[\"15 a 17 cifras significativas\"]\n      f3[\"inf y nan\"]\n    c[\"complex\"]\n      c1[\"Sufijo j\"]\n      c2[\"Atributos real e imag\"]"
+    },
+    {
+     "type": "h",
+     "text": "int: enteros sin límite de tamaño"
+    },
+    {
+     "type": "p",
+     "text": "Los `int` de Python tienen **precisión arbitraria**: crecen lo que haga falta, limitados solo por la memoria. No existe el desbordamiento (*overflow*) de los enteros de C o Java: `2 ** 100` es exacto. Además puedes escribir enteros en binario (`0b`), octal (`0o`) y hexadecimal (`0x`), y separar cifras con `_` (desde 3.6)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(2 ** 100)            # 1267650600228229401496703205376, exacto\npoblacion = 8_100_000_000  # el _ solo sirve para leer mejor\nprint(poblacion)           # 8100000000\n\n# Otras bases\nprint(0b1010, 0o17, 0xFF)             # 10 15 255\nprint(bin(10), oct(15), hex(255))     # 0b1010 0o17 0xff (son cadenas)\nprint(int(\"ff\", 16), int(\"1010\", 2))  # 255 10: de texto en base N a int",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un literal decimal no puede empezar por cero: `0123` es un `SyntaxError` («leading zeros in decimal integer literals are not permitted»). En cambio, `int(\"0123\")` sí funciona y devuelve `123`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Python 3.11, convertir entre `int` y `str` en base 10 está limitado por defecto a **4300 dígitos** para evitar ataques de denegación de servicio: `int(\"1\" * 5000)` lanza `ValueError`. La aritmética no tiene ese límite (puedes calcular `2 ** 100_000`); solo la conversión desde o hacia texto. Se ajusta con `sys.set_int_max_str_digits()`."
+    },
+    {
+     "type": "h",
+     "text": "float: punto flotante binario (IEEE 754)"
+    },
+    {
+     "type": "p",
+     "text": "Un `float` es un número en **punto flotante de doble precisión** (IEEE 754 *binary64*): 53 bits de precisión, unas **15–17 cifras decimales significativas** y un máximo de unos `1.8e308`. Lo calcula directamente el procesador, así que es rapidísimo, pero tiene un precio: **la mayoría de las fracciones decimales no se pueden representar exactamente en binario**, igual que 1/3 no cabe en decimal (0,3333…)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(0.1 + 0.2)          # 0.30000000000000004\nprint(0.1 + 0.2 == 0.3)   # False\nprint(f\"{0.1:.20f}\")      # 0.10000000000000000555 (f-string con 20 decimales, lección 3)\nprint(1e3, 2.5e-4)        # notación científica: 1000.0 0.00025\nprint(7 / 2, 10 / 5)      # 3.5 2.0: la división / siempre da float",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Por qué `0.1 + 0.2` no da `0.3`",
+     "mermaid": "flowchart TD\n  A[\"Escribes 0.1 en decimal\"] --> B[\"Se guarda el binario más cercano (53 bits)\"]\n  B --> C[\"Valor real guardado: 0.1000000000000000055511...\"]\n  C --> D[\"print muestra el decimal más corto que lo identifica: 0.1\"]\n  C --> E[\"0.1 + 0.2 suma dos valores ya aproximados\"]\n  E --> F[\"Resultado: 0.30000000000000004\"]",
+     "caption": "Desde Python 3.1, `repr()` y `print()` muestran el decimal más corto que identifica exactamente ese float; por eso ves `0.1` aunque no se guarde 0,1 exacto."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No es un fallo de Python: pasa igual en C, Java o JavaScript, porque todos usan IEEE 754. La regla práctica: **nunca compares con igualdad exacta** (`==`) floats que salen de cálculos."
+    },
+    {
+     "type": "h",
+     "text": "Comparar floats: `math.isclose()`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import math\n\nprint(math.isclose(0.1 + 0.2, 0.3))            # True (tolerancia relativa 1e-09)\nprint(math.isclose(1e-12, 0.0))                # False: con 0 la tolerancia relativa no sirve\nprint(math.isclose(1e-12, 0.0, abs_tol=1e-9))  # True: añade una tolerancia absoluta",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`math.isclose(a, b)` (desde 3.5, PEP 485) considera iguales dos números si su diferencia es pequeña **en proporción a su tamaño**: por defecto `rel_tol=1e-09`, es decir, que coincidan en unas 9 cifras. Para comparar con cero no hay tamaño de referencia, así que debes pasar `abs_tol`. Que `abs_tol` valga 0.0 por defecto es deliberado: el PEP prefiere que la comparación falle a inventarse una tolerancia que podría ser inadecuada para tu problema."
+    },
+    {
+     "type": "h",
+     "text": "Redondear: `round()` y el redondeo del banquero"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(round(3.7), round(-3.7))              # 4 -4 -> sin 2.º argumento devuelve int\nprint(round(3.14159, 2))                    # 3.14 -> con 2.º argumento devuelve float\nprint(round(0.5), round(1.5), round(2.5))   # 0 2 2 -> ¡los empates van al PAR!\nprint(round(2.675, 2))                      # 2.67 (2.675 se guarda como 2.67499999...)\nprint(round(1234, -2))                      # 1200: ndigits negativo redondea a centenas",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`round()` redondea al valor más cercano y, **en caso de empate exacto, elige el par** (*round half to even*, «redondeo del banquero»). Así, al redondear muchos valores, los empates no se inclinan siempre hacia arriba y la suma no se sesga. Ojo con `round(2.675, 2)`: da `2.67` porque 2.675 ni siquiera es un empate, ya que en binario se guarda apenas un poco por debajo. La documentación oficial lo explica exactamente así."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Operación",
+      "Qué hace",
+      "2.7",
+      "-2.7",
+      "2.5"
+     ],
+     "rows": [
+      [
+       "`int(x)`",
+       "trunca hacia 0",
+       "2",
+       "-2",
+       "2"
+      ],
+      [
+       "`math.trunc(x)`",
+       "trunca hacia 0",
+       "2",
+       "-2",
+       "2"
+      ],
+      [
+       "`math.floor(x)`",
+       "hacia −∞ (suelo)",
+       "2",
+       "-3",
+       "2"
+      ],
+      [
+       "`math.ceil(x)`",
+       "hacia +∞ (techo)",
+       "3",
+       "-2",
+       "3"
+      ],
+      [
+       "`round(x)`",
+       "al más cercano; empate al par",
+       "3",
+       "-3",
+       "2"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para dinero no uses floats sin más. Hay dos opciones profesionales: trabajar en **centavos enteros** (`int`, exacto) o usar `decimal.Decimal` de la biblioteca estándar, que hace aritmética decimal exacta y permite elegir el modo de redondeo. En los proyectos de esta sección trabajarás con centavos."
+    },
+    {
+     "type": "h",
+     "text": "Valores especiales: infinito y NaN"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import math\n\nprint(1e308 * 10)              # inf: se pasa del máximo\nprint(float(\"inf\") > 10**100)  # True\nnan = float(\"nan\")             # «not a number»\nprint(nan == nan)              # False: NaN no es igual ni a sí mismo\nprint(math.isnan(nan))         # True: así se comprueba",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "A diferencia de IEEE 754 «puro», Python **no** devuelve `inf` al dividir entre cero: tanto `1 / 0` como `1.0 / 0.0` lanzan `ZeroDivisionError: division by zero`."
+    },
+    {
+     "type": "h",
+     "text": "complex (breve)"
+    },
+    {
+     "type": "p",
+     "text": "Los complejos se escriben con el sufijo `j` (notación de ingeniería): `3 + 4j`. Internamente son un par de floats. Se usan en electrónica, tratamiento de señales o física; en el día a día, poco."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "z = 3 + 4j\nprint(type(z))              # <class 'complex'>\nprint(z.real, z.imag)       # 3.0 4.0\nprint(abs(z))               # 5.0 (módulo)\nprint(z.conjugate())        # (3-4j)\nprint((1 + 2j) * (3 - 1j))  # (5+5j)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los complejos no tienen orden: `(1+2j) < (2+3j)` es `TypeError`. Tampoco admiten `//` ni `%`, y el módulo `math` no trabaja con ellos (existe `cmath`)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Novedades de 3.14 en este terreno: `float.from_number()` y `complex.from_number()` convierten un número (no un texto) al tipo indicado y lanzan `TypeError` si les pasas otra cosa; y la aritmética que mezcla reales y complejos sigue ahora las reglas del estándar C99, lo que solo se nota en casos límite con infinitos, NaN o ceros con signo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Precisión arbitraria",
+       "en": "arbitrary precision",
+       "def": "Los enteros crecen sin límite fijo, solo el de la memoria."
+      },
+      {
+       "term": "Punto flotante",
+       "en": "floating point",
+       "def": "Representación binaria aproximada de números reales (IEEE 754 binary64)."
+      },
+      {
+       "term": "Redondeo del banquero",
+       "en": "round half to even",
+       "def": "En un empate exacto se redondea al número par más cercano."
+      },
+      {
+       "term": "NaN",
+       "en": "not a number",
+       "def": "Valor especial de `float` que no es igual a nada, ni a sí mismo."
+      },
+      {
+       "term": "Tolerancia relativa / absoluta",
+       "en": "rel_tol / abs_tol",
+       "def": "Márgenes de `math.isclose`: proporcional al tamaño de los números o fijo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l3",
+   "title": "bool, None, cadenas y f-strings básicas",
+   "minutes": 25,
+   "goals": [
+    "Usar `True`, `False` y `None`, sabiendo que `bool` es subtipo de `int` y que `None` es un objeto único.",
+    "Crear cadenas con comillas simples, dobles y triples, y con secuencias de escape como `\\n`.",
+    "Aplicar `+`, `*`, `len()`, la indexación y los métodos `strip()`, `lower()`, `upper()` y `replace()` sobre cadenas.",
+    "Construir textos con f-strings que incluyan expresiones y números con decimales fijos (`:.2f`)."
+   ],
+   "takeaways": [
+    "`bool` es subtipo de `int`: `True == 1` y `False == 0`, pero al convertirlos a texto dan `\"True\"` y `\"False\"`.",
+    "`None` es un objeto único que significa «sin valor»; se comprueba con `is None`.",
+    "Las cadenas son inmutables: sus métodos devuelven cadenas nuevas que hay que guardar.",
+    "Los índices empiezan en 0 y los negativos cuentan desde el final; fuera de rango se produce `IndexError`.",
+    "f-strings: `f\"{expresión}\"`, y `f\"{x:.2f}\"` para mostrar 2 decimales (redondea solo al mostrar)."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "bool: verdadero o falso"
+    },
+    {
+     "type": "p",
+     "text": "`bool` tiene exactamente dos valores, `True` y `False`, con mayúscula inicial (`true` es un `NameError`). Son el resultado de las comparaciones y de los operadores lógicos. Detalle importante: `bool` es un **subtipo** de `int`; `True` se comporta como 1 y `False` como 0 en casi todo, salvo al convertirlos a texto."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "mayor_de_edad = 20 >= 18\nprint(mayor_de_edad, type(mayor_de_edad))   # True <class 'bool'>\nprint(True + True, True * 10, False == 0)   # 2 10 True\nprint(type(True + 1))                       # <class 'int'>: la suma ya no es bool\nprint(str(True) + \"!\")                      # True! (como texto)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Que `True` valga 1 permite trucos como `aprobados + (nota >= 5)`, pero úsalos con moderación. Dos avisos más: no compares con `== True` (PEP 8 lo desaconseja: usa el valor directamente), y el operador `~` sobre booleanos está obsoleto desde 3.12: `~True` da `-2`, no `False`, y está previsto que se elimine en 3.16. Para negar, `not`."
+    },
+    {
+     "type": "h",
+     "text": "None: la ausencia de valor"
+    },
+    {
+     "type": "p",
+     "text": "`None` representa «nada», «sin valor» o «todavía desconocido». Es el **único** objeto de su tipo (`NoneType`), es decir, un *singleton*. Lo devuelven las funciones que no tienen `return`, como la propia `print()`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "resultado = print(\"hola\")   # print muestra el texto... y devuelve None\nprint(resultado)            # None\nprint(type(resultado))      # <class 'NoneType'>\n\ntelefono = None             # «todavía no lo sabemos»\nprint(telefono is None)     # True: así se pregunta por None",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para preguntar si algo es `None` usa `is None` o `is not None`, **nunca** `== None` (recomendación de PEP 8). Verás por qué en la lección 6, al estudiar la identidad."
+    },
+    {
+     "type": "h",
+     "text": "str: texto"
+    },
+    {
+     "type": "p",
+     "text": "Una cadena (`str`) es una secuencia **inmutable** de caracteres Unicode. Se escribe entre comillas simples o dobles (son equivalentes) o entre comillas triples si ocupa varias líneas. La barra invertida `\\` introduce **secuencias de escape**."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escribes",
+      "Significa"
+     ],
+     "rows": [
+      [
+       "`\\n`",
+       "salto de línea"
+      ],
+      [
+       "`\\t`",
+       "tabulador"
+      ],
+      [
+       "`\\\\`",
+       "una barra invertida"
+      ],
+      [
+       "`\\'` y `\\\"`",
+       "una comilla literal dentro de una cadena delimitada con esa misma comilla"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "cita = 'Dijo \"hola\" y se fue'     # comillas dobles dentro de simples\ningles = \"It's easy\"               # y al revés\nprint(cita)\nprint(ingles)\nprint(\"Línea 1\\nLínea 2\\tcon tabulador\")\npoema = \"\"\"Me gustas cuando callas porque estás como ausente,\ny me oyes desde lejos, y mi voz no te toca.\"\"\"\nprint(poema)\nprint(r\"C:\\nuevo\\texto\")           # r\"...\" (raw): la \\ no escapa nada",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Operaciones básicas con cadenas"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "lenguaje = \"Python\"\nprint(len(lenguaje))              # 6 caracteres\nprint(lenguaje[0], lenguaje[-1])  # P n: índices desde 0; negativos desde el final\nprint(\"Py\" + \"thon\")              # concatenar\nprint(\"ja\" * 3)                   # jajaja: repetir\nprint(\"th\" in lenguaje)           # True: ¿contiene ese texto?\nprint(\"TH\" in lenguaje)           # False: distingue mayúsculas",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Índices de la cadena \"Python\"",
+     "mermaid": "flowchart LR\n  c0[\"P · 0 · -6\"] --- c1[\"y · 1 · -5\"] --- c2[\"t · 2 · -4\"] --- c3[\"h · 3 · -3\"] --- c4[\"o · 4 · -2\"] --- c5[\"n · 5 · -1\"]",
+     "caption": "Cada carácter tiene un índice positivo (desde 0 por la izquierda) y otro negativo (desde -1 por la derecha). `lenguaje[6]` lanza `IndexError: string index out of range`. El troceado (*slicing*) llega en s04 y s05."
+    },
+    {
+     "type": "h",
+     "text": "Cuatro métodos que usarás ya"
+    },
+    {
+     "type": "p",
+     "text": "Un **método** es una función que pertenece a un objeto y se llama con un punto: `texto.upper()`. Como las cadenas son inmutables, **los métodos devuelven una cadena nueva** y la original no cambia. En s05 verás muchos más."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "entrada = \"  Ana García  \"\nlimpio = entrada.strip()          # quita espacios (y \\n, \\t) de los extremos\nprint(\"[\" + limpio + \"]\")         # [Ana García]\nprint(limpio.upper(), limpio.lower())\nprint(\"3,5\".replace(\",\", \".\"))    # 3.5 (sigue siendo texto)\n\nsaludo = \"hola\"\nsaludo.upper()                    # devuelve \"HOLA\"... y se pierde\nprint(saludo)                     # hola: el original no cambia\nsaludo = saludo.upper()           # reasigna si quieres conservarlo\nprint(saludo)                     # HOLA",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Error típico: escribir `nombre.strip()` y esperar que `nombre` cambie. Las cadenas son inmutables: `nombre[0] = \"J\"` lanza `TypeError: 'str' object does not support item assignment`, y los métodos devuelven una cadena nueva que tienes que guardar (`nombre = nombre.strip()`)."
+    },
+    {
+     "type": "h",
+     "text": "f-strings: texto con valores dentro"
+    },
+    {
+     "type": "p",
+     "text": "Una *f-string* (cadena formateada, desde 3.6) lleva una `f` delante y permite incrustar **cualquier expresión** entre llaves `{}`: Python la evalúa y la convierte en texto. Tras la expresión puedes añadir `:` y una **especificación de formato**; la más útil por ahora es `.2f`, que significa «float con 2 decimales»."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre = \"Ana\"\nedad = 30\naltura_m = 1.68\nprint(f\"{nombre} tiene {edad} años\")\nprint(f\"El año que viene tendrá {edad + 1}\")    # expresiones\nprint(f\"Mide {altura_m} m\")                     # Mide 1.68 m\nprint(f\"Pi con 2 decimales: {3.14159265:.2f}\")  # 3.14\nprint(f\"Precio: ${7 / 3:.2f}\")                # Precio: $2.33\nprint(f\"Llaves literales: {{ y }}\")             # {{ y }} producen { y }",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`:.2f` **redondea al mostrar**, pero no cambia el número: `round()` devuelve un número y `:.2f` produce texto. Desde 3.12 (PEP 701) las f-strings admiten reutilizar las mismas comillas dentro de las llaves e incluso expresiones en varias líneas. Anchos, alineación, separador de miles, porcentajes o el `=` para depurar llegan en s05."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Olvidar la `f` es un clásico: `\"Hola, {nombre}\"` imprime literalmente `Hola, {nombre}`. Y recuerda que concatenar un número con `+` falla (`\"Edad: \" + 30`), mientras que en una f-string no hace falta convertir: `f\"Edad: {30}\"`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué imprime `print(\"5\" * 3)`? `555`. ¿Y `print(\"5\" + \"3\")`? `53`. ¿Y `print(len(\"\\n\"))`? `1`: una secuencia de escape es un solo carácter. ¿Y `print(True + True)`? `2`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Cadena",
+       "en": "string",
+       "def": "Secuencia inmutable de caracteres Unicode (`str`)."
+      },
+      {
+       "term": "Secuencia de escape",
+       "en": "escape sequence",
+       "def": "Combinación con `\\` que representa un carácter especial, como `\\n`."
+      },
+      {
+       "term": "Método",
+       "en": "method",
+       "def": "Función asociada a un objeto que se invoca con un punto: `s.upper()`."
+      },
+      {
+       "term": "f-string",
+       "en": "formatted string literal",
+       "def": "Cadena con prefijo `f` que evalúa expresiones entre llaves."
+      },
+      {
+       "term": "Singleton",
+       "en": "singleton",
+       "def": "Tipo con un único objeto posible, como `None`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l4",
+   "title": "Conversión de tipos y valores de verdad",
+   "minutes": 18,
+   "goals": [
+    "Convertir entre tipos con `int()`, `float()`, `str()` y `bool()`, anticipando cuándo lanzan `ValueError` o `TypeError`.",
+    "Leer números introducidos con `input()` y convertirlos correctamente.",
+    "Determinar si un objeto es *truthy* o *falsy* aplicando las reglas oficiales."
+   ],
+   "takeaways": [
+    "`input()` siempre devuelve `str`: convierte con `int()` o `float()` antes de calcular.",
+    "`int()` aplicado a un float trunca hacia cero; aplicado a un texto exige un entero válido (`int(\"3.5\")` es `ValueError`).",
+    "`float()` usa el punto como separador decimal: sustituye la coma antes de convertir.",
+    "Falsy: `None`, `False`, los ceros y las colecciones vacías. Todo lo demás es truthy, incluidos `\"0\"` y `\"False\"`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Como Python es de tipado fuerte, cuando necesitas otro tipo **lo conviertes tú**, llamando al tipo como si fuera una función: `int(...)`, `float(...)`, `str(...)`, `bool(...)`. Esta conversión explícita (*type casting*) la usarás constantemente con `input()`, que **siempre** devuelve `str`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "texto = input(\"¿Cuántos años tienes? \")\nprint(type(texto))            # <class 'str'>: aunque escribas 30\nedad = int(texto)\nprint(edad + 1)               # ahora sí es un número\n\naltura = float(input(\"¿Altura en metros? \"))   # convertir en la misma línea\nprint(f\"Mides {altura * 100:.0f} cm\")",
+     "run": true,
+     "stdin": [
+      "30",
+      "1.75"
+     ],
+     "caption": "Cambia las entradas del ejemplo (prueba a escribir `treinta` o `1,75`) y observa el error."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Llamada",
+      "Resultado",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "`int(\"42\")`",
+       "`42`",
+       "texto con un entero"
+      ],
+      [
+       "`int(\"  -7\\n\")`",
+       "`-7`",
+       "admite signo y espacios alrededor"
+      ],
+      [
+       "`int(\"1_000\")`",
+       "`1000`",
+       "admite `_` entre dígitos (desde 3.6)"
+      ],
+      [
+       "`int(\"3.5\")`",
+       "`ValueError`",
+       "el texto no representa un entero"
+      ],
+      [
+       "`int(3.9)` / `int(-3.9)`",
+       "`3` / `-3`",
+       "trunca hacia cero (no redondea)"
+      ],
+      [
+       "`int(\"ff\", 16)`",
+       "`255`",
+       "el segundo argumento es la base"
+      ],
+      [
+       "`float(\"3.5\")` / `float(\"1e3\")`",
+       "`3.5` / `1000.0`",
+       "decimal o notación científica"
+      ],
+      [
+       "`float(\"3,5\")`",
+       "`ValueError`",
+       "el separador decimal es el punto"
+      ],
+      [
+       "`float(\"inf\")`",
+       "`inf`",
+       "también acepta `\"nan\"` y `\"-inf\"`"
+      ],
+      [
+       "`str(3.0)` / `str(None)`",
+       "`'3.0'` / `'None'`",
+       "cualquier objeto se puede convertir a texto"
+      ],
+      [
+       "`int(True)` / `float(False)`",
+       "`1` / `0.0`",
+       "`bool` es subtipo de `int`"
+      ],
+      [
+       "`int(None)`",
+       "`TypeError`",
+       "`None` no es ni número ni texto"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "De texto a número",
+     "mermaid": "flowchart TD\n  A[\"input() devuelve str\"] --> B{\"¿Qué necesitas?\"}\n  B -->|\"un entero\"| C[\"int(texto)\"]\n  B -->|\"un decimal\"| D[\"float(texto)\"]\n  C --> E{\"¿El texto es un entero válido?\"}\n  D --> F{\"¿El texto es un número válido?\"}\n  E -->|\"sí\"| G[\"objeto int\"]\n  E -->|\"no: 3.5, abc, vacío\"| X[\"ValueError\"]\n  F -->|\"sí\"| I[\"objeto float\"]\n  F -->|\"no: 3,5, abc, vacío\"| X",
+     "caption": "Los espacios alrededor no son problema: `int()` y `float()` los ignoran."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si el usuario puede escribir decimales y tú quieres un entero, `int(\"3.5\")` falla: convierte primero a float, `int(float(\"3.5\"))`, que da `3` (truncando). Si puede escribir coma decimal, usa `texto.replace(\",\", \".\")` antes de `float()`. Cómo capturar el error con `try/except` lo verás en s08."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Nunca uses `eval(input())` para convertir texto en número: `eval` ejecuta **cualquier** expresión Python que escriba el usuario, lo que es lento y un grave riesgo de seguridad (la FAQ oficial lo advierte expresamente)."
+    },
+    {
+     "type": "h",
+     "text": "Valores de verdad: truthy y falsy"
+    },
+    {
+     "type": "p",
+     "text": "Cualquier objeto puede usarse donde se espera un booleano: en `and`, `or` y `not` (lección 6) y, desde s03, en `if` y `while`. Python decide su **valor de verdad** con una regla sencilla. Son **falsos** (*falsy*):"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Las constantes `None` y `False`.",
+      "El cero de cualquier tipo numérico: `0`, `0.0`, `0j` (y también `Decimal(0)` o `Fraction(0, 1)`).",
+      "Las secuencias y colecciones vacías: `''`, `()`, `[]`, `{}`, `set()`, `range(0)` (las colecciones llegan en s04).",
+      "**Todo lo demás es verdadero** (*truthy*): `-1`, `0.001`, `\"0\"`, `\" \"`, `\"False\"`…"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(bool(0), bool(0.0), bool(\"\"), bool(None))     # False False False False\nprint(bool(-1), bool(0.001), bool(\"0\"), bool(\" \"))  # True True True True\nprint(bool(\"False\"))                                # True: ¡no está vacía!\nprint(bool(7 % 2), bool(8 % 2))                     # True False: ¿es impar?",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "¿Truthy o falsy?",
+     "mermaid": "flowchart TD\n  A[\"bool(x)\"] --> B{\"¿x es None o False?\"}\n  B -->|\"sí\"| F[\"False\"]\n  B -->|\"no\"| C{\"¿x es un número igual a 0?\"}\n  C -->|\"sí\"| F\n  C -->|\"no\"| D{\"¿x es una secuencia o colección vacía?\"}\n  D -->|\"sí\"| F\n  D -->|\"no\"| T[\"True\"]",
+     "caption": "Simplificación de la regla oficial: una clase propia puede decidir su valor de verdad con `__bool__` o `__len__` (s11)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Trampa clásica: `bool(\"False\")` es `True` y `bool(\"0\")` también, porque son cadenas **no vacías**. Para interpretar lo que escribe un usuario compara el texto: `texto.strip().lower() == \"si\"`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Ser *truthy* no es lo mismo que ser `True`: `\"hola\"` es truthy, pero `\"hola\" == True` es `False`. Por eso los operadores `and` y `or` (lección 6) pueden devolver valores que no son `bool`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Conversión explícita",
+       "en": "type casting",
+       "def": "Crear un objeto de otro tipo llamando al tipo: `int(\"7\")`."
+      },
+      {
+       "term": "Truthy",
+       "en": "truthy",
+       "def": "Valor que se considera verdadero en un contexto booleano."
+      },
+      {
+       "term": "Falsy",
+       "en": "falsy",
+       "def": "Valor que se considera falso: `None`, `False`, ceros y vacíos."
+      },
+      {
+       "term": "ValueError",
+       "en": "ValueError",
+       "def": "El tipo del argumento es correcto, pero su valor no sirve (p. ej., un texto que no es un número)."
+      },
+      {
+       "term": "TypeError",
+       "en": "TypeError",
+       "def": "La operación no admite ese tipo (p. ej., `int(None)` o `\"a\" + 1`)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l5",
+   "title": "Operadores aritméticos, de asignación y de bits",
+   "minutes": 28,
+   "goals": [
+    "Predecir el resultado y el tipo de expresiones con `+ - * / // % **`.",
+    "Aplicar `//`, `%` y `divmod()` con números negativos usando la identidad `a == (a // b) * b + a % b`.",
+    "Usar la asignación aumentada y los operadores a nivel de bits que exige el temario PCEP.",
+    "Evaluar expresiones aplicando precedencia y asociatividad, incluidos `**` y el menos unario."
+   ],
+   "takeaways": [
+    "`/` siempre da `float`; `//` redondea hacia −∞ y `%` toma el signo del divisor.",
+    "Con enteros, `a == (a // b) * b + a % b` se cumple siempre; `divmod(a, b)` devuelve cociente y resto a la vez.",
+    "`**` es asociativo por la derecha y más fuerte que el `-` de su izquierda: `-2 ** 2 == -4`.",
+    "No existe `++`: usa `x += 1` (y `++x` es válido pero no hace nada).",
+    "`^` es XOR, no potencia; `~x == -x - 1`."
+   ],
+   "blocks": [
+    {
+     "type": "table",
+     "head": [
+      "Operador",
+      "Operación",
+      "Ejemplo",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "`+`",
+       "suma",
+       "`7 + 2`",
+       "`9`"
+      ],
+      [
+       "`-`",
+       "resta",
+       "`7 - 2`",
+       "`5`"
+      ],
+      [
+       "`*`",
+       "multiplicación",
+       "`7 * 2`",
+       "`14`"
+      ],
+      [
+       "`/`",
+       "división real",
+       "`7 / 2`",
+       "`3.5`"
+      ],
+      [
+       "`//`",
+       "división entera (suelo)",
+       "`7 // 2`",
+       "`3`"
+      ],
+      [
+       "`%`",
+       "resto (módulo)",
+       "`7 % 2`",
+       "`1`"
+      ],
+      [
+       "`**`",
+       "potencia",
+       "`7 ** 2`",
+       "`49`"
+      ],
+      [
+       "`-x` / `+x`",
+       "negación / identidad (unarios)",
+       "`-(7)`",
+       "`-7`"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "¿De qué tipo es el resultado?"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`int` con `int` da `int`… salvo con `/`, que **siempre** da `float` (`6 / 2` es `3.0`), y con `**` y exponente negativo (`2 ** -1` es `0.5`).",
+      "Si interviene un `float`, el resultado es `float` (`7.0 // 2` es `3.0`).",
+      "Si interviene un `complex`, el resultado es `complex`.",
+      "Los `bool` se tratan como `int` (`True + 1` es `2`)."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(6 / 2, type(6 / 2))          # 3.0 <class 'float'>\nprint(7 // 2, 7.0 // 2)            # 3 3.0\nprint(2 ** 10, 2 ** -1, 2 ** 0.5)  # 1024 0.5 1.4142135623730951\nprint(10 - 2.0)                    # 8.0\nprint(0 ** 0)                      # 1 (por convención)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Python 3.0 (PEP 238), `/` es siempre división real. En Python 2, `7 / 2` daba `3`: si lees código o tutoriales muy antiguos, tenlo presente."
+    },
+    {
+     "type": "h",
+     "text": "División entera y resto con negativos"
+    },
+    {
+     "type": "p",
+     "text": "`//` redondea **hacia menos infinito** (suelo), no hacia cero. Y `%` devuelve un resto con **el signo del divisor**. Con enteros, ambos están ligados por una identidad que siempre se cumple: `a == (a // b) * b + a % b`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "`a`",
+      "`b`",
+      "`a / b`",
+      "`a // b`",
+      "`a % b`",
+      "Comprobación"
+     ],
+     "rows": [
+      [
+       "7",
+       "2",
+       "3.5",
+       "3",
+       "1",
+       "3·2 + 1 = 7"
+      ],
+      [
+       "-7",
+       "2",
+       "-3.5",
+       "-4",
+       "1",
+       "(-4)·2 + 1 = -7"
+      ],
+      [
+       "7",
+       "-2",
+       "-3.5",
+       "-4",
+       "-1",
+       "(-4)·(-2) + (-1) = 7"
+      ],
+      [
+       "-7",
+       "-2",
+       "3.5",
+       "3",
+       "-1",
+       "3·(-2) + (-1) = -7"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "`//` frente a `int()`: hacia dónde se redondea",
+     "mermaid": "flowchart LR\n  A[\"-7 / 2 = -3.5\"] --> B[\"// redondea hacia menos infinito\"]\n  A --> C[\"int() trunca hacia cero\"]\n  B --> D[\"-4\"]\n  C --> E[\"-3\"]\n  D --> F[\"resto: -7 - (-4 · 2) = 1\"]"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(-7 // 2, -7 % 2)    # -4 1\nprint(7 // -2, 7 % -2)    # -4 -1\nprint(int(-7 / 2))        # -3: truncar NO es lo mismo que //\nprint(divmod(-7, 2))      # (-4, 1): cociente y resto a la vez\nprint((10 - 200) % 12)    # 2: si ahora son las 10, hace 200 horas eran las 2",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si vienes de C, Java o JavaScript: allí la división entera de `-7` entre `2` da `-3` y el resto da `-1`, porque truncan hacia cero. Python da `-4` y `1`. La FAQ oficial lo justifica: con divisor positivo, un resto siempre ≥ 0 es lo que resulta útil (horas de un reloj, días de la semana…)."
+    },
+    {
+     "type": "h",
+     "text": "Recetas con `//` y `%`"
+    },
+    {
+     "type": "list",
+     "items": [
+      "¿Es par? `n % 2 == 0`. ¿Es múltiplo de `k`? `n % k == 0`.",
+      "Última cifra: `n % 10`. Quitar la última cifra: `n // 10`.",
+      "Cambiar de unidades: `minutos // 60` horas y `minutos % 60` minutos.",
+      "Aritmética circular: `(hora + 5) % 24`, `(dia + 3) % 7`.",
+      "Dividir redondeando hacia arriba, solo con enteros: `-(-a // b)`."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "segundos = 3725\nhoras, resto = divmod(segundos, 3600)\nminutos, segs = divmod(resto, 60)\nprint(f\"{segundos} s = {horas} h {minutos} min {segs} s\")   # 1 h 2 min 5 s",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Asignación aumentada"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "saldo = 100\nsaldo += 50      # saldo = saldo + 50  -> 150\nsaldo -= 30      # 120\nsaldo *= 2       # 240\nsaldo //= 7      # 34\nsaldo %= 10      # 4\nsaldo **= 3      # 64\nprint(saldo)\n\ncontador = 0\ncontador += 1    # el patrón que usarás en todos los bucles (s03)\nprint(contador)",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Cada operador binario tiene su versión aumentada: `+=`, `-=`, `*=`, `/=`, `//=`, `%=`, `**=` y las de bits (`&=`, `|=`, `^=`, `<<=`, `>>=`). `x += 1` equivale casi a `x = x + 1`: la diferencia es que `x` se evalúa una sola vez y que, si el objeto es mutable, la operación puede hacerse *in situ* (sobre el mismo objeto). Con números, que son inmutables, siempre se crea un objeto nuevo."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Python **no tiene** `++` ni `--`. `x++` es `SyntaxError`, y lo peor: `++x` es válido y **no hace nada** (son dos signos más unarios, `+(+x)`). Usa `x += 1`."
+    },
+    {
+     "type": "h",
+     "text": "Operadores a nivel de bits (temario PCEP)"
+    },
+    {
+     "type": "p",
+     "text": "Trabajan sobre la representación binaria de los enteros. Se usan en permisos, máscaras, protocolos de red o gráficos, y el examen PCEP los incluye."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Operador",
+      "Nombre",
+      "Ejemplo (`a = 0b1100`, `b = 0b1010`)",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "`&`",
+       "AND bit a bit",
+       "`a & b`",
+       "`0b1000` (8)"
+      ],
+      [
+       "`|`",
+       "OR bit a bit",
+       "`a | b`",
+       "`0b1110` (14)"
+      ],
+      [
+       "`^`",
+       "XOR (o exclusivo)",
+       "`a ^ b`",
+       "`0b110` (6)"
+      ],
+      [
+       "`~`",
+       "NOT: `~x == -x - 1`",
+       "`~5`",
+       "`-6`"
+      ],
+      [
+       "`<<`",
+       "desplazar a la izquierda (×2ⁿ)",
+       "`5 << 2`",
+       "`20`"
+      ],
+      [
+       "`>>`",
+       "desplazar a la derecha (÷2ⁿ, hacia abajo)",
+       "`20 >> 2`",
+       "`5`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "a, b = 0b1100, 0b1010                       # 12 y 10\nprint(bin(a & b), bin(a | b), bin(a ^ b))   # 0b1000 0b1110 0b110\nprint(~5, 5 << 2, 20 >> 2)                  # -6 20 5\nprint(2 ^ 3)                                # 1: ¡^ NO es la potencia!",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Precedencia y asociatividad"
+    },
+    {
+     "type": "p",
+     "text": "Cuando una expresión tiene varios operadores, se aplican por **precedencia** (de más fuerte a más débil en la tabla) y, a igual precedencia, por **asociatividad**: casi todos se agrupan de izquierda a derecha, excepto `**`, que **se agrupa de derecha a izquierda**. Además, `**` es más fuerte que un `-` unario a su izquierda, pero más débil que uno a su derecha: `-2 ** 2` es `-(2 ** 2)` y `2 ** -1` es `2 ** (-1)`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Nivel (de más a menos fuerte)",
+      "Operadores"
+     ],
+     "rows": [
+      [
+       "1",
+       "paréntesis `( )`, llamadas `f(x)`, índices `s[i]`, atributos `x.y`"
+      ],
+      [
+       "2",
+       "`**` (asociativo por la derecha)"
+      ],
+      [
+       "3",
+       "`+x`, `-x`, `~x` (unarios)"
+      ],
+      [
+       "4",
+       "`*`, `/`, `//`, `%`"
+      ],
+      [
+       "5",
+       "`+`, `-`"
+      ],
+      [
+       "6",
+       "`<<`, `>>`"
+      ],
+      [
+       "7",
+       "`&`"
+      ],
+      [
+       "8",
+       "`^`"
+      ],
+      [
+       "9",
+       "`|`"
+      ],
+      [
+       "10",
+       "comparaciones: `==`, `!=`, `<`, `<=`, `>`, `>=`, `is`, `is not`, `in`, `not in`"
+      ],
+      [
+       "11",
+       "`not`"
+      ],
+      [
+       "12",
+       "`and`"
+      ],
+      [
+       "13",
+       "`or`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(2 + 3 * 4, (2 + 3) * 4)   # 14 20\nprint(-2 ** 2, (-2) ** 2)       # -4 4: ** se aplica antes que el - de su izquierda\nprint(2 ** 3 ** 2)              # 512 = 2 ** 9 (de derecha a izquierda)\nprint(2 ** -1)                  # 0.5: el - de la derecha se aplica primero\nprint(100 / 10 / 5)             # 2.0 = (100 / 10) / 5\nprint(10 - 4 - 3)               # 3 = (10 - 4) - 3",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de evaluación de `2 + 3 * 4 ** 2`",
+     "mermaid": "flowchart TD\n  S[\"+ da 50\"] --> A[\"2\"]\n  S --> M[\"* da 48\"]\n  M --> B[\"3\"]\n  M --> P[\"** da 16\"]\n  P --> C[\"4\"]\n  P --> D[\"2\"]",
+     "caption": "Se evalúa de abajo arriba: primero `4 ** 2`, luego `3 * 16` y por último `2 + 48`. Por debajo de `or` quedan la expresión condicional (s03), `lambda` (s06) y el operador morsa `:=` (s03)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si tienes que pararte a pensar la precedencia, pon paréntesis. `(a + b) / 2` se lee sin esfuerzo, y quien lea tu código (incluido tú dentro de un mes) lo agradecerá."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Favoritas del PCEP: `-2 ** 2` → `-4`; `2 ** 3 ** 2` → `512`; `-7 // 2` → `-4`; `7 % -3` → `-2`; `~5` → `-6`; `2 ** -1` → `0.5`; `6 / 3` → `2.0` (float); `9 // 2.0` → `4.0`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "División entera",
+       "en": "floor division",
+       "def": "`//`: cociente redondeado hacia menos infinito."
+      },
+      {
+       "term": "Módulo / resto",
+       "en": "modulo",
+       "def": "`%`: resto con el signo del divisor."
+      },
+      {
+       "term": "Asignación aumentada",
+       "en": "augmented assignment",
+       "def": "`x op= y`, como `x += 1`."
+      },
+      {
+       "term": "Precedencia",
+       "en": "precedence",
+       "def": "Qué operador se aplica antes cuando hay varios."
+      },
+      {
+       "term": "Asociatividad",
+       "en": "associativity",
+       "def": "Cómo se agrupan operadores de igual precedencia: izquierda a derecha salvo `**`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l6",
+   "title": "Comparación, lógica, identidad y pertenencia",
+   "minutes": 25,
+   "goals": [
+    "Escribir comparaciones encadenadas como `0 <= x < 10` y predecir su resultado.",
+    "Predecir el valor que devuelven `and`, `or` y `not`, teniendo en cuenta el cortocircuito.",
+    "Distinguir `is` de `==` y comprobar `None` con `is`.",
+    "Usar `in` y `not in` para buscar un texto dentro de otro."
+   ],
+   "takeaways": [
+    "`a < b < c` equivale a `a < b and b < c`, evaluando `b` una sola vez.",
+    "`and` y `or` devuelven uno de sus operandos y cortocircuitan; `not` siempre devuelve `bool`.",
+    "Precedencia lógica: `not` > `and` > `or`. Cuidado: `x == 1 or 2` es siempre truthy.",
+    "`==` compara valores; `is` compara identidad y se reserva para `None`.",
+    "`in` con cadenas busca subcadenas y distingue mayúsculas de minúsculas."
+   ],
+   "blocks": [
+    {
+     "type": "table",
+     "head": [
+      "Operador",
+      "Significado",
+      "Ejemplo",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "`==`",
+       "igual valor",
+       "`3 == 3.0`",
+       "`True`"
+      ],
+      [
+       "`!=`",
+       "distinto valor",
+       "`3 != 4`",
+       "`True`"
+      ],
+      [
+       "`<`, `<=`",
+       "menor / menor o igual",
+       "`2 <= 2`",
+       "`True`"
+      ],
+      [
+       "`>`, `>=`",
+       "mayor / mayor o igual",
+       "`\"b\" > \"a\"`",
+       "`True`"
+      ],
+      [
+       "`is`, `is not`",
+       "mismo objeto / distinto objeto",
+       "`x is None`",
+       "depende de x"
+      ],
+      [
+       "`in`, `not in`",
+       "pertenencia",
+       "`\"a\" in \"casa\"`",
+       "`True`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Las comparaciones devuelven `bool`. Entre números de distinto tipo se compara el **valor** (`1 == 1.0` es `True`). Objetos de tipos distintos (salvo los numéricos entre sí) nunca son iguales (`\"1\" == 1` es `False`), e intentar ordenarlos (`\"10\" < 9`) produce `TypeError`. Las cadenas se comparan carácter a carácter según su código Unicode (orden lexicográfico): `\"Z\" < \"a\"` y `\"10\" < \"9\"` son `True`. Lo verás a fondo en s05."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(1 == 1.0, \"1\" == 1, 0.1 + 0.2 == 0.3)   # True False False\nprint(\"abc\" < \"abd\", \"Z\" < \"a\", \"10\" < \"9\")    # True True True\nprint(True == 1)                               # True (bool es int)",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Comparaciones encadenadas"
+    },
+    {
+     "type": "p",
+     "text": "`a < b < c` significa `a < b and b < c`, pero `b` **se evalúa una sola vez**. Es la forma natural de expresar rangos. Puedes encadenar cualquier comparación, aunque eso no relaciona los extremos entre sí: `1 < 3 > 2` es `True` sin comparar nunca 1 con 2."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "edad = 25\nprint(18 <= edad < 65)   # True: edad laboral\nnota = 10.5\nprint(0 <= nota <= 10)   # False: fuera de rango\nx = 5\nprint(1 < x != 3)        # True: 1 < 5 y 5 != 3",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos errores clásicos. (1) `x == 1 or 2` **siempre es truthy**: se lee `(x == 1) or 2` y, si `x` no vale 1, devuelve `2`. Escribe `x == 1 or x == 2` (o `x in (1, 2)` cuando conozcas las tuplas). (2) `a < b > c` es válido, pero confunde: evítalo."
+    },
+    {
+     "type": "h",
+     "text": "Operadores lógicos: `and`, `or`, `not`"
+    },
+    {
+     "type": "table",
+     "head": [
+      "`A`",
+      "`B`",
+      "`A and B`",
+      "`A or B`",
+      "`not A`"
+     ],
+     "rows": [
+      [
+       "True",
+       "True",
+       "True",
+       "True",
+       "False"
+      ],
+      [
+       "True",
+       "False",
+       "False",
+       "True",
+       "False"
+      ],
+      [
+       "False",
+       "True",
+       "False",
+       "True",
+       "True"
+      ],
+      [
+       "False",
+       "False",
+       "False",
+       "False",
+       "True"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Con booleanos es la lógica de siempre. Pero Python va más allá: `and` y `or` **no devuelven necesariamente un booleano**, sino uno de sus operandos, y **dejan de evaluar en cuanto conocen el resultado** (evaluación en *cortocircuito*):"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`x or y`: si `x` es truthy devuelve `x` (sin mirar `y`); si no, devuelve `y`.",
+      "`x and y`: si `x` es falsy devuelve `x` (sin mirar `y`); si no, devuelve `y`.",
+      "`not x`: siempre devuelve un `bool`."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo deciden `or` y `and` qué devolver",
+     "mermaid": "flowchart LR\n  A[\"x or y\"] --> B{\"¿x es truthy?\"}\n  B -->|\"sí\"| C[\"devuelve x, y ni se evalúa\"]\n  B -->|\"no\"| D[\"devuelve y\"]\n  E[\"x and y\"] --> F{\"¿x es falsy?\"}\n  F -->|\"sí\"| G[\"devuelve x, y ni se evalúa\"]\n  F -->|\"no\"| H[\"devuelve y\"]"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(0 or \"por defecto\")        # por defecto\nprint(\"Ana\" or \"por defecto\")    # Ana\nprint(3 and 5, 0 and 5)          # 5 0\nprint(\"\" or 0 or None)           # None: todos falsy, devuelve el último\nprint(not 0, not \"hola\")         # True False\n\nnombre = input(\"Nombre (puedes dejarlo vacío): \")\nprint(\"Hola,\", nombre or \"desconocido\")",
+     "run": true,
+     "stdin": [
+      ""
+     ],
+     "caption": "La entrada del ejemplo está vacía: prueba a escribir un nombre."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "divisor = 0\n# Si divisor es 0, 'and' corta y la división nunca llega a ejecutarse:\nprint(divisor != 0 and 10 / divisor > 1)   # False, sin ZeroDivisionError\nprint(True or 1 / 0)                       # True: 1 / 0 nunca se evalúa",
+     "run": true,
+     "caption": "El cortocircuito no es un detalle académico: permite proteger una operación peligrosa con una comprobación previa en la misma expresión."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`valor or por_defecto` es muy cómodo, pero sustituye **cualquier** valor falsy: si `0` o `\"\"` son valores válidos, `cantidad or 1` convertirá un 0 legítimo en 1. En esos casos compara explícitamente con `is None` (con `if`, en s03)."
+    },
+    {
+     "type": "p",
+     "text": "Precedencia: `not` > `and` > `or`. Así, `True or False and False` es `True or (False and False)`, es decir, `True`. Y como `not` es más débil que las comparaciones, `not a == b` significa `not (a == b)`."
+    },
+    {
+     "type": "h",
+     "text": "Identidad: `is` frente a `==`"
+    },
+    {
+     "type": "p",
+     "text": "`==` pregunta «¿tienen el mismo **valor**?», y cada tipo decide qué significa eso. `is` pregunta «¿son el **mismo objeto**?» (equivale a `id(a) == id(b)`) y no se puede redefinir. Dos objetos distintos pueden tener el mismo valor."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "a = 10_000_000\nb = 5_000_000\nc = b + 5_000_000          # se calcula al ejecutar: es un objeto nuevo\nprint(a == c, a is c)      # True False: mismo valor, distinto objeto\n\nd = a                      # asignar no copia\nprint(a is d)              # True\n\nsin_dato = None\nprint(sin_dato is None)    # True: None es único (singleton)",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "Mismo valor no implica mismo objeto",
+     "mermaid": "flowchart LR\n  a[\"a\"] --> O1[\"int 10000000 (objeto 1)\"]\n  d[\"d\"] --> O1\n  c[\"c\"] --> O2[\"int 10000000 (objeto 2)\"]\n  O1 -.->|\"a == c es True, a is c es False\"| O2"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No uses `is` para comparar números o textos. CPython reutiliza algunos objetos (los enteros de -5 a 256, ciertas cadenas), así que `a is b` puede dar `True` «por casualidad» con valores pequeños y `False` con grandes. Es un detalle de implementación que estudiarás en s16. Desde 3.8, escribir `x is 5` provoca un `SyntaxWarning`: «\"is\" with 'int' literal. Did you mean \"==\"?»."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Reglas de oro: `==` para comparar valores; `is` solo con *singletons*: `x is None`, `x is not None`. Con booleanos, ni `== True` ni `is True`: usa el valor directamente."
+    },
+    {
+     "type": "h",
+     "text": "Pertenencia: `in` y `not in`"
+    },
+    {
+     "type": "p",
+     "text": "`in` pregunta si algo está contenido en otra cosa. Con cadenas comprueba si un texto es **subcadena** de otro: distingue mayúsculas y la cadena vacía está contenida en cualquier cadena. En s04 lo usarás con listas, tuplas, diccionarios y conjuntos."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "email = \"ana.garcia@example.com\"\nprint(\"@\" in email)              # True\nprint(\" \" not in email)          # True: no contiene espacios\nprint(\"ANA\" in email)            # False: distingue mayúsculas\nprint(\"ana\" in email.lower())    # True\nprint(\"\" in email)               # True: la cadena vacía siempre está\n\nparece_email = \"@\" in email and \".\" in email and \" \" not in email\nprint(parece_email)              # True",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué imprimen? `print(\"\" or 0 or None)` → `None`; `print(3 and 0 and 1/0)` → `0` (corta antes de dividir); `print(not \"\")` → `True`; `print(1 < 2 < 3 == 3)` → `True`; `print(\"a\" in \"banana\" and \"z\" not in \"banana\")` → `True`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Cortocircuito",
+       "en": "short-circuit evaluation",
+       "def": "`and` y `or` no evalúan el segundo operando si el primero ya decide el resultado."
+      },
+      {
+       "term": "Comparación encadenada",
+       "en": "chained comparison",
+       "def": "`a < b < c`, equivalente a `a < b and b < c`."
+      },
+      {
+       "term": "Identidad",
+       "en": "identity",
+       "def": "Ser el mismo objeto; se comprueba con `is`."
+      },
+      {
+       "term": "Pertenencia",
+       "en": "membership",
+       "def": "Estar contenido en otro objeto; se comprueba con `in`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l7",
+   "title": "El módulo math y programas de cálculo completos",
+   "minutes": 20,
+   "goals": [
+    "Importar el módulo `math` y usar sus constantes y funciones más comunes.",
+    "Resolver problemas numéricos (geometría, unidades, finanzas) combinando operadores, `math` y conversiones.",
+    "Construir un programa completo que siga el esquema entrada → conversión → cálculo → salida formateada."
+   ],
+   "takeaways": [
+    "`import math` y el prefijo `math.`: `sqrt`, `isqrt`, `floor`, `ceil`, `hypot`, `gcd`, `isclose`, `pi`…",
+    "La trigonometría trabaja en radianes, y `log10(x)` es más preciso que `log(x, 10)`.",
+    "Esquema de programa: entrada → conversión → cálculo → salida formateada.",
+    "Con enteros grandes, prefiere la aritmética entera (`//`, `%`, `isqrt`) a pasar por float."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La biblioteca estándar incluye el módulo `math`, con funciones matemáticas para `int` y `float`. Se importa una vez al principio y se usa con el prefijo `math.`, que deja claro de dónde sale cada función. (Los módulos y las otras formas de `import` se estudian en s07.) Salvo que se indique lo contrario, sus funciones devuelven `float`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Grupo",
+      "Nombres",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "Constantes",
+       "`pi`, `e`, `tau`, `inf`, `nan`",
+       "`math.pi` → `3.141592653589793`"
+      ],
+      [
+       "Raíces y potencias",
+       "`sqrt`, `isqrt` (3.8), `cbrt` (3.11), `exp`, `pow`",
+       "`math.isqrt(17)` → `4`"
+      ],
+      [
+       "Redondeo a entero",
+       "`floor`, `ceil`, `trunc` (devuelven `int`)",
+       "`math.ceil(2.1)` → `3`"
+      ],
+      [
+       "Logaritmos",
+       "`log(x, base)`, `log10`, `log2`",
+       "`math.log2(8)` → `3.0`"
+      ],
+      [
+       "Trigonometría (radianes)",
+       "`sin`, `cos`, `tan`, `radians`, `degrees`",
+       "`math.sin(math.pi / 2)` → `1.0`"
+      ],
+      [
+       "Geometría",
+       "`hypot` (varios argumentos desde 3.8), `dist` (3.8)",
+       "`math.hypot(3, 4)` → `5.0`"
+      ],
+      [
+       "Enteros y combinatoria",
+       "`factorial`, `gcd`, `lcm` (3.9), `comb` y `perm` (3.8)",
+       "`math.gcd(12, 18)` → `6`"
+      ],
+      [
+       "Comprobaciones",
+       "`isclose`, `isnan`, `isinf`, `isfinite`",
+       "`math.isclose(0.1 + 0.2, 0.3)` → `True`"
+      ],
+      [
+       "Valor absoluto",
+       "`fabs` (siempre float); el integrado `abs()` conserva el tipo",
+       "`math.fabs(-3)` → `3.0`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import math\n\nprint(math.pi, math.e)\nprint(math.sqrt(2))                 # 1.4142135623730951 (float)\nprint(math.isqrt(17))               # 4: raíz entera exacta (int)\nprint(math.floor(-2.5), math.ceil(-2.5), math.trunc(-2.5))   # -3 -2 -2\nprint(math.hypot(3, 4))             # 5.0: hipotenusa\nprint(math.factorial(20))           # 2432902008176640000 (int exacto)\nprint(math.gcd(12, 18), math.lcm(4, 6))                      # 6 12\nprint(math.log(1000, 10), math.log10(1000))                  # 2.9999999999999996 3.0\nprint(math.degrees(math.pi), math.sin(math.radians(30)))     # 180.0 0.49999999999999994",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Las funciones trigonométricas trabajan en **radianes**: `math.sin(30)` no es el seno de 30°. Convierte antes con `math.radians()`. Y fíjate en `math.log(1000, 10)`: da `2.9999999999999996`; para base 10 usa `math.log10()`, que es más preciso (y `math.log2()` para base 2)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`math.sqrt()` siempre devuelve `float` y pierde precisión con enteros enormes; `math.isqrt(n)` devuelve la raíz entera exacta. `x ** 0.5` también funciona, pero `math.sqrt(x)` expresa mejor la intención. Por cierto, 3.14 mejoró los mensajes de error del módulo: `math.sqrt(-1)` ahora explica «expected a nonnegative input, got -1.0» en vez del escueto «math domain error» de versiones anteriores."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de un programa de cálculo"
+    },
+    {
+     "type": "diagram",
+     "title": "Las cuatro fases",
+     "mermaid": "flowchart LR\n  E[\"1. Entrada: input() devuelve str\"] --> C[\"2. Conversión: int() o float()\"]\n  C --> K[\"3. Cálculo: operadores y math\"]\n  K --> S[\"4. Salida: f-string con formato\"]",
+     "caption": "Casi todos los programas de esta sección siguen este esquema."
+    },
+    {
+     "type": "p",
+     "text": "Separar las fases ayuda a encontrar errores: si falla la conversión, el problema está en los datos; si el número sale mal, en la fórmula; si el número está bien pero se ve mal, en el formato. En los ejercicios, además, encapsularás cada fase en funciones pequeñas que se pueden probar por separado."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "peso_kg = float(input(\"Peso (kg): \"))\naltura_m = float(input(\"Altura (m): \"))\n\nimc = peso_kg / altura_m ** 2          # ** se aplica antes que /\nen_rango_normal = 18.5 <= imc < 25     # expresión booleana\n\nprint(f\"IMC: {imc:.1f}\")\nprint(f\"¿Rango normal? {en_rango_normal}\")",
+     "run": true,
+     "stdin": [
+      "70",
+      "1.75"
+     ],
+     "caption": "El índice de masa corporal (IMC) es el peso en kg dividido entre la altura en metros al cuadrado. La OMS considera peso normal en adultos un IMC entre 18,5 y 24,9."
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en `peso_kg / altura_m ** 2`: gracias a la precedencia no hacen falta paréntesis, aunque `peso_kg / (altura_m ** 2)` es igual de correcto y quizá más legible. Y observa que `en_rango_normal` guarda directamente el resultado de una comparación encadenada: no necesitas `if` para obtener un `bool`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "capital = 1000.0          # en $\ninteres_anual = 0.035     # 3,5 %\nanios = 10\n\nfinal = capital * (1 + interes_anual) ** anios   # interés compuesto\nprint(f\"Tras {anios} años: ${final:.2f}\")       # $1410.60\nprint(f\"Ganancia: ${final - capital:.2f}\")      # $410.60",
+     "run": true
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import math\n\n# Distancia entre dos puntos del plano\nx1, y1 = 1.0, 2.0\nx2, y2 = 4.0, 6.0\ndistancia = math.hypot(x2 - x1, y2 - y1)\nprint(f\"Distancia: {distancia}\")                   # 5.0\n\n# ¿Cuántas cajas de 12 huevos necesito para 100 huevos? (redondeo hacia arriba)\nhuevos = 100\nprint(math.ceil(huevos / 12), -(-huevos // 12))    # 9 9",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`math.ceil(a / b)` pasa por un `float`, y con enteros muy grandes puede equivocarse, porque un float solo tiene 53 bits de precisión. La versión solo con enteros, `-(-a // b)`, es exacta siempre. Lo comprobarás en un ejercicio."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas frecuentes: `math.floor(-2.5)` → `-3`; `math.trunc(-2.5)` → `-2`; `round(-2.5)` → `-2`; `int(-2.5)` → `-2`; `math.sqrt(16)` → `4.0` (float, no `4`); `math.isqrt(16)` → `4`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Estilo PEP 8: rodea con un espacio `=` y los operadores de menor prioridad; puedes pegar los de mayor prioridad para mostrar la agrupación: `x = x*2 - 1`, `hipot2 = x*x + y*y`. Y define las cantidades fijas como constantes con nombre: `IVA_PCT = 19`, `IMC_MAXIMO_NORMAL = 25`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Módulo",
+       "en": "module",
+       "def": "Archivo con definiciones reutilizables que se carga con `import`."
+      },
+      {
+       "term": "Radián",
+       "en": "radian",
+       "def": "Unidad de ángulo de las funciones trigonométricas: 180° son `math.pi` radianes."
+      },
+      {
+       "term": "Raíz entera",
+       "en": "integer square root",
+       "def": "`math.isqrt(n)`: el mayor entero cuyo cuadrado no supera `n`."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s02-e1",
+   "title": "Conversor de temperaturas",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Completa dos funciones que convierten temperaturas: `celsius_a_fahrenheit(c)` y `fahrenheit_a_celsius(f)`. Ambas reciben un número (`int` o `float`) y **devuelven** el resultado como `float`, sin redondear. Devolver significa usar `return`: si usas `print`, la función devolverá `None` y los tests fallarán.",
+    "Fórmulas: °F = °C × 9/5 + 32 y °C = (°F − 32) × 5/9. Cuidado con la precedencia en la segunda: la resta tiene que hacerse antes que la multiplicación."
+   ],
+   "examples": [
+    {
+     "call": "celsius_a_fahrenheit(100)",
+     "result": "212.0"
+    },
+    {
+     "call": "fahrenheit_a_celsius(32)",
+     "result": "0.0"
+    },
+    {
+     "call": "celsius_a_fahrenheit(-40)",
+     "result": "-40.0"
+    }
+   ],
+   "starter": "def celsius_a_fahrenheit(c):\n    # Devuelve la temperatura en grados Fahrenheit\n    pass\n\n\ndef fahrenheit_a_celsius(f):\n    # Devuelve la temperatura en grados Celsius\n    pass\n",
+   "solution": "def celsius_a_fahrenheit(c):\n    return c * 9 / 5 + 32\n\n\ndef fahrenheit_a_celsius(f):\n    return (f - 32) * 5 / 9\n",
+   "tests": [
+    {
+     "name": "Puntos de referencia del agua (°C → °F)",
+     "code": "import math\nr0 = celsius_a_fahrenheit(0)\nr100 = celsius_a_fahrenheit(100)\nassert isinstance(r0, (int, float)) and math.isclose(r0, 32), f\"celsius_a_fahrenheit(0) debería devolver 32.0 y devolvió {r0!r}\"\nassert isinstance(r100, (int, float)) and math.isclose(r100, 212), f\"celsius_a_fahrenheit(100) debería devolver 212.0 y devolvió {r100!r}\""
+    },
+    {
+     "name": "Puntos de referencia del agua (°F → °C)",
+     "code": "import math\nr32 = fahrenheit_a_celsius(32)\nr212 = fahrenheit_a_celsius(212)\nassert isinstance(r32, (int, float)) and math.isclose(r32, 0, abs_tol=1e-9), f\"fahrenheit_a_celsius(32) debería devolver 0.0 y devolvió {r32!r}\"\nassert isinstance(r212, (int, float)) and math.isclose(r212, 100), f\"fahrenheit_a_celsius(212) debería devolver 100.0 y devolvió {r212!r}\""
+    },
+    {
+     "name": "Precedencia: la resta va antes que la multiplicación",
+     "code": "import math\nr = fahrenheit_a_celsius(50)\nassert isinstance(r, (int, float)) and math.isclose(r, 10), f\"fahrenheit_a_celsius(50) debería devolver 10.0 y devolvió {r!r}. ¿Has puesto paréntesis en (f - 32)?\""
+    },
+    {
+     "name": "−40 es la misma temperatura en ambas escalas",
+     "code": "import math\na = celsius_a_fahrenheit(-40)\nb = fahrenheit_a_celsius(-40)\nassert isinstance(a, (int, float)) and math.isclose(a, -40), f\"celsius_a_fahrenheit(-40) debería devolver -40.0 y devolvió {a!r}\"\nassert isinstance(b, (int, float)) and math.isclose(b, -40), f\"fahrenheit_a_celsius(-40) debería devolver -40.0 y devolvió {b!r}\""
+    },
+    {
+     "name": "Funciona con decimales",
+     "code": "import math\nr = celsius_a_fahrenheit(36.6)\ns = fahrenheit_a_celsius(98.6)\nassert isinstance(r, (int, float)) and math.isclose(r, 97.88), f\"celsius_a_fahrenheit(36.6) debería devolver 97.88 (aprox.) y devolvió {r!r}\"\nassert isinstance(s, (int, float)) and math.isclose(s, 37), f\"fahrenheit_a_celsius(98.6) debería devolver 37.0 (aprox.) y devolvió {s!r}\""
+    },
+    {
+     "name": "Devuelve float incluso con enteros",
+     "code": "r = celsius_a_fahrenheit(10)\ns = fahrenheit_a_celsius(50)\nassert type(r) is float, f\"celsius_a_fahrenheit(10) debería devolver un float (50.0), no {type(r).__name__}. Recuerda: / siempre da float; // no sirve aquí\"\nassert type(s) is float, f\"fahrenheit_a_celsius(50) debería devolver un float (10.0), no {type(s).__name__}\""
+    },
+    {
+     "name": "Ida y vuelta devuelve el valor original",
+     "code": "import math\nc = fahrenheit_a_celsius(celsius_a_fahrenheit(21.5))\nassert isinstance(c, (int, float)) and math.isclose(c, 21.5), f\"Convertir 21.5 °C a °F y de vuelta debería dar 21.5 y dio {c!r}\""
+    }
+   ],
+   "hints": [
+    "Traduce cada fórmula tal cual con los operadores `*`, `/`, `+` y `-`, y devuelve el resultado con `return`.",
+    "En la segunda fórmula necesitas paréntesis: `(f - 32) * 5 / 9`. Sin ellos, Python calcularía primero `32 * 5 / 9` y se lo restaría a `f`."
+   ],
+   "explain": "**Solución**: `return c * 9 / 5 + 32` y `return (f - 32) * 5 / 9`. Como `/` **siempre** devuelve `float`, el resultado es `float` aunque la entrada sea un entero, que es justo lo que pedía el enunciado. Si hubieras usado `//`, `celsius_a_fahrenheit(1)` daría `33` en lugar de `33.8`, y `celsius_a_fahrenheit(36.6)`, `97.0` en lugar de `97.88`: la división entera tira los decimales.\n\n**Precedencia**: `*` y `/` van antes que `+` y `-`, y a igual nivel se evalúa de izquierda a derecha: `c * 9 / 5 + 32` es `((c * 9) / 5) + 32`. En la inversa, sin paréntesis, `f - 32 * 5 / 9` sería `f - 17.77…`.\n\n**Alternativa**: `c * 1.8 + 32` es equivalente, aunque 1.8 no es exacto en binario y puede introducir diferencias en la última cifra; por eso los tests comparan con `math.isclose()` y no con `==`.\n\n**Diseño**: son funciones *puras* (no leen ni imprimen nada, solo calculan), así que se pueden reutilizar en cualquier programa y probar automáticamente. Coste: O(1)."
+  },
+  {
+   "id": "s02-e2",
+   "title": "Círculos e hipotenusas con math",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Usa el módulo `math` (ya importado en el código inicial) para completar dos funciones:",
+    "`area_circulo(radio)` devuelve el área del círculo (π · r²) **redondeada a 2 decimales** con `round()`.",
+    "`hipotenusa(a, b)` devuelve la hipotenusa de un triángulo rectángulo de catetos `a` y `b`, es decir, √(a² + b²), **sin redondear**.",
+    "Usa `math.pi`, no `3.14`: los tests lo notarán."
+   ],
+   "examples": [
+    {
+     "call": "area_circulo(1)",
+     "result": "3.14"
+    },
+    {
+     "call": "area_circulo(2.5)",
+     "result": "19.63"
+    },
+    {
+     "call": "hipotenusa(3, 4)",
+     "result": "5.0"
+    }
+   ],
+   "starter": "import math\n\n\ndef area_circulo(radio):\n    # π · r², redondeado a 2 decimales\n    pass\n\n\ndef hipotenusa(a, b):\n    # raíz cuadrada de a² + b²\n    pass\n",
+   "solution": "import math\n\n\ndef area_circulo(radio):\n    return round(math.pi * radio ** 2, 2)\n\n\ndef hipotenusa(a, b):\n    return math.sqrt(a ** 2 + b ** 2)\n",
+   "tests": [
+    {
+     "name": "Área de círculos pequeños",
+     "code": "r1 = area_circulo(1)\nr2 = area_circulo(2.5)\nassert r1 == 3.14, f\"area_circulo(1) debería devolver 3.14 y devolvió {r1!r}\"\nassert r2 == 19.63, f\"area_circulo(2.5) debería devolver 19.63 y devolvió {r2!r}\""
+    },
+    {
+     "name": "Usa math.pi y no 3.14",
+     "code": "r = area_circulo(100)\nassert r == 31415.93, f\"area_circulo(100) debería devolver 31415.93 y devolvió {r!r}. Con 3.14 en lugar de math.pi saldría 31400.0\""
+    },
+    {
+     "name": "Redondea a 2 decimales",
+     "code": "r10 = area_circulo(10)\nr05 = area_circulo(0.5)\nassert r10 == 314.16, f\"area_circulo(10) debería devolver 314.16 y devolvió {r10!r}\"\nassert r05 == 0.79, f\"area_circulo(0.5) debería devolver 0.79 y devolvió {r05!r}\""
+    },
+    {
+     "name": "Radio 0",
+     "code": "r = area_circulo(0)\nassert r == 0, f\"area_circulo(0) debería devolver 0.0 y devolvió {r!r}\""
+    },
+    {
+     "name": "Triángulos 3-4-5 y 5-12-13",
+     "code": "import math\na = hipotenusa(3, 4)\nb = hipotenusa(5, 12)\nassert isinstance(a, float) and math.isclose(a, 5), f\"hipotenusa(3, 4) debería devolver 5.0 y devolvió {a!r}\"\nassert isinstance(b, float) and math.isclose(b, 13), f\"hipotenusa(5, 12) debería devolver 13.0 y devolvió {b!r}\""
+    },
+    {
+     "name": "Hipotenusa con decimales y con ceros",
+     "code": "import math\na = hipotenusa(1, 1)\nb = hipotenusa(1.5, 2)\nc = hipotenusa(0, 0)\nassert isinstance(a, float) and math.isclose(a, 2 ** 0.5), f\"hipotenusa(1, 1) debería devolver 1.4142135623730951 (sin redondear) y devolvió {a!r}\"\nassert isinstance(b, float) and math.isclose(b, 2.5), f\"hipotenusa(1.5, 2) debería devolver 2.5 y devolvió {b!r}\"\nassert isinstance(c, float) and c == 0, f\"hipotenusa(0, 0) debería devolver 0.0 y devolvió {c!r}\""
+    }
+   ],
+   "hints": [
+    "`math.pi` y `math.sqrt()` están disponibles gracias a `import math`. El cuadrado de `r` se escribe `r ** 2`.",
+    "`round(valor, 2)` redondea a 2 decimales. Como `**` se aplica antes que `*`, `math.pi * radio ** 2` no necesita paréntesis."
+   ],
+   "explain": "**Solución**: `round(math.pi * radio ** 2, 2)` y `math.sqrt(a ** 2 + b ** 2)`. Gracias a la precedencia (`**` antes que `*` y que `+`) no hace falta ningún paréntesis.\n\n**¿Por qué aquí vale la igualdad exacta?** El test de `area_circulo` usa `==` porque `round(x, 2)` devuelve el float más cercano a un número de 2 decimales, y el literal `3.14` del test es exactamente ese mismo float. Con resultados de cálculos sin redondear (la hipotenusa), los tests usan `math.isclose()`.\n\n**Versión pro**: `math.hypot(a, b)` calcula la hipotenusa directamente y es más robusta: con catetos enormes, `a ** 2` puede desbordarse (`1e200 ** 2` lanza `OverflowError`), mientras que `math.hypot(1e200, 1e200)` devuelve `1.414213562373095e+200` sin problemas. También vale `(a ** 2 + b ** 2) ** 0.5`, aunque `math.sqrt` expresa mejor la intención.\n\nCoste: O(1)."
+  },
+  {
+   "id": "s02-e3",
+   "title": "Par, impar y múltiplos",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Escribe dos funciones que devuelvan un `bool` (`True` o `False`) **sin usar condicionales** (`if` llega en s03): basta con devolver una comparación, que ya es un `bool`.",
+    "`es_par(n)` indica si el entero `n` es par. `es_multiplo(n, divisor)` indica si `n` es múltiplo de `divisor`. El 0 es múltiplo de cualquier número y los negativos también cuentan.",
+    "Si `divisor` es 0 no hay respuesta posible: no hagas nada especial, deja que Python lance su `ZeroDivisionError`."
+   ],
+   "examples": [
+    {
+     "call": "es_par(10)",
+     "result": "True"
+    },
+    {
+     "call": "es_par(-3)",
+     "result": "False"
+    },
+    {
+     "call": "es_multiplo(15, 5)",
+     "result": "True"
+    },
+    {
+     "call": "es_multiplo(7, 2)",
+     "result": "False"
+    }
+   ],
+   "starter": "def es_par(n):\n    pass\n\n\ndef es_multiplo(n, divisor):\n    pass\n",
+   "solution": "def es_par(n):\n    return n % 2 == 0\n\n\ndef es_multiplo(n, divisor):\n    return n % divisor == 0\n",
+   "tests": [
+    {
+     "name": "Pares e impares positivos",
+     "code": "assert es_par(4) is True, f\"es_par(4) debería devolver True y devolvió {es_par(4)!r}\"\nassert es_par(7) is False, f\"es_par(7) debería devolver False y devolvió {es_par(7)!r}\""
+    },
+    {
+     "name": "El cero y los negativos",
+     "code": "assert es_par(0) is True, \"es_par(0) debería devolver True: 0 es par\"\nassert es_par(-8) is True, \"es_par(-8) debería devolver True\"\nassert es_par(-3) is False, \"es_par(-3) debería devolver False\""
+    },
+    {
+     "name": "Devuelve un bool, no 0 o 1",
+     "code": "assert type(es_par(4)) is bool and type(es_par(5)) is bool, f\"es_par debe devolver True/False y devolvió {es_par(4)!r} y {es_par(5)!r}. Devuelve una comparación con ==\""
+    },
+    {
+     "name": "Múltiplos habituales",
+     "code": "assert es_multiplo(15, 5) is True, \"es_multiplo(15, 5) debería devolver True\"\nassert es_multiplo(16, 5) is False, \"es_multiplo(16, 5) debería devolver False\"\nassert es_multiplo(100, 10) is True, \"es_multiplo(100, 10) debería devolver True\""
+    },
+    {
+     "name": "Bordes: cero, negativos y divisor mayor",
+     "code": "assert es_multiplo(0, 7) is True, \"es_multiplo(0, 7) debería devolver True: 0 es múltiplo de todo\"\nassert es_multiplo(-12, 4) is True, \"es_multiplo(-12, 4) debería devolver True\"\nassert es_multiplo(7, -7) is True, \"es_multiplo(7, -7) debería devolver True\"\nassert es_multiplo(5, 10) is False, \"es_multiplo(5, 10) debería devolver False\""
+    },
+    {
+     "name": "Divisor 0 lanza ZeroDivisionError",
+     "code": "try:\n    es_multiplo(5, 0)\nexcept ZeroDivisionError:\n    pass\nelse:\n    raise AssertionError(\"es_multiplo(5, 0) debería lanzar ZeroDivisionError: no se puede dividir entre 0\")"
+    }
+   ],
+   "hints": [
+    "El operador `%` da el resto de la división entera. Un número es par si el resto de dividirlo entre 2 es 0.",
+    "Una comparación como `x == 0` ya produce `True` o `False`: puedes devolverla directamente con `return`."
+   ],
+   "explain": "**Solución**: `return n % 2 == 0` y `return n % divisor == 0`. Como `%` tiene más prioridad que `==`, no hacen falta paréntesis.\n\n**¿Y los negativos?** En Python el resto toma el signo del divisor: `-3 % 2` es `1` y `-8 % 2` es `0`, así que la fórmula funciona sin casos especiales. En C o Java `-3 % 2` vale `-1`, y el típico `n % 2 == 1` para detectar impares falla con negativos; en Python funciona, pero `n % 2 != 0` es más claro y vale en cualquier lenguaje.\n\n**Antipatrón** que verás en s03: `if n % 2 == 0: return True else: return False`. Es redundante: la comparación ya es el `bool` que quieres devolver.\n\n**Curiosidad de precedencia**: con bits, `n & 1 == 0` también detecta pares, porque en Python `&` tiene más prioridad que `==` (en C es al revés y ese mismo código es un error clásico).\n\nCoste: O(1)."
+  },
+  {
+   "id": "s02-e4",
+   "title": "Saludo con cálculo de edad",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe el programa dentro de `main()`. Debe pedir con `input()`, en este orden, el **nombre** y la **edad**, y mostrar **exactamente** una línea como esta:",
+    "```\nHola, Ana. Dentro de 10 años tendrás 40.\n```",
+    "Detalles: quita los espacios sobrantes del nombre con `strip()`; la edad puede venir con espacios alrededor (`int()` los tolera). Si la edad no es un número entero, no hagas nada especial: `int()` lanzará `ValueError`, y así debe ser (gestionar errores es cosa de s08).",
+    "Los textos que pases a `input()` (por ejemplo `\"¿Cómo te llamas? \"`) son libres: los tests no los comprueban."
+   ],
+   "examples": [
+    {
+     "call": "main()  # entradas: Ana, 30",
+     "result": "Hola, Ana. Dentro de 10 años tendrás 40."
+    },
+    {
+     "call": "main()  # entradas: '  Luis Pérez ', ' 7 '",
+     "result": "Hola, Luis Pérez. Dentro de 10 años tendrás 17."
+    }
+   ],
+   "starter": "def main():\n    # 1. Pide el nombre y la edad con input()\n    # 2. Limpia el nombre y convierte la edad a int\n    # 3. Muestra el saludo con print() y una f-string\n    pass\n",
+   "solution": "def main():\n    nombre = input(\"¿Cómo te llamas? \").strip()\n    edad = int(input(\"¿Cuántos años tienes? \"))\n    print(f\"Hola, {nombre}. Dentro de 10 años tendrás {edad + 10}.\")\n",
+   "tests": [
+    {
+     "name": "Caso normal",
+     "code": "salida = capturar(main, entradas=[\"Ana\", \"30\"])\nesperado = \"Hola, Ana. Dentro de 10 años tendrás 40.\\n\"\nassert salida == esperado, f\"Con las entradas Ana y 30 se esperaba {esperado!r} y se obtuvo {salida!r}\""
+    },
+    {
+     "name": "Suma numérica, no concatenación",
+     "code": "salida = capturar(main, entradas=[\"Eva\", \"95\"])\nesperado = \"Hola, Eva. Dentro de 10 años tendrás 105.\\n\"\nassert salida == esperado, f\"Con Eva y 95 se esperaba {esperado!r} y se obtuvo {salida!r}. ¿Has convertido la edad con int()?\""
+    },
+    {
+     "name": "Edad 0",
+     "code": "salida = capturar(main, entradas=[\"Leo\", \"0\"])\nesperado = \"Hola, Leo. Dentro de 10 años tendrás 10.\\n\"\nassert salida == esperado, f\"Con Leo y 0 se esperaba {esperado!r} y se obtuvo {salida!r}\""
+    },
+    {
+     "name": "Quita los espacios sobrantes",
+     "code": "salida = capturar(main, entradas=[\"  Luis Pérez  \", \" 7 \"])\nesperado = \"Hola, Luis Pérez. Dentro de 10 años tendrás 17.\\n\"\nassert salida == esperado, f\"Con '  Luis Pérez  ' y ' 7 ' se esperaba {esperado!r} y se obtuvo {salida!r}. Usa strip() con el nombre\""
+    },
+    {
+     "name": "Una edad no numérica lanza ValueError",
+     "code": "try:\n    capturar(main, entradas=[\"Ana\", \"treinta\"])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Si la edad no es un número entero, int() debe lanzar ValueError: conviértela con int() y no captures el error\")"
+    }
+   ],
+   "hints": [
+    "`input()` siempre devuelve texto: para poder sumar 10 necesitas `int(...)`.",
+    "Construye la línea con una f-string: `f\"Hola, {nombre}. Dentro de 10 años tendrás {edad + 10}.\"`. La salida debe coincidir carácter a carácter, punto final incluido."
+   ],
+   "explain": "**Solución**: se aplica el esquema entrada → conversión → cálculo → salida. `input(...).strip()` limpia el nombre en la misma línea en que se lee; `int(input(...))` lee y convierte la edad; y la f-string calcula `edad + 10` dentro de las llaves.\n\n**Errores frecuentes**: (1) olvidar `int()`: `\"30\" + 10` lanza `TypeError`; (2) usar `print(\"Hola,\", nombre, \".\")`, que mete espacios de más (`print` separa sus argumentos con un espacio); (3) no quitar espacios del nombre.\n\n**¿Y la edad?** No hace falta `strip()`: `int()` ya ignora los espacios alrededor: `int(\" 7 \")` es `7`.\n\n**Sobre el error**: dejar que el error se propague es lo correcto por ahora; en s08 aprenderás a capturarlo con `try/except` para volver a pedir el dato."
+  },
+  {
+   "id": "s02-e5",
+   "title": "Desglosar segundos",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Completa `desglosar_segundos(total)`, que recibe una cantidad entera de segundos (`total >= 0`) y devuelve un **texto** con las horas, minutos y segundos que contiene, con este formato exacto: `\"H h M min S s\"`.",
+    "Las horas no se reinician al llegar a 24: 90061 segundos son `\"25 h 1 min 1 s\"`."
+   ],
+   "examples": [
+    {
+     "call": "desglosar_segundos(3665)",
+     "result": "'1 h 1 min 5 s'"
+    },
+    {
+     "call": "desglosar_segundos(59)",
+     "result": "'0 h 0 min 59 s'"
+    },
+    {
+     "call": "desglosar_segundos(90061)",
+     "result": "'25 h 1 min 1 s'"
+    }
+   ],
+   "starter": "def desglosar_segundos(total):\n    # Calcula horas, minutos y segundos y devuelve el texto\n    pass\n",
+   "solution": "def desglosar_segundos(total):\n    horas, resto = divmod(total, 3600)\n    minutos, segundos = divmod(resto, 60)\n    return f\"{horas} h {minutos} min {segundos} s\"\n",
+   "tests": [
+    {
+     "name": "Caso típico",
+     "code": "r = desglosar_segundos(3665)\nassert r == \"1 h 1 min 5 s\", f\"desglosar_segundos(3665) debería devolver '1 h 1 min 5 s' y devolvió {r!r}\""
+    },
+    {
+     "name": "Cero segundos",
+     "code": "r = desglosar_segundos(0)\nassert r == \"0 h 0 min 0 s\", f\"desglosar_segundos(0) debería devolver '0 h 0 min 0 s' y devolvió {r!r}\""
+    },
+    {
+     "name": "Límites de minuto y de hora",
+     "code": "casos = {59: \"0 h 0 min 59 s\", 60: \"0 h 1 min 0 s\", 3599: \"0 h 59 min 59 s\", 3600: \"1 h 0 min 0 s\"}\nfor entrada, esperado in casos.items():\n    r = desglosar_segundos(entrada)\n    assert r == esperado, f\"desglosar_segundos({entrada}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Justo antes de medianoche",
+     "code": "r = desglosar_segundos(86399)\nassert r == \"23 h 59 min 59 s\", f\"desglosar_segundos(86399) debería devolver '23 h 59 min 59 s' y devolvió {r!r}\""
+    },
+    {
+     "name": "Más de un día: las horas siguen sumando",
+     "code": "r1 = desglosar_segundos(90061)\nr2 = desglosar_segundos(10 ** 6)\nassert r1 == \"25 h 1 min 1 s\", f\"desglosar_segundos(90061) debería devolver '25 h 1 min 1 s' y devolvió {r1!r}\"\nassert r2 == \"277 h 46 min 40 s\", f\"desglosar_segundos(1000000) debería devolver '277 h 46 min 40 s' y devolvió {r2!r}\""
+    }
+   ],
+   "hints": [
+    "Una hora son 3600 s y un minuto, 60 s. `//` te dice cuántas horas completas caben y `%`, cuántos segundos sobran.",
+    "`divmod(total, 3600)` devuelve a la vez cociente y resto: `horas, resto = divmod(total, 3600)`. Repite la idea con `resto` y 60, y monta el texto con una f-string."
+   ],
+   "explain": "**Solución**: dos `divmod` encadenados. El primero separa las horas completas del resto de segundos; el segundo separa ese resto en minutos y segundos. La f-string monta el formato.\n\n**Alternativa**: sin `divmod`, `horas = total // 3600`, `minutos = total % 3600 // 60` y `segundos = total % 60`. Fíjate en que `%` y `//` tienen la misma precedencia y se agrupan de izquierda a derecha, así que `total % 3600 // 60` es `(total % 3600) // 60`.\n\n**Para ampliar**: añadir días es otro `divmod(total, 86400)` al principio. Si `total` fuese negativo, `divmod(-1, 3600)` da `(-1, 3599)` y el texto no tendría sentido: validar la entrada requiere `if` (s03).\n\nCoste: O(1)."
+  },
+  {
+   "id": "s02-e6",
+   "title": "¿Año bisiesto?",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "En el calendario gregoriano un año es bisiesto si es divisible entre 4, **excepto** los divisibles entre 100, que solo lo son si además son divisibles entre 400. Así, 2024 y 2000 son bisiestos, pero 1900 y 2023 no.",
+    "Completa `es_bisiesto(anio)` para que devuelva `True` o `False` con **una sola expresión booleana** (sin `if`), combinando comparaciones con `and` y `or`."
+   ],
+   "examples": [
+    {
+     "call": "es_bisiesto(2024)",
+     "result": "True"
+    },
+    {
+     "call": "es_bisiesto(1900)",
+     "result": "False"
+    },
+    {
+     "call": "es_bisiesto(2000)",
+     "result": "True"
+    }
+   ],
+   "starter": "def es_bisiesto(anio):\n    pass\n",
+   "solution": "def es_bisiesto(anio):\n    return anio % 4 == 0 and (anio % 100 != 0 or anio % 400 == 0)\n",
+   "tests": [
+    {
+     "name": "Divisibles entre 4 (no siglos)",
+     "code": "for anio in (2024, 2020, 1996):\n    assert es_bisiesto(anio) is True, f\"es_bisiesto({anio}) debería devolver True y devolvió {es_bisiesto(anio)!r}\""
+    },
+    {
+     "name": "No divisibles entre 4",
+     "code": "for anio in (2023, 2025, 1999):\n    assert es_bisiesto(anio) is False, f\"es_bisiesto({anio}) debería devolver False y devolvió {es_bisiesto(anio)!r}\""
+    },
+    {
+     "name": "Siglos que NO son bisiestos",
+     "code": "for anio in (1900, 2100, 1800):\n    assert es_bisiesto(anio) is False, f\"es_bisiesto({anio}) debería devolver False: es divisible entre 100 pero no entre 400\""
+    },
+    {
+     "name": "Múltiplos de 400",
+     "code": "for anio in (2000, 2400, 1600):\n    assert es_bisiesto(anio) is True, f\"es_bisiesto({anio}) debería devolver True: es divisible entre 400\""
+    },
+    {
+     "name": "Coincide con el calendario oficial (años 1 a 3000)",
+     "code": "import calendar\nfallos = [a for a in range(1, 3001) if es_bisiesto(a) != calendar.isleap(a)]\nassert not fallos, f\"El resultado no coincide con el calendario en {len(fallos)} años; por ejemplo, en {fallos[:3]}\""
+    }
+   ],
+   "hints": [
+    "Traduce cada regla a una comparación con `%`: «divisible entre 4» es `anio % 4 == 0` y «no divisible entre 100» es `anio % 100 != 0`.",
+    "La estructura es: divisible entre 4 **y** (no divisible entre 100 **o** divisible entre 400). Los paréntesis hacen explícita la agrupación."
+   ],
+   "explain": "**Solución**: `anio % 4 == 0 and (anio % 100 != 0 or anio % 400 == 0)`.\n\n**Cortocircuito en acción**: para 3 de cada 4 años, `anio % 4 == 0` es `False` y `and` ni siquiera evalúa el paréntesis. Como todas las piezas son comparaciones, el resultado siempre es un `bool`.\n\n**¿Y sin paréntesis?** `anio % 4 == 0 and anio % 100 != 0 or anio % 400 == 0` también es correcta, porque `and` tiene más prioridad que `or` y todo múltiplo de 400 lo es también de 4. Pero obliga al lector a pensarlo: los paréntesis documentan la regla.\n\n**Versión pro**: en código real usa la biblioteca estándar, `calendar.isleap(anio)`, que implementa esta misma regla (el último test compara tu función con ella).\n\nCoste: O(1)."
+  },
+  {
+   "id": "s02-e7",
+   "title": "Números con coma decimal",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "En muchos países de habla hispana el separador decimal es la coma (`3,5`), pero `float()` solo entiende el punto (`3.5`). Completa dos funciones:",
+    "`a_numero(texto)` convierte a `float` un texto que puede usar coma **o** punto decimal y tener espacios alrededor. Si el texto no es un número (`\"abc\"`, `\"\"`, `\"1,5,2\"`), debe lanzarse `ValueError` (lo hará `float()` por ti).",
+    "`formatear_decimal(x)` devuelve el número como texto con **exactamente 2 decimales** y coma decimal: `3.5` → `\"3,50\"`. No hace falta separador de miles."
+   ],
+   "examples": [
+    {
+     "call": "a_numero('3,5')",
+     "result": "3.5"
+    },
+    {
+     "call": "a_numero(' 2.25 ')",
+     "result": "2.25"
+    },
+    {
+     "call": "formatear_decimal(3.5)",
+     "result": "'3,50'"
+    },
+    {
+     "call": "formatear_decimal(7)",
+     "result": "'7,00'"
+    }
+   ],
+   "starter": "def a_numero(texto):\n    pass\n\n\ndef formatear_decimal(x):\n    pass\n",
+   "solution": "def a_numero(texto):\n    return float(texto.replace(\",\", \".\"))\n\n\ndef formatear_decimal(x):\n    return f\"{x:.2f}\".replace(\".\", \",\")\n",
+   "tests": [
+    {
+     "name": "Coma decimal",
+     "code": "r1 = a_numero(\"3,5\")\nr2 = a_numero(\"-0,75\")\nassert r1 == 3.5, f\"a_numero('3,5') debería devolver 3.5 y devolvió {r1!r}\"\nassert r2 == -0.75, f\"a_numero('-0,75') debería devolver -0.75 y devolvió {r2!r}\""
+    },
+    {
+     "name": "Punto decimal, espacios y enteros",
+     "code": "r1 = a_numero(\" 2.25 \")\nr2 = a_numero(\"\\t10,0\\n\")\nr3 = a_numero(\"7\")\nassert r1 == 2.25, f\"a_numero(' 2.25 ') debería devolver 2.25 y devolvió {r1!r}\"\nassert r2 == 10.0, f\"a_numero('\\\\t10,0\\\\n') debería devolver 10.0 y devolvió {r2!r}\"\nassert r3 == 7.0 and type(r3) is float, f\"a_numero('7') debería devolver el float 7.0 y devolvió {r3!r}\""
+    },
+    {
+     "name": "Notación científica",
+     "code": "r = a_numero(\"1,5e3\")\nassert r == 1500.0, f\"a_numero('1,5e3') debería devolver 1500.0 y devolvió {r!r}\""
+    },
+    {
+     "name": "Texto no numérico lanza ValueError",
+     "code": "for malo in (\"abc\", \"\", \"1,5,2\"):\n    try:\n        a_numero(malo)\n    except ValueError:\n        continue\n    raise AssertionError(f\"a_numero({malo!r}) debería lanzar ValueError\")"
+    },
+    {
+     "name": "Formato con 2 decimales y coma",
+     "code": "for x, esperado in ((3.5, \"3,50\"), (7, \"7,00\"), (0, \"0,00\"), (1234.5, \"1234,50\")):\n    r = formatear_decimal(x)\n    assert r == esperado, f\"formatear_decimal({x!r}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Redondea al mostrar",
+     "code": "r1 = formatear_decimal(2.346)\nr2 = formatear_decimal(-1.004)\nassert r1 == \"2,35\", f\"formatear_decimal(2.346) debería devolver '2,35' y devolvió {r1!r}\"\nassert r2 == \"-1,00\", f\"formatear_decimal(-1.004) debería devolver '-1,00' y devolvió {r2!r}\""
+    },
+    {
+     "name": "Ida y vuelta",
+     "code": "r = formatear_decimal(a_numero(\" 12,3 \"))\nassert r == \"12,30\", f\"formatear_decimal(a_numero(' 12,3 ')) debería devolver '12,30' y devolvió {r!r}\""
+    }
+   ],
+   "hints": [
+    "`texto.replace(\",\", \".\")` devuelve una cadena nueva con las comas cambiadas por puntos; pásasela a `float()`, que ya ignora los espacios alrededor.",
+    "Para el formato: `f\"{x:.2f}\"` produce `\"3.50\"`; después cambia el punto por una coma con otro `replace`."
+   ],
+   "explain": "**Solución**: `float(texto.replace(\",\", \".\"))` y `f\"{x:.2f}\".replace(\".\", \",\")`. No hace falta `strip()`: `float()` tolera espacios, tabuladores y saltos de línea alrededor.\n\n**Fallar es una virtud**: con `\"1,5,2\"` el reemplazo produce `\"1.5.2\"` y `float()` lanza `ValueError`. Igual con `\"1.234,5\"` (miles con punto): se convierte en `\"1.234.5\"` y falla. Es mejor un error claro que un número equivocado en silencio.\n\n**El formato redondea**: `:.2f` trabaja con el valor real del float, así que `2.346` se muestra como `2.35`. Recuerda que el número no cambia; solo su representación como texto.\n\n**Versión pro**: el módulo `locale` puede formatear y leer números según la configuración regional del sistema, pero depende de qué locales estén instalados; para programas portables, esta conversión explícita es más predecible.\n\nCoste: O(n), con n la longitud del texto."
+  },
+  {
+   "id": "s02-e8",
+   "title": "Nombre visible con valores por defecto",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En una red social cada usuario tiene un `nombre` y, opcionalmente, un `apodo` (si no tiene, es una cadena vacía o solo espacios). Completa `nombre_visible(nombre, apodo)`, que devuelve el texto a mostrar según estas reglas, por orden de preferencia:",
+    "1) el apodo sin espacios en los extremos; 2) si queda vacío, el nombre sin espacios en los extremos; 3) si también queda vacío, `\"Anónimo\"`.",
+    "Resuélvelo **sin condicionales** (sin `if`), aprovechando que `or` devuelve uno de sus operandos."
+   ],
+   "examples": [
+    {
+     "call": "nombre_visible('Ana', 'Anita')",
+     "result": "'Anita'"
+    },
+    {
+     "call": "nombre_visible('  Luis ', '')",
+     "result": "'Luis'"
+    },
+    {
+     "call": "nombre_visible('', '   ')",
+     "result": "'Anónimo'"
+    }
+   ],
+   "starter": "def nombre_visible(nombre, apodo):\n    pass\n",
+   "solution": "def nombre_visible(nombre, apodo):\n    return apodo.strip() or nombre.strip() or \"Anónimo\"\n",
+   "tests": [
+    {
+     "name": "Con apodo",
+     "code": "r = nombre_visible(\"Ana\", \"Anita\")\nassert r == \"Anita\", f\"nombre_visible('Ana', 'Anita') debería devolver 'Anita' y devolvió {r!r}\""
+    },
+    {
+     "name": "Sin apodo",
+     "code": "r = nombre_visible(\"Ana\", \"\")\nassert r == \"Ana\", f\"nombre_visible('Ana', '') debería devolver 'Ana' y devolvió {r!r}\""
+    },
+    {
+     "name": "Apodo con solo espacios",
+     "code": "r = nombre_visible(\"Ana\", \"   \")\nassert r == \"Ana\", f\"nombre_visible('Ana', '   ') debería devolver 'Ana' y devolvió {r!r}. Un apodo de solo espacios cuenta como vacío\""
+    },
+    {
+     "name": "Quita los espacios de los extremos",
+     "code": "r1 = nombre_visible(\"  Luis \", \"\")\nr2 = nombre_visible(\"Ana\", \"  Anita \")\nassert r1 == \"Luis\", f\"nombre_visible('  Luis ', '') debería devolver 'Luis' y devolvió {r1!r}\"\nassert r2 == \"Anita\", f\"nombre_visible('Ana', '  Anita ') debería devolver 'Anita' y devolvió {r2!r}\""
+    },
+    {
+     "name": "Ni nombre ni apodo",
+     "code": "r1 = nombre_visible(\"\", \"\")\nr2 = nombre_visible(\"  \", \"\\t\")\nassert r1 == \"Anónimo\", f\"nombre_visible('', '') debería devolver 'Anónimo' y devolvió {r1!r}\"\nassert r2 == \"Anónimo\", f\"nombre_visible('  ', '\\\\t') debería devolver 'Anónimo' y devolvió {r2!r}\""
+    },
+    {
+     "name": "El texto «0» es un valor válido",
+     "code": "r1 = nombre_visible(\"0\", \"\")\nr2 = nombre_visible(\"Ana\", \"0\")\nassert r1 == \"0\", f\"nombre_visible('0', '') debería devolver '0' y devolvió {r1!r}. La cadena '0' no está vacía\"\nassert r2 == \"0\", f\"nombre_visible('Ana', '0') debería devolver '0' y devolvió {r2!r}\""
+    }
+   ],
+   "hints": [
+    "`a or b or c` devuelve el primer operando truthy de izquierda a derecha o, si todos son falsy, el último. Y una cadena vacía es falsy.",
+    "Limpia antes de decidir: `apodo.strip()` convierte `\"   \"` en `\"\"`, que es falsy."
+   ],
+   "explain": "**Solución**: `return apodo.strip() or nombre.strip() or \"Anónimo\"`.\n\n**Cómo se evalúa**: `or` va de izquierda a derecha y se detiene en el primer valor truthy, que es el que devuelve. Si el apodo limpio no está vacío, ni siquiera se llama a `nombre.strip()` (cortocircuito). Si todo es falsy, devuelve el último operando, `\"Anónimo\"`.\n\n**¿Y si el nombre es «0»?** Funciona, porque una cadena solo es falsy si está vacía; `\"0\"` tiene un carácter. Con **números** la historia cambia: `cantidad or 1` convertiría un 0 legítimo en 1. Cuando 0 o `\"\"` son valores válidos, compara explícitamente con `if` (s03).\n\n**Equivalente con condicionales (s03)**: tres ramas `if/elif/else`. La versión con `or` es idiomática en Python para valores por defecto con cadenas.\n\nCoste: O(n), con n la longitud de los textos (por `strip`)."
+  },
+  {
+   "id": "s02-e9",
+   "title": "Reloj de 24 horas",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Un temporizador cuenta minutos respecto a la medianoche de hoy: `75` son las 01:15; `-1`, un minuto antes de medianoche (las 23:59 de ayer); y `1500`, las 01:00 de mañana. Completa `hora_reloj(minutos)`, que devuelve la hora que marca el reloj en formato `\"HH:MM\"`, siempre con **dos cifras** en horas y en minutos.",
+    "Primero lleva los minutos al intervalo de un día (de 0 a 1439): el `%` de Python ya se porta bien con los negativos. Después separa horas y minutos.",
+    "Para las dos cifras no necesitas nada de s05: las decenas de un número entre 0 y 99 son `n // 10` y las unidades, `n % 10`."
+   ],
+   "examples": [
+    {
+     "call": "hora_reloj(75)",
+     "result": "'01:15'"
+    },
+    {
+     "call": "hora_reloj(-1)",
+     "result": "'23:59'"
+    },
+    {
+     "call": "hora_reloj(1500)",
+     "result": "'01:00'"
+    }
+   ],
+   "starter": "MINUTOS_DIA = 24 * 60\n\n\ndef hora_reloj(minutos):\n    pass\n",
+   "solution": "MINUTOS_DIA = 24 * 60\n\n\ndef hora_reloj(minutos):\n    en_el_dia = minutos % MINUTOS_DIA        # entre 0 y 1439, también con negativos\n    horas, mins = divmod(en_el_dia, 60)\n    return f\"{horas // 10}{horas % 10}:{mins // 10}{mins % 10}\"\n",
+   "tests": [
+    {
+     "name": "Medianoche",
+     "code": "for m in (0, 1440):\n    r = hora_reloj(m)\n    assert r == \"00:00\", f\"hora_reloj({m}) debería devolver '00:00' y devolvió {r!r}\""
+    },
+    {
+     "name": "Horas de hoy",
+     "code": "casos = {75: \"01:15\", 605: \"10:05\", 720: \"12:00\", 1439: \"23:59\"}\nfor m, esperado in casos.items():\n    r = hora_reloj(m)\n    assert r == esperado, f\"hora_reloj({m}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Siempre dos cifras",
+     "code": "casos = {5: \"00:05\", 59: \"00:59\", 60: \"01:00\", 600: \"10:00\"}\nfor m, esperado in casos.items():\n    r = hora_reloj(m)\n    assert r == esperado, f\"hora_reloj({m}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Minutos negativos (antes de medianoche)",
+     "code": "casos = {-1: \"23:59\", -61: \"22:59\", -1440: \"00:00\", -720: \"12:00\"}\nfor m, esperado in casos.items():\n    r = hora_reloj(m)\n    assert r == esperado, f\"hora_reloj({m}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Varios días hacia delante y hacia atrás",
+     "code": "casos = {1500: \"01:00\", 3000: \"02:00\", -1440 * 3 - 30: \"23:30\", 10**9: \"10:40\"}\nfor m, esperado in casos.items():\n    r = hora_reloj(m)\n    assert r == esperado, f\"hora_reloj({m}) debería devolver {esperado!r} y devolvió {r!r}\""
+    }
+   ],
+   "hints": [
+    "`minutos % 1440` siempre queda entre 0 y 1439, incluso si `minutos` es negativo, porque el resto toma el signo del divisor. Luego, `divmod(..., 60)` te da horas y minutos.",
+    "Para escribir 5 como «05»: `f\"{n // 10}{n % 10}\"` produce las dos cifras (0 y 5)."
+   ],
+   "explain": "**Solución**: tres pasos. `minutos % MINUTOS_DIA` normaliza a un único día; `divmod(en_el_dia, 60)` separa horas y minutos; y la f-string escribe cada número con dos cifras usando `// 10` (decenas) y `% 10` (unidades).\n\n**La clave son los negativos**: `-61 % 1440` es `1379` (22:59), porque en Python el resto toma el signo del divisor. En C, Java o JavaScript `-61 % 1440` da `-61` y habría que corregirlo con `((m % n) + n) % n`. Es exactamente el ejemplo del reloj que usa la FAQ oficial para justificar el comportamiento de `%`.\n\n**Versión pro (s05)**: `f\"{horas:02d}:{mins:02d}\"` rellena con ceros a la izquierda hasta 2 cifras. Para fechas y horas reales, el módulo `datetime` (s09) gestiona días, meses y zonas horarias.\n\nCoste: O(1)."
+  },
+  {
+   "id": "s02-e10",
+   "title": "Cajas necesarias (exacto con números gigantes)",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Un almacén empaqueta `articulos` en cajas de `capacidad` unidades. Completa `cajas_necesarias(articulos, capacidad)`, que devuelve el **mínimo número de cajas** como `int`: 10 artículos en cajas de 3 necesitan 4 cajas.",
+    "El reto: debe ser **exacta incluso con números gigantescos** (los tests usan números de más de 20 cifras). Por eso no puedes pasar por `float`: `math.ceil(articulos / capacidad)` funciona con números pequeños, pero falla con los grandes. Usa solo aritmética entera y sin `if`.",
+    "Supón `articulos >= 0` y `capacidad >= 0`. Si `capacidad` es 0, deja que Python lance `ZeroDivisionError`."
+   ],
+   "examples": [
+    {
+     "call": "cajas_necesarias(10, 3)",
+     "result": "4"
+    },
+    {
+     "call": "cajas_necesarias(9, 3)",
+     "result": "3"
+    },
+    {
+     "call": "cajas_necesarias(0, 5)",
+     "result": "0"
+    }
+   ],
+   "starter": "def cajas_necesarias(articulos, capacidad):\n    pass\n",
+   "solution": "def cajas_necesarias(articulos, capacidad):\n    # División entera redondeando hacia arriba, sin pasar por float\n    return (articulos + capacidad - 1) // capacidad\n",
+   "tests": [
+    {
+     "name": "Divisiones exactas",
+     "code": "for a, c, esperado in ((9, 3, 3), (100, 10, 10), (7, 1, 7)):\n    r = cajas_necesarias(a, c)\n    assert r == esperado, f\"cajas_necesarias({a}, {c}) debería devolver {esperado} y devolvió {r!r}\""
+    },
+    {
+     "name": "Hay que redondear hacia arriba",
+     "code": "for a, c, esperado in ((10, 3, 4), (1, 100, 1), (101, 10, 11), (11, 2, 6)):\n    r = cajas_necesarias(a, c)\n    assert r == esperado, f\"cajas_necesarias({a}, {c}) debería devolver {esperado} y devolvió {r!r}\""
+    },
+    {
+     "name": "Sin artículos no hacen falta cajas",
+     "code": "r = cajas_necesarias(0, 5)\nassert r == 0, f\"cajas_necesarias(0, 5) debería devolver 0 y devolvió {r!r}\""
+    },
+    {
+     "name": "Devuelve un int",
+     "code": "r = cajas_necesarias(10, 3)\nassert type(r) is int, f\"cajas_necesarias debe devolver un int y devolvió {r!r} ({type(r).__name__})\""
+    },
+    {
+     "name": "Exacto con números gigantescos",
+     "code": "r1 = cajas_necesarias(10**20 + 1, 1)\nr2 = cajas_necesarias(10**18 + 1, 10**18)\nr3 = cajas_necesarias(10**30, 7)\nassert r1 == 10**20 + 1, f\"cajas_necesarias(10**20 + 1, 1) debería devolver {10**20 + 1} y devolvió {r1!r}. ¿Pasas por float?\"\nassert r2 == 2, f\"cajas_necesarias(10**18 + 1, 10**18) debería devolver 2 y devolvió {r2!r}. Un float no distingue 10**18 + 1 de 10**18\"\nassert r3 == 142857142857142857142857142858, f\"cajas_necesarias(10**30, 7) debería devolver 142857142857142857142857142858 y devolvió {r3!r}\""
+    },
+    {
+     "name": "Capacidad 0 lanza ZeroDivisionError",
+     "code": "try:\n    cajas_necesarias(10, 0)\nexcept ZeroDivisionError:\n    pass\nelse:\n    raise AssertionError(\"cajas_necesarias(10, 0) debería lanzar ZeroDivisionError\")"
+    }
+   ],
+   "hints": [
+    "Si `articulos` es múltiplo de `capacidad`, `articulos // capacidad` ya es la respuesta; si no, hace falta una caja más. ¿Cómo sumar esa caja «solo cuando sobra algo» sin `if`?",
+    "Truco clásico: suma `capacidad - 1` antes de dividir con `//`. Así, cualquier resto (por pequeño que sea) empuja el cociente a la siguiente unidad, pero un resto 0 no.",
+    "Otra forma: como `//` redondea hacia −∞, `-(-a // b)` redondea hacia +∞. Compruébalo a mano con a = 10 y b = 3."
+   ],
+   "explain": "**Solución**: `(articulos + capacidad - 1) // capacidad`. Si hay resto (entre 1 y `capacidad - 1`), sumar `capacidad - 1` hace que el cociente suba exactamente una unidad; si no lo hay, no llega a subir.\n\n**Alternativa elegante**: `-(-articulos // capacidad)`. Como `//` redondea hacia menos infinito, negar, dividir y volver a negar equivale a redondear hacia más infinito: `-(-10 // 3)` = `-(-4)` = `4`.\n\n**¿Por qué falla la versión con float?** En `math.ceil(a / b)`, `/` convierte a `float`, que solo tiene 53 bits de precisión: a partir de 2⁵³ ≈ 9·10¹⁵ no todos los enteros son representables. `(10**18 + 1) / 10**18` da exactamente `1.0` y `math.ceil` devuelve 1 en vez de 2; `math.ceil(10**30 / 7)` devuelve `142857142857142852444009529344`, con las últimas cifras inventadas. Con enteros de Python (precisión arbitraria) el resultado es siempre exacto.\n\n**Lección general**: si el problema es entero, resuélvelo con enteros (`//`, `%`, `divmod`, `math.isqrt`).\n\nCoste: O(1) para tamaños normales (crece con el número de cifras de los datos)."
+  },
+  {
+   "id": "s02-e11",
+   "title": "Dígito verificador del RUT",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "En Chile, el RUT (Rol Único Tributario) termina en un **dígito verificador** que sirve para detectar errores al digitarlo: `12.345.678-5`. Se calcula con el algoritmo «módulo 11»:",
+    "1) Se toman las cifras del número de **derecha a izquierda** y se multiplican por 2, 3, 4, 5, 6, 7, 2, 3 (tras el 7, la serie vuelve a empezar en 2). 2) Se suman los productos. 3) Se calcula `11 - suma % 11`. 4) Si el resultado es 11, el dígito es `\"0\"`; si es 10, es `\"K\"`; en otro caso, es esa misma cifra.",
+    "Ejemplo con 12.345.678: 8·2 + 7·3 + 6·4 + 5·5 + 4·6 + 3·7 + 2·2 + 1·3 = 138; `138 % 11` es 6; 11 − 6 = 5, así que el dígito es `\"5\"`.",
+    "Completa `digito_verificador(cuerpo)`, que recibe el número **como texto**, con o sin puntos y de hasta 8 cifras (`\"12.345.678\"`, `\"5126663\"`), y devuelve el dígito verificador como `str`. Si el texto no es un número, deja que `int()` lance `ValueError`.",
+    "Todo **sin bucles ni condicionales** (llegan en s03): extrae cada cifra con `//` y `%`, y para el paso 4 usa la constante `VERIFICADORES` del código inicial: `VERIFICADORES[11 - suma % 11]` da directamente el carácter correcto. ¿Ves por qué?"
+   ],
+   "examples": [
+    {
+     "call": "digito_verificador('12.345.678')",
+     "result": "'5'"
+    },
+    {
+     "call": "digito_verificador('12678579')",
+     "result": "'8'"
+    },
+    {
+     "call": "digito_verificador('10.000.013')",
+     "result": "'K'"
+    },
+    {
+     "call": "digito_verificador('18585543')",
+     "result": "'0'"
+    }
+   ],
+   "starter": "VERIFICADORES = \"0123456789K0\"   # posición = 11 - suma % 11 (la posición 0 no se usa)\n\n\ndef digito_verificador(cuerpo):\n    # 1. Quita los puntos y convierte a int\n    # 2. Extrae las cifras de derecha a izquierda con // y %\n    # 3. Suma cada cifra multiplicada por su peso (2, 3, 4, 5, 6, 7, 2, 3)\n    # 4. Devuelve VERIFICADORES[11 - suma % 11]\n    pass\n",
+   "solution": "VERIFICADORES = \"0123456789K0\"   # posición = 11 - suma % 11 (la posición 0 no se usa)\n\n\ndef digito_verificador(cuerpo):\n    n = int(cuerpo.replace(\".\", \"\"))\n    c1 = n % 10                  # cifra de las unidades (la de más a la derecha)\n    c2 = n // 10 % 10\n    c3 = n // 100 % 10\n    c4 = n // 1_000 % 10\n    c5 = n // 10_000 % 10\n    c6 = n // 100_000 % 10\n    c7 = n // 1_000_000 % 10\n    c8 = n // 10_000_000 % 10\n    suma = c1*2 + c2*3 + c3*4 + c4*5 + c5*6 + c6*7 + c7*2 + c8*3\n    return VERIFICADORES[11 - suma % 11]\n",
+   "tests": [
+    {
+     "name": "Ejemplo del enunciado",
+     "code": "r = digito_verificador(\"12.345.678\")\nassert r == \"5\", f\"digito_verificador('12.345.678') debería devolver '5' y devolvió {r!r}\""
+    },
+    {
+     "name": "Sin puntos y con 7 cifras",
+     "code": "for cuerpo, dv in ((\"12678579\", \"8\"), (\"5126663\", \"3\"), (\"7.654.321\", \"6\")):\n    r = digito_verificador(cuerpo)\n    assert r == dv, f\"digito_verificador({cuerpo!r}) debería devolver {dv!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Cuando el resultado es 11, el dígito es «0»",
+     "code": "for cuerpo in (\"18585543\", \"10.000.004\"):\n    r = digito_verificador(cuerpo)\n    assert r == \"0\", f\"digito_verificador({cuerpo!r}) debería devolver '0' y devolvió {r!r}\""
+    },
+    {
+     "name": "Cuando el resultado es 10, el dígito es «K»",
+     "code": "for cuerpo in (\"10.000.013\", \"5.000.001\"):\n    r = digito_verificador(cuerpo)\n    assert r == \"K\", f\"digito_verificador({cuerpo!r}) debería devolver 'K' y devolvió {r!r}\""
+    },
+    {
+     "name": "Coincide con el algoritmo de referencia en unos 2000 RUT",
+     "code": "def _dv_referencia(n):\n    suma, peso = 0, 2\n    while n:\n        suma += n % 10 * peso\n        n //= 10\n        peso = 2 if peso == 7 else peso + 1\n    return \"0123456789K0\"[11 - suma % 11]\n\nfallos = [n for n in range(1_000_000, 99_999_999, 49_451) if digito_verificador(str(n)) != _dv_referencia(n)]\nassert not fallos, f\"El dígito no es correcto en {len(fallos)} casos; por ejemplo, para {fallos[:3]}\""
+    },
+    {
+     "name": "Devuelve un solo carácter",
+     "code": "r = digito_verificador(\"12.345.678\")\nassert isinstance(r, str) and len(r) == 1, f\"digito_verificador debe devolver un str de un carácter y devolvió {r!r}\""
+    },
+    {
+     "name": "Texto no numérico lanza ValueError",
+     "code": "try:\n    digito_verificador(\"12.345.67A\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"digito_verificador('12.345.67A') debería lanzar ValueError (lo hace int() por ti)\")"
+    }
+   ],
+   "hints": [
+    "La cifra que está k posiciones a la izquierda de las unidades es `n // 10**k % 10`: `n % 10` es la última, `n // 10 % 10` la penúltima, `n // 100 % 10` la antepenúltima…",
+    "Guarda cada cifra en una variable (`c1` a `c8`) y súmalas multiplicadas por su peso. Con un RUT de 7 cifras, la octava sale 0 y no altera la suma.",
+    "`11 - suma % 11` siempre está entre 1 y 11. En `\"0123456789K0\"` la posición 10 es `\"K\"` y la 11 es `\"0\"`: la cadena hace el trabajo de los condicionales."
+   ],
+   "explain": "**Solución**: `cuerpo.replace(\".\", \"\")` quita los puntos e `int()` convierte (y lanza `ValueError` si hay letras). Después, `n // 10**k % 10` extrae cada cifra, se hace la suma ponderada y se indexa la constante.\n\n**Precedencia**: `//`, `%` y `*` tienen el mismo nivel y se agrupan de izquierda a derecha, así que `n // 100 % 10` es `(n // 100) % 10`. En `11 - suma % 11`, el `%` va antes que la resta. Y `c1*2 + c2*3` sigue la recomendación de PEP 8 de pegar los operadores de mayor prioridad.\n\n**El truco de la cadena**: `11 - suma % 11` va de 1 a 11; en `\"0123456789K0\"` las posiciones 1 a 9 son la propia cifra, la 10 es `\"K\"` y la 11 es `\"0\"`. La posición 0 nunca se usa. Sustituir condicionales por una tabla indexada es una técnica profesional (se usa mucho con diccionarios, s04).\n\n**Por qué funciona como verificador**: si alguien se equivoca en **una** cifra, la suma cambia en peso × diferencia, con un peso entre 2 y 7 y una diferencia entre 1 y 9. Como 11 es primo y no divide a ninguno de esos números, el resto cambia y el dígito deja de calzar: todos los errores de una sola cifra se detectan.\n\n**Versión pro (s03)**: ocho líneas casi iguales piden a gritos un bucle que recorra las cifras con un peso que va rotando; así funcionaría con cualquier longitud (uno de los tests usa exactamente esa versión como referencia).\n\nCoste: O(1) (siempre 8 cifras)."
+  },
+  {
+   "id": "s02-e12",
+   "title": "Cambio en monedas",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Una máquina expendedora entrega el cambio (el vuelto) con el **menor número de monedas** posible. Tiene monedas de 200, 100, 50, 20, 10, 5, 2 y 1 centavos. Completa `desglose_cambio(pagado, precio)`, que recibe dos importes en $ (`float` o `int`, con centavos) y devuelve un texto con cuántas monedas de cada valor entregar: el valor en centavos, dos puntos y la cantidad. Este es el cambio de pagar $5 por algo que cuesta $1,12, es decir, $3,88:",
+    "```\n200:1 100:1 50:1 20:1 10:1 5:1 2:1 1:1\n```",
+    "La trampa: los importes llegan como `float`. Convierte **primero** la diferencia a centavos enteros y trabaja solo con enteros. Cuidado: `int()` trunca, y `(1 - 0.9) * 100` vale `9.999999999999998`.",
+    "Supón que `pagado >= precio`."
+   ],
+   "examples": [
+    {
+     "call": "desglose_cambio(5, 1.12)",
+     "result": "'200:1 100:1 50:1 20:1 10:1 5:1 2:1 1:1'"
+    },
+    {
+     "call": "desglose_cambio(1, 0.71)",
+     "result": "'200:0 100:0 50:0 20:1 10:0 5:1 2:2 1:0'"
+    },
+    {
+     "call": "desglose_cambio(2, 2)",
+     "result": "'200:0 100:0 50:0 20:0 10:0 5:0 2:0 1:0'"
+    }
+   ],
+   "starter": "def desglose_cambio(pagado, precio):\n    # 1. Pasa la diferencia a centavos enteros\n    # 2. Reparte en monedas de mayor a menor valor\n    # 3. Devuelve el texto con el formato pedido\n    pass\n",
+   "solution": "def desglose_cambio(pagado, precio):\n    resto = round((pagado - precio) * 100)    # centavos exactos (int)\n    m200, resto = divmod(resto, 200)\n    m100, resto = divmod(resto, 100)\n    m50, resto = divmod(resto, 50)\n    m20, resto = divmod(resto, 20)\n    m10, resto = divmod(resto, 10)\n    m5, resto = divmod(resto, 5)\n    m2, m1 = divmod(resto, 2)\n    return f\"200:{m200} 100:{m100} 50:{m50} 20:{m20} 10:{m10} 5:{m5} 2:{m2} 1:{m1}\"\n",
+   "tests": [
+    {
+     "name": "Una moneda de cada tipo",
+     "code": "r = desglose_cambio(5, 1.12)\nesperado = \"200:1 100:1 50:1 20:1 10:1 5:1 2:1 1:1\"\nassert r == esperado, f\"desglose_cambio(5, 1.12) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Sin cambio",
+     "code": "esperado = \"200:0 100:0 50:0 20:0 10:0 5:0 2:0 1:0\"\nfor pagado, precio in ((2, 2), (0.5, 0.5)):\n    r = desglose_cambio(pagado, precio)\n    assert r == esperado, f\"desglose_cambio({pagado}, {precio}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Solo monedas pequeñas",
+     "code": "r = desglose_cambio(1, 0.71)\nesperado = \"200:0 100:0 50:0 20:1 10:0 5:1 2:2 1:0\"\nassert r == esperado, f\"desglose_cambio(1, 0.71) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "La trampa del float: int() trunca",
+     "code": "r1 = desglose_cambio(1, 0.9)\nr2 = desglose_cambio(1, 0.34)\ne1 = \"200:0 100:0 50:0 20:0 10:1 5:0 2:0 1:0\"\ne2 = \"200:0 100:0 50:1 20:0 10:1 5:1 2:0 1:1\"\nassert r1 == e1, f\"desglose_cambio(1, 0.9) debería devolver {e1!r} (10 centavos) y devolvió {r1!r}. ¿Usas int() en vez de round()?\"\nassert r2 == e2, f\"desglose_cambio(1, 0.34) debería devolver {e2!r} (66 centavos) y devolvió {r2!r}\""
+    },
+    {
+     "name": "Muchas monedas de 200",
+     "code": "r = desglose_cambio(100, 0.01)\nesperado = \"200:49 100:1 50:1 20:2 10:0 5:1 2:2 1:0\"\nassert r == esperado, f\"desglose_cambio(100, 0.01) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "Importes enteros",
+     "code": "r = desglose_cambio(20, 7)\nesperado = \"200:6 100:1 50:0 20:0 10:0 5:0 2:0 1:0\"\nassert r == esperado, f\"desglose_cambio(20, 7) debería devolver {esperado!r} y devolvió {r!r}. Los números de monedas deben ser enteros\""
+    }
+   ],
+   "hints": [
+    "Calcula los centavos con `round((pagado - precio) * 100)`, nunca con `int()`: `round` corrige el error diminuto del float y devuelve un `int`.",
+    "Encadena `divmod` de mayor a menor moneda: `m200, resto = divmod(resto, 200)`, después `m100, resto = divmod(resto, 100)`… hasta la moneda de 1.",
+    "Monta el texto final con una sola f-string. Revisa el formato: sin espacios alrededor de los dos puntos y un espacio entre monedas."
+   ],
+   "explain": "**Solución**: primero, `round((pagado - precio) * 100)` convierte el cambio a centavos enteros: a partir de ahí todo es aritmética exacta. Después, cada `divmod` calcula cuántas monedas de un valor caben y cuánto queda por repartir, y la desempaquetación `m200, resto = ...` actualiza `resto` en cada paso.\n\n**¿Por qué redondear y no truncar?** `1 - 0.9` vale `0.09999999999999998`; por 100 da `9.999999999999998`. `int()` trunca a 9 (¡falta un centavo!) y `round()` da 10.\n\n**¿Es óptimo este método «voraz»?** Para este sistema de monedas, sí: tomar siempre la moneda más grande posible da el mínimo número de monedas. No ocurre con cualquier sistema (con monedas de 1, 3 y 4, para 6 el voraz da 4+1+1 y lo óptimo es 3+3); ese problema general se resuelve con programación dinámica (s15).\n\n**Versión pro**: con un bucle (s03) sobre una lista de valores (s04) evitarías repetir ocho líneas casi iguales. Y para dinero de verdad, `decimal.Decimal` evita los floats desde el principio.\n\nCoste: O(1): siempre ocho divisiones."
+  },
+  {
+   "id": "s02-e13",
+   "title": "Proyecto: ficha de salud (IMC)",
+   "level": "proyecto",
+   "minutes": 35,
+   "prompt": [
+    "Vas a construir un pequeño programa de salud dividido en funciones, cada una probada por separado. Así trabajan los profesionales: piezas pequeñas, fáciles de comprobar, y un `main()` que las coordina.",
+    "**1.** `a_numero(texto)`: convierte a `float` un texto con coma o punto decimal y espacios alrededor. Si no es un número, deja que se lance `ValueError`.",
+    "**2.** `calcular_imc(peso_kg, altura_cm)`: devuelve el IMC (peso dividido entre la altura **en metros** al cuadrado) **redondeado a 1 decimal** con `round()`. Ojo: la altura llega en centímetros. Con altura 0, Python lanzará `ZeroDivisionError`, y así debe ser.",
+    "**3.** `es_saludable(imc)`: devuelve `True` si `18.5 <= imc < 25` (rango de peso normal de la OMS) y `False` en caso contrario.",
+    "**4.** `peso_saludable(altura_cm)`: devuelve el texto `\"de X a Y kg\"`, donde X = 18,5 · h² e Y = 25 · h² (h es la altura en metros), ambos mostrados con 1 decimal mediante `:.1f`. Para 175 cm: `\"de 56.7 a 76.6 kg\"`.",
+    "**5.** `main()`: pide con `input()` el nombre, el peso (kg) y la altura (cm), en ese orden; peso y altura pueden llevar coma decimal. Muestra exactamente estas cuatro líneas (el nombre sin espacios en los extremos; «Saludable» se calcula con el IMC ya redondeado):",
+    "```\n=== Ficha de Ana ===\nIMC: 22.9\nSaludable: True\nPeso saludable: de 56.7 a 76.6 kg\n```"
+   ],
+   "examples": [
+    {
+     "call": "calcular_imc(70, 175)",
+     "result": "22.9"
+    },
+    {
+     "call": "es_saludable(25)",
+     "result": "False"
+    },
+    {
+     "call": "peso_saludable(175)",
+     "result": "'de 56.7 a 76.6 kg'"
+    },
+    {
+     "call": "main()  # entradas: Ana, 70, 175",
+     "result": "(las cuatro líneas del enunciado)"
+    }
+   ],
+   "starter": "def a_numero(texto):\n    pass\n\n\ndef calcular_imc(peso_kg, altura_cm):\n    pass\n\n\ndef es_saludable(imc):\n    pass\n\n\ndef peso_saludable(altura_cm):\n    pass\n\n\ndef main():\n    pass\n",
+   "solution": "IMC_MINIMO_NORMAL = 18.5\nIMC_MAXIMO_NORMAL = 25\n\n\ndef a_numero(texto):\n    return float(texto.replace(\",\", \".\"))\n\n\ndef calcular_imc(peso_kg, altura_cm):\n    altura_m = altura_cm / 100\n    return round(peso_kg / altura_m ** 2, 1)\n\n\ndef es_saludable(imc):\n    return IMC_MINIMO_NORMAL <= imc < IMC_MAXIMO_NORMAL\n\n\ndef peso_saludable(altura_cm):\n    altura_m = altura_cm / 100\n    minimo = IMC_MINIMO_NORMAL * altura_m ** 2\n    maximo = IMC_MAXIMO_NORMAL * altura_m ** 2\n    return f\"de {minimo:.1f} a {maximo:.1f} kg\"\n\n\ndef main():\n    nombre = input(\"Nombre: \").strip()\n    peso = a_numero(input(\"Peso (kg): \"))\n    altura = a_numero(input(\"Altura (cm): \"))\n    imc = calcular_imc(peso, altura)\n    print(f\"=== Ficha de {nombre} ===\")\n    print(f\"IMC: {imc}\")\n    print(f\"Saludable: {es_saludable(imc)}\")\n    print(f\"Peso saludable: {peso_saludable(altura)}\")\n",
+   "setup": "def _comparar_salida(salida, esperado):\n    obtenidas = salida.split(\"\\n\")\n    esperadas = esperado.split(\"\\n\")\n    for i in range(max(len(obtenidas), len(esperadas))):\n        o = obtenidas[i] if i < len(obtenidas) else \"(nada)\"\n        e = esperadas[i] if i < len(esperadas) else \"(nada)\"\n        if o != e:\n            return f\"línea {i + 1}: se esperaba {e!r} y se obtuvo {o!r}\"\n    return \"\"\n",
+   "tests": [
+    {
+     "name": "a_numero: coma, punto y espacios",
+     "code": "for texto, esperado in ((\"82,5\", 82.5), (\" 175 \", 175.0), (\"1.80\", 1.8)):\n    r = a_numero(texto)\n    assert r == esperado and type(r) is float, f\"a_numero({texto!r}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "a_numero: texto no numérico",
+     "code": "try:\n    a_numero(\"setenta\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"a_numero('setenta') debería lanzar ValueError\")"
+    },
+    {
+     "name": "calcular_imc: casos típicos",
+     "code": "for peso, altura, esperado in ((70, 175, 22.9), (50, 160, 19.5), (60, 165, 22.0)):\n    r = calcular_imc(peso, altura)\n    assert r == esperado, f\"calcular_imc({peso}, {altura}) debería devolver {esperado} y devolvió {r!r}. ¿Has pasado la altura a metros?\""
+    },
+    {
+     "name": "calcular_imc: redondea a 1 decimal y devuelve float",
+     "code": "r = calcular_imc(82.5, 180)\nassert r == 25.5 and type(r) is float, f\"calcular_imc(82.5, 180) debería devolver 25.5 (el IMC exacto es 25.46...) y devolvió {r!r}\""
+    },
+    {
+     "name": "calcular_imc: altura 0 lanza ZeroDivisionError",
+     "code": "try:\n    calcular_imc(70, 0)\nexcept ZeroDivisionError:\n    pass\nelse:\n    raise AssertionError(\"calcular_imc(70, 0) debería lanzar ZeroDivisionError\")"
+    },
+    {
+     "name": "es_saludable: límites del rango",
+     "code": "casos = {18.4: False, 18.5: True, 22: True, 24.9: True, 25: False, 30.2: False}\nfor imc, esperado in casos.items():\n    r = es_saludable(imc)\n    assert r is esperado, f\"es_saludable({imc}) debería devolver {esperado} y devolvió {r!r}. Recuerda: 18.5 entra, 25 no\""
+    },
+    {
+     "name": "peso_saludable: formato y cálculo",
+     "code": "for altura, esperado in ((175, \"de 56.7 a 76.6 kg\"), (160, \"de 47.4 a 64.0 kg\"), (180, \"de 59.9 a 81.0 kg\")):\n    r = peso_saludable(altura)\n    assert r == esperado, f\"peso_saludable({altura}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "main: ficha completa",
+     "code": "salida = capturar(main, entradas=[\"Ana\", \"70\", \"175\"])\nesperado = \"=== Ficha de Ana ===\\nIMC: 22.9\\nSaludable: True\\nPeso saludable: de 56.7 a 76.6 kg\\n\"\ndif = _comparar_salida(salida, esperado)\nassert not dif, f\"Con Ana, 70 y 175 la salida no coincide en la {dif}\""
+    },
+    {
+     "name": "main: coma decimal, espacios e IMC fuera de rango",
+     "code": "salida = capturar(main, entradas=[\"  Luis \", \"82,5\", \"180\"])\nesperado = \"=== Ficha de Luis ===\\nIMC: 25.5\\nSaludable: False\\nPeso saludable: de 59.9 a 81.0 kg\\n\"\ndif = _comparar_salida(salida, esperado)\nassert not dif, f\"Con '  Luis ', '82,5' y '180' la salida no coincide en la {dif}\""
+    },
+    {
+     "name": "main: un peso no numérico lanza ValueError",
+     "code": "try:\n    capturar(main, entradas=[\"Eva\", \"setenta\", \"165\"])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Con un peso no numérico, main() debería dejar que se lance ValueError (usa a_numero)\")"
+    }
+   ],
+   "hints": [
+    "Resuelve y prueba las funciones de una en una y en orden. `main()` solo debe leer, llamar a las demás e imprimir.",
+    "Convierte la altura con `altura_cm / 100`. En `peso_saludable`, despeja el peso de la fórmula del IMC: peso = IMC · h².",
+    "En `main()`, el IMC que muestras y el que pasas a `es_saludable()` son el mismo valor ya redondeado. Compara tu salida con la del enunciado carácter a carácter (espacios y `===` incluidos)."
+   ],
+   "explain": "**Diseño**: cuatro funciones puras (solo calculan) y un `main()` que se ocupa de la entrada y la salida. Cada pieza se prueba por separado, y si mañana los datos llegan de un formulario web en lugar de `input()`, reutilizas las cuatro funciones sin tocarlas.\n\n**Constantes con nombre**: `IMC_MINIMO_NORMAL` e `IMC_MAXIMO_NORMAL` evitan «números mágicos» y se usan en dos funciones; si cambiara el criterio, se cambia en un solo sitio.\n\n**Comparación encadenada**: `18.5 <= imc < 25` expresa el intervalo semiabierto [18,5; 25) tal cual se escribe en matemáticas, y devuelve un `bool` sin necesidad de `if`.\n\n**Número frente a texto**: `calcular_imc` devuelve un número (lo necesitas para comparar), así que usa `round`; `peso_saludable` devuelve texto, así que formatea con `:.1f`. Las dos redondean, pero producen tipos distintos.\n\n**Para ampliar en s03**: clasificar el IMC en categorías (bajo peso, normal, sobrepeso, obesidad) con `if/elif/else`, y validar que la altura sea positiva. Recuerda que el IMC es un indicador de población: no sirve igual para deportistas, niños o personas mayores."
+  },
+  {
+   "id": "s02-e14",
+   "title": "Proyecto: recibo de compra en centavos",
+   "level": "proyecto",
+   "minutes": 40,
+   "prompt": [
+    "Vas a programar la caja de una tienda. Para no arrastrar errores de `float`, **todos los importes se guardan como centavos enteros** (399 centavos = $3,99), como hacen muchos sistemas de pago reales.",
+    "**1.** `a_centavos(texto)`: convierte un precio escrito por una persona (`\"3,99\"`, `\" 10 \"`, `\"0.5\"`) en centavos, como `int`. Usa `round()`, no `int()`: `float(\"0.29\") * 100` vale `28.999999999999996`. Si el texto no es un número, se lanza `ValueError`.",
+    "**2.** `formatear_monto(centavos)`: convierte una cantidad de centavos (≥ 0) en texto con el signo `$` delante, coma decimal y siempre dos cifras de centavos: `399` → `\"$3,99\"` y `5` → `\"$0,05\"`.",
+    "**3.** `aplicar_porcentaje(centavos, porcentaje)`: devuelve cuántos centavos son ese porcentaje (entero) de la cantidad, redondeando al centavo más cercano **con los empates hacia arriba** (redondeo comercial) y usando solo enteros. Ejemplo: el 21 % de 50 centavos son 10,5 centavos → 11.",
+    "**4.** `main()`: pide con `input()` el producto, el precio unitario, la cantidad (entero) y el descuento en % (entero), en ese orden, y muestra el recibo. El impuesto (IVA) es del 19 % y se aplica **después** del descuento. Con las entradas `Café molido`, `3,99`, `3` y `10`:",
+    "```\n3 x Café molido\nSubtotal: $11,97\nDescuento (10 %): -$1,20\nBase imponible: $10,77\nIVA (19 %): $2,05\nTOTAL: $12,82\n```",
+    "Cálculos: subtotal = precio × cantidad; descuento = `aplicar_porcentaje(subtotal, descuento_pct)`; base = subtotal − descuento; IVA = `aplicar_porcentaje(base, 19)`; total = base + IVA. El producto se muestra sin espacios en los extremos."
+   ],
+   "examples": [
+    {
+     "call": "a_centavos('3,99')",
+     "result": "399"
+    },
+    {
+     "call": "formatear_monto(5)",
+     "result": "'$0,05'"
+    },
+    {
+     "call": "aplicar_porcentaje(50, 21)",
+     "result": "11"
+    },
+    {
+     "call": "aplicar_porcentaje(1077, 19)",
+     "result": "205"
+    }
+   ],
+   "starter": "IVA_PCT = 19\n\n\ndef a_centavos(texto):\n    pass\n\n\ndef formatear_monto(centavos):\n    pass\n\n\ndef aplicar_porcentaje(centavos, porcentaje):\n    pass\n\n\ndef main():\n    pass\n",
+   "solution": "IVA_PCT = 19\n\n\ndef a_centavos(texto):\n    monto = float(texto.replace(\",\", \".\"))\n    return round(monto * 100)\n\n\ndef formatear_monto(centavos):\n    enteros, cent = divmod(centavos, 100)\n    return f\"${enteros},{cent // 10}{cent % 10}\"\n\n\ndef aplicar_porcentaje(centavos, porcentaje):\n    # Redondeo comercial (empates hacia arriba) solo con enteros\n    return (centavos * porcentaje + 50) // 100\n\n\ndef main():\n    producto = input(\"Producto: \").strip()\n    precio = a_centavos(input(\"Precio unitario ($): \"))\n    cantidad = int(input(\"Cantidad: \"))\n    descuento_pct = int(input(\"Descuento (%): \"))\n\n    subtotal = precio * cantidad\n    descuento = aplicar_porcentaje(subtotal, descuento_pct)\n    base = subtotal - descuento\n    iva = aplicar_porcentaje(base, IVA_PCT)\n    total = base + iva\n\n    print(f\"{cantidad} x {producto}\")\n    print(f\"Subtotal: {formatear_monto(subtotal)}\")\n    print(f\"Descuento ({descuento_pct} %): -{formatear_monto(descuento)}\")\n    print(f\"Base imponible: {formatear_monto(base)}\")\n    print(f\"IVA ({IVA_PCT} %): {formatear_monto(iva)}\")\n    print(f\"TOTAL: {formatear_monto(total)}\")\n",
+   "setup": "def _comparar_salida(salida, esperado):\n    obtenidas = salida.split(\"\\n\")\n    esperadas = esperado.split(\"\\n\")\n    for i in range(max(len(obtenidas), len(esperadas))):\n        o = obtenidas[i] if i < len(obtenidas) else \"(nada)\"\n        e = esperadas[i] if i < len(esperadas) else \"(nada)\"\n        if o != e:\n            return f\"línea {i + 1}: se esperaba {e!r} y se obtuvo {o!r}\"\n    return \"\"\n",
+   "tests": [
+    {
+     "name": "a_centavos: formatos habituales",
+     "code": "for texto, esperado in ((\"3,99\", 399), (\" 10 \", 1000), (\"0.5\", 50), (\"12,30\", 1230)):\n    r = a_centavos(texto)\n    assert r == esperado and type(r) is int, f\"a_centavos({texto!r}) debería devolver el int {esperado} y devolvió {r!r}\""
+    },
+    {
+     "name": "a_centavos: la trampa de int()",
+     "code": "for texto, esperado in ((\"0,29\", 29), (\"1,15\", 115), (\"4.35\", 435), (\"2,01\", 201)):\n    r = a_centavos(texto)\n    assert r == esperado, f\"a_centavos({texto!r}) debería devolver {esperado} y devolvió {r!r}. ¿Usas int() en vez de round()?\""
+    },
+    {
+     "name": "a_centavos: texto no numérico",
+     "code": "try:\n    a_centavos(\"tres\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"a_centavos('tres') debería lanzar ValueError\")"
+    },
+    {
+     "name": "formatear_monto: casos normales",
+     "code": "for c, esperado in ((399, \"$3,99\"), (1000, \"$10,00\"), (123456, \"$1234,56\")):\n    r = formatear_monto(c)\n    assert r == esperado, f\"formatear_monto({c}) debería devolver {esperado!r} y devolvió {r!r}\""
+    },
+    {
+     "name": "formatear_monto: centavos con cero delante",
+     "code": "for c, esperado in ((5, \"$0,05\"), (0, \"$0,00\"), (101, \"$1,01\"), (90, \"$0,90\")):\n    r = formatear_monto(c)\n    assert r == esperado, f\"formatear_monto({c}) debería devolver {esperado!r} y devolvió {r!r}. Siempre dos cifras de centavos\""
+    },
+    {
+     "name": "aplicar_porcentaje: casos exactos",
+     "code": "for c, p, esperado in ((1000, 19, 190), (1200, 10, 120), (0, 19, 0), (12345, 0, 0), (999, 100, 999)):\n    r = aplicar_porcentaje(c, p)\n    assert r == esperado and type(r) is int, f\"aplicar_porcentaje({c}, {p}) debería devolver el int {esperado} y devolvió {r!r}\""
+    },
+    {
+     "name": "aplicar_porcentaje: redondeo con empates hacia arriba",
+     "code": "for c, p, esperado in ((50, 21, 11), (1, 50, 1), (399, 10, 40), (149, 10, 15), (1077, 19, 205)):\n    r = aplicar_porcentaje(c, p)\n    assert r == esperado, f\"aplicar_porcentaje({c}, {p}) debería devolver {esperado} y devolvió {r!r}. Ojo: round() redondea los empates al par\""
+    },
+    {
+     "name": "main: recibo completo",
+     "code": "salida = capturar(main, entradas=[\"Café molido\", \"3,99\", \"3\", \"10\"])\nesperado = (\"3 x Café molido\\nSubtotal: $11,97\\nDescuento (10 %): -$1,20\\n\"\n            \"Base imponible: $10,77\\nIVA (19 %): $2,05\\nTOTAL: $12,82\\n\")\ndif = _comparar_salida(salida, esperado)\nassert not dif, f\"La salida no coincide en la {dif}\""
+    },
+    {
+     "name": "main: sin descuento y con espacios",
+     "code": "salida = capturar(main, entradas=[\"  Pan \", \"1,15\", \"2\", \"0\"])\nesperado = (\"2 x Pan\\nSubtotal: $2,30\\nDescuento (0 %): -$0,00\\n\"\n            \"Base imponible: $2,30\\nIVA (19 %): $0,44\\nTOTAL: $2,74\\n\")\ndif = _comparar_salida(salida, esperado)\nassert not dif, f\"La salida no coincide en la {dif}\""
+    },
+    {
+     "name": "main: importes grandes",
+     "code": "salida = capturar(main, entradas=[\"Monitor\", \"1299,99\", \"12\", \"15\"])\nesperado = (\"12 x Monitor\\nSubtotal: $15599,88\\nDescuento (15 %): -$2339,98\\n\"\n            \"Base imponible: $13259,90\\nIVA (19 %): $2519,38\\nTOTAL: $15779,28\\n\")\ndif = _comparar_salida(salida, esperado)\nassert not dif, f\"La salida no coincide en la {dif}\""
+    },
+    {
+     "name": "main: cantidad no entera lanza ValueError",
+     "code": "try:\n    capturar(main, entradas=[\"Pan\", \"1\", \"dos\", \"0\"])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"Con la cantidad 'dos', main() debería dejar que int() lance ValueError\")"
+    }
+   ],
+   "hints": [
+    "Empieza por `a_centavos` y `formatear_monto`, y pruébalas con los ejemplos antes de escribir `main()`.",
+    "En `formatear_monto`, `divmod(centavos, 100)` separa la parte entera y los centavos; para que 5 centavos se vean como «05», usa `cent // 10` y `cent % 10`.",
+    "Para redondear con empates hacia arriba solo con enteros, suma media unidad antes de dividir: `(centavos * porcentaje + 50) // 100`. Con `round()`, el 21 % de 50 daría 10, porque `round(10.5)` es 10."
+   ],
+   "explain": "**Por qué centavos enteros**: los `int` son exactos. Solo hay dos puntos delicados, la **entrada** (texto → centavos) y la **salida** (centavos → texto); todo lo demás es aritmética entera sin sorpresas.\n\n**Entrada**: `round(float(...) * 100)`. `int()` truncaría `114.99999999999999` a 114 en lugar de 115.\n\n**Salida**: `divmod(centavos, 100)` separa la parte entera y los centavos, y `cent // 10` y `cent % 10` garantizan dos cifras. (En s05 lo harás con `f\"{cent:02d}\"` y aprenderás a poner separador de miles.)\n\n**Redondeo**: `(c * p + 50) // 100` calcula `c * p / 100` redondeando los empates hacia arriba, sin floats: sumar 50 centésimas antes de truncar con `//` equivale a sumar 0,5 antes de quitar los decimales. `round()` haría redondeo del banquero (`round(10.5) == 10`), que no es lo habitual en un recibo.\n\n**Estilo**: `IVA_PCT` es una constante con nombre (PEP 8); `main()` solo lee, llama y escribe. Si la tasa del impuesto cambia (varía de un país a otro), se cambia una sola línea.\n\n**Versión pro**: `decimal.Decimal` con `quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)` hace lo mismo con decimales exactos; los centavos enteros son la alternativa más simple y muy usada en sistemas de pago. Coste: O(1) por operación."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué hace realmente `x = 5` en Python?",
+   "back": "Evalúa `5` (obtiene un objeto `int`) y **enlaza** el nombre `x` a ese objeto. Una variable es una etiqueta que apunta a un objeto, no una caja que lo contiene."
+  },
+  {
+   "front": "¿Qué tres características tiene todo objeto?",
+   "back": "Identidad (`id()`), tipo (`type()`) y valor. La identidad y el tipo no cambian nunca; el valor solo puede cambiar si el objeto es mutable."
+  },
+  {
+   "front": "¿Cómo intercambias dos variables sin variable auxiliar?",
+   "back": "`a, b = b, a`. El lado derecho se evalúa por completo (crea una tupla) antes de asignar."
+  },
+  {
+   "front": "Tipado dinámico frente a tipado fuerte",
+   "back": "Dinámico: los nombres no tienen tipo, lo tienen los objetos. Fuerte: no hay conversiones implícitas entre tipos incompatibles (`\"3\" + 4` es `TypeError`)."
+  },
+  {
+   "front": "Convenciones de nombres de PEP 8",
+   "back": "Variables y funciones en `snake_case`; constantes en `MAYUSCULAS`; clases en `CapWords`; `_` final para evitar palabras reservadas (`class_`); nunca `l`, `O` o `I` como nombres de una letra."
+  },
+  {
+   "front": "¿Cuántas palabras reservadas tiene Python 3.14? ¿Y cuáles son «suaves»?",
+   "back": "35 (`keyword.kwlist`). Suaves: `_`, `case`, `match` (desde 3.10) y `type` (desde 3.12); solo son especiales en su contexto."
+  },
+  {
+   "front": "¿Qué problema causa `list = [1, 2]` o `str = \"x\"`?",
+   "back": "Sombrea el nombre integrado: después `list(...)` o `str(...)` fallan con `TypeError: ... object is not callable`. `del list` recupera el original."
+  },
+  {
+   "front": "¿Por qué `0.1 + 0.2 != 0.3`?",
+   "back": "`float` es binario IEEE 754 con 53 bits de precisión: 0.1 y 0.2 no se pueden guardar exactos y la suma da `0.30000000000000004`."
+  },
+  {
+   "front": "¿Cómo se comparan floats correctamente?",
+   "back": "Con `math.isclose(a, b)` (tolerancia relativa por defecto `1e-09`). Si comparas con 0, añade `abs_tol`, p. ej. `abs_tol=1e-9`."
+  },
+  {
+   "front": "`round(0.5)`, `round(1.5)`, `round(2.5)`",
+   "back": "`0`, `2`, `2`. Redondeo del banquero: los empates exactos van al número par."
+  },
+  {
+   "front": "¿Por qué `round(2.675, 2)` da `2.67`?",
+   "back": "Porque 2.675 se guarda en binario como 2.67499999…: ni siquiera es un empate."
+  },
+  {
+   "front": "¿Qué tipo devuelve `8 / 4`?",
+   "back": "`float` (`2.0`). El operador `/` siempre devuelve float; para un cociente entero usa `//`."
+  },
+  {
+   "front": "`-7 // 2` y `-7 % 2`",
+   "back": "`-4` y `1`. `//` redondea hacia −∞ y `%` toma el signo del divisor."
+  },
+  {
+   "front": "¿Qué identidad relaciona `//` y `%`?",
+   "back": "`a == (a // b) * b + a % b`, con enteros y `b` distinto de 0. `divmod(a, b)` devuelve `(a // b, a % b)`."
+  },
+  {
+   "front": "`-2 ** 2` y `2 ** 3 ** 2`",
+   "back": "`-4` y `512`. `**` se aplica antes que el `-` de su izquierda y es asociativo por la derecha: `2 ** (3 ** 2)`."
+  },
+  {
+   "front": "¿Qué devuelve `x or y`?",
+   "back": "`x` si `x` es truthy (sin evaluar `y`); si no, `y`. No tiene por qué ser un `bool`."
+  },
+  {
+   "front": "¿Qué devuelve `x and y`?",
+   "back": "`x` si `x` es falsy (sin evaluar `y`); si no, `y`."
+  },
+  {
+   "front": "¿Qué valores son falsy?",
+   "back": "`None`, `False`, el cero de cualquier tipo numérico (`0`, `0.0`, `0j`) y las secuencias y colecciones vacías (`''`, `()`, `[]`, `{}`, `set()`, `range(0)`). Todo lo demás es truthy."
+  },
+  {
+   "front": "`bool(\"False\")` y `bool(\"0\")`",
+   "back": "Ambos `True`: son cadenas no vacías."
+  },
+  {
+   "front": "¿Diferencia entre `is` y `==`?",
+   "back": "`==` compara valores; `is` compara identidad (mismo objeto). Usa `is` solo con singletons: `x is None`."
+  },
+  {
+   "front": "`int(\"3.5\")` frente a `int(3.5)`",
+   "back": "El primero lanza `ValueError` (el texto no es un entero); el segundo devuelve `3` (trunca hacia cero)."
+  },
+  {
+   "front": "¿Qué tipo devuelve siempre `input()`?",
+   "back": "`str`. Para calcular, convierte con `int()` o `float()`."
+  },
+  {
+   "front": "¿Qué significa `1 < x < 10`?",
+   "back": "`1 < x and x < 10`, pero evaluando `x` una sola vez."
+  },
+  {
+   "front": "¿Cuánto vale `~5`?",
+   "back": "`-6`: en general, `~x == -x - 1`."
+  },
+  {
+   "front": "¿Existe `x++` en Python?",
+   "back": "No: `x++` es `SyntaxError`. Y `++x` es válido pero no hace nada (dos `+` unarios). Usa `x += 1`."
+  },
+  {
+   "front": "`math.floor(-2.5)`, `math.ceil(-2.5)`, `math.trunc(-2.5)`",
+   "back": "`-3`, `-2`, `-2` (todos `int`). Suelo, techo y truncar hacia cero."
+  },
+  {
+   "front": "¿Qué produce `f\"{7 / 3:.2f}\"`?",
+   "back": "El texto `'2.33'`. `:.2f` redondea al mostrar, pero el número no cambia."
+  },
+  {
+   "front": "¿Qué límite tiene la conversión entre `int` y `str`?",
+   "back": "Desde 3.11, por defecto 4300 dígitos en base 10 (protección contra denegación de servicio). Se ajusta con `sys.set_int_max_str_digits()`. La aritmética no tiene límite."
+  },
+  {
+   "front": "¿Por qué `True + True == 2`?",
+   "back": "Porque `bool` es subtipo de `int`: `True` vale 1 y `False` vale 0."
+  },
+  {
+   "front": "¿Cómo dividir redondeando hacia arriba solo con enteros?",
+   "back": "`-(-a // b)` o `(a + b - 1) // b` (con `b > 0`). Evita `math.ceil(a / b)` con números grandes: pasa por float."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s02-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = 5\nb = a\na = a + 1\nprint(a, b)\n```",
+   "options": [
+    "`6 6`",
+    "`6 5`",
+    "`5 5`",
+    "`5 6`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`b = a` enlaza `b` al objeto 5. `a = a + 1` crea un objeto nuevo (6) y mueve solo la etiqueta `a`; `b` sigue apuntando al 5."
+  },
+  {
+   "id": "s02-q2",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na, b = 1, 2\na, b = b, a + b\nprint(a, b)\n```",
+   "options": [
+    "`2 3`",
+    "`2 4`",
+    "`3 2`",
+    "`1 3`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El lado derecho se evalúa entero antes de asignar: con `a = 1` y `b = 2` se calcula `(2, 3)` y después se asigna. Por eso `a + b` usa el `a` antiguo."
+  },
+  {
+   "id": "s02-q3",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar `x, y = 1, 2, 3`?",
+   "options": [
+    "`x` vale 1 e `y` vale 2",
+    "`x` vale 1 e `y` vale `(2, 3)`",
+    "`ValueError: too many values to unpack`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El desempaquetado exige tantos nombres como valores. Python 3.14 lo explica: `too many values to unpack (expected 2, got 3)`."
+  },
+  {
+   "id": "s02-q4",
+   "type": "single",
+   "q": "¿Cuál de estos NO es un identificador válido?",
+   "options": [
+    "`_total`",
+    "`Total2`",
+    "`2total`",
+    "`total_2`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un identificador no puede empezar por dígito. `_total` es válido (el `_` inicial indica uso interno) y `Total2` también."
+  },
+  {
+   "id": "s02-q5",
+   "type": "multi",
+   "q": "¿Cuáles son palabras reservadas en Python 3.14? (Selecciona TRES.)",
+   "options": [
+    "`True`",
+    "`print`",
+    "`nonlocal`",
+    "`list`",
+    "`await`",
+    "`input`"
+   ],
+   "answer": [
+    0,
+    2,
+    4
+   ],
+   "explain": "`True`, `nonlocal` y `await` están en `keyword.kwlist`. `print`, `list` e `input` son nombres integrados (funciones o clases), no palabras reservadas: se pueden sombrear, aunque no debas."
+  },
+  {
+   "id": "s02-q6",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(0.1 + 0.2 == 0.3)\n```",
+   "options": [
+    "`True`",
+    "`False`",
+    "`0.3`",
+    "Lanza un error"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "0.1 y 0.2 no son exactos en binario y su suma es `0.30000000000000004`. Para comparar floats usa `math.isclose()`."
+  },
+  {
+   "id": "s02-q7",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nimport math\nprint(math.isclose(1e-12, 0.0))\n```",
+   "options": [
+    "`True`",
+    "`False`",
+    "`1e-12`",
+    "Lanza un error"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La tolerancia por defecto es relativa (`rel_tol=1e-09`) y, al comparar con 0, no hay magnitud de referencia. Hay que pasar `abs_tol`, p. ej. `math.isclose(1e-12, 0.0, abs_tol=1e-9)` → `True`."
+  },
+  {
+   "id": "s02-q8",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(round(2.5), round(3.5))\n```",
+   "options": [
+    "`3 4`",
+    "`2 4`",
+    "`2 3`",
+    "`3 3`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`round()` lleva los empates exactos al número par (redondeo del banquero): 2.5 → 2 y 3.5 → 4."
+  },
+  {
+   "id": "s02-q9",
+   "type": "single",
+   "q": "¿Qué devuelve esta expresión y de qué tipo es?\n```python\nround(3.14159, 2)\n```",
+   "options": [
+    "`3.14`, de tipo `float`",
+    "`3`, de tipo `int`",
+    "`'3.14'`, de tipo `str`",
+    "`3.14`, de tipo `int`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con segundo argumento, `round` devuelve el mismo tipo que el número (aquí `float`). Sin él, devuelve `int`. El texto `'3.14'` lo produciría `f\"{x:.2f}\"`."
+  },
+  {
+   "id": "s02-q10",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(-7 // 2, -7 % 2)\n```",
+   "options": [
+    "`-3 -1`",
+    "`-4 1`",
+    "`-3 1`",
+    "`-4 -1`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-7 / 2` es `-3.5`; `//` redondea hacia −∞ → `-4`. El resto cumple `-7 == (-4) * 2 + 1` → `1` (signo del divisor)."
+  },
+  {
+   "id": "s02-q11",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(7 % -3)\n```",
+   "options": [
+    "`1`",
+    "`-1`",
+    "`2`",
+    "`-2`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "El resto toma el signo del divisor (-3). `7 // -3` es `-3` (suelo de -2.33) y `7 - (-3) * (-3) = -2`."
+  },
+  {
+   "id": "s02-q12",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(10 / 4, 10 // 4, 10 % 4)\n```",
+   "options": [
+    "`2.5 2 2`",
+    "`2 2 2`",
+    "`2.5 2.5 2`",
+    "`2.5 3 2`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`/` es división real (siempre float): 2.5. `//` es el cociente entero: 2. `%` es el resto: 2."
+  },
+  {
+   "id": "s02-q13",
+   "type": "single",
+   "q": "¿De qué tipo es el resultado de `8 / 4`?",
+   "options": [
+    "`int`",
+    "`float`",
+    "`bool`",
+    "Depende de si la división es exacta"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Desde Python 3 (PEP 238), `/` devuelve siempre `float`: `8 / 4` es `2.0`. Para un cociente entero, `8 // 4`."
+  },
+  {
+   "id": "s02-q14",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(-2 ** 2)\n```",
+   "options": [
+    "`4`",
+    "`-4`",
+    "`0.25`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`**` se aplica antes que el menos unario de su izquierda: `-2 ** 2` es `-(2 ** 2)`. Para elevar -2, escribe `(-2) ** 2`."
+  },
+  {
+   "id": "s02-q15",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(2 ** 3 ** 2)\n```",
+   "options": [
+    "`64`",
+    "`512`",
+    "`36`",
+    "`729`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`**` es asociativo por la derecha: `2 ** (3 ** 2)` = `2 ** 9` = 512."
+  },
+  {
+   "id": "s02-q16",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(0 ** 0, 2 ** -1)\n```",
+   "options": [
+    "`1 0.5`",
+    "`0 0.5`",
+    "`1 -2`",
+    "Lanza `ZeroDivisionError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Por convención `0 ** 0` es 1 (lo documenta `pow`). Un exponente negativo con enteros da `float`: `2 ** -1` es `0.5`."
+  },
+  {
+   "id": "s02-q17",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 10\nx += 5\nx //= 4\nprint(x)\n```",
+   "options": [
+    "`3`",
+    "`3.75`",
+    "`4`",
+    "`3.0`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`x += 5` → 15; `x //= 4` → `15 // 4` = 3 (entero, porque ambos operandos son enteros)."
+  },
+  {
+   "id": "s02-q18",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(~5)\n```",
+   "options": [
+    "`-5`",
+    "`-6`",
+    "`6`",
+    "`4`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El NOT bit a bit cumple `~x == -x - 1`: `~5` es `-6`."
+  },
+  {
+   "id": "s02-q19",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(6 & 3, 6 | 3, 6 ^ 3)\n```",
+   "options": [
+    "`2 7 5`",
+    "`1 7 6`",
+    "`2 5 7`",
+    "`18 9 216`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "6 = `0b110` y 3 = `0b011`. AND → `0b010` = 2; OR → `0b111` = 7; XOR → `0b101` = 5. Recuerda: `^` no es la potencia."
+  },
+  {
+   "id": "s02-q20",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(int(-3.9))\n```",
+   "options": [
+    "`-4`",
+    "`-3`",
+    "`3`",
+    "`ValueError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`int()` aplicado a un float trunca hacia cero: -3.9 → -3. Para redondear hacia −∞ usa `math.floor` (-4)."
+  },
+  {
+   "id": "s02-q21",
+   "type": "single",
+   "q": "¿Qué ocurre con `int(\"3.5\")`?",
+   "options": [
+    "Devuelve `3`",
+    "Devuelve `4`",
+    "Devuelve `3.5`",
+    "Lanza `ValueError`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Con un texto, `int()` exige que represente un entero. Si puede traer decimales, convierte primero: `int(float(\"3.5\"))` → 3."
+  },
+  {
+   "id": "s02-q22",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre conversiones es correcta.",
+   "statements": [
+    {
+     "text": "`input()` devuelve un `int` si el usuario escribe un número.",
+     "answer": false
+    },
+    {
+     "text": "`float(\"1e3\")` devuelve `1000.0`.",
+     "answer": true
+    },
+    {
+     "text": "`int(\"  42  \")` lanza `ValueError` por los espacios.",
+     "answer": false
+    },
+    {
+     "text": "`int(True)` devuelve `1`.",
+     "answer": true
+    },
+    {
+     "text": "`float(\"3,5\")` devuelve `3.5`.",
+     "answer": false
+    }
+   ],
+   "explain": "`input()` siempre devuelve `str`. `int()` y `float()` toleran espacios alrededor, pero `float()` solo admite el punto como separador decimal. `bool` es subtipo de `int`, así que `int(True)` es 1."
+  },
+  {
+   "id": "s02-q23",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(bool(\"False\"))\n```",
+   "options": [
+    "`False`",
+    "`True`",
+    "Lanza un error",
+    "`None`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una cadena solo es falsy si está vacía. `\"False\"` tiene 5 caracteres, así que es truthy."
+  },
+  {
+   "id": "s02-q24",
+   "type": "multi",
+   "q": "¿Cuáles de estos valores son falsy? (Selecciona TRES.)",
+   "options": [
+    "`0.0`",
+    "`\"0\"`",
+    "`\"\"`",
+    "`None`",
+    "`\" \"`",
+    "`-1`"
+   ],
+   "answer": [
+    0,
+    2,
+    3
+   ],
+   "explain": "Son falsy `None`, `False`, los ceros y las colecciones vacías. `\"0\"` y `\" \"` son cadenas no vacías (truthy) y `-1` es un número distinto de cero (truthy)."
+  },
+  {
+   "id": "s02-q25",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"\" or 0 or None)\n```",
+   "options": [
+    "`\"\"`",
+    "`0`",
+    "`None`",
+    "`False`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`or` devuelve el primer operando truthy; si todos son falsy, devuelve el último: `None`."
+  },
+  {
+   "id": "s02-q26",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(3 and 0 and 1 / 0)\n```",
+   "options": [
+    "`0`",
+    "`ZeroDivisionError`",
+    "`3`",
+    "`False`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`and` se detiene en el primer operando falsy y lo devuelve: `0`. La división `1 / 0` nunca llega a evaluarse (cortocircuito)."
+  },
+  {
+   "id": "s02-q27",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 3\nprint(x == 1 or 2)\n```",
+   "options": [
+    "`False`",
+    "`True`",
+    "`2`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Se lee `(x == 1) or 2`. Como `x == 1` es `False`, `or` devuelve el segundo operando: `2` (truthy). Por eso `if x == 1 or 2:` siempre entra. Lo correcto: `x == 1 or x == 2`."
+  },
+  {
+   "id": "s02-q28",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(True or False and False)\n```",
+   "options": [
+    "`True`",
+    "`False`",
+    "`None`",
+    "Lanza un error"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`and` tiene más prioridad que `or`: `True or (False and False)` → `True or False` → `True`."
+  },
+  {
+   "id": "s02-q29",
+   "type": "multi",
+   "q": "¿Qué afirmaciones sobre `and`, `or` y `not` son correctas? (Selecciona DOS.)",
+   "options": [
+    "`and` y `or` siempre devuelven `True` o `False`",
+    "`x or y` no evalúa `y` si `x` es truthy",
+    "`not` siempre devuelve un `bool`",
+    "`or` tiene más prioridad que `and`"
+   ],
+   "answer": [
+    1,
+    2
+   ],
+   "explain": "`and` y `or` devuelven uno de sus operandos (no necesariamente un `bool`) y cortocircuitan. `not` sí devuelve siempre `bool`. La prioridad es `not` > `and` > `or`."
+  },
+  {
+   "id": "s02-q30",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 5\nprint(1 < x < 10, 1 < 3 > 2)\n```",
+   "options": [
+    "`True True`",
+    "`True False`",
+    "`False True`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Las comparaciones se encadenan: `1 < x < 10` es `1 < x and x < 10` → `True`. `1 < 3 > 2` es `1 < 3 and 3 > 2` → `True` (no compara 1 con 2)."
+  },
+  {
+   "id": "s02-q31",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `is` y `==` es correcta.",
+   "statements": [
+    {
+     "text": "`a == b` comprueba si `a` y `b` son el mismo objeto.",
+     "answer": false
+    },
+    {
+     "text": "`x is None` es la forma recomendada por PEP 8 de comprobar `None`.",
+     "answer": true
+    },
+    {
+     "text": "Dos enteros con el mismo valor son siempre el mismo objeto.",
+     "answer": false
+    },
+    {
+     "text": "Con enteros y cadenas, si `a is b` es `True`, `a == b` también lo es.",
+     "answer": true
+    }
+   ],
+   "explain": "`==` compara valores y `is` identidad. Que dos enteros iguales sean o no el mismo objeto es un detalle de implementación (CPython reutiliza los pequeños), así que nunca uses `is` para comparar números o textos. Un objeto siempre es igual a sí mismo en enteros y cadenas (la excepción famosa es NaN, un float)."
+  },
+  {
+   "id": "s02-q32",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"5\" + \"3\", \"5\" * 3)\n```",
+   "options": [
+    "`8 15`",
+    "`53 555`",
+    "`53 15`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con cadenas, `+` concatena y `*` (con un entero) repite: `\"53\"` y `\"555\"`."
+  },
+  {
+   "id": "s02-q33",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este código?\n```python\nedad = 30\nprint(\"Edad: \" + edad)\n```",
+   "options": [
+    "Imprime `Edad: 30`",
+    "Imprime `Edad: + 30`",
+    "Lanza `TypeError`",
+    "Lanza `ValueError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Tipado fuerte: no se puede concatenar `str` con `int` (`can only concatenate str (not \"int\") to str`). Soluciones: `\"Edad: \" + str(edad)` o `f\"Edad: {edad}\"`."
+  },
+  {
+   "id": "s02-q34",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nsaludo = \"hola\"\nsaludo.upper()\nprint(saludo)\n```",
+   "options": [
+    "`HOLA`",
+    "`hola`",
+    "`None`",
+    "`Hola`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las cadenas son inmutables: `upper()` devuelve una cadena nueva que aquí se descarta. Para conservarla: `saludo = saludo.upper()`."
+  },
+  {
+   "id": "s02-q35",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"ana\" in \"Mariana\", \"\" in \"hola\", \"A\" in \"casa\")\n```",
+   "options": [
+    "`True True False`",
+    "`True False False`",
+    "`False True False`",
+    "`True True True`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`in` busca subcadenas: `\"ana\"` está en `\"Mariana\"`; la cadena vacía está en cualquier cadena; y `\"A\"` no está en `\"casa\"` porque se distinguen mayúsculas."
+  },
+  {
+   "id": "s02-q36",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(type(True + 1))\n```",
+   "options": [
+    "`<class 'bool'>`",
+    "`<class 'int'>`",
+    "`<class 'float'>`",
+    "Lanza `TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`bool` es subtipo de `int`: `True + 1` es `2`, un `int`."
+  },
+  {
+   "id": "s02-q37",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nimport math\nprint(math.floor(-2.5), math.trunc(-2.5), round(-2.5))\n```",
+   "options": [
+    "`-3 -2 -2`",
+    "`-2 -2 -3`",
+    "`-3 -3 -2`",
+    "`-3 -2 -3`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`floor` va hacia −∞ (-3); `trunc` hacia cero (-2); `round` lleva el empate al par (-2)."
+  },
+  {
+   "id": "s02-q38",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(f\"{7 / 3:.2f}\")\n```",
+   "options": [
+    "`2.33`",
+    "`2.3333333333333335`",
+    "`2.34`",
+    "`7 / 3:.2f`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`:.2f` formatea el float con 2 decimales (redondeando): `2.33`. Sin la `f` delante, se imprimiría el texto literal con las llaves."
+  },
+  {
+   "id": "s02-q39",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre los números de Python es correcta.",
+   "statements": [
+    {
+     "text": "Los `int` de Python se desbordan si superan `2**63 - 1`.",
+     "answer": false
+    },
+    {
+     "text": "`1 / 0.0` devuelve `inf`.",
+     "answer": false
+    },
+    {
+     "text": "`float(\"nan\") == float(\"nan\")` es `False`.",
+     "answer": true
+    },
+    {
+     "text": "Desde 3.11, `int()` con un texto de más de 4300 cifras lanza `ValueError` por defecto.",
+     "answer": true
+    },
+    {
+     "text": "`math.sqrt(16)` devuelve el `int` 4.",
+     "answer": false
+    }
+   ],
+   "explain": "Los `int` tienen precisión arbitraria. Dividir entre cero, también entre `0.0`, lanza `ZeroDivisionError`. NaN no es igual ni a sí mismo. La conversión `str` ↔ `int` está limitada a 4300 dígitos desde 3.11. `math.sqrt` siempre devuelve `float` (`4.0`); `math.isqrt(16)` sí devuelve `4`."
+  },
+  {
+   "id": "s02-q40",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 5\nprint(++x, x)\n```",
+   "options": [
+    "`6 6`",
+    "`5 5`",
+    "`6 5`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Python no tiene operador de incremento: `++x` son dos `+` unarios, `+(+x)`, que no cambian nada. `x++` sí sería `SyntaxError`. Para incrementar: `x += 1`."
+  }
+ ],
+ "sources": [
+  {
+   "title": "The Python Language Reference — Data model (objetos, valores y tipos)",
+   "url": "https://docs.python.org/3/reference/datamodel.html"
+  },
+  {
+   "title": "The Python Language Reference — Lexical analysis (identificadores, palabras reservadas, literales)",
+   "url": "https://docs.python.org/3/reference/lexical_analysis.html"
+  },
+  {
+   "title": "The Python Language Reference — Expressions (operadores, precedencia, comparaciones, and/or)",
+   "url": "https://docs.python.org/3/reference/expressions.html"
+  },
+  {
+   "title": "The Python Language Reference — Simple statements (asignación y asignación aumentada)",
+   "url": "https://docs.python.org/3/reference/simple_stmts.html"
+  },
+  {
+   "title": "Built-in Types — Truth value testing, Boolean operations, Numeric types, int max str digits",
+   "url": "https://docs.python.org/3/library/stdtypes.html"
+  },
+  {
+   "title": "Built-in Functions — id, type, int, float, bool, round, divmod, pow, abs",
+   "url": "https://docs.python.org/3/library/functions.html"
+  },
+  {
+   "title": "math — Mathematical functions",
+   "url": "https://docs.python.org/3/library/math.html"
+  },
+  {
+   "title": "keyword — Testing for Python keywords",
+   "url": "https://docs.python.org/3/library/keyword.html"
+  },
+  {
+   "title": "Python Tutorial — An Informal Introduction to Python",
+   "url": "https://docs.python.org/3/tutorial/introduction.html"
+  },
+  {
+   "title": "Python Tutorial — Input and Output (f-strings)",
+   "url": "https://docs.python.org/3/tutorial/inputoutput.html"
+  },
+  {
+   "title": "Python Tutorial — Floating-Point Arithmetic: Issues and Limitations",
+   "url": "https://docs.python.org/3/tutorial/floatingpoint.html"
+  },
+  {
+   "title": "Programming FAQ (división entera con negativos, is frente a ==, conversión de cadenas)",
+   "url": "https://docs.python.org/3/faq/programming.html"
+  },
+  {
+   "title": "What's New In Python 3.14",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "What's New In Python 3.8 (SyntaxWarning con is y literales, especificador =)",
+   "url": "https://docs.python.org/3/whatsnew/3.8.html"
+  },
+  {
+   "title": "PEP 8 — Style Guide for Python Code",
+   "url": "https://peps.python.org/pep-0008/"
+  },
+  {
+   "title": "PEP 238 — Changing the Division Operator",
+   "url": "https://peps.python.org/pep-0238/"
+  },
+  {
+   "title": "PEP 485 — A Function for testing approximate equality (math.isclose)",
+   "url": "https://peps.python.org/pep-0485/"
+  },
+  {
+   "title": "PEP 701 — Syntactic formalization of f-strings (3.12)",
+   "url": "https://peps.python.org/pep-0701/"
+  },
+  {
+   "title": "Python Institute — PCEP-30-02 Exam Syllabus",
+   "url": "https://pythoninstitute.org/pcep-exam-syllabus"
+  },
+  {
+   "title": "El Mostrador — RUT en Chile: cómo se determina el dígito verificador (módulo 11)",
+   "url": "https://www.elmostrador.cl/datos-utiles/2024/08/20/rut-en-chile-como-se-determina-el-digito-verificador-y-por-que-algunos-terminan-en-k/"
+  },
+  {
+   "title": "DEV Community — Cómo validar un RUT chileno (casos 11 → 0 y 10 → K)",
+   "url": "https://dev.to/fdograph/como-validar-un-rut-chileno-5335"
+  },
+  {
+   "title": "OMS Europa — Nutrition for a healthy life (clasificación del IMC)",
+   "url": "https://www.who.int/europe/news-room/fact-sheets/item/nutrition---maintaining-a-healthy-lifestyle"
+  }
+ ]
+}

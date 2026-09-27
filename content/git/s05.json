@@ -1,0 +1,2549 @@
+{
+ "id": "s05",
+ "order": 5,
+ "title": "Ramas",
+ "domain": "colaboracion",
+ "summary": "Las ramas son la gran ventaja de Git: líneas de trabajo paralelas que cuestan 41 bytes. Aprenderás qué son de verdad (punteros a commits) y qué es HEAD, a crearlas, moverte entre ellas con `git switch` (y reconocer `git checkout`), a cambiar de rama con trabajo sin confirmar, a entrar y salir de HEAD separado sin perder commits, y a renombrar, borrar y nombrar ramas como en un equipo profesional.",
+ "goal": "Crear, cambiar, renombrar y borrar ramas con seguridad y rescatar commits hechos en HEAD separado, prediciendo en cada paso a qué apuntan HEAD y cada rama.",
+ "objectives": [
+  "Explicar una rama como un puntero móvil a un commit y HEAD como el puntero a la rama actual.",
+  "Crear ramas desde HEAD o desde cualquier punto de partida con `git branch` y `git switch -c`.",
+  "Cambiar de rama con `git switch` (y su equivalente `git checkout`), incluido volver a la anterior con `git switch -`.",
+  "Predecir qué ocurre con los cambios sin confirmar al cambiar de rama y resolver el bloqueo *would be overwritten*.",
+  "Entrar en HEAD separado para explorar versiones antiguas y rescatar los commits hechos en ese estado.",
+  "Renombrar ramas (incluido `master` → `main`) y borrar con seguridad las ya integradas usando `--merged`, `-d` y `-D`.",
+  "Aplicar convenciones de nombres y elegir el punto de partida correcto para ramas temáticas y hotfixes."
+ ],
+ "lessons": [
+  {
+   "id": "s05-l1",
+   "title": "Qué es una rama: un puntero móvil",
+   "minutes": 18,
+   "goals": [
+    "Explicar qué es una rama y qué es HEAD usando el modelo de punteros.",
+    "Localizar en `.git` el archivo de una rama y la referencia simbólica de HEAD.",
+    "Predecir qué rama avanza al confirmar y qué muestra `git log` con y sin `--all`."
+   ],
+   "takeaways": [
+    "Una rama es un puntero móvil a un commit: un archivo con un hash. Crearla no copia ningún archivo.",
+    "HEAD apunta a la rama actual (`ref: refs/heads/main`) y esa rama apunta a un commit.",
+    "Al confirmar avanza solo la rama a la que apunta HEAD; las demás se quedan donde estaban.",
+    "`git branch nombre` crea la rama, pero no te cambia a ella.",
+    "`git log` muestra lo alcanzable desde HEAD; `git log --oneline --decorate --graph --all` muestra todas las ramas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora trabajaste en una sola línea de commits, en `main`. En un proyecto real pasan varias cosas a la vez: tú desarrollas el carrito de compras, tu compañera arregla un error urgente y alguien más prueba una idea que quizás se descarte. Las **ramas** permiten que cada línea de trabajo avance por separado sin pisar a las demás. En muchos sistemas de control de versiones antiguos crear una rama significaba copiar el proyecto entero; en Git es instantáneo, y la razón está en cómo está hecha una rama."
+    },
+    {
+     "type": "h",
+     "text": "Recuerda: los commits forman una cadena"
+    },
+    {
+     "type": "p",
+     "text": "Cada commit guarda una instantánea completa del proyecto, sus metadatos (autor, fecha, mensaje) y el hash de su **commit padre**. Esa referencia al padre encadena la historia: desde el último commit puedes recorrerla hacia atrás hasta el primero. Git identifica cada commit por su hash (`a1b2c3d…`), pero nadie quiere memorizar hashes. Para eso existen las ramas."
+    },
+    {
+     "type": "diagram",
+     "title": "Una historia lineal: tres commits en main",
+     "mermaid": "gitGraph\n  commit id: \"C1\"\n  commit id: \"C2\"\n  commit id: \"C3\""
+    },
+    {
+     "type": "h",
+     "text": "Una rama es un puntero con nombre"
+    },
+    {
+     "type": "p",
+     "text": "Una rama en Git es simplemente **un puntero móvil a un commit**: un nombre (`main`, `feature/carrito`) asociado al hash del commit al que apunta. No contiene archivos ni copia nada. Pro Git lo resume así: *«A branch in Git is simply a lightweight movable pointer to one of these commits»*. El commit al que apunta una rama se llama su **punta** (*tip*)."
+    },
+    {
+     "type": "p",
+     "text": "¿Y cómo sabe Git en qué rama estás? Con otro puntero especial llamado **HEAD**. Normalmente HEAD no apunta a un commit, sino **a una rama**: es una referencia *simbólica* («estoy en `main`»). Para saber qué commit tienes delante, Git sigue la cadena HEAD → `main` → C3."
+    },
+    {
+     "type": "diagram",
+     "title": "HEAD apunta a la rama; la rama, a un commit (entre commits, la flecha va al padre)",
+     "mermaid": "flowchart LR\n  H[\"HEAD\"] --> M[\"main\"]\n  M --> C3[\"C3\"]\n  F[\"feature/carrito\"] --> C3\n  C3 --> C2[\"C2\"]\n  C2 --> C1[\"C1\"]"
+    },
+    {
+     "type": "h",
+     "text": "Míralo con tus propios ojos"
+    },
+    {
+     "type": "p",
+     "text": "Vas a crear una rama y a mirar dentro de la carpeta `.git`. Ejecuta la demostración línea por línea y observa el gráfico de commits:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda de la Tía Rosa</h1>' 'Crea la página de inicio'\nfecha '2026-09-01 11:00'\ncommit_archivo productos.html '<ul><li>Sopaipillas</li><li>Empanadas</li></ul>' 'Agrega lista de productos'\nfecha '2026-09-01 12:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos básicos'",
+     "cwd": "tienda",
+     "code": "git branch\ngit branch feature/carrito\ngit branch\ngit branch --show-current\ncat .git/refs/heads/main\ncat .git/refs/heads/feature/carrito\ngit rev-parse main feature/carrito\ncat .git/HEAD\ngit log --oneline --decorate"
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en tres cosas. **Uno:** `git branch feature/carrito` no imprimió nada y el asterisco de `git branch` sigue en `main`: crear una rama **no te cambia a ella**. **Dos:** los archivos `.git/refs/heads/main` y `.git/refs/heads/feature/carrito` contienen **el mismo hash de 40 caracteres** (`git rev-parse` lo confirma): las dos ramas apuntan al mismo commit. **Tres:** `.git/HEAD` contiene `ref: refs/heads/main`, o sea, HEAD apunta a la *rama* `main`, no a un commit. La decoración `(HEAD -> main, feature/carrito)` de `git log` dice lo mismo en una línea."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Por eso crear una rama es gratis: Git escribe un archivo de **41 bytes** (los 40 caracteres del hash SHA-1 y un salto de línea), da igual que el proyecto pese 1 MB o 10 GB. Crea ramas sin miedo: una por tarea, una por experimento."
+    },
+    {
+     "type": "h",
+     "text": "Qué pasa al hacer un commit"
+    },
+    {
+     "type": "p",
+     "text": "Cuando confirmas, Git crea el commit nuevo con el commit actual como padre y **mueve la rama a la que apunta HEAD** para que señale al commit nuevo. Las demás ramas no se mueven. HEAD tampoco cambia: sigue apuntando a la misma rama, que ahora señala otro commit."
+    },
+    {
+     "type": "diagram",
+     "title": "Tras cambiarte a feature/carrito y confirmar C4, solo avanza feature/carrito; main sigue en C3",
+     "mermaid": "gitGraph\n  commit id: \"C1\"\n  commit id: \"C2\"\n  commit id: \"C3\"\n  branch feature/carrito\n  checkout feature/carrito\n  commit id: \"C4\""
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda de la Tía Rosa</h1>' 'Crea la página de inicio'\nfecha '2026-09-01 11:00'\ncommit_archivo productos.html '<ul><li>Sopaipillas</li><li>Empanadas</li></ul>' 'Agrega lista de productos'\nfecha '2026-09-01 12:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos básicos'\ngit branch feature/carrito",
+     "cwd": "tienda",
+     "code": "git switch feature/carrito\ncat .git/HEAD\necho \"let carrito = [];\" > carrito.js\ngit add carrito.js\ngit commit -m \"Agrega carrito vacío\"\ngit log --oneline --decorate\ngit switch main\ngit log --oneline --decorate\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "p",
+     "text": "`git switch feature/carrito` (lo verás a fondo en la próxima lección) movió HEAD: ahora `.git/HEAD` dice `ref: refs/heads/feature/carrito`. El commit hizo avanzar solo esa rama. Al volver a `main`, `git log` ya no muestra «Agrega carrito vacío»: **`git log` solo muestra lo alcanzable desde HEAD**. Para ver todas las ramas agrega `--all`, y `--graph` para dibujar la forma de la historia. Aquí todavía es una línea recta, porque `feature/carrito` solo va un commit por delante de `main`; en cuanto `main` también avance, verás la bifurcación."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Error clásico: escribir `git branch feature/x`, ponerse a trabajar y confirmar… en `main`. `git branch nombre` **solo crea** el puntero. Antes de confirmar, mira la primera línea de `git status` (`On branch …`) o el `*` de `git branch`. Si ya te pasó, en el ejercicio «Commits en la rama equivocada» aprenderás a arreglarlo moviendo punteros."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Git 2.13, `git log` muestra las decoraciones `(HEAD -> main, …)` sin pedirlas: el valor por defecto de `log.decorate` es `auto`, que decora solo cuando la salida va a una terminal. Si rediriges la salida a un archivo o a otro programa, desaparecen, salvo que escribas `--decorate` o configures `log.decorate` (la terminal de práctica ya trae `log.decorate = short`, así que ahí siempre las verás). La combinación `git log --oneline --decorate --graph --all`, la misma que usa Pro Git, es tan útil que en s13 le crearás un alias."
+    },
+    {
+     "type": "p",
+     "text": "Un detalle para más adelante: no siempre encontrarás cada rama como archivo en `.git/refs/heads`. Git puede **empaquetar** referencias en el archivo `.git/packed-refs` (ocurre, por ejemplo, al clonar o al ejecutar `git gc`), y desde Git 2.45 existe un formato alternativo de almacenamiento llamado *reftable*. Por eso los scripts nunca leen esos archivos a mano: le preguntan a Git con `git rev-parse main` (lo verás en s12)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Rama",
+       "en": "branch",
+       "def": "Puntero móvil con nombre a un commit. Se guarda como `refs/heads/<nombre>`."
+      },
+      {
+       "term": "Punta de la rama",
+       "en": "tip",
+       "def": "El commit al que apunta la rama: el más reciente de esa línea de trabajo."
+      },
+      {
+       "term": "HEAD",
+       "en": "HEAD",
+       "def": "Puntero a la rama actual (referencia simbólica). Indica de dónde colgará el próximo commit."
+      },
+      {
+       "term": "Referencia",
+       "en": "ref",
+       "def": "Nombre que Git traduce a un hash: ramas, etiquetas, ramas remotas, HEAD."
+      },
+      {
+       "term": "Rama actual",
+       "en": "current branch",
+       "def": "La rama a la que apunta HEAD; la que avanza al confirmar. `git branch --show-current` la imprime."
+      }
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica de entrevista: «¿qué es una rama en Git y por qué es barata?». Respuesta: es un puntero móvil (una referencia) a un commit, un archivo que contiene un hash; crearla no copia archivos. Otra frecuente: «¿`master` o `main` son especiales?». No: Pro Git insiste en que `master` es una rama como cualquier otra; solo es la que `git init` crea por defecto."
+    }
+   ]
+  },
+  {
+   "id": "s05-l2",
+   "title": "Crear ramas y moverse entre ellas con git switch",
+   "minutes": 20,
+   "goals": [
+    "Crear ramas en HEAD o en otro punto de partida con `git branch` y `git switch -c`.",
+    "Cambiar de rama con `git switch` y volver a la anterior con `git switch -`.",
+    "Listar y filtrar ramas con `-v`, `-a`, `-r`, `--list`, `--contains` y `--sort`."
+   ],
+   "takeaways": [
+    "`git switch rama` mueve HEAD y actualiza el área de preparación y el directorio de trabajo a la instantánea de esa rama.",
+    "`git switch -c nueva [inicio]` equivale a `git branch nueva [inicio]` seguido de `git switch nueva`.",
+    "`git switch -` es la abreviatura de `@{-1}`: la rama en la que estabas antes.",
+    "`git switch` solo acepta ramas: para ir a un commit suelto hace falta `--detach`.",
+    "`git branch -a` también muestra las ramas de seguimiento remoto (`remotes/origin/…`)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Ya sabes qué es una rama. Ahora viene el día a día: crearlas donde corresponde, saltar entre ellas y encontrar la que buscas cuando ya tienes veinte. `git branch` crea, lista, renombra y borra ramas; el comando moderno para **cambiarse** de rama es `git switch`, disponible desde Git 2.23 (2019)."
+    },
+    {
+     "type": "h",
+     "text": "Crear una rama: dónde nace"
+    },
+    {
+     "type": "p",
+     "text": "Toda rama nace apuntando a un commit, su **punto de partida** (*start point*). Si no indicas ninguno, es el commit actual (HEAD). Sirve cualquier forma de nombrar un commit: otra rama (`main`), un hash (`a1b2c3d`) o una posición relativa como `HEAD~2` (dos commits antes de HEAD), que ya usaste en s04."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace",
+      "¿Te cambia a la rama?"
+     ],
+     "rows": [
+      [
+       "`git branch fix/login`",
+       "Crea la rama en el commit actual (HEAD)",
+       "No"
+      ],
+      [
+       "`git branch fix/login main~2`",
+       "Crea la rama en el punto de partida indicado",
+       "No"
+      ],
+      [
+       "`git switch -c fix/login`",
+       "Crea la rama en HEAD y te cambia a ella",
+       "Sí"
+      ],
+      [
+       "`git switch -c fix/login a1b2c3d`",
+       "Crea la rama en ese commit y te cambia",
+       "Sí"
+      ],
+      [
+       "`git switch -C fix/login main`",
+       "Como `-c`, pero si la rama ya existe la **reinicia** al punto de partida",
+       "Sí"
+      ],
+      [
+       "`git branch -f fix/login main`",
+       "Mueve a la fuerza una rama existente (que no sea la actual) a otro commit",
+       "No"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git switch -C` y `git branch -f` mueven una rama que ya existe. Si esa rama tenía commits que ninguna otra rama contiene, dejan de estar a la vista (se recuperan con el reflog, s10). Úsalos a conciencia: en el ejercicio «Commits en la rama equivocada» verás un uso legítimo."
+    },
+    {
+     "type": "h",
+     "text": "Cambiar de rama: qué hace git switch por dentro"
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "**Comprueba** que el cambio no pisará trabajo tuyo sin confirmar (lo verás en detalle en la lección 4).",
+      "**Actualiza el área de preparación y el directorio de trabajo** para que coincidan con la instantánea del commit de destino: los archivos que solo existen en la otra rama aparecen, los que difieren cambian de contenido y los que no existen allí desaparecen.",
+      "**Apunta HEAD** a la nueva rama: `.git/HEAD` pasa a decir `ref: refs/heads/<rama>`. Ningún commit se copia ni se modifica."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué actualiza git switch: las tres áreas y HEAD",
+     "mermaid": "flowchart LR\n  R[\"Repositorio: instantánea del commit de la rama destino\"] -- \"git switch\" --> I[\"Área de preparación (index)\"]\n  I --> W[\"Directorio de trabajo\"]\n  H[\"HEAD\"] -. \"pasa a apuntar a\" .-> B[\"rama destino\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-02 09:00'\ncommit_archivo index.html '<h1>Tienda de la Tía Rosa</h1>' 'Crea la página de inicio'\nfecha '2026-09-02 09:30'\ncommit_archivo precios.txt 'Sopaipilla: $500' 'Agrega lista de precios'\ngit switch -q -c feature/ofertas\nfecha '2026-09-02 10:00'\ncommit_archivo ofertas.html '<h2>Ofertas de septiembre</h2>' 'Agrega página de ofertas'\nfecha '2026-09-02 10:30'\ncommit_archivo precios.txt 'Sopaipilla: $400 (oferta)' 'Rebaja la sopaipilla por Fiestas Patrias'\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "git branch\nls\ncat precios.txt\ngit switch feature/ofertas\nls\ncat precios.txt\ngit switch -\ngit branch --show-current\nls"
+    },
+    {
+     "type": "p",
+     "text": "`ofertas.html` aparece y desaparece, y `precios.txt` cambia de contenido: Git reescribe tu directorio de trabajo en cada cambio de rama. Nada se pierde, porque todo está guardado en los commits. `git switch -` (con un guion) te devuelve a la rama anterior: es la abreviatura de `@{-1}` («lo que tenía HEAD justo antes») y funciona igual que `cd -` en bash. Si necesitas ir más atrás existen `@{-2}`, `@{-3}`…"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git switch` solo acepta **ramas**. Con un hash o una etiqueta responde `fatal: a branch is expected, got commit '…'` (o `got tag '…'`) y sugiere `--detach` (HEAD separado, lección 5). Con un nombre que no existe responde `fatal: invalid reference: …`: para crearla falta `-c`. Y si la rama ya existe, `git switch -c` falla con `fatal: a branch named '…' already exists`."
+    },
+    {
+     "type": "h",
+     "text": "Listar y buscar ramas"
+    },
+    {
+     "type": "p",
+     "text": "En esta demostración trabajas en un clon: tu compañera Camila publicó en el servidor la rama `feature/pagos`, y tú tienes dos ramas locales propias."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/companera 2>/dev/null\ncd ~/companera\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Tienda de la Tía Rosa</h1>' 'Crea la página de inicio'\ngit push -q origin main\ngit switch -q -c feature/pagos\nfecha '2026-09-03 10:00'\ncommit_archivo pagos.js 'function pagar() {}' 'Agrega módulo de pagos'\ngit push -q origin feature/pagos\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/tienda\ngit switch -q -c feature/carrito\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'let carrito = [];' 'Agrega carrito vacío'\ngit switch -q -c fix/footer main\nfecha '2026-09-03 12:00'\ncommit_archivo footer.html '<footer>Tienda de la Tía Rosa, 2026</footer>' 'Agrega pie de página'\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "git branch\ngit branch -v\ngit branch -a\ngit branch -r\ngit branch --list 'f*'\ngit branch --contains main\ngit branch --sort=-committerdate\ngit switch feature/pagos\ngit branch -vv"
+    },
+    {
+     "type": "p",
+     "text": "`-v` agrega el hash corto y el mensaje de la punta de cada rama. `-a` (*all*) muestra además las **ramas de seguimiento remoto** (`remotes/origin/…`), la copia local de lo que hay en el servidor; `-r` muestra solo esas. `--list` filtra con un patrón (escríbelo entre comillas), `--contains` muestra las ramas cuya historia incluye un commit y `--sort=-committerdate` las ordena de la más reciente a la más antigua. Por último, `git switch feature/pagos` no falló aunque esa rama no existía en local: como hay **exactamente una** rama remota con ese nombre, Git creó la rama local y la conectó con `origin/feature/pagos` (el *modo guess*; `-vv` muestra esa conexión entre corchetes). Los remotos llegan en s07."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Cuando le das un patrón a `git branch`, `--list` es obligatorio: sin él, `git branch 'feature/*'` intentaría **crear** una rama con ese nombre y fallaría con `fatal: 'feature/*' is not a valid branch name`, porque `*` no está permitido en los nombres."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`git switch` y `git restore` llegaron en Git 2.23 para repartirse el trabajo de `git checkout`. La página de manual de Git 2.50 todavía los marca con *THIS COMMAND IS EXPERIMENTAL*, pero las notas de Git 2.51 los declararon oficialmente estables. En exámenes y entrevistas se espera que reconozcas ambas formas: `git switch -c x` ⇔ `git checkout -b x`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Punto de partida",
+       "en": "start point",
+       "def": "Commit en el que nace una rama nueva. Por defecto, HEAD."
+      },
+      {
+       "term": "@{-1}",
+       "en": "previous checkout",
+       "def": "La rama (o commit) en la que estabas antes del último cambio. `git switch -` es su abreviatura."
+      },
+      {
+       "term": "Rama de seguimiento remoto",
+       "en": "remote-tracking branch",
+       "def": "Copia local de una rama del servidor, como `origin/main`. No se mueve a mano: se actualiza al comunicarte con el remoto (s07)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l3",
+   "title": "git checkout: la forma clásica",
+   "minutes": 12,
+   "goals": [
+    "Traducir entre `git checkout` y sus equivalentes modernos `git switch` y `git restore`.",
+    "Evitar la ambigüedad de `git checkout` cuando una rama y un archivo o carpeta se llaman igual, usando `--`."
+   ],
+   "takeaways": [
+    "`git checkout` hace dos trabajos distintos: cambiar de rama y restaurar archivos. Por eso Git 2.23 lo dividió en `switch` y `restore`.",
+    "`git checkout -b x` = `git switch -c x`; `git checkout -B x` = `git switch -C x`; `git checkout -` = `git switch -`.",
+    "`git checkout <commit>` separa HEAD sin pedir confirmación; `git switch` exige `--detach`.",
+    "`--` separa revisiones de rutas: `git checkout -- archivo` siempre se refiere al archivo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Durante casi 15 años el comando para cambiar de rama fue `git checkout`, y lo seguirás viendo en tutoriales, respuestas de Stack Overflow, scripts y en buena parte de Pro Git. Aunque uses `git switch`, tienes que reconocerlo y entender sus trampas."
+    },
+    {
+     "type": "p",
+     "text": "El problema de `checkout` es que hace dos cosas muy distintas: **cambiar de rama** (mueve HEAD) y **restaurar archivos** (sobrescribe tu trabajo). Según lo que escribas después, hace una u otra. Las notas de versión de Git 2.23 lo explican así: los nuevos comandos separan *«checking out a branch to work on advancing its history»* de *«checking out paths out of the index and/or a tree-ish to work on advancing the current history»*."
+    },
+    {
+     "type": "diagram",
+     "title": "Git 2.23 dividió checkout en dos comandos",
+     "mermaid": "flowchart LR\n  C[\"git checkout\"] --> S[\"Cambiar de rama: git switch\"]\n  C --> R[\"Restaurar archivos: git restore\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma clásica (checkout)",
+      "Forma moderna",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git checkout main`",
+       "`git switch main`",
+       "Cambiar a una rama existente"
+      ],
+      [
+       "`git checkout -b fix/x`",
+       "`git switch -c fix/x`",
+       "Crear una rama y cambiarse a ella"
+      ],
+      [
+       "`git checkout -b fix/x main~2`",
+       "`git switch -c fix/x main~2`",
+       "Crearla desde otro punto de partida"
+      ],
+      [
+       "`git checkout -B fix/x`",
+       "`git switch -C fix/x`",
+       "Crear o reiniciar la rama y cambiarse"
+      ],
+      [
+       "`git checkout -`",
+       "`git switch -`",
+       "Volver a la rama anterior"
+      ],
+      [
+       "`git checkout a1b2c3d`",
+       "`git switch --detach a1b2c3d`",
+       "Ir a un commit (HEAD separado)"
+      ],
+      [
+       "`git checkout -- app.js`",
+       "`git restore app.js`",
+       "Descartar los cambios del archivo (s04)"
+      ],
+      [
+       "`git checkout main -- app.js`",
+       "`git restore --source=main --staged --worktree app.js`",
+       "Traer la versión de otra rama al área de preparación y al directorio de trabajo"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetas\nfecha '2026-09-04 09:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega receta de empanadas'\nfecha '2026-09-04 09:30'\ncommit_archivo pebre.md '# Pebre' 'Agrega receta de pebre'",
+     "cwd": "recetas",
+     "code": "git checkout -b feature/sopaipillas\ngit branch --show-current\ngit checkout main\ngit checkout -\ngit checkout -b feature/humitas main~1\ngit log --oneline --decorate --graph --all\ngit checkout main"
+    },
+    {
+     "type": "p",
+     "text": "Todo funciona igual que con `switch`: `-b` crea y cambia, `-` vuelve a la anterior y el segundo argumento de `-b` es el punto de partida (`feature/humitas` nace del primer commit, `main~1`)."
+    },
+    {
+     "type": "h",
+     "text": "La trampa: una rama y una carpeta con el mismo nombre"
+    },
+    {
+     "type": "p",
+     "text": "Como `checkout` acepta tanto ramas como rutas, tiene que adivinar qué quisiste decir, y **si existe una rama con ese nombre, gana la rama**. Mira qué pasa en un proyecto con una carpeta `docs/` que tiene cambios sin confirmar y, además, una rama llamada `docs`:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo manual\nfecha '2026-09-04 10:00'\ncommit_archivo docs/instalacion.md '# Instalación' 'Agrega guía de instalación'\ngit branch docs\nanexar docs/instalacion.md 'Paso 1: instala Git'",
+     "cwd": "manual",
+     "code": "git status --short\ngit checkout docs\ngit status --short\ngit branch --show-current\ngit checkout main\ngit checkout -- docs\ngit status --short"
+    },
+    {
+     "type": "p",
+     "text": "Querías descartar los cambios de la carpeta y `git checkout docs` te **cambió de rama** (tus cambios viajaron contigo). Con `--` no hay ambigüedad: todo lo que va después son rutas, así que `git checkout -- docs` restauró la carpeta. Con `switch` y `restore` este problema desaparece, porque cada comando hace una sola cosa."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git checkout -- archivo` (igual que `git restore archivo`) **descarta sin preguntar** los cambios sin confirmar de ese archivo; no hay papelera para trabajo nunca confirmado. Si usas `checkout` con rutas, escribe siempre el `--`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git checkout <hash>` o `git checkout HEAD~2` te dejan en HEAD separado sin pedir confirmación (verás una nota larga de aviso, lección 5). `git switch` exige `--detach` para lo mismo: menos sustos."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Reconoce las equivalencias: `checkout -b` ↔ `switch -c`, `checkout -B` ↔ `switch -C`, `checkout -- f` ↔ `restore f`. Pregunta trampa: «¿qué hace `git checkout docs` si existen una rama `docs` y una carpeta `docs/`?». Cambia a la rama; para la carpeta hay que escribir `git checkout -- docs`."
+    }
+   ]
+  },
+  {
+   "id": "s05-l4",
+   "title": "Cambiar de rama con cambios sin confirmar",
+   "minutes": 18,
+   "goals": [
+    "Predecir si `git switch` se llevará tus cambios sin confirmar o se negará a cambiar.",
+    "Resolver el bloqueo *would be overwritten by checkout* sin perder trabajo.",
+    "Mover a una rama nueva un trabajo empezado por error en `main`."
+   ],
+   "takeaways": [
+    "Los cambios sin confirmar no pertenecen a ninguna rama: viajan contigo mientras no choquen con la rama de destino.",
+    "Git se niega a cambiar si tendría que sobrescribir un cambio tuyo o un archivo sin seguimiento; en ese caso no hace nada.",
+    "Salidas: confirmar (WIP), guardar con stash (s10), llevarlos con `-m` o descartarlos (`git restore`, `--discard-changes`).",
+    "`git switch -c nueva` siempre se lleva tus cambios: la rama nueva parte del mismo commit.",
+    "`--discard-changes` (alias `-f`) cambia de rama tirando tus cambios sin confirmar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Esta es la confusión número uno de quien empieza: editas un archivo en `main`, te cambias a `feature/x`… y el cambio sigue ahí. ¿Se «copió» a la otra rama? No. La clave es esta: **los cambios sin confirmar no pertenecen a ninguna rama**. Viven en tu directorio de trabajo y en el área de preparación, que son únicos. Una rama solo «posee» commits."
+    },
+    {
+     "type": "p",
+     "text": "Al cambiar de rama, Git tiene que transformar tu directorio de trabajo en la instantánea de la otra rama. Para cada archivo que modificaste se pregunta: ¿este archivo es distinto entre la rama actual y la de destino?"
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué hace git switch con tus cambios sin confirmar?",
+     "mermaid": "flowchart TD\n  A[\"git switch otra-rama\"] --> B{\"¿Tienes cambios sin confirmar?\"}\n  B -- \"No\" --> OK[\"Cambia sin problemas\"]\n  B -- \"Sí\" --> C{\"¿Esos archivos difieren entre las dos ramas?\"}\n  C -- \"No\" --> V[\"Cambia y tus cambios viajan contigo\"]\n  C -- \"Sí\" --> X[\"Se niega: would be overwritten by checkout. Aborting\"]\n  X --> D[\"Confirma, guarda aparte o descarta; luego vuelve a intentarlo\"]"
+    },
+    {
+     "type": "h",
+     "text": "Caso 1: tus cambios viajan contigo"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-05 09:00'\nescribir README.md '# Tienda de la Tía Rosa'\nescribir app.js 'console.log(\"tienda\");'\ngit add .\ngit commit -q -m 'Crea la tienda'\ngit switch -q -c feature/login\nfecha '2026-09-05 10:00'\ncommit_archivo app.js 'console.log(\"tienda con login\");' 'Agrega login'\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "echo \"Instrucciones de instalación\" >> README.md\ngit status --short\ngit switch feature/login\ngit status --short\ngit switch main\ngit diff"
+    },
+    {
+     "type": "p",
+     "text": "`README.md` es idéntico en ambas ramas, así que Git puede cambiar de rama sin tocarlo: tu modificación te acompaña, y Git lo avisa justo después de `Switched to branch` con una línea que empieza por `M` seguida del nombre del archivo. Lo mismo ocurre con los cambios **preparados** y con los archivos **sin seguimiento**: todo lo no confirmado te sigue adonde vayas."
+    },
+    {
+     "type": "h",
+     "text": "Caso 2: Git se niega a cambiar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-05 09:00'\nescribir README.md '# Tienda de la Tía Rosa'\nescribir app.js 'console.log(\"tienda\");'\ngit add .\ngit commit -q -m 'Crea la tienda'\ngit switch -q -c feature/login\nfecha '2026-09-05 10:00'\ncommit_archivo app.js 'console.log(\"tienda con login\");' 'Agrega login'\ngit switch -q main\ngit switch -q feature/login",
+     "cwd": "tienda",
+     "code": "echo \"// validar contraseña\" >> app.js\ngit switch main\ngit status --short\ngit add app.js\ngit commit -m \"WIP: validación de contraseña\"\ngit switch main\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "p",
+     "text": "Como `app.js` es distinto en `main` y en `feature/login`, cambiar de rama obligaría a sobrescribir tu versión. Git lo explica así:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "error: Your local changes to the following files would be overwritten by checkout:\n\tapp.js\nPlease commit your changes or stash them before you switch branches.\nAborting"
+    },
+    {
+     "type": "p",
+     "text": "Traducción: «tus cambios locales en estos archivos se sobrescribirían al cambiar de rama; confírmalos o guárdalos con *stash* antes de cambiarte. Abortando». Git **no hizo nada**: sigues en tu rama con tus cambios intactos. El mensaje dice *checkout* aunque usaste `switch` porque ambos comparten la misma maquinaria interna. En la demostración elegiste confirmar un commit provisional (WIP, *work in progress*) y después el cambio de rama funcionó."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Salida",
+      "Comando",
+      "Qué pasa con tu cambio",
+      "Cuándo usarla"
+     ],
+     "rows": [
+      [
+       "Confirmarlo",
+       "`git add` + `git commit -m \"WIP: …\"`",
+       "Queda guardado en la rama actual",
+       "Casi siempre. Luego puedes pulir el commit (`--amend`, s04; squash, s09)"
+      ],
+      [
+       "Llevarlo a una rama nueva",
+       "`git switch -c nueva`",
+       "Viaja intacto: la rama nueva parte del mismo commit",
+       "Empezaste a trabajar en la rama equivocada"
+      ],
+      [
+       "Guardarlo aparte",
+       "`git stash` … `git stash pop`",
+       "Queda en una pila temporal, fuera de las ramas",
+       "Interrupciones cortas (lo verás en s10)"
+      ],
+      [
+       "Fusionarlo al cambiar",
+       "`git switch -m otra`",
+       "Git intenta combinarlo con la versión de la otra rama; puede dejar conflictos",
+       "Cambios pequeños que quieres llevar a la otra rama"
+      ],
+      [
+       "Descartarlo",
+       "`git restore archivo` o `git switch --discard-changes otra`",
+       "Se pierde para siempre",
+       "Solo si de verdad no lo quieres"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Hábito profesional: mira `git status` antes de cambiar de rama y procura cambiarte con el directorio limpio. Pro Git lo aconseja así: *«It's best to have a clean working state when you switch branches»*. Que los cambios viajen contigo es útil, pero también es la forma más común de confirmar algo en la rama equivocada."
+    },
+    {
+     "type": "h",
+     "text": "Caso 3: empezaste a trabajar en la rama equivocada"
+    },
+    {
+     "type": "p",
+     "text": "Te va a pasar: editas varios archivos y descubres que estabas en `main`. La solución es elegante: `git switch -c feature/nueva`. Crear una rama en el commit actual nunca choca con nada (el destino es el mismo commit), así que tus cambios viajan intactos a la rama nueva y ahí los confirmas. `main` queda como estaba."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-05 11:00'\ncommit_archivo index.html '<h1>Boletín de la Junta de Vecinos</h1>' 'Crea la portada del boletín'\nfecha '2026-09-05 11:30'\ncommit_archivo noticias.md '# Noticias de septiembre' 'Agrega noticias de septiembre'",
+     "cwd": "boletin",
+     "code": "echo \"<form>Tu correo: <input type=email></form>\" >> index.html\necho \"function suscribir(correo) {}\" > suscripcion.js\ngit status --short\ngit switch -c feature/suscripcion\ngit add index.html suscripcion.js\ngit commit -m \"Agrega formulario de suscripción\"\ngit switch main\ngit status --short\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los archivos **sin seguimiento** también pueden bloquear: si tienes un `notas.txt` sin seguimiento y la rama de destino tiene un `notas.txt` confirmado, Git responde `error: The following untracked working tree files would be overwritten by checkout:` y `Please move or remove them before you switch branches.` Muévelo, renómbralo o confírmalo antes de cambiarte."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git switch --discard-changes otra` (alias `-f` o `--force`) y `git checkout -f otra` cambian de rama **tirando a la basura** tus cambios sin confirmar, sin preguntar. Úsalos solo cuando de verdad quieras descartar."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git switch -m` (`--merge`) en Git 2.50 hace una fusión de tres vías entre la rama actual, tus cambios y la rama de destino; si chocan, el archivo queda con marcadores de conflicto (`<<<<<<< otra` … `>>>>>>> local`) que aprenderás a resolver en s06. Desde Git 2.55 cambió: primero guarda tus cambios en un stash temporal y los reaplica tras cambiar; si hay conflicto, la entrada queda en la lista de stash. Como el comportamiento depende de la versión, en el día a día prefiere confirmar o usar stash."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «Modificaste `app.js` en `main` y ejecutas `git switch dev`. ¿Qué pasa?». Depende de si `app.js` difiere entre `main` y `dev`: si no difiere, cambias y la modificación viaja contigo; si difiere, Git aborta con *would be overwritten by checkout* y no cambia nada. Nunca «se pierde» ni «se copia» a la otra rama."
+    }
+   ]
+  },
+  {
+   "id": "s05-l5",
+   "title": "HEAD separado (detached HEAD)",
+   "minutes": 20,
+   "goals": [
+    "Reconocer el estado de HEAD separado en `git status`, `git branch` y `.git/HEAD`.",
+    "Explorar una versión antigua con `git switch --detach` y volver a una rama.",
+    "Salvar commits hechos en HEAD separado, antes o después de salir de ese estado."
+   ],
+   "takeaways": [
+    "HEAD separado significa que HEAD apunta directamente a un commit, no a una rama.",
+    "Ocurre con `git switch --detach`, con `git checkout` de un hash, una etiqueta o `HEAD~n`, y durante un rebase o un bisect.",
+    "Puedes confirmar en HEAD separado, pero ninguna rama recuerda esos commits: sálvalos con `git switch -c nombre`.",
+    "Si ya saliste, el hash aparece en el aviso *you are leaving N commits behind* (y en el reflog, s10): `git branch nombre <hash>`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora HEAD siempre apuntaba a una rama. Pero también puede apuntar **directamente a un commit**. Ese estado se llama **HEAD separado** (*detached HEAD*). Suena a error grave, pero no lo es: es la forma normal de mirar el pasado. Tiene un solo peligro, y aquí aprenderás a evitarlo."
+    },
+    {
+     "type": "diagram",
+     "title": "Normal: HEAD apunta a una rama. Separado: HEAD apunta a un commit",
+     "mermaid": "flowchart LR\n  subgraph N[\"Normal\"]\n    H1[\"HEAD\"] --> M1[\"main\"]\n    M1 --> A3[\"C3\"]\n  end\n  subgraph D[\"Separado\"]\n    H2[\"HEAD\"] --> B2[\"C2\"]\n    M2[\"main\"] --> B3[\"C3\"]\n  end"
+    },
+    {
+     "type": "h",
+     "text": "Cuándo ocurre"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git switch --detach <commit>` (o `-d`): lo pides explícitamente, por ejemplo para revisar una versión antigua.",
+      "`git checkout <hash>`, `git checkout HEAD~3` o `git checkout v1.0` (una etiqueta, s08): `checkout` separa HEAD sin preguntar.",
+      "`git checkout origin/main`: una rama de seguimiento remoto no se mueve a mano, así que Git separa HEAD (s07).",
+      "Durante un `git rebase` (s09) o un `git bisect` (s11), Git trabaja en HEAD separado mientras dura la operación."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-06 09:00'\ncommit_archivo precios.txt 'Sopaipilla: $300' 'Primera lista de precios'\nfecha '2026-09-06 10:00'\ncommit_archivo precios.txt 'Sopaipilla: $350' 'Sube precio de la sopaipilla'\nfecha '2026-09-06 11:00'\ncommit_archivo precios.txt 'Sopaipilla: $400' 'Ajusta precios por inflación'\nfecha '2026-09-06 12:00'\ncommit_archivo horario.txt 'Lunes a sábado, 9:00 a 20:00' 'Agrega horario de atención'",
+     "cwd": "tienda",
+     "code": "git log --oneline\ngit switch --detach HEAD~3\ncat precios.txt\ngit status\ncat .git/HEAD\ngit branch\ngit switch main\ngit checkout HEAD~2\ngit switch -\ngit status"
+    },
+    {
+     "type": "p",
+     "text": "Tres señales te dicen que estás en HEAD separado: `git status` empieza con `HEAD detached at <commit>`, `git branch` muestra `* (HEAD detached at …)` y `.git/HEAD` contiene un hash en vez de `ref: refs/heads/…`. Además, `git branch --show-current` no imprime nada. Al volver a una rama, Git te recuerda dónde estabas con `Previous HEAD position was …`."
+    },
+    {
+     "type": "p",
+     "text": "`git switch --detach` solo imprime `HEAD is now at …`, porque pediste el HEAD separado de forma explícita. `git checkout HEAD~2`, en cambio, muestra una nota larga que conviene leer una vez con calma:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Note: switching to 'HEAD~2'.\n\nYou are in 'detached HEAD' state. You can look around, make experimental\nchanges and commit them, and you can discard any commits you make in this\nstate without impacting any branches by switching back to a branch.\n\nIf you want to create a new branch to retain commits you create, you may\ndo so (now or later) by using -c with the switch command. Example:\n\n  git switch -c <new-branch-name>\n\nOr undo this operation with:\n\n  git switch -\n\nTurn off this advice by setting config variable advice.detachedHead to false\n\nHEAD is now at 34bae6c Sube precio de la sopaipilla"
+    },
+    {
+     "type": "p",
+     "text": "En resumen: «Estás en HEAD separado. Puedes mirar, hacer cambios experimentales y confirmarlos, y descartar cualquier commit que hagas aquí sin afectar a ninguna rama, volviendo a una rama. Si quieres conservar los commits, crea una rama con `git switch -c <nombre>` (ahora o más tarde). O deshaz la operación con `git switch -`»."
+    },
+    {
+     "type": "h",
+     "text": "Confirmar en HEAD separado… y salvar el trabajo"
+    },
+    {
+     "type": "p",
+     "text": "En HEAD separado puedes confirmar con normalidad: Git crea el commit y mueve **HEAD** (no hay rama que mover). El problema aparece al irte: si vuelves a `main`, **ninguna rama ni HEAD apuntan ya a esos commits**. No se borran en ese instante, pero dejan de verse en `git log --all` y, pasado un tiempo, el recolector de basura de Git los elimina."
+    },
+    {
+     "type": "diagram",
+     "title": "E1 y E2 se confirmaron en HEAD separado: solo HEAD los sostiene",
+     "mermaid": "flowchart LR\n  C1[\"C1\"] --> C2[\"C2\"]\n  C2 --> C3[\"C3\"]\n  C3 --> C4[\"C4\"]\n  C2 --> E1[\"E1\"]\n  E1 --> E2[\"E2\"]\n  M[\"main\"] -.-> C4\n  H[\"HEAD\"] -.-> E2"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-06 09:00'\ncommit_archivo precios.txt 'Sopaipilla: $300' 'Primera lista de precios'\nfecha '2026-09-06 10:00'\ncommit_archivo precios.txt 'Sopaipilla: $350' 'Sube precio de la sopaipilla'\nfecha '2026-09-06 11:00'\ncommit_archivo precios.txt 'Sopaipilla: $400' 'Ajusta precios por inflación'\nfecha '2026-09-06 12:00'\ncommit_archivo horario.txt 'Lunes a sábado, 9:00 a 20:00' 'Agrega horario de atención'",
+     "cwd": "tienda",
+     "code": "git switch --detach HEAD~2\necho 'Empanada: $1.500' >> precios.txt\ngit commit -am \"Prueba precio de empanadas\"\ngit status\ngit log --oneline --decorate --graph --all\ngit switch -c experimento/empanadas\ngit status\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "p",
+     "text": "`git switch -c experimento/empanadas` crea la rama **en el commit actual** (el del experimento) y apunta HEAD a ella: sales del HEAD separado sin perder nada. Fíjate en el `git status` intermedio: dice `HEAD detached from …` (*from*, no *at*), porque HEAD ya avanzó desde el commit donde lo separaste. Alternativa: `git branch experimento/empanadas` crea la rama pero te deja en HEAD separado; después harías `git switch experimento/empanadas`."
+    },
+    {
+     "type": "h",
+     "text": "Si ya te fuiste: el aviso te salva"
+    },
+    {
+     "type": "p",
+     "text": "En este escenario ya hiciste dos commits en HEAD separado con un gráfico de ventas. Al volver a `main`, Git avisa con el hash exacto que necesitas:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo dashboard\nfecha '2026-09-06 14:00'\ncommit_archivo index.html '<h1>Dashboard de ventas</h1>' 'Crea el dashboard'\nfecha '2026-09-06 14:30'\ncommit_archivo datos.csv 'mes,ventas' 'Agrega datos de ventas'\nfecha '2026-09-06 15:00'\ncommit_archivo tabla.js 'function tabla() {}' 'Agrega tabla de ventas'\ngit switch -q --detach HEAD~1\nfecha '2026-09-06 16:00'\ncommit_archivo grafico.js 'function grafico() {}' 'Agrega gráfico de ventas'\nfecha '2026-09-06 16:30'\nanexar grafico.js 'const colores = [\"azul\", \"naranjo\"];'\ngit commit -q -am 'Agrega colores al gráfico'",
+     "cwd": "dashboard",
+     "code": "git status\ngit switch main\ngit log --oneline --decorate --graph --all\n# Copia el hash que sugiere el aviso (en este escenario es bafba6a)\ngit branch rescate/graficos bafba6a\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "p",
+     "text": "El aviso dice: «Estás dejando atrás 2 commits que no están conectados a ninguna de tus ramas. Si quieres conservarlos creando una rama nueva, este puede ser un buen momento para hacerlo con `git branch <new-branch-name> bafba6a`». Después de `git switch main`, `git log --all` ya no muestra esos commits; con `git branch rescate/graficos bafba6a` vuelven a tener un nombre y reaparecen, porque el padre del último commit es el otro commit del experimento."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "¿Cuánto sobreviven los commits abandonados? El **reflog** de HEAD (s10) los recuerda: sus entradas inalcanzables caducan por defecto a los **30 días** (`gc.reflogExpireUnreachable`) y, una vez fuera del reflog, `git gc` (que Git también ejecuta automáticamente de vez en cuando) elimina los objetos inalcanzables con más de dos semanas de antigüedad (`gc.pruneExpire`). No cuentes con eso: crea la rama en cuanto veas el aviso. Si perdiste el aviso, `git reflog` te mostrará el hash (lo practicarás en s10)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si lo anterior fue un HEAD separado, `git switch -` falla (`fatal: a branch is expected, got commit '…'`), porque `@{-1}` es un commit, no una rama. Usa `git switch --detach -` o `git checkout -`. Y si la nota larga te molesta, puedes desactivarla con `git config --global advice.detachedHead false`… aunque mientras aprendes conviene dejarla."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué es *detached HEAD*?» → HEAD apunta a un commit en lugar de a una rama. «¿Cómo conservo los commits que hice ahí?» → `git switch -c nombre` (o `git checkout -b nombre`) antes de salir; si ya saliste, `git branch nombre <hash>` con el hash del aviso o del reflog. «¿Se pierden al salir?» → Quedan inalcanzables, no se borran de inmediato."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "HEAD separado",
+       "en": "detached HEAD",
+       "def": "Estado en que HEAD contiene el hash de un commit en vez de apuntar a una rama."
+      },
+      {
+       "term": "Commit inalcanzable",
+       "en": "unreachable commit",
+       "def": "Commit al que no llega ninguna rama, etiqueta ni HEAD. No aparece en `git log --all` y el recolector de basura puede eliminarlo con el tiempo."
+      },
+      {
+       "term": "Recolector de basura",
+       "en": "garbage collection (git gc)",
+       "def": "Proceso de mantenimiento que, entre otras cosas, elimina objetos inalcanzables antiguos."
+      },
+      {
+       "term": "Aviso",
+       "en": "advice",
+       "def": "Mensajes de ayuda de Git (líneas `hint:` o notas como la de HEAD separado). Se desactivan con `advice.<nombre> false`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l6",
+   "title": "Renombrar, borrar y ordenar ramas",
+   "minutes": 18,
+   "goals": [
+    "Renombrar ramas locales, incluido el cambio de `master` a `main`, con `git branch -m`.",
+    "Borrar ramas con `-d` y `-D` evaluando antes si su trabajo ya está integrado.",
+    "Filtrar ramas con `--merged` y `--no-merged` y recuperar una rama borrada por error."
+   ],
+   "takeaways": [
+    "`git branch -m viejo nuevo` renombra la rama junto con su configuración y su reflog; `-M` fuerza aunque el destino exista.",
+    "Borrar una rama borra el puntero, no los commits: si otra rama los contiene, siguen ahí.",
+    "`-d` solo borra si el trabajo está integrado (en su upstream o, si no tiene, en HEAD); `-D` borra de todos modos.",
+    "No puedes borrar la rama en la que estás.",
+    "`Deleted branch x (was <hash>)` te da el hash para recrear la rama al instante."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un repositorio con cuarenta ramas viejas es tan incómodo como un escritorio lleno de papeles. En esta lección aprendes a renombrar ramas (incluido el famoso paso de `master` a `main`), a borrarlas con seguridad y a saber cuáles ya puedes borrar."
+    },
+    {
+     "type": "h",
+     "text": "Renombrar: git branch -m"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git branch -m viejo-nombre nuevo-nombre   # renombra cualquier rama\ngit branch -m nuevo-nombre                # renombra la rama actual\ngit branch -M viejo nuevo                 # fuerza: pisa 'nuevo' si ya existe\ngit branch -c origen copia                # copia la rama (con su configuración y reflog)"
+    },
+    {
+     "type": "p",
+     "text": "`-m` (*move*) renombra la rama **junto con su configuración y su reflog**: los commits no cambian, solo el nombre del puntero. Si renombras la rama actual, HEAD se actualiza solo. Si el nombre nuevo ya existe, Git se niega (`fatal: a branch named '…' already exists`); `-M` lo fuerza y el puntero que tenía ese nombre se pierde."
+    },
+    {
+     "type": "h",
+     "text": "De master a main"
+    },
+    {
+     "type": "p",
+     "text": "Git usó `master` como nombre de la rama inicial durante años. El 1 de octubre de 2020 GitHub cambió a `main` el nombre por defecto de los repositorios nuevos, y Git 2.28 agregó `init.defaultBranch` para elegirlo (lo configuraste en s01). El documento de cambios planificados de Git anuncia que Git 3.0, aún no publicado, usará `main` por defecto. Por eso te toparás con repositorios antiguos en `master` que el equipo quiere renombrar."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p blog && cd blog && git init -q -b master\nfecha '2026-09-07 09:00'\ncommit_archivo index.md '# Blog de viajes' 'Crea el blog'\nfecha '2026-09-07 10:00'\ncommit_archivo valparaiso.md '# Valparaíso en dos días' 'Publica post sobre Valparaíso'\ngit branch feature/comentrios",
+     "cwd": "blog",
+     "code": "git branch -v\ngit branch -m master main\ngit branch -m feature/comentrios feature/comentarios\ngit branch -v\ncat .git/HEAD\ngit log --oneline --decorate --all"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En un repositorio **compartido**, renombrar la rama principal es más que un comando local: hay que publicar la rama nueva, cambiar la rama por defecto en GitHub o GitLab, actualizar CI/CD, scripts y reglas de protección, y avisar al equipo. Pro Git advierte que cambiar el nombre de `master`/`main` *«will break the integrations, services, helper utilities and build/release scripts that your repository uses»* si no lo coordinas. Aquí practicas la parte local; la remota, en s07."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# En el servidor (s07): publicar main y borrar master cuando todo esté migrado\ngit push --set-upstream origin main\ngit push origin --delete master\n\n# En el clon de cada compañero tras el cambio (según GitHub Docs)\ngit branch -m master main\ngit fetch origin\ngit branch -u origin/main main\ngit remote set-head origin -a"
+    },
+    {
+     "type": "h",
+     "text": "Borrar ramas: -d y -D"
+    },
+    {
+     "type": "diagram",
+     "title": "fix/login ya está integrada en main; feature/pagos no",
+     "mermaid": "gitGraph\n  commit id: \"C1\"\n  branch fix/login\n  checkout fix/login\n  commit id: \"F1\"\n  checkout main\n  merge fix/login\n  branch feature/pagos\n  checkout feature/pagos\n  commit id: \"P1\"\n  checkout main\n  commit id: \"C3\""
+    },
+    {
+     "type": "p",
+     "text": "`git branch -d rama` (*delete*) borra la rama **solo si su trabajo ya está integrado**: según la documentación, la rama debe estar *«fully merged in its upstream branch, or in HEAD if no upstream was set»*. En otras palabras, su punta tiene que ser alcanzable desde su upstream (s07) o, si no tiene, desde la rama actual. Si no lo es, Git se niega:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "error: the branch 'feature/pagos' is not fully merged\nhint: If you are sure you want to delete it, run 'git branch -D feature/pagos'\nhint: Disable this message with \"git config set advice.forceDeleteBranch false\""
+    },
+    {
+     "type": "p",
+     "text": "`-D` (atajo de `--delete --force`) borra de todos modos. Recuerda qué se borra: **el puntero**, no los commits. Si otra rama contiene esos commits, siguen a la vista; si no, quedan inalcanzables, igual que en HEAD separado."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api-pedidos\nfecha '2026-09-08 09:00'\ncommit_archivo app.py 'print(\"API de pedidos\")' 'Crea la API de pedidos'\ngit switch -q -c fix/login\nfecha '2026-09-08 10:00'\ncommit_archivo login.py 'TIMEOUT = 30' 'Corrige timeout del login'\ngit switch -q main\nfecha '2026-09-08 10:30'\ngit merge -q --no-ff -m 'Integra fix/login' fix/login\ngit switch -q -c feature/pagos\nfecha '2026-09-08 11:00'\ncommit_archivo pagos.py 'def pagar(): pass' 'Agrega pagos (a medias)'\ngit switch -q main\nfecha '2026-09-08 12:00'\ncommit_archivo README.md '# API de pedidos' 'Agrega README'",
+     "cwd": "api-pedidos",
+     "code": "git log --oneline --decorate --graph --all\ngit branch --merged\ngit branch --no-merged\ngit branch -d fix/login\ngit branch -d feature/pagos\ngit branch -D feature/pagos\ngit branch"
+    },
+    {
+     "type": "p",
+     "text": "`--merged` lista las ramas cuya punta es alcanzable desde HEAD (su trabajo ya está en tu rama actual) y `--no-merged`, las que tienen commits que tu rama no contiene. Puedes preguntar respecto de otra rama sin cambiarte: `git branch --merged main`. Pro Git lo resume así: las ramas de `--merged` sin `*` delante *«are generally fine to delete with `git branch -d`»*. (La integración de ramas, el *merge*, la aprenderás en s06; aquí la hizo el escenario.)"
+    },
+    {
+     "type": "h",
+     "text": "¿Borraste la que no era? Recréala"
+    },
+    {
+     "type": "p",
+     "text": "Al borrar, Git te dice adónde apuntaba la rama: `Deleted branch feature/pagos (was 8c649fb).` Con ese hash la recreas al instante, porque los commits siguen en el repositorio:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api-pedidos\nfecha '2026-09-08 09:00'\ncommit_archivo app.py 'print(\"API de pedidos\")' 'Crea la API de pedidos'\ngit switch -q -c fix/login\nfecha '2026-09-08 10:00'\ncommit_archivo login.py 'TIMEOUT = 30' 'Corrige timeout del login'\ngit switch -q main\nfecha '2026-09-08 10:30'\ngit merge -q --no-ff -m 'Integra fix/login' fix/login\ngit switch -q -c feature/pagos\nfecha '2026-09-08 11:00'\ncommit_archivo pagos.py 'def pagar(): pass' 'Agrega pagos (a medias)'\ngit switch -q main\nfecha '2026-09-08 12:00'\ncommit_archivo README.md '# API de pedidos' 'Agrega README'",
+     "cwd": "api-pedidos",
+     "code": "git branch -D feature/pagos\ngit log --oneline --decorate --graph --all\ngit branch feature/pagos 8c649fb\ngit log --oneline --decorate --graph --all"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No puedes borrar la rama en la que estás. En Git 2.50 el mensaje es `error: cannot delete branch 'main' used by worktree at '<ruta del repositorio>'`. Cámbiate primero a otra rama."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git branch --merged` incluye la rama actual (con `*`) y, a menudo, `main`: no borres a ciegas todo lo que lista. Con `-d` estás protegido, porque si algo no está integrado Git se niega; el peligro real es `-D`. Antes de una limpieza, `git branch --no-merged main` te muestra qué trabajo pendiente existe."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`-d` vs `-D`: `-d` es seguro (exige que la rama esté integrada) y `-D` equivale a `--delete --force`. Matiz que pocos conocen: si la rama tiene upstream, `-d` compara con el upstream y no con HEAD. Y recuerda: `-m` renombra conservando configuración y reflog; los hashes de los commits no cambian."
+    }
+   ]
+  },
+  {
+   "id": "s05-l7",
+   "title": "Nombres y estrategias de ramas",
+   "minutes": 15,
+   "goals": [
+    "Elegir nombres de rama válidos y descriptivos según las reglas de Git y las convenciones del equipo.",
+    "Distinguir ramas de larga vida y ramas temáticas y decidir cuándo usar cada una.",
+    "Crear cada rama temática desde el punto de partida correcto, en especial los hotfix."
+   ],
+   "takeaways": [
+    "Prefijos habituales: `feature/`, `fix/` (o `bugfix/`), `hotfix/`, `release/`, `docs/`, `chore/`, `experiment/`.",
+    "Nombres en minúsculas, con guiones, sin espacios; incluye el identificador de la tarea si existe.",
+    "`feature` y `feature/login` no pueden convivir; en macOS y Windows, `fix/Header` y `fix/header` chocan.",
+    "Ramas de larga vida (main, develop) representan niveles de estabilidad; las temáticas son cortas, de una tarea, y se borran al integrarse.",
+    "Las ramas son locales hasta que las publicas (s07)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Git te deja crear todas las ramas que quieras; el orden lo ponen tú y tu equipo. Hay dos decisiones que importan: **cómo se llaman** las ramas y **cuánto viven**."
+    },
+    {
+     "type": "h",
+     "text": "Reglas técnicas: qué nombres acepta Git"
+    },
+    {
+     "type": "p",
+     "text": "Git valida los nombres con las reglas de `git check-ref-format`. Lo esencial:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Puedes usar `/` para agrupar (`feature/login`), pero no al principio ni al final, ni dos seguidas.",
+      "Están prohibidos los espacios, `~`, `^`, `:`, `?`, `*`, `[`, la barra invertida `\\`, la secuencia `..` (un punto tras otro) y la secuencia `@{`.",
+      "Un nombre no puede empezar con `-`, ni terminar en `.`, ni ser solo `@`; ningún tramo entre barras puede empezar con `.` ni terminar en `.lock`. Tampoco se acepta `HEAD` como nombre de rama.",
+      "`feature` y `feature/login` no pueden convivir: las ramas se guardan como rutas (`refs/heads/feature/login`), y `feature` no puede ser a la vez archivo y carpeta."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-09 09:00'\ncommit_archivo index.html '<h1>Tienda de la Tía Rosa</h1>' 'Crea la página de inicio'",
+     "cwd": "tienda",
+     "code": "git branch \"mi rama\"\ngit branch fix..login\ngit branch feature\ngit branch feature/login\ngit branch -m feature feature/base\ngit branch feature/login\ngit check-ref-format --branch feature/JIRA-142-login-google\ngit branch --list 'feature/*'"
+    },
+    {
+     "type": "p",
+     "text": "Los dos primeros nombres fallan con `fatal: '…' is not a valid branch name` y una pista que apunta a `man git check-ref-format`. El cuarto falla con `fatal: cannot lock ref 'refs/heads/feature/login': 'refs/heads/feature' exists; cannot create 'refs/heads/feature/login'`: al renombrar `feature` a `feature/base` el conflicto desaparece. `git check-ref-format --branch` es la forma de validar un nombre sin crearlo (si es válido, lo imprime)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En macOS y Windows el sistema de archivos normalmente no distingue mayúsculas de minúsculas: si existe `fix/header`, crear `fix/Header` falla con `fatal: a branch named 'fix/Header' already exists`. En Linux, en cambio, serían dos ramas distintas… y cuando un compañero con Windows o macOS las traiga, tendrá problemas. Regla práctica: **solo minúsculas**."
+    },
+    {
+     "type": "h",
+     "text": "Convenciones de nombres"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Prefijo",
+      "Para qué",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`feature/`",
+       "Funcionalidad nueva",
+       "`feature/carrito-compras`"
+      ],
+      [
+       "`fix/` o `bugfix/`",
+       "Corrección de un error durante el desarrollo",
+       "`fix/login-timeout`"
+      ],
+      [
+       "`hotfix/`",
+       "Arreglo urgente sobre lo que está en producción",
+       "`hotfix/iva-19`"
+      ],
+      [
+       "`release/`",
+       "Preparar una versión (congelar, probar, ajustar)",
+       "`release/2.3.0`"
+      ],
+      [
+       "`docs/`, `chore/`, `refactor/`, `test/`",
+       "Documentación, mantenimiento, reestructuración, pruebas",
+       "`docs/guia-instalacion`"
+      ],
+      [
+       "`experiment/` o `spike/`",
+       "Pruebas que quizás se descarten",
+       "`experiment/tema-oscuro`"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "Minúsculas y guiones (*kebab-case*): `feature/login-google`, no `Feature/Login_Google`.",
+      "Si tu equipo usa un gestor de tareas, incluye el identificador: `feature/JIRA-142-login-google` o `fix/123-footer`. Muchas plataformas enlazan así la rama con la tarea.",
+      "Describe el *qué*, no el *quién*: `feature/exportar-csv` es mejor que `rama-de-pedro`.",
+      "Corto pero claro: el nombre aparecerá en el gráfico, en los *pull requests* (s08) y en los mensajes de merge (s06).",
+      "`feature/`, `release/` y `hotfix/` vienen del modelo Git Flow; lo que importa es que todo el equipo use la misma convención (los flujos completos, en s08)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Ramas de larga vida y ramas temáticas"
+    },
+    {
+     "type": "p",
+     "text": "Pro Git distingue dos tipos. Las **ramas de larga vida** (*long-running branches*) existen siempre y representan niveles de estabilidad: `main` con lo publicado o listo para publicar y, en algunos equipos, `develop` para integrar. Pro Git las describe como silos en los que los commits «se gradúan» a un nivel más estable cuando están probados. Las **ramas temáticas** (*topic branches*) son, en palabras del libro, *«a short-lived branch that you create and use for a single particular feature or related work»*: nacen de una rama de larga vida, reciben unos pocos commits, se integran y se borran."
+    },
+    {
+     "type": "diagram",
+     "title": "Larga vida (main, develop) y temáticas (feature/carrito, hotfix/iva)",
+     "mermaid": "gitGraph\n  commit id: \"v1.0\"\n  branch develop\n  checkout develop\n  commit id: \"D1\"\n  branch feature/carrito\n  checkout feature/carrito\n  commit id: \"K1\"\n  commit id: \"K2\"\n  checkout develop\n  merge feature/carrito\n  checkout main\n  branch hotfix/iva\n  checkout hotfix/iva\n  commit id: \"H1\"\n  checkout main\n  merge hotfix/iva\n  checkout develop\n  merge main"
+    },
+    {
+     "type": "diagram",
+     "title": "Mapa de tipos de rama",
+     "mermaid": "mindmap\n  root((Ramas))\n    Larga vida\n      main\n      develop\n      release\n    Temáticas\n      feature\n      fix\n      hotfix\n      docs\n      experiment"
+    },
+    {
+     "type": "p",
+     "text": "La regla que evita más problemas: **cada rama temática nace del punto correcto**. Una funcionalidad nace de la rama de integración (`main` o `develop`); un hotfix nace de lo que está en producción. En esta demostración trabajas en el buscador y, a mitad de camino, llega un arreglo urgente:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-09 10:00'\ncommit_archivo index.html '<h1>Cafetería El Volcán</h1>' 'Crea el sitio'\nfecha '2026-09-09 10:30'\ncommit_archivo footer.html '<footer>+56 2 2000 0000</footer>' 'Agrega pie de página'",
+     "cwd": "cafeteria",
+     "code": "git switch -c feature/buscador\necho \"function buscar() {}\" > buscador.js\ngit add buscador.js\ngit commit -m \"Agrega buscador\"\ngit switch -c hotfix/footer main\necho \"<footer>+56 2 2345 6789</footer>\" > footer.html\ngit add footer.html\ngit commit -m \"Corrige teléfono del pie de página\"\ngit log --oneline --decorate --graph --all\ngit switch main\ngit branch -v"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Error típico: crear la rama del hotfix estando en tu rama de funcionalidad (`git switch -c hotfix/x` sin punto de partida). El hotfix arrastraría tu trabajo a medio hacer hasta producción. Indica siempre el punto de partida: `git switch -c hotfix/x main`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Las ramas son **locales** hasta que las publicas: Pro Git recuerda que al crear y fusionar ramas *«there is no communication with the server»*. Puedes crear ramas para experimentar sin que nadie se entere; solo compartes las que publicas con `git push` (s07). Y mantén las temáticas cortas: cuanto menos divergen de `main`, menos conflictos al integrarlas (s06)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas frecuentes: diferencia entre rama de larga vida y temática; qué prefijo usar para un arreglo urgente en producción (`hotfix/`) y desde dónde crearlo (desde lo publicado, no desde tu rama de trabajo); por qué conviene que las temáticas vivan poco. GitHub Flow, Git Flow y trunk-based development los verás en s08."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s05-e1",
+   "title": "Tu primera rama",
+   "level": "facil",
+   "minutes": 5,
+   "prompt": [
+    "Trabajas en el sitio web de la **Sanguchería Don Pepe**. El repositorio `sangucheria` tiene dos commits en `main`. Te pidieron agregar una página de precios, pero sin tocar `main` mientras trabajas.",
+    "Crea una rama llamada `feature/precios` que parta del commit actual de `main` y **cámbiate a ella**. Todavía no hagas commits. Comprueba el resultado con `git branch` y en el gráfico."
+   ],
+   "setup": "nuevo_repo sangucheria\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Sanguchería Don Pepe</h1>' 'Crea la página de inicio'\nfecha '2026-09-01 10:30'\ncommit_archivo menu.html '<h2>Menú: churrasco, barros luco, chacarero</h2>' 'Agrega la página del menú'",
+   "cwd": "sangucheria",
+   "checks": [
+    {
+     "name": "Existe la rama feature/precios",
+     "script": "rama_existe feature/precios \"Aún no existe la rama feature/precios (revisa el nombre exacto con git branch)\""
+    },
+    {
+     "name": "Estás en feature/precios",
+     "script": "en_rama feature/precios \"No estás en feature/precios (estás en: $(rama_actual)). Recuerda: crear una rama no te cambia a ella\""
+    },
+    {
+     "name": "La rama nace del último commit de main",
+     "script": "rama_existe feature/precios\n[ \"$(git rev-parse feature/precios)\" = \"$(git rev-parse main)\" ] || falla \"feature/precios debería apuntar al mismo commit que main (sin commits nuevos todavía)\""
+    },
+    {
+     "name": "main sigue intacta",
+     "script": "[ \"$(num_commits main)\" = 2 ] || falla \"main debería seguir con sus 2 commits\""
+    }
+   ],
+   "solution": [
+    "git switch -c feature/precios",
+    "git branch"
+   ],
+   "hints": [
+    "Hay un comando que crea la rama y te cambia a ella en un solo paso.",
+    "Usa `git switch` con la opción `-c` (de *create*) seguida del nombre.",
+    "`git switch -c feature/precios` (equivale a `git branch feature/precios` + `git switch feature/precios`)."
+   ],
+   "explain": "`git switch -c feature/precios` crea el puntero `refs/heads/feature/precios` en el commit de HEAD y mueve HEAD a esa rama: `.git/HEAD` pasa a decir `ref: refs/heads/feature/precios`. No se copió ningún archivo; ambas ramas apuntan al mismo commit hasta que confirmes algo. Alternativas: `git branch feature/precios` seguido de `git switch feature/precios`, o la forma clásica `git checkout -b feature/precios`. El prefijo `feature/` sigue la convención que verás en la lección 7."
+  },
+  {
+   "id": "s05-e2",
+   "title": "Deja ramas listas sin moverte",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "En el repositorio `recetas` (un recetario de cocina chilena en Markdown), tu compañera Camila te pide que le dejes preparadas dos ramas para mañana, ambas partiendo del commit actual de `main`: `fix/ortografia` y `docs/indice`.",
+    "Tú debes **seguir en `main`** todo el tiempo. Al final, lista las ramas con el último commit de cada una."
+   ],
+   "setup": "nuevo_repo recetas\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 09:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega receta de empanadas'\nfecha '2026-09-02 09:40'\ncommit_archivo pastel-de-choclo.md '# Pastel de choclo' 'Agrega receta de pastel de choclo'\nyo\nfecha '2026-09-02 10:15'\ncommit_archivo sopaipillas.md '# Sopaipillas pasadas' 'Agrega receta de sopaipillas'",
+   "cwd": "recetas",
+   "checks": [
+    {
+     "name": "Existe fix/ortografia",
+     "script": "rama_existe fix/ortografia \"Falta la rama fix/ortografia\""
+    },
+    {
+     "name": "Existe docs/indice",
+     "script": "rama_existe docs/indice \"Falta la rama docs/indice\""
+    },
+    {
+     "name": "Ambas nacen del commit actual de main",
+     "script": "for r in fix/ortografia docs/indice; do\n  rama_existe \"$r\"\n  [ \"$(git rev-parse \"$r\")\" = \"$(git rev-parse main)\" ] || falla \"La rama $r debería apuntar al mismo commit que main\"\ndone"
+    },
+    {
+     "name": "Sigues en main y todo limpio",
+     "script": "en_rama main \"Deberías seguir en main (estás en: $(rama_actual)). Esta vez no hacía falta cambiarse\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git branch fix/ortografia",
+    "git branch docs/indice",
+    "git branch -v"
+   ],
+   "hints": [
+    "`git branch` sin argumentos lista las ramas; con un nombre, crea una.",
+    "`git branch nombre` crea la rama en HEAD sin cambiarte. Hazlo una vez por rama.",
+    "Para ver el último commit de cada rama: `git branch -v`."
+   ],
+   "explain": "`git branch <nombre>` solo escribe el puntero nuevo en el commit actual; HEAD sigue apuntando a `main`, por eso el `*` de `git branch` no se mueve. Ojo con una trampa: `git branch fix/ortografia docs/indice` **no** crea dos ramas, sino que interpreta el segundo nombre como punto de partida (y falla con `fatal: not a valid object name: 'docs/indice'`). Si quisieras que una rama partiera de otro commit, lo darías justamente así: `git branch docs/indice HEAD~1`. Si te hubieras cambiado con `git switch -c`, bastaba con volver con `git switch main`."
+  },
+  {
+   "id": "s05-e3",
+   "title": "Vuelve a donde estabas",
+   "level": "facil",
+   "minutes": 4,
+   "prompt": [
+    "En el repositorio `clima` estabas trabajando en una rama de funcionalidad, te cambiaste a `docs/readme` para corregir un detalle y ahora no recuerdas en qué rama estabas antes.",
+    "Vuelve a la **rama anterior** sin buscar su nombre: existe un atajo de un solo carácter. Después confirma dónde quedaste con `git branch --show-current`."
+   ],
+   "setup": "nuevo_repo clima\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Clima en Santiago</h1>' 'Crea la página principal'\ngit switch -q -c feature/pronostico\nfecha '2026-09-03 10:00'\ncommit_archivo pronostico.js 'function pronostico() {}' 'Agrega pronóstico semanal'\ngit switch -q main\ngit switch -q -c feature/alertas\nfecha '2026-09-03 11:00'\ncommit_archivo alertas.js 'function alertaLluvia() {}' 'Agrega alerta de lluvia'\nfecha '2026-09-03 11:30'\nanexar alertas.js 'function alertaCalor() {}'\ngit commit -q -am 'Agrega alerta de calor'\ngit switch -q main\ngit switch -q -c docs/readme\nfecha '2026-09-03 12:00'\ncommit_archivo README.md '# Clima' 'Agrega README'\ngit switch -q feature/pronostico\ngit switch -q feature/alertas\ngit switch -q docs/readme",
+   "cwd": "clima",
+   "checks": [
+    {
+     "name": "Estás en la rama anterior",
+     "script": "en_rama feature/alertas \"Esa no es la rama en la que estabas justo antes de docs/readme (estás en: $(rama_actual))\""
+    },
+    {
+     "name": "No creaste ramas nuevas",
+     "script": "[ \"$(git for-each-ref refs/heads | wc -l | tr -d ' ')\" = 4 ] || falla \"Hay ramas nuevas: solo tenías que cambiarte, no crear\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git switch -",
+    "git branch --show-current"
+   ],
+   "hints": [
+    "Igual que `cd -` en bash, Git tiene un atajo para «la anterior».",
+    "`git switch -` (un guion) equivale a `git switch @{-1}`."
+   ],
+   "explain": "`-` es sinónimo de `@{-1}`: «lo que tenía HEAD antes del último cambio». Git lo obtiene del reflog de HEAD, que registra cada cambio de rama (`checkout: moving from feature/alertas to docs/readme`). También existen `@{-2}`, `@{-3}`… para ir más atrás, y la forma clásica `git checkout -`. Si lo anterior hubiera sido un HEAD separado, `git switch -` fallaría (`a branch is expected, got commit`) y tendrías que usar `git switch --detach -` o `git checkout -`."
+  },
+  {
+   "id": "s05-e4",
+   "title": "Un commit en su rama",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En tu `portafolio` personal quieres agregar una página de contacto sin tocar `main` hasta que esté lista.",
+    "**1.** Crea la rama `feature/contacto` y cámbiate a ella.",
+    "**2.** Crea `contacto.html` con el contenido `<h1>Contacto</h1>` y confírmalo con el mensaje `Agrega página de contacto`.",
+    "**3.** Vuelve a `main` y comprueba con `ls` que `contacto.html` desapareció (no se borró: vive en la otra rama)."
+   ],
+   "setup": "nuevo_repo portafolio\nfecha '2026-09-04 18:00'\ncommit_archivo index.html '<h1>Portafolio de Josefa</h1>' 'Crea la portada'\nfecha '2026-09-04 18:20'\ncommit_archivo estilos.css 'h1 { color: navy; }' 'Agrega estilos'",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "Existe feature/contacto",
+     "script": "rama_existe feature/contacto \"Falta la rama feature/contacto\""
+    },
+    {
+     "name": "feature/contacto tiene un commit nuevo con contacto.html",
+     "script": "rama_existe feature/contacto\n[ \"$(git rev-list --count main..feature/contacto)\" = 1 ] || falla \"feature/contacto debería tener exactamente 1 commit más que main\"\ncontenido feature/contacto contacto.html | grep -qF '<h1>Contacto</h1>' || falla \"En feature/contacto falta contacto.html con <h1>Contacto</h1>\"\nmensaje_es feature/contacto \"Agrega página de contacto\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 2 ] || falla \"main tiene commits nuevos: el commit debía ir en feature/contacto\"\nif git cat-file -e main:contacto.html 2>/dev/null; then falla \"contacto.html no debería estar en main\"; fi"
+    },
+    {
+     "name": "Terminaste en main con todo limpio",
+     "script": "en_rama main \"Al final debías volver a main\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git switch -c feature/contacto",
+    "echo \"<h1>Contacto</h1>\" > contacto.html",
+    "git add contacto.html",
+    "git commit -m \"Agrega página de contacto\"",
+    "git switch main",
+    "ls"
+   ],
+   "hints": [
+    "Primero la rama (`git switch -c`), después el ciclo de siempre: crear el archivo, `git add`, `git commit`.",
+    "Para crear el archivo: `echo \"<h1>Contacto</h1>\" > contacto.html` (o `code contacto.html`).",
+    "Al final, `git switch main` y `ls`."
+   ],
+   "explain": "El commit se colgó de la rama a la que apuntaba HEAD (`feature/contacto`), que avanzó un commit; `main` se quedó donde estaba. Al volver a `main`, Git actualizó el directorio de trabajo a la instantánea de `main`, donde `contacto.html` no existe: por eso desaparece de `ls`. Si vuelves con `git switch feature/contacto`, reaparece. Para comprobarlo sin cambiarte: `git log --oneline --decorate --all` o `git show --stat feature/contacto`."
+  },
+  {
+   "id": "s05-e5",
+   "title": "De master a main (y un error de tipeo)",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Heredaste el repositorio `tienda` de un tutorial antiguo: su rama principal se llama `master` y alguien creó una rama con un error de tipeo, `feature/carito`.",
+    "Renombra `master` a `main` y `feature/carito` a `feature/carrito`, **sin cambiarte** a `feature/carito` y sin perder ningún commit. Termina en `main`.",
+    "(El repositorio no tiene remoto, así que basta con el cambio local.)"
+   ],
+   "setup": "mkdir -p tienda && cd tienda && git init -q -b master\nfecha '2026-09-05 09:00'\ncommit_archivo index.html '<h1>Tienda online</h1>' 'Crea la tienda'\nfecha '2026-09-05 09:30'\ncommit_archivo productos.json '[]' 'Agrega catálogo vacío'\ngit switch -q -c feature/carito\nfecha '2026-09-05 10:00'\ncommit_archivo carrito.js 'let carrito = [];' 'Agrega carrito de compras'\ngit switch -q master\nfecha '2026-09-05 11:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega contacto'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Ya no existe master",
+     "script": "rama_no_existe master \"Todavía existe la rama master\""
+    },
+    {
+     "name": "main existe con toda la historia",
+     "script": "rama_existe main \"No existe la rama main\"\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería conservar los 3 commits que tenía master\"\nmensaje_es main \"Agrega contacto\""
+    },
+    {
+     "name": "feature/carrito corregida",
+     "script": "rama_no_existe feature/carito \"Todavía existe feature/carito (con el error de tipeo)\"\nrama_existe feature/carrito \"No existe feature/carrito\"\nmensaje_es feature/carrito \"Agrega carrito de compras\""
+    },
+    {
+     "name": "Estás en main y todo limpio",
+     "script": "en_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    "git branch -m master main",
+    "git branch -m feature/carito feature/carrito",
+    "git branch -v"
+   ],
+   "hints": [
+    "Renombrar una rama es *mover* el puntero a otro nombre: busca la opción de `git branch` con esa idea.",
+    "`git branch -m viejo nuevo` renombra cualquier rama, estés o no en ella; `git branch -m nuevo` renombra la actual."
+   ],
+   "explain": "`git branch -m` (*move*) cambia el nombre del puntero junto con su configuración y su reflog; los commits y sus hashes no cambian. Como estabas en `master`, Git también actualizó HEAD a `ref: refs/heads/main`. Alternativas: `git branch -m main` (renombra la rama actual). Una opción peor es `git switch -c main` + `git branch -d master`: funciona, pero la rama nueva empieza sin el reflog de la antigua. En un repositorio con remoto faltaría publicar `main`, cambiar la rama por defecto en la plataforma y borrar `master` del servidor (s07). Para que tus repositorios nuevos nazcan con `main`: `git config --global init.defaultBranch main` (s01)."
+  },
+  {
+   "id": "s05-e6",
+   "title": "Dos funcionalidades en paralelo",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "La app `agenda` necesita dos mejoras independientes que se revisarán por separado. Cada una va en su propia rama, **y las dos deben nacer de `main`**:",
+    "**`feature/buscador`**: crea `buscador.js` con el texto `function buscar(texto) {}` y confírmalo con el mensaje `Agrega buscador de contactos`.",
+    "**`feature/exportar`**: crea `exportar.js` con el texto `function exportarCSV() {}` y confírmalo con el mensaje `Agrega exportación a CSV`.",
+    "Termina en `main` con el directorio limpio. Cuidado: si creas la segunda rama estando en la primera, arrastrarás el buscador."
+   ],
+   "setup": "nuevo_repo agenda\nfecha '2026-09-06 09:00'\ncommit_archivo index.html '<h1>Agenda</h1>' 'Crea la agenda'\nfecha '2026-09-06 09:30'\ncommit_archivo contactos.js 'const contactos = [];' 'Agrega lista de contactos'",
+   "cwd": "agenda",
+   "checks": [
+    {
+     "name": "Existen las dos ramas",
+     "script": "rama_existe feature/buscador \"Falta la rama feature/buscador\"\nrama_existe feature/exportar \"Falta la rama feature/exportar\""
+    },
+    {
+     "name": "feature/buscador: un commit sobre main con buscador.js",
+     "script": "rama_existe feature/buscador\n[ \"$(git rev-parse -q --verify feature/buscador~1)\" = \"$(git rev-parse main)\" ] || falla \"feature/buscador debería tener exactamente un commit encima de main\"\ncontenido feature/buscador buscador.js | grep -qF 'function buscar(texto) {}' || falla \"En feature/buscador, buscador.js debería contener: function buscar(texto) {}\"\nmensaje_es feature/buscador \"Agrega buscador de contactos\""
+    },
+    {
+     "name": "feature/exportar: nace de main, no del buscador",
+     "script": "rama_existe feature/exportar\nif git cat-file -e feature/exportar:buscador.js 2>/dev/null; then falla \"feature/exportar contiene buscador.js: debía nacer de main, no de feature/buscador\"; fi\n[ \"$(git rev-parse -q --verify feature/exportar~1)\" = \"$(git rev-parse main)\" ] || falla \"feature/exportar debería tener exactamente un commit encima de main\"\ncontenido feature/exportar exportar.js | grep -qF 'function exportarCSV() {}' || falla \"En feature/exportar, exportar.js debería contener: function exportarCSV() {}\"\nmensaje_es feature/exportar \"Agrega exportación a CSV\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 2 ] || falla \"main no debería tener commits nuevos\""
+    },
+    {
+     "name": "Terminaste en main con todo limpio",
+     "script": "en_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    "git switch -c feature/buscador",
+    "echo \"function buscar(texto) {}\" > buscador.js",
+    "git add buscador.js",
+    "git commit -m \"Agrega buscador de contactos\"",
+    "git switch main",
+    "git switch -c feature/exportar",
+    "echo \"function exportarCSV() {}\" > exportar.js",
+    "git add exportar.js",
+    "git commit -m \"Agrega exportación a CSV\"",
+    "git switch main",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "Después del primer commit, vuelve a `main` antes de crear la segunda rama… o indica el punto de partida.",
+    "`git switch -c feature/exportar main` crea la rama desde `main` aunque estés en otra.",
+    "Revisa el resultado con `git log --oneline --decorate --graph --all`: deberías ver una bifurcación con un commit en cada rama."
+   ],
+   "explain": "`git switch -c` crea la rama en HEAD. Si hubieras creado `feature/exportar` estando en `feature/buscador`, habría nacido del commit del buscador y lo arrastraría. Hay dos formas correctas: volver a `main` antes (`git switch main`) o dar el punto de partida explícito (`git switch -c feature/exportar main`), que funciona desde cualquier lugar. En el gráfico verás una bifurcación: dos ramas independientes con un commit cada una sobre `main`. En s06 aprenderás a integrarlas."
+  },
+  {
+   "id": "s05-e7",
+   "title": "Empecé a trabajar en main por error",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En el repositorio `boletin` llevas un rato programando el formulario de suscripción… y `git status` te revela que estás en `main`. La regla del equipo es clara: **nada de commits directos en `main`**.",
+    "Lleva todo ese trabajo (el cambio en `index.html` y el archivo nuevo `suscripcion.js`) a una rama nueva `feature/suscripcion` y confírmalo ahí. `main` debe quedar exactamente como estaba y el directorio de trabajo, limpio."
+   ],
+   "setup": "nuevo_repo boletin\nfecha '2026-09-07 09:00'\ncommit_archivo index.html '<h1>Boletín de la Junta de Vecinos</h1>' 'Crea la portada del boletín'\nfecha '2026-09-07 09:30'\ncommit_archivo noticias.md '# Noticias de septiembre' 'Agrega noticias de septiembre'\nanexar index.html '<form id=\"suscripcion\">Tu correo: <input type=\"email\"></form>'\nescribir suscripcion.js 'function suscribir(correo) { console.log(correo); }'",
+   "cwd": "boletin",
+   "checks": [
+    {
+     "name": "Existe feature/suscripcion",
+     "script": "rama_existe feature/suscripcion \"Falta la rama feature/suscripcion\""
+    },
+    {
+     "name": "main no recibió commits",
+     "script": "[ \"$(num_commits main)\" = 2 ] && [ \"$(mensaje main)\" = \"Agrega noticias de septiembre\" ] || falla \"main cambió: debía quedarse en «Agrega noticias de septiembre»\""
+    },
+    {
+     "name": "El trabajo está confirmado en feature/suscripcion",
+     "script": "rama_existe feature/suscripcion\ncontenido feature/suscripcion suscripcion.js | grep -q 'suscribir' || falla \"suscripcion.js no está confirmado en feature/suscripcion\"\ncontenido feature/suscripcion index.html | grep -q 'id=\"suscripcion\"' || falla \"El cambio de index.html no está confirmado en feature/suscripcion\""
+    },
+    {
+     "name": "La rama nace de main",
+     "script": "rama_existe feature/suscripcion\nancestro main feature/suscripcion || falla \"feature/suscripcion debería partir de main\""
+    },
+    {
+     "name": "Directorio limpio",
+     "script": "limpio \"Quedan cambios sin confirmar: todo el trabajo debía quedar en el commit\""
+    }
+   ],
+   "solution": [
+    "git status",
+    "git switch -c feature/suscripcion",
+    "git add index.html suscripcion.js",
+    "git commit -m \"Agrega formulario de suscripción\"",
+    "git log --oneline --decorate --all"
+   ],
+   "hints": [
+    "Los cambios sin confirmar no pertenecen a ninguna rama: te siguen cuando te cambias.",
+    "Crear una rama nueva en el commit actual nunca choca con tus cambios.",
+    "`git switch -c feature/suscripcion` y luego `git add` + `git commit` como siempre."
+   ],
+   "explain": "`git switch -c` crea la rama en el mismo commit en el que estás, así que no hay nada que actualizar en el directorio de trabajo: tus cambios viajan intactos y el commit se cuelga de la rama nueva. `main` ni se enteró. Si ya hubieras **confirmado** en `main` por error, la receta es otra (ejercicio «Commits en la rama equivocada»). Para interrupciones en las que no quieres confirmar existe `git stash` (s10)."
+  },
+  {
+   "id": "s05-e8",
+   "title": "Git no me deja cambiar de rama",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Estás en `feature/stock` del repositorio `inventario`, a medio actualizar `productos.csv`. Tu jefa te pide revisar algo urgente en `main`, pero al intentar cambiarte Git responde:",
+    "```\nerror: Your local changes to the following files would be overwritten by checkout:\n\tproductos.csv\nPlease commit your changes or stash them before you switch branches.\nAborting\n```",
+    "No quieres perder tu avance ni llevarlo a `main`. Guárdalo como un commit provisional en `feature/stock` con un mensaje que empiece por `WIP` (*work in progress*) y luego cámbiate a `main`. Todo debe quedar limpio."
+   ],
+   "setup": "nuevo_repo inventario\nfecha '2026-09-08 09:00'\nescribir productos.csv 'producto,stock\nteclado,10\nmouse,25'\ngit add productos.csv\ngit commit -q -m 'Crea inventario inicial'\ngit switch -q -c feature/stock\nfecha '2026-09-08 10:00'\nanexar productos.csv 'monitor,7'\ngit commit -q -am 'Agrega monitores al inventario'\ngit switch -q main\nfecha '2026-09-08 11:00'\ncommit_archivo VERSION '1.0.1' 'Publica versión 1.0.1'\ngit switch -q feature/stock\nescribir productos.csv 'producto,stock\nteclado,35\nmouse,25\nmonitor,7'",
+   "cwd": "inventario",
+   "checks": [
+    {
+     "name": "Tu avance quedó en un commit WIP en feature/stock",
+     "script": "case \"$(mensaje feature/stock)\" in\n  WIP*) ;;\n  *) falla \"El último commit de feature/stock debería empezar por WIP (es «$(mensaje feature/stock)»)\" ;;\nesac\ncontenido feature/stock productos.csv | grep -q 'teclado,35' || falla \"El cambio de productos.csv (teclado,35) no está confirmado en feature/stock\""
+    },
+    {
+     "name": "El WIP va encima del trabajo anterior de la rama",
+     "script": "mensaje_es feature/stock~1 \"Agrega monitores al inventario\" \"El commit WIP debería ir justo encima de «Agrega monitores al inventario»\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 2 ] || falla \"main no debería tener commits nuevos\"\nif contenido main productos.csv | grep -q 'teclado,35'; then falla \"Tu cambio llegó a main: debía quedarse en feature/stock\"; fi"
+    },
+    {
+     "name": "Estás en main",
+     "script": "en_rama main \"Al final debías estar en main (estás en: $(rama_actual))\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git add productos.csv",
+    "git commit -m \"WIP: actualiza stock de teclados\"",
+    "git switch main"
+   ],
+   "hints": [
+    "El propio mensaje de Git propone dos salidas; una de ellas (stash) la verás en s10. Usa la otra.",
+    "Confirma el cambio en la rama donde estás y después cámbiate.",
+    "`git commit -am \"WIP: …\"` y luego `git switch main`."
+   ],
+   "explain": "Git se negó porque `productos.csv` es distinto en `main` y en `feature/stock`: cambiar de rama obligaba a sobrescribir tu versión. Al confirmarlo como WIP, tu avance queda a salvo en `feature/stock` y el directorio de trabajo queda limpio, así que el cambio de rama ya no pisa nada. Cuando vuelvas, sigue trabajando y convierte el WIP en un commit decente con `git commit --amend` (s04) o júntalo con otros en un rebase interactivo (s09). Otras salidas: `git stash` (s10) o `git switch -m main` si quisieras llevar el cambio a `main` (no era el caso). Nunca uses `git switch -f main` aquí: descartaría tu avance sin preguntar."
+  },
+  {
+   "id": "s05-e9",
+   "title": "Limpieza de ramas integradas",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "El repositorio `api-pedidos` acumula ramas. Tu equipo ya integró (fusionó) varias en `main` —fusionar lo aprenderás en s06; aquí basta con saber que su trabajo ya está en `main`— y otras siguen en desarrollo.",
+    "Borra **solo** las ramas cuyo trabajo ya está integrado en `main`, usando el borrado seguro. No toques `main` ni las ramas con trabajo pendiente. Descubre cuáles son con las opciones de `git branch` que filtran según la integración."
+   ],
+   "setup": "nuevo_repo api-pedidos\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-09 09:00'\ncommit_archivo app.py 'print(\"API de pedidos\")' 'Crea la API de pedidos'\ngit switch -q -c fix/login-timeout\nfecha '2026-09-09 10:00'\ncommit_archivo login.py 'TIMEOUT = 30' 'Aumenta timeout del login'\ngit switch -q main\ngit merge -q --no-ff -m 'Integra fix/login-timeout' fix/login-timeout\ngit switch -q -c feature/perfil\nfecha '2026-09-09 11:00'\ncommit_archivo perfil.py 'def ver_perfil(): pass' 'Agrega perfil de usuario'\ngit switch -q main\ngit merge -q feature/perfil\ngit switch -q -c docs/api\nfecha '2026-09-09 12:00'\ncommit_archivo API.md '# Endpoints' 'Documenta endpoints'\ngit switch -q main\ngit merge -q --no-ff -m 'Integra docs/api' docs/api\ngit switch -q -c feature/pagos\nfecha '2026-09-09 13:00'\ncommit_archivo pagos.py 'def pagar(): pass' 'Agrega pagos (a medias)'\ngit switch -q main\ngit switch -q -c experimento/cache\nfecha '2026-09-09 14:00'\ncommit_archivo cache.py 'CACHE = {}' 'Prueba caché en memoria'\ngit switch -q main\nyo",
+   "cwd": "api-pedidos",
+   "checks": [
+    {
+     "name": "Borraste las ramas ya integradas",
+     "script": "for r in fix/login-timeout feature/perfil docs/api; do\n  rama_no_existe \"$r\" \"La rama $r ya está integrada en main: puedes borrarla\"\ndone"
+    },
+    {
+     "name": "Conservaste las ramas con trabajo pendiente",
+     "script": "for r in feature/pagos experimento/cache; do\n  rama_existe \"$r\" \"¡Borraste $r y tenía trabajo sin integrar! Recréala con el hash que mostró Git al borrarla (was …)\"\ndone\nmensaje_es feature/pagos \"Agrega pagos (a medias)\"\nmensaje_es experimento/cache \"Prueba caché en memoria\""
+    },
+    {
+     "name": "main sigue ahí y estás en ella",
+     "script": "rama_existe main \"¡No existe main!\"\nen_rama main"
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 6 ] || falla \"main no debería tener commits nuevos\""
+    }
+   ],
+   "solution": [
+    "git branch --merged",
+    "git branch --no-merged",
+    "git branch -d fix/login-timeout feature/perfil docs/api",
+    "git branch"
+   ],
+   "hints": [
+    "Hay una opción de `git branch` que lista las ramas cuya punta ya es alcanzable desde la rama actual.",
+    "`git branch --merged` (y su contraria, `--no-merged`). Ojo: la lista incluye `main`.",
+    "`git branch -d` acepta varios nombres a la vez."
+   ],
+   "explain": "`--merged` lista las ramas cuya punta es alcanzable desde HEAD: su trabajo ya está en `main` y borrarlas solo elimina el puntero. `-d` es tu red de seguridad: si por error incluyes `feature/pagos`, Git responde `error: the branch 'feature/pagos' is not fully merged` y no la borra; `-D` (forzar) sí la habría borrado. `main` aparece en la lista con `*` porque es tu rama actual, pero es la que quieres conservar (y además Git no te deja borrar la rama en la que estás). Truco: `git branch --merged main` pregunta respecto de `main` aunque estés en otra rama. Si borras algo por error, recréalo con el hash que Git mostró: `Deleted branch x (was 1a2b3c4).` → `git branch x 1a2b3c4`."
+  },
+  {
+   "id": "s05-e10",
+   "title": "Sálvalos antes de irte (HEAD separado)",
+   "level": "medio",
+   "minutes": 7,
+   "prompt": [
+    "En el repositorio `tienda` quisiste mirar una versión antigua de los precios con `git switch --detach` y, entusiasmado, hiciste **dos commits** probando un sistema de descuentos. `git status` dice `HEAD detached from …`: esos commits no están en ninguna rama.",
+    "Guárdalos en una rama llamada `experimento/descuentos` y quédate en ella (es decir, sal del HEAD separado sin perder nada). `main` no debe cambiar."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-10 09:00'\ncommit_archivo precios.txt 'Sopaipilla: $300' 'Primera lista de precios'\nfecha '2026-09-10 10:00'\ncommit_archivo horario.txt 'Lunes a sábado, 9:00 a 20:00' 'Agrega horario'\nfecha '2026-09-10 11:00'\ncommit_archivo precios.txt 'Sopaipilla: $400' 'Sube precios'\nfecha '2026-09-10 12:00'\ncommit_archivo contacto.txt 'Fono: +56 9 1234 5678' 'Agrega contacto'\ngit switch -q --detach HEAD~2\nfecha '2026-09-10 15:00'\ncommit_archivo descuentos.txt 'Socios: 10%' 'Agrega tabla de descuentos'\nfecha '2026-09-10 15:30'\nanexar precios.txt 'Sopaipilla socio: $270'\ngit commit -q -am 'Aplica descuento a socios'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Existe experimento/descuentos",
+     "script": "rama_existe experimento/descuentos \"Falta la rama experimento/descuentos\""
+    },
+    {
+     "name": "Ya no estás en HEAD separado: estás en esa rama",
+     "script": "en_rama experimento/descuentos \"Deberías terminar en experimento/descuentos (estás en: $(rama_actual || echo 'HEAD separado'))\""
+    },
+    {
+     "name": "La rama contiene los dos commits del experimento",
+     "script": "rama_existe experimento/descuentos\nmensaje_es experimento/descuentos \"Aplica descuento a socios\" \"La punta de la rama debería ser «Aplica descuento a socios»\"\nmensaje_es experimento/descuentos~1 \"Agrega tabla de descuentos\" \"Debajo debería estar «Agrega tabla de descuentos»\"\n[ \"$(git rev-parse experimento/descuentos~2)\" = \"$(git rev-parse main~2)\" ] || falla \"La rama debería partir del commit antiguo que estabas mirando\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 4 ] || falla \"main no debería tener commits nuevos\"\nmensaje_es main \"Agrega contacto\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git switch -c experimento/descuentos",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "Una rama se crea en el commit actual… y ahora el commit actual es tu último experimento.",
+    "El mismo comando que usas para crear una rama y cambiarte a ella sirve aquí (la nota de HEAD separado lo sugiere).",
+    "`git switch -c experimento/descuentos`."
+   ],
+   "explain": "En HEAD separado, HEAD apunta directamente al último commit del experimento. `git switch -c experimento/descuentos` crea la rama justo ahí y apunta HEAD a ella: los dos commits quedan protegidos por un nombre y ya no estás en HEAD separado. Alternativas: `git branch experimento/descuentos` (crea la rama pero te deja en HEAD separado; luego `git switch experimento/descuentos`) o la forma clásica `git checkout -b experimento/descuentos`. Si te hubieras cambiado a `main` antes, Git habría mostrado el aviso *you are leaving 2 commits behind* con el hash para recuperarlos (siguiente ejercicio)."
+  },
+  {
+   "id": "s05-e11",
+   "title": "Demasiado tarde: ya saliste del HEAD separado",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "Ayer, en el repositorio `dashboard`, revisaste una versión antigua en HEAD separado e hiciste dos commits con un gráfico de ventas. Después volviste a `main` sin crear una rama, y hoy tu compañero Matías agregó un commit nuevo a `main`.",
+    "Por suerte copiaste el aviso que Git mostró al salir en el archivo `~/aviso.txt` (léelo con `cat ~/aviso.txt`). Esos commits no aparecen en `git log --all`, porque ninguna rama los referencia.",
+    "Crea la rama `feature/graficos` apuntando al **último** de esos dos commits, **sin cambiarte** de `main`, y verifica en el gráfico que el trabajo volvió."
+   ],
+   "setup": "nuevo_repo dashboard\nfecha '2026-09-11 09:00'\ncommit_archivo index.html '<h1>Dashboard de ventas</h1>' 'Crea el dashboard'\nfecha '2026-09-11 10:00'\ncommit_archivo datos.csv 'mes,ventas' 'Agrega datos de ventas'\nfecha '2026-09-11 11:00'\ncommit_archivo tabla.js 'function tabla() {}' 'Agrega tabla de ventas'\ngit switch -q --detach HEAD~1\nfecha '2026-09-11 16:00'\ncommit_archivo grafico.js 'function grafico() {}' 'Agrega gráfico de ventas'\nfecha '2026-09-11 16:30'\nanexar grafico.js 'const colores = [\"azul\", \"naranjo\"];'\ngit commit -q -am 'Agrega colores al gráfico'\ngit switch main 2> ~/aviso.txt\nautor 'Matías González' 'matias@ejemplo.com'\nfecha '2026-09-12 09:00'\ncommit_archivo filtros.js 'function filtrar() {}' 'Agrega filtros por mes'\nyo",
+   "cwd": "dashboard",
+   "checks": [
+    {
+     "name": "Existe feature/graficos",
+     "script": "rama_existe feature/graficos \"Falta la rama feature/graficos\""
+    },
+    {
+     "name": "Apunta al último commit abandonado (el original, no una copia)",
+     "script": "rama_existe feature/graficos\nmensaje_es feature/graficos \"Agrega colores al gráfico\" \"feature/graficos debería apuntar al commit «Agrega colores al gráfico» (usa el hash del aviso)\"\n[ \"$(git log -1 --format=%ad --date=iso-strict feature/graficos)\" = \"2026-09-11T16:30:00-03:00\" ] || falla \"Ese no es el commit original de ayer: no hace falta rehacerlo, solo ponerle un nombre\""
+    },
+    {
+     "name": "Incluye también el primer commit del experimento",
+     "script": "rama_existe feature/graficos\nmensaje_es feature/graficos~1 \"Agrega gráfico de ventas\"\n[ \"$(git rev-parse feature/graficos~2)\" = \"$(git rev-parse main~2)\" ] || falla \"La historia de feature/graficos debería partir de «Agrega datos de ventas»\""
+    },
+    {
+     "name": "Sigues en main",
+     "script": "en_rama main \"Debías crear la rama sin cambiarte de main (estás en: $(rama_actual || echo 'HEAD separado'))\"\n[ \"$(mensaje main)\" = \"Agrega filtros por mes\" ] || falla \"main no debería haber cambiado\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "cat ~/aviso.txt",
+    "git branch feature/graficos 2b75bbc",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "El aviso incluye una línea con el comando exacto que Git te sugirió; solo te falta elegir el nombre.",
+    "`git branch <nombre> <hash>` crea una rama en cualquier commit, aunque ninguna rama lo alcance, y no te cambia de rama.",
+    "Usa el hash de la última línea del aviso: `git branch feature/graficos <hash>`."
+   ],
+   "explain": "Los commits hechos en HEAD separado no se borraron al salir: quedaron **inalcanzables** (ninguna referencia apunta a ellos), por eso `git log --all` no los muestra. Mientras el recolector de basura no los elimine, basta con volver a ponerles un nombre: `git branch feature/graficos <hash>` crea el puntero en ese commit, y como su padre es el otro commit del experimento, recuperas los dos. `git switch -c feature/graficos` no servía: crearía la rama en HEAD, es decir, en `main`. Si no hubieras guardado el aviso, el hash sigue en el reflog de HEAD: `git reflog` (s10) mostraría una línea `commit: Agrega colores al gráfico`. Lección: cuando Git diga *you are leaving N commits behind*, crea la rama en ese mismo momento."
+  },
+  {
+   "id": "s05-e12",
+   "title": "Commits en la rama equivocada",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "En el repositorio `blog` hiciste dos commits del sistema de comentarios… directamente en `main`. Nada se ha publicado todavía (no hay remoto), así que aún estás a tiempo de arreglarlo sin dejar rastro.",
+    "Objetivo: que esos dos commits queden en una rama nueva `feature/comentarios` y que `main` vuelva a apuntar al commit `Publica post sobre Valparaíso`, como si nunca hubieras confirmado ahí. Termina en `feature/comentarios`, con todo limpio.",
+    "Pista de modelo mental: los commits ya existen; solo necesitas **mover punteros**."
+   ],
+   "setup": "nuevo_repo blog\nfecha '2026-09-13 09:00'\ncommit_archivo index.md '# Blog de viajes' 'Crea el blog'\nfecha '2026-09-13 10:00'\ncommit_archivo chiloe.md '# Chiloé y sus palafitos' 'Publica post sobre Chiloé'\nfecha '2026-09-13 11:00'\ncommit_archivo valparaiso.md '# Valparaíso en dos días' 'Publica post sobre Valparaíso'\nfecha '2026-09-13 15:00'\ncommit_archivo comentarios.js 'const comentarios = [];' 'Agrega modelo de comentarios'\nfecha '2026-09-13 15:45'\nanexar valparaiso.md '<div id=\"comentarios\"></div>'\ngit commit -q -am 'Muestra comentarios bajo cada post'",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "main volvió a «Publica post sobre Valparaíso»",
+     "script": "mensaje_es main \"Publica post sobre Valparaíso\" \"main debería apuntar a «Publica post sobre Valparaíso» (ahora apunta a «$(mensaje main)»)\"\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener 3 commits\""
+    },
+    {
+     "name": "feature/comentarios tiene los dos commits",
+     "script": "rama_existe feature/comentarios \"Falta la rama feature/comentarios\"\nmensaje_es feature/comentarios \"Muestra comentarios bajo cada post\"\nmensaje_es feature/comentarios~1 \"Agrega modelo de comentarios\""
+    },
+    {
+     "name": "Son los commits originales y nacen de main",
+     "script": "rama_existe feature/comentarios\n[ \"$(git rev-parse feature/comentarios~2)\" = \"$(git rev-parse main)\" ] || falla \"feature/comentarios debería tener exactamente dos commits encima de main\"\n[ \"$(git log -1 --format=%ad --date=iso-strict feature/comentarios)\" = \"2026-09-13T15:45:00-03:00\" ] || falla \"Esos no son los commits originales: no hacía falta rehacerlos, solo mover punteros\""
+    },
+    {
+     "name": "Estás en feature/comentarios",
+     "script": "en_rama feature/comentarios"
+    },
+    {
+     "name": "Limpio y sin operaciones a medias",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git switch -c feature/comentarios",
+    "git branch -f main HEAD~2",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "Primero, que una rama nueva «sostenga» los dos commits; después, devuelve `main` dos commits atrás.",
+    "Crear la rama estando en `main` la deja apuntando al último commit. Para mover `main`: `git reset --hard` (s04) si estás en ella, o `git branch -f` si estás en otra.",
+    "`git switch -c feature/comentarios` y después `git branch -f main HEAD~2`."
+   ],
+   "explain": "Una rama es solo un puntero. Al crear `feature/comentarios` en el commit actual, los dos commits quedan protegidos por un nombre. Luego `git branch -f main HEAD~2` mueve a la fuerza el puntero `main` dos commits atrás; se puede porque ya no estás en `main` (sobre la rama actual Git se niega: `fatal: cannot force update the branch 'main' used by worktree at …`). Resultado: mismos commits, mismos hashes, punteros en el lugar correcto. Alternativa equivalente con lo de s04: `git branch feature/comentarios`, `git reset --hard HEAD~2` (estando en `main`) y `git switch feature/comentarios`. Todo esto es seguro solo porque nada se había publicado: si `main` ya estuviera en el servidor, moverla hacia atrás reescribiría historia compartida (s07 y s09)."
+  },
+  {
+   "id": "s05-e13",
+   "title": "Hotfix sobre la versión en producción",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "La app `boletas` calcula boletas con IVA. En producción está la versión del commit `Publica versión 1.0`. Después, el equipo agregó en `main` dos commits de un rediseño que **aún no se publica** y no debe llegar a producción.",
+    "Un cliente reclama que el total sale mal: `boleta.js` usa un IVA de 18 % y en Chile es de 19 %. Crea la rama `hotfix/iva` **a partir del commit de la versión 1.0** (búscalo con `git log --oneline`), cámbiate a ella y deja `boleta.js` exactamente así:",
+    "```\nconst IVA = 0.19;\nconst total = (neto) => Math.round(neto * (1 + IVA));\n```",
+    "Confírmalo con el mensaje `Corrige IVA al 19%`. No toques `main` (llevar el arreglo también a `main` es tema de s06 y s10)."
+   ],
+   "setup": "nuevo_repo boletas\nautor 'Valentina Muñoz' 'valentina@ejemplo.com'\nfecha '2026-09-14 09:00'\ncommit_archivo README.md '# Boletas' 'Crea el proyecto'\nfecha '2026-09-14 10:00'\nescribir boleta.js 'const IVA = 0.18;\nconst total = (neto) => Math.round(neto * (1 + IVA));'\ngit add boleta.js\ngit commit -q -m 'Agrega cálculo de boletas'\nfecha '2026-09-14 11:00'\ncommit_archivo VERSION '1.0.0' 'Publica versión 1.0'\nfecha '2026-09-15 09:00'\ncommit_archivo tema.css 'body { background: #111; }' 'Empieza rediseño con tema oscuro'\nfecha '2026-09-15 10:00'\ncommit_archivo index.html '<main class=\"nuevo-layout\"></main>' 'Agrega nuevo layout (inestable)'\nyo",
+   "cwd": "boletas",
+   "checks": [
+    {
+     "name": "Existe hotfix/iva y estás en ella",
+     "script": "rama_existe hotfix/iva \"Falta la rama hotfix/iva\"\nen_rama hotfix/iva"
+    },
+    {
+     "name": "Nace exactamente de «Publica versión 1.0», con un solo commit nuevo",
+     "script": "rama_existe hotfix/iva\n[ \"$(git rev-parse -q --verify hotfix/iva~1)\" = \"$(git rev-parse main~2)\" ] || falla \"hotfix/iva debe tener un único commit encima de «Publica versión 1.0»\""
+    },
+    {
+     "name": "No arrastra el rediseño",
+     "script": "rama_existe hotfix/iva\nif git cat-file -e hotfix/iva:tema.css 2>/dev/null; then falla \"hotfix/iva contiene el rediseño (tema.css): debía nacer de la versión 1.0, no de main\"; fi"
+    },
+    {
+     "name": "boleta.js corregido y confirmado",
+     "script": "rama_existe hotfix/iva\ncontenido hotfix/iva boleta.js | grep -qF 'const IVA = 0.19;' || falla \"En hotfix/iva, boleta.js debería decir: const IVA = 0.19;\"\nif contenido hotfix/iva boleta.js | grep -qF '0.18'; then falla \"boleta.js todavía contiene 0.18\"; fi\ncontenido hotfix/iva boleta.js | grep -qF 'Math.round(neto * (1 + IVA))' || falla \"Conserva la segunda línea de boleta.js (la función total)\"\nmensaje_es hotfix/iva \"Corrige IVA al 19%\""
+    },
+    {
+     "name": "main intacta",
+     "script": "[ \"$(num_commits main)\" = 5 ] || falla \"main no debería tener commits nuevos\"\nmensaje_es main \"Agrega nuevo layout (inestable)\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git switch -c hotfix/iva HEAD~2",
+    "printf 'const IVA = 0.19;\\nconst total = (neto) => Math.round(neto * (1 + IVA));\\n' > boleta.js",
+    "git add boleta.js",
+    "git commit -m \"Corrige IVA al 19%\"",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "Un hotfix nace de lo que está en producción, no de `main`. Busca en `git log --oneline` el commit de la versión 1.0.",
+    "`git switch -c <rama> <punto-de-partida>`: el punto de partida puede ser un hash o una posición relativa como `HEAD~2`.",
+    "`git switch -c hotfix/iva HEAD~2`, edita `boleta.js` (por ejemplo con `code boleta.js`) y confirma."
+   ],
+   "explain": "El punto de partida es la clave: `git switch -c hotfix/iva HEAD~2` (o con el hash que viste en el log) crea la rama en la versión 1.0 y te cambia a ella; Git actualiza tus archivos a esa instantánea, así que desaparecen `tema.css` e `index.html`. El commit del arreglo queda encima de la 1.0 sin arrastrar el rediseño inestable, de modo que puede publicarse ya. En el gráfico verás la bifurcación: `main` sigue con el rediseño y `hotfix/iva` sale de un commit anterior. Después el arreglo se integra también en `main` (merge en s06 o cherry-pick en s10). Con etiquetas (s08) sería aún más cómodo: `git switch -c hotfix/iva v1.0`."
+  },
+  {
+   "id": "s05-e14",
+   "title": "Proyecto: un día en la agencia",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "Trabajas en una agencia que mantiene el sitio de la **Cafetería El Volcán** (repositorio `cafeteria`). Hoy toca de todo; sigue los pasos en orden:",
+    "**1.** El repositorio es antiguo y su rama principal es `master`: renómbrala a `main`.",
+    "**2.** Crea la rama `feature/galeria` desde `main` y confirma ahí `galeria.html` con el contenido `<h1>Galería</h1>` (mensaje: `Agrega galería de fotos`).",
+    "**3.** ¡Urgente! El teléfono del pie de página está mal. Sin llevarte la galería, crea `hotfix/telefono` desde `main`, deja `footer.html` con el contenido `<footer>+56 2 2345 6789</footer>` y confirma (mensaje: `Corrige teléfono del footer`).",
+    "**4.** Vuelve a `feature/galeria` y confirma `galeria.css` con el contenido `.galeria { display: grid; }` (mensaje: `Agrega estilos a la galería`).",
+    "**5.** Limpieza: borra `fix/typo-menu` (ya está integrada) y `experimento/carrusel` (el equipo la descartó; su trabajo no está integrado, así que tendrás que forzar el borrado).",
+    "**6.** Termina en `main`, con el directorio limpio."
+   ],
+   "setup": "mkdir -p cafeteria && cd cafeteria && git init -q -b master\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-16 09:00'\ncommit_archivo index.html '<h1>Cafetería El Volcán</h1>' 'Crea el sitio'\nfecha '2026-09-16 09:30'\ncommit_archivo menu.html '<p>Cortado, mote con huesillo, kuchen</p>' 'Agrega menú'\nfecha '2026-09-16 10:00'\ncommit_archivo footer.html '<footer>+56 2 2000 0000</footer>' 'Agrega footer'\ngit switch -q -c fix/typo-menu\nfecha '2026-09-16 10:30'\ncommit_archivo menu.html '<p>Cortado, mote con huesillos, kuchen</p>' 'Corrige typo en el menú'\ngit switch -q master\ngit merge -q fix/typo-menu\ngit switch -q -c experimento/carrusel\nfecha '2026-09-16 11:00'\ncommit_archivo carrusel.js 'function carrusel() {}' 'Prueba carrusel de fotos'\ngit switch -q master\nyo",
+   "cwd": "cafeteria",
+   "checks": [
+    {
+     "name": "master renombrada a main, con toda su historia",
+     "script": "rama_no_existe master \"Todavía existe master\"\nrama_existe main \"No existe main\"\n[ \"$(num_commits main)\" = 4 ] || falla \"main debería tener los 4 commits que tenía master (y ninguno nuevo)\"\nmensaje_es main \"Corrige typo en el menú\""
+    },
+    {
+     "name": "feature/galeria: dos commits sobre main, sin el hotfix",
+     "script": "rama_existe feature/galeria \"Falta la rama feature/galeria\"\n[ \"$(git rev-parse -q --verify feature/galeria~2)\" = \"$(git rev-parse main)\" ] || falla \"feature/galeria debería tener exactamente 2 commits encima de main\"\nmensaje_es feature/galeria~1 \"Agrega galería de fotos\"\nmensaje_es feature/galeria \"Agrega estilos a la galería\"\ncontenido feature/galeria galeria.html | grep -qF '<h1>Galería</h1>' || falla \"Falta galeria.html con <h1>Galería</h1> en feature/galeria\"\ncontenido feature/galeria galeria.css | grep -qF '.galeria { display: grid; }' || falla \"Falta galeria.css con .galeria { display: grid; } en feature/galeria\"\nif contenido feature/galeria footer.html | grep -qF '2345 6789'; then falla \"feature/galeria no debería incluir el arreglo del hotfix\"; fi"
+    },
+    {
+     "name": "hotfix/telefono: un commit sobre main con el teléfono correcto",
+     "script": "rama_existe hotfix/telefono \"Falta la rama hotfix/telefono\"\nif git cat-file -e hotfix/telefono:galeria.html 2>/dev/null; then falla \"hotfix/telefono arrastró la galería: debía nacer de main\"; fi\n[ \"$(git rev-parse -q --verify hotfix/telefono~1)\" = \"$(git rev-parse main)\" ] || falla \"hotfix/telefono debería tener exactamente 1 commit encima de main\"\ncontenido hotfix/telefono footer.html | grep -qF '<footer>+56 2 2345 6789</footer>' || falla \"En hotfix/telefono, footer.html debería ser <footer>+56 2 2345 6789</footer>\"\nmensaje_es hotfix/telefono \"Corrige teléfono del footer\""
+    },
+    {
+     "name": "Ramas viejas borradas",
+     "script": "rama_no_existe fix/typo-menu \"fix/typo-menu ya estaba integrada: bórrala\"\nrama_no_existe experimento/carrusel \"experimento/carrusel sigue ahí: el borrado seguro se niega, hay que forzarlo\""
+    },
+    {
+     "name": "Terminaste en main con todo limpio",
+     "script": "en_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    "git branch -m master main",
+    "git switch -c feature/galeria",
+    "echo \"<h1>Galería</h1>\" > galeria.html",
+    "git add galeria.html",
+    "git commit -m \"Agrega galería de fotos\"",
+    "git switch -c hotfix/telefono main",
+    "echo \"<footer>+56 2 2345 6789</footer>\" > footer.html",
+    "git commit -am \"Corrige teléfono del footer\"",
+    "git switch feature/galeria",
+    "echo \".galeria { display: grid; }\" > galeria.css",
+    "git add galeria.css",
+    "git commit -m \"Agrega estilos a la galería\"",
+    "git switch main",
+    "git branch -d fix/typo-menu",
+    "git branch -D experimento/carrusel",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "Paso a paso: `git branch -m`, `git switch -c`, commits… y mucho ojo con el punto de partida del hotfix.",
+    "Para el hotfix: `git switch -c hotfix/telefono main` (el segundo argumento es el punto de partida).",
+    "Para borrar: `-d` para la integrada; con la descartada, `-d` se negará y tendrás que usar `-D`."
+   ],
+   "explain": "Este flujo resume la sección: renombrar (`-m`), crear ramas temáticas con el punto de partida correcto, confirmar en cada una, moverse entre ellas y limpiar. Lo más delicado es el paso 3: si hubieras escrito `git switch -c hotfix/telefono` estando en `feature/galeria`, el hotfix habría arrastrado la galería a medio hacer. `git branch -d fix/typo-menu` funcionó porque su punta ya es alcanzable desde `main`; con `experimento/carrusel`, `-d` responde `not fully merged` y hay que usar `-D`, sabiendo que su commit queda inalcanzable. En el gráfico final verás dos ramas que salen de la punta de `main`: la galería (2 commits) y el hotfix (1 commit), listas para integrarse en s06."
+  },
+  {
+   "id": "s05-e15",
+   "title": "Proyecto: arqueología en HEAD separado",
+   "level": "proyecto",
+   "minutes": 15,
+   "prompt": [
+    "Un cliente de la app `clima` asegura que en la **versión 1.0** la ciudad por defecto era otra, y quiere que evalúes volver a ese comportamiento. Investiga sin crear ramas innecesarias:",
+    "**1.** Ve, en HEAD separado, al commit `Publica versión 1.0` (búscalo con `git log --oneline`) y mira qué ciudad tenía `config.txt`.",
+    "**2.** Escribe el nombre de esa ciudad en el archivo `~/respuesta.txt` (fuera del repositorio), por ejemplo con `echo NombreDeLaCiudad > ~/respuesta.txt`.",
+    "**3.** Ahí mismo, prueba un experimento: crea `offline.txt` con el contenido `cache: 24h` y confírmalo con el mensaje `Prueba modo offline sobre la 1.0`.",
+    "**4.** Guarda el experimento en la rama `experimento/offline-1.0` y vuelve a `main`. Al final solo deben existir `main` y esa rama, y todo debe quedar limpio."
+   ],
+   "setup": "nuevo_repo clima\nfecha '2026-09-17 09:00'\ncommit_archivo app.js 'function mostrarClima() {}' 'Crea la app del clima'\nfecha '2026-09-17 10:00'\ncommit_archivo config.txt 'ciudad: Valparaíso' 'Publica versión 1.0'\nfecha '2026-09-18 09:00'\ncommit_archivo config.txt 'ciudad: Santiago' 'Cambia la ciudad por defecto'\nfecha '2026-09-18 10:00'\ncommit_archivo alertas.js 'function alertas() {}' 'Agrega alertas de lluvia'\nfecha '2026-09-18 11:00'\ncommit_archivo README.md '# Clima' 'Agrega README'",
+   "cwd": "clima",
+   "checks": [
+    {
+     "name": "Encontraste la ciudad de la versión 1.0",
+     "script": "[ -f ~/respuesta.txt ] || falla \"No existe ~/respuesta.txt\"\ngrep -qi 'valpara' ~/respuesta.txt || falla \"Esa no es la ciudad que tenía config.txt en la versión 1.0\""
+    },
+    {
+     "name": "experimento/offline-1.0 nace de la versión 1.0",
+     "script": "rama_existe experimento/offline-1.0 \"Falta la rama experimento/offline-1.0\"\n[ \"$(git rev-parse -q --verify experimento/offline-1.0~1)\" = \"$(git rev-parse main~3)\" ] || falla \"La rama debería tener un único commit encima de «Publica versión 1.0»\""
+    },
+    {
+     "name": "El experimento está confirmado",
+     "script": "rama_existe experimento/offline-1.0\nmensaje_es experimento/offline-1.0 \"Prueba modo offline sobre la 1.0\"\ncontenido experimento/offline-1.0 offline.txt | grep -qF 'cache: 24h' || falla \"offline.txt con «cache: 24h» no está confirmado en la rama\""
+    },
+    {
+     "name": "Solo existen main y la rama del experimento",
+     "script": "[ \"$(git for-each-ref refs/heads | wc -l | tr -d ' ')\" = 2 ] || falla \"Deberían existir solo main y experimento/offline-1.0 (explora en HEAD separado, sin ramas extra)\""
+    },
+    {
+     "name": "main intacta",
+     "script": "[ \"$(num_commits main)\" = 5 ] || falla \"main no debería tener commits nuevos\"\nmensaje_es main \"Agrega README\""
+    },
+    {
+     "name": "Volviste a main y todo limpio",
+     "script": "en_rama main \"Al final debías volver a main (estás en: $(rama_actual || echo 'HEAD separado'))\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git switch --detach HEAD~3",
+    "cat config.txt",
+    "echo Valparaíso > ~/respuesta.txt",
+    "echo \"cache: 24h\" > offline.txt",
+    "git add offline.txt",
+    "git commit -m \"Prueba modo offline sobre la 1.0\"",
+    "git switch -c experimento/offline-1.0",
+    "git switch main",
+    "git log --oneline --decorate --graph --all"
+   ],
+   "hints": [
+    "`git switch` necesita `--detach` para ir a un commit en vez de a una rama.",
+    "El commit de la 1.0 está 3 commits antes de `main`: `HEAD~3` (o usa su hash).",
+    "Tras confirmar en HEAD separado, `git switch -c experimento/offline-1.0` guarda el commit en una rama; después, `git switch main`."
+   ],
+   "explain": "HEAD separado es la herramienta natural para «viajar» a una versión antigua: `git switch --detach HEAD~3` (o `git checkout <hash>`) cambia tus archivos a esa instantánea sin crear ramas. Leíste `config.txt` (`ciudad: Valparaíso`) y confirmaste el experimento; ese commit solo lo sostenía HEAD, así que antes de irte le diste un nombre con `git switch -c`. Si hubieras vuelto a `main` sin hacerlo, Git te habría mostrado el aviso *you are leaving 1 commit behind*. Para solo **leer** un archivo antiguo ni siquiera hace falta moverse: `git show HEAD~3:config.txt` (s03) lo muestra desde donde estés."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué es una rama en Git?",
+   "back": "Un puntero móvil (una referencia) a un commit, guardado como `refs/heads/<nombre>`. Crearla no copia archivos."
+  },
+  {
+   "front": "¿Qué es HEAD?",
+   "back": "El puntero a la rama actual: una referencia simbólica (`ref: refs/heads/main` en `.git/HEAD`). Indica de dónde colgará el próximo commit."
+  },
+  {
+   "front": "¿Qué rama avanza al hacer un commit?",
+   "back": "Solo la rama a la que apunta HEAD. Las demás se quedan donde estaban."
+  },
+  {
+   "front": "¿Por qué crear una rama es casi gratis?",
+   "back": "Git solo escribe un archivo de 41 bytes: los 40 caracteres del hash del commit y un salto de línea."
+  },
+  {
+   "front": "`git branch x` vs `git switch -c x`",
+   "back": "`git branch x` crea la rama sin cambiarte; `git switch -c x` la crea y te cambia a ella."
+  },
+  {
+   "front": "¿Cómo creas una rama que nazca de otro commit?",
+   "back": "Con un punto de partida: `git switch -c nombre <inicio>` o `git branch nombre <inicio>` (una rama, un hash o `HEAD~2`)."
+  },
+  {
+   "front": "¿Qué hace `git switch -`?",
+   "back": "Vuelve a la rama anterior. `-` es sinónimo de `@{-1}`."
+  },
+  {
+   "front": "Equivalente clásico de `git switch -c x`",
+   "back": "`git checkout -b x` (y `git switch -C x` ⇔ `git checkout -B x`)."
+  },
+  {
+   "front": "¿Qué muestran `git branch -v`, `-a` y `-r`?",
+   "back": "`-v`: hash y mensaje de la punta de cada rama. `-a`: ramas locales y de seguimiento remoto. `-r`: solo las remotas."
+  },
+  {
+   "front": "¿Por qué `git log` no muestra los commits de otra rama?",
+   "back": "Porque solo muestra lo alcanzable desde HEAD. Usa `git log --oneline --decorate --graph --all`."
+  },
+  {
+   "front": "¿Qué pasa con los cambios sin confirmar al cambiar de rama?",
+   "back": "Viajan contigo si esos archivos no difieren entre las ramas; si difieren, Git aborta con *would be overwritten by checkout* y no cambia nada."
+  },
+  {
+   "front": "Git no te deja cambiar de rama por cambios locales: ¿salidas?",
+   "back": "Confirmar (WIP), `git stash` (s10), `git switch -m` (llevarlos fusionando) o descartarlos (`git restore`, `--discard-changes`)."
+  },
+  {
+   "front": "Empezaste a trabajar en `main` por error (sin confirmar)",
+   "back": "`git switch -c feature/x` y confirma allí: la rama nueva parte del mismo commit y tus cambios viajan intactos."
+  },
+  {
+   "front": "¿Qué hace `git switch --discard-changes otra` (o `-f`)?",
+   "back": "Cambia de rama descartando tus cambios sin confirmar, sin preguntar."
+  },
+  {
+   "front": "¿Qué es HEAD separado (detached HEAD)?",
+   "back": "El estado en que HEAD apunta directamente a un commit en vez de a una rama."
+  },
+  {
+   "front": "¿Cómo entras a HEAD separado a propósito?",
+   "back": "`git switch --detach <commit>` (o `git checkout <commit>`, que lo hace sin pedir confirmación)."
+  },
+  {
+   "front": "¿Cómo se ve HEAD separado en `git status`?",
+   "back": "`HEAD detached at <commit>` (sin commits nuevos) o `HEAD detached from <commit>` (si ya confirmaste desde ahí)."
+  },
+  {
+   "front": "¿Cómo salvas commits hechos en HEAD separado?",
+   "back": "Antes de salir: `git switch -c nombre`. Si ya saliste: `git branch nombre <hash>`, con el hash del aviso *you are leaving N commits behind* o del reflog (s10)."
+  },
+  {
+   "front": "¿Cómo renombras `master` a `main`?",
+   "back": "`git branch -m master main` (o `git branch -m main` si estás en `master`). En un repo compartido, falta la parte remota (s07)."
+  },
+  {
+   "front": "`git branch -d` vs `-D`",
+   "back": "`-d` solo borra si la rama está integrada en su upstream o, si no tiene, en HEAD. `-D` (= `--delete --force`) borra igual."
+  },
+  {
+   "front": "¿Qué borra realmente `git branch -d`?",
+   "back": "Solo el puntero. Los commits siguen en el repositorio; si ninguna otra referencia los alcanza, quedan inalcanzables."
+  },
+  {
+   "front": "¿Cómo recuperas una rama recién borrada?",
+   "back": "Con el hash que mostró Git: `Deleted branch x (was 1a2b3c4).` → `git branch x 1a2b3c4`."
+  },
+  {
+   "front": "¿Qué listan `--merged` y `--no-merged`?",
+   "back": "Las ramas cuya punta es (o no es) alcanzable desde HEAD, o desde el commit que indiques (`git branch --merged main`)."
+  },
+  {
+   "front": "¿Por qué no pueden existir a la vez `feature` y `feature/login`?",
+   "back": "Las ramas se guardan como rutas: `refs/heads/feature` no puede ser a la vez archivo y carpeta (`cannot lock ref`)."
+  },
+  {
+   "front": "Caracteres prohibidos en nombres de rama",
+   "back": "Espacios, `~ ^ : ? * [ \\`, `..` y `@{`. Tampoco puede empezar con `-` ni terminar en `/`, `.` o `.lock`."
+  },
+  {
+   "front": "Rama de larga vida vs rama temática",
+   "back": "Larga vida: existe siempre y marca un nivel de estabilidad (`main`, `develop`). Temática: corta, de una sola tarea; se integra y se borra."
+  },
+  {
+   "front": "¿Desde dónde se crea un hotfix?",
+   "back": "Desde lo que está en producción (p. ej. `git switch -c hotfix/x main` o desde el commit/etiqueta publicada), nunca desde tu rama de trabajo a medias."
+  },
+  {
+   "front": "¿Qué hace `git checkout -- archivo`?",
+   "back": "Descarta los cambios sin confirmar del archivo (equivale a `git restore archivo`). El `--` indica que lo que sigue son rutas, no ramas."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s05-q1",
+   "type": "single",
+   "q": "Estás en `main`, ejecutas `git branch feature/login` y luego haces un commit. ¿Dónde queda el commit?",
+   "options": [
+    "En `feature/login`",
+    "En ambas ramas",
+    "En `main`",
+    "En ninguna: quedas en HEAD separado"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git branch nombre` solo crea el puntero; no te cambia de rama. HEAD sigue apuntando a `main`, que es la rama que avanza. Para crear y cambiarse: `git switch -c feature/login`."
+  },
+  {
+   "id": "s05-q2",
+   "type": "single",
+   "q": "¿Qué contiene el archivo `.git/HEAD` cuando estás en la rama `main`?",
+   "options": [
+    "`ref: refs/heads/main`",
+    "El hash del último commit de `main`",
+    "La lista de ramas del repositorio",
+    "El nombre del remoto"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "HEAD es una referencia simbólica: apunta a la rama, no al commit. Solo en HEAD separado contiene directamente un hash."
+  },
+  {
+   "id": "s05-q3",
+   "type": "single",
+   "q": "¿Qué es una rama en Git?",
+   "options": [
+    "Una copia de los archivos del proyecto en otra carpeta",
+    "Un puntero móvil a un commit",
+    "Un commit especial que marca el inicio de una línea de trabajo",
+    "Un archivo con la lista de todos los commits de esa línea"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Pro Git: «A branch in Git is simply a lightweight movable pointer to one of these commits». Es un archivo con un hash; la historia se obtiene siguiendo los padres desde ese commit."
+  },
+  {
+   "id": "s05-q4",
+   "type": "yesno",
+   "q": "Indica si cada afirmación es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`git switch -c x` equivale a `git branch x` seguido de `git switch x`.",
+     "answer": true
+    },
+    {
+     "text": "`git branch x y` crea dos ramas, `x` e `y`.",
+     "answer": false
+    },
+    {
+     "text": "`git checkout -b x` y `git switch -c x` hacen lo mismo.",
+     "answer": true
+    },
+    {
+     "text": "`git branch x` te cambia a la rama `x`.",
+     "answer": false
+    }
+   ],
+   "explain": "`git branch x y` crea **una** rama `x` con punto de partida `y` (si `y` no existe, falla con `not a valid object name`). Crear no implica cambiarse: para eso está `switch -c` (o `checkout -b`)."
+  },
+  {
+   "id": "s05-q5",
+   "type": "single",
+   "q": "Partiendo de `main`, ejecutas:\n```bash\ngit switch -c feature/a\ngit switch main\ngit switch -c feature/b\ngit switch -\n```\n¿En qué rama terminas?",
+   "options": [
+    "`feature/a`",
+    "`main`",
+    "`feature/b`",
+    "En HEAD separado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-` significa «la rama en la que estabas justo antes». Antes de `git switch -c feature/b` estabas en `main`, así que vuelves a `main`."
+  },
+  {
+   "id": "s05-q6",
+   "type": "multi",
+   "q": "¿Cuáles de estos comandos te dejan en HEAD separado? (Selecciona TRES.)",
+   "options": [
+    "`git checkout a1b2c3d`",
+    "`git switch --detach HEAD~2`",
+    "`git switch main`",
+    "`git checkout HEAD~1`",
+    "`git switch -c fix/x HEAD~1`"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "`checkout` de un commit y `switch --detach` separan HEAD. `git switch main` va a una rama, y `git switch -c fix/x HEAD~1` crea una rama en ese commit y te cambia a ella: HEAD queda apuntando a `fix/x`."
+  },
+  {
+   "id": "s05-q7",
+   "type": "single",
+   "q": "Ejecutas `git switch a1b2c3d` (el hash de un commit). ¿Qué pasa?",
+   "options": [
+    "Pasas a HEAD separado en ese commit",
+    "Git crea una rama llamada `a1b2c3d`",
+    "Falla con `fatal: a branch is expected, got commit 'a1b2c3d'`",
+    "Git restaura los archivos de ese commit sin mover HEAD"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git switch` solo acepta ramas y sugiere `--detach` (`hint: If you want to detach HEAD at the commit, try again with the --detach option.`). `git checkout a1b2c3d`, en cambio, sí separaría HEAD sin preguntar."
+  },
+  {
+   "id": "s05-q8",
+   "type": "single",
+   "q": "Modificaste `README.md` sin confirmar. `README.md` es idéntico en `main` y en `dev`. Ejecutas `git switch dev`. ¿Qué ocurre?",
+   "options": [
+    "Git aborta para proteger tu cambio",
+    "Cambias a `dev` y la modificación se pierde",
+    "Git confirma automáticamente el cambio en `main`",
+    "Cambias a `dev` y tu modificación sigue en el directorio de trabajo"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Como el archivo no difiere entre las ramas, Git no necesita tocarlo: cambias y la modificación viaja contigo (lo indica con una línea `M README.md` tras `Switched to branch 'dev'`)."
+  },
+  {
+   "id": "s05-q9",
+   "type": "single",
+   "q": "Modificaste `app.js`, que es distinto en `main` y en `dev`. `git switch dev` responde `error: Your local changes to the following files would be overwritten by checkout` y termina con `Aborting`. ¿En qué estado quedas?",
+   "options": [
+    "En `dev`, con tus cambios perdidos",
+    "En `dev`, con conflictos",
+    "En la rama original, con tus cambios intactos: Git no hizo nada",
+    "En HEAD separado"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Git aborta antes de tocar nada. Sigues donde estabas y puedes elegir: confirmar, stash, `switch -m` o descartar."
+  },
+  {
+   "id": "s05-q10",
+   "type": "multi",
+   "q": "Git no te deja cambiar de rama por tus cambios locales en `app.js`. ¿Qué acciones te permiten cambiar **conservando** ese trabajo? (Selecciona TRES.)",
+   "options": [
+    "`git switch -f otra`",
+    "Confirmarlo en un commit WIP y luego cambiar",
+    "`git restore app.js` y luego cambiar",
+    "`git stash` y luego cambiar",
+    "`git switch -m otra`"
+   ],
+   "answer": [
+    1,
+    3,
+    4
+   ],
+   "explain": "Confirmar y stash guardan el trabajo; `-m` lo lleva a la otra rama combinándolo (puede dejar conflictos). `-f` (`--discard-changes`) y `git restore` lo descartan."
+  },
+  {
+   "id": "s05-q11",
+   "type": "single",
+   "q": "Estás en HEAD separado y hiciste dos commits. ¿Qué comando los conserva en una rama nueva **y** te saca del HEAD separado?",
+   "options": [
+    "`git branch experimento`",
+    "`git switch main`",
+    "`git switch -c experimento`",
+    "`git commit --amend`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git switch -c` crea la rama en el commit actual y apunta HEAD a ella. `git branch experimento` también protege los commits, pero te deja en HEAD separado. `git switch main` los dejaría abandonados."
+  },
+  {
+   "id": "s05-q12",
+   "type": "yesno",
+   "q": "Sobre HEAD separado, indica Sí o No.",
+   "statements": [
+    {
+     "text": "En HEAD separado no se pueden hacer commits.",
+     "answer": false
+    },
+    {
+     "text": "Al volver a una rama, los commits hechos en HEAD separado se borran inmediatamente.",
+     "answer": false
+    },
+    {
+     "text": "`git branch --show-current` no imprime nada en HEAD separado.",
+     "answer": true
+    },
+    {
+     "text": "Durante un rebase, Git trabaja en HEAD separado.",
+     "answer": true
+    }
+   ],
+   "explain": "Puedes confirmar normalmente. Al salir, esos commits quedan inalcanzables (no borrados): el reflog los recuerda y el recolector de basura los elimina más tarde. `--show-current` no imprime nada si HEAD no apunta a una rama. Rebase y bisect trabajan en HEAD separado mientras duran."
+  },
+  {
+   "id": "s05-q13",
+   "type": "single",
+   "q": "Al salir de HEAD separado ves:\n```\nWarning: you are leaving 1 commit behind, not connected to\nany of your branches:\n\n  9fbc087 Prueba de login\n\nIf you want to keep it by creating a new branch, this may be a good time\nto do so with:\n\n git branch <new-branch-name> 9fbc087\n```\n¿Qué haces para conservar ese commit?",
+   "options": [
+    "`git switch -c rescate`",
+    "`git restore --source=9fbc087 .`",
+    "Nada: Git lo guardó en la rama a la que volviste",
+    "`git branch rescate 9fbc087`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`git branch nombre <hash>` crea una rama en ese commit. `git switch -c rescate` la crearía en HEAD, que ahora es la rama a la que volviste. `restore` solo copiaría archivos al directorio de trabajo."
+  },
+  {
+   "id": "s05-q14",
+   "type": "single",
+   "q": "`feature/pagos` tiene commits que no están en HEAD y no tiene upstream. ¿Qué hace `git branch -d feature/pagos`?",
+   "options": [
+    "La borra junto con sus commits",
+    "La borra; sus commits quedan inalcanzables",
+    "Se niega: `error: the branch 'feature/pagos' is not fully merged`",
+    "La fusiona en la rama actual y después la borra"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`-d` es el borrado seguro: exige que la rama esté integrada (en su upstream o, sin upstream, en HEAD). El `hint` sugiere `git branch -D feature/pagos` si estás seguro."
+  },
+  {
+   "id": "s05-q15",
+   "type": "single",
+   "q": "¿Qué borra exactamente `git branch -D experimento`?",
+   "options": [
+    "Todos los commits de la rama",
+    "El puntero `refs/heads/experimento`; los commits no se eliminan en ese momento",
+    "Los archivos creados en esa rama del directorio de trabajo",
+    "La rama en el servidor remoto"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una rama es solo un puntero. Si ninguna otra referencia alcanza sus commits, quedan inalcanzables, y el recolector de basura los eliminará con el tiempo. La rama remota se borra con `git push origin --delete` (s07)."
+  },
+  {
+   "id": "s05-q16",
+   "type": "single",
+   "q": "Tienes `main` y las ramas `a` (ya integrada en `main`) y `b` (con 2 commits propios). Estando en `main`, ¿qué muestra `git branch --merged`?",
+   "options": [
+    "`a` y `* main`",
+    "Solo `a`",
+    "`a` y `b`",
+    "Solo `b`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--merged` lista las ramas cuya punta es alcanzable desde HEAD, incluida la propia rama actual (marcada con `*`). `b` aparecería en `--no-merged`."
+  },
+  {
+   "id": "s05-q17",
+   "type": "single",
+   "q": "Estás en `master`. ¿Qué comando la renombra a `main` conservando su reflog?",
+   "options": [
+    "`git switch -c main`",
+    "`git branch main`",
+    "`git rename master main`",
+    "`git branch -m main`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`-m` con un solo nombre renombra la rama actual (también sirve `git branch -m master main`). `switch -c main` y `branch main` crean una rama nueva y `master` seguiría existiendo; `git rename` no existe."
+  },
+  {
+   "id": "s05-q18",
+   "type": "yesno",
+   "q": "Sobre renombrar y borrar ramas, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git branch -m viejo nuevo` conserva la configuración y el reflog de la rama.",
+     "answer": true
+    },
+    {
+     "text": "Puedes borrar la rama en la que estás con `git branch -D`.",
+     "answer": false
+    },
+    {
+     "text": "`git branch -M a b` renombra `a` como `b` aunque `b` ya exista.",
+     "answer": true
+    },
+    {
+     "text": "Renombrar una rama cambia los hashes de sus commits.",
+     "answer": false
+    }
+   ],
+   "explain": "`-m` mueve el puntero con su configuración y reflog; `-M` fuerza. Los hashes dependen del contenido de los commits, no del nombre de la rama. Git nunca te deja borrar la rama actual (`cannot delete branch 'main' used by worktree at …`)."
+  },
+  {
+   "id": "s05-q19",
+   "type": "single",
+   "q": "¿Cuál de estos nombres de rama es **válido**?",
+   "options": [
+    "`feature/login google`",
+    "`fix..header`",
+    "`feature/JIRA-142-login`",
+    "`hotfix/iva~2`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Los espacios, `..` y `~` están prohibidos por las reglas de `git check-ref-format`. `feature/JIRA-142-login` sigue además la convención de prefijo + identificador de tarea."
+  },
+  {
+   "id": "s05-q20",
+   "type": "single",
+   "q": "Existe la rama `feature`. Ejecutas `git branch feature/login`. ¿Qué pasa?",
+   "options": [
+    "Se crea sin problema",
+    "Falla: `cannot lock ref 'refs/heads/feature/login': 'refs/heads/feature' exists`",
+    "Se crea como subrama de `feature` y hereda sus commits",
+    "Git renombra `feature` a `feature/login`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las referencias se guardan como rutas: `refs/heads/feature` ya es un archivo, así que no puede ser también una carpeta. Solución: renombrar `feature` (por ejemplo, a `feature/base`)."
+  },
+  {
+   "id": "s05-q21",
+   "type": "single",
+   "q": "Debes arreglar un error urgente en producción. `main` tiene lo publicado y tú estás en `feature/carrito`, a medio hacer. ¿Qué comando es el correcto?",
+   "options": [
+    "`git switch -c hotfix/pago`",
+    "`git branch hotfix/pago`",
+    "`git switch -c hotfix/pago main`",
+    "`git checkout -b hotfix/pago feature/carrito`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El hotfix debe nacer de lo publicado. Las opciones sin punto de partida (o con `feature/carrito`) crearían la rama desde tu trabajo a medio hacer y lo arrastrarían a producción."
+  },
+  {
+   "id": "s05-q22",
+   "type": "multi",
+   "q": "Sobre ramas de larga vida y temáticas, ¿qué afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "Una rama temática suele vivir poco y se borra después de integrarse",
+    "`main` es especial para Git: no se puede renombrar",
+    "Las ramas de larga vida representan niveles de estabilidad, como `main` y `develop`",
+    "Crear ramas temáticas es caro, así que conviene tener pocas"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Pro Git define la rama temática como «a short-lived branch that you create and use for a single particular feature or related work». `main` es una rama como cualquier otra (se puede renombrar) y crear ramas cuesta 41 bytes."
+  },
+  {
+   "id": "s05-q23",
+   "type": "single",
+   "q": "Existen una rama `docs` y una carpeta `docs/` con cambios sin confirmar. ¿Qué hace `git checkout docs`?",
+   "options": [
+    "Descarta los cambios de la carpeta `docs/`",
+    "Cambia a la rama `docs` (los cambios viajan contigo si no chocan)",
+    "Falla por ambigüedad",
+    "Crea la rama `docs`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Cuando el argumento coincide con una rama, `checkout` cambia de rama. Para referirte a la carpeta hay que escribir `git checkout -- docs` (o, mejor, `git restore docs`)."
+  },
+  {
+   "id": "s05-q24",
+   "type": "single",
+   "q": "¿Cuál es el equivalente moderno de `git checkout -- index.html`?",
+   "options": [
+    "`git restore index.html`",
+    "`git switch index.html`",
+    "`git reset index.html`",
+    "`git branch -d index.html`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git 2.23 separó `checkout` en `switch` (ramas) y `restore` (archivos). `git reset index.html` saca el archivo del área de preparación, que es otra cosa (s04)."
+  },
+  {
+   "id": "s05-q25",
+   "type": "yesno",
+   "q": "Sobre listar ramas, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git branch -a` muestra las ramas locales y las de seguimiento remoto.",
+     "answer": true
+    },
+    {
+     "text": "`git branch -r` muestra solo las ramas locales.",
+     "answer": false
+    },
+    {
+     "text": "`git branch -v` muestra el hash y el mensaje del último commit de cada rama.",
+     "answer": true
+    },
+    {
+     "text": "`git branch 'feature/*'` lista las ramas que empiezan por `feature/`.",
+     "answer": false
+    }
+   ],
+   "explain": "`-r` muestra solo las remotas. Con un patrón hay que usar `--list`: sin él, Git intenta crear una rama llamada `feature/*` y falla porque `*` no está permitido."
+  },
+  {
+   "id": "s05-q26",
+   "type": "single",
+   "q": "¿Por qué crear una rama en Git es casi instantáneo aunque el proyecto pese varios GB?",
+   "options": [
+    "Git comprime los archivos antes de copiarlos",
+    "Las ramas se crean en el servidor",
+    "Solo escribe un archivo con el hash del commit (41 bytes)",
+    "Git copia solo los archivos modificados"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Una rama no contiene archivos: es un puntero. Los commits (y sus instantáneas) ya existen y se comparten entre todas las ramas."
+  },
+  {
+   "id": "s05-q27",
+   "type": "single",
+   "q": "Estás en `main`, cuya punta es el commit C3. Suponiendo que hay cambios preparados antes de cada commit, ejecutas:\n```bash\ngit switch -c exp\ngit commit -m \"E1\"\ngit switch main\ngit commit -m \"C4\"\n```\n¿Adónde apuntan `main` y `exp`?",
+   "options": [
+    "`main` → C4 y `exp` → C3",
+    "`main` y `exp` → C4",
+    "`main` → E1 y `exp` → C4",
+    "`main` → C4 y `exp` → E1; ambos commits tienen a C3 como padre"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Cada commit avanza solo la rama a la que apunta HEAD en ese momento. E1 cuelga de C3 en `exp`; C4 cuelga de C3 en `main`: la historia se bifurca."
+  },
+  {
+   "id": "s05-q28",
+   "type": "single",
+   "q": "En tu terminal, `git log --oneline` muestra `(HEAD -> main)`, pero al redirigir la salida a un archivo (`git log --oneline > historia.txt`) esas decoraciones no aparecen. ¿Por qué?",
+   "options": [
+    "Porque HEAD está separado",
+    "Porque `log.decorate` vale `auto` por defecto y solo decora cuando la salida va a una terminal; agrega `--decorate`",
+    "Porque falta `--all`",
+    "Porque la rama no tiene commits"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La documentación de `git log` indica que, sin configuración, `--decorate` vale `auto`: muestra los nombres de referencias solo si la salida es una terminal (comportamiento por defecto desde Git 2.13). Con `--decorate` o `log.decorate = short` aparecen siempre."
+  },
+  {
+   "id": "s05-q29",
+   "type": "single",
+   "q": "`git status` muestra `HEAD detached from 4f2a9c1`. ¿Qué indica el *from* (en vez de *at*)?",
+   "options": [
+    "Que separaste HEAD en 4f2a9c1 y desde entonces confirmaste: HEAD ya no está en ese commit",
+    "Que el commit 4f2a9c1 fue borrado",
+    "Que HEAD apunta a una rama llamada 4f2a9c1",
+    "Que hay un rebase en curso"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "*at* significa que HEAD sigue en el commit donde lo separaste; *from*, que avanzó desde ahí con commits nuevos. Esos commits necesitan una rama antes de que te vayas."
+  },
+  {
+   "id": "s05-q30",
+   "type": "multi",
+   "q": "Hiciste por error dos commits en `main` (sin publicar) que debían ir en `feature/x`. ¿Qué secuencias lo arreglan? (Selecciona DOS.)",
+   "options": [
+    "`git branch -m main feature/x`",
+    "`git switch -c feature/x` y luego `git branch -f main HEAD~2`",
+    "`git switch -c feature/x HEAD~2`",
+    "`git branch feature/x`, luego `git reset --hard HEAD~2` y `git switch feature/x`"
+   ],
+   "answer": [
+    1,
+    3
+   ],
+   "explain": "En ambas, primero una rama nueva sostiene los commits y luego `main` retrocede dos commits. Renombrar `main` la haría desaparecer, y `switch -c feature/x HEAD~2` crearía la rama **antes** de los commits, sin incluirlos."
+  },
+  {
+   "id": "s05-q31",
+   "type": "single",
+   "q": "¿Qué hace `git switch -C fix/x main` si `fix/x` ya existe y tiene commits propios?",
+   "options": [
+    "Falla porque la rama ya existe",
+    "Fusiona `main` en `fix/x`",
+    "Crea una rama `fix/x-2`",
+    "Reinicia `fix/x` para que apunte a `main` y te cambia a ella; sus commits propios dejan de estar en la rama"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`-C` (`--force-create`) es como `-c`, pero si la rama existe la reinicia al punto de partida. Los commits que solo estaban en `fix/x` quedan inalcanzables (recuperables con el reflog, s10)."
+  },
+  {
+   "id": "s05-q32",
+   "type": "yesno",
+   "q": "Sobre cambiar de rama con trabajo pendiente, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git switch --discard-changes otra` cambia de rama descartando tus cambios sin confirmar.",
+     "answer": true
+    },
+    {
+     "text": "Los archivos sin seguimiento nunca impiden cambiar de rama.",
+     "answer": false
+    },
+    {
+     "text": "Los cambios preparados también viajan contigo al cambiar de rama si no hay choque.",
+     "answer": true
+    }
+   ],
+   "explain": "Un archivo sin seguimiento que la rama de destino tiene confirmado bloquea el cambio (`The following untracked working tree files would be overwritten by checkout`). Preparados y sin preparar viajan si no chocan."
+  },
+  {
+   "id": "s05-q33",
+   "type": "single",
+   "q": "¿En qué versión de Git aparecieron `git switch` y `git restore`?",
+   "options": [
+    "2.0",
+    "2.23",
+    "2.28",
+    "2.51"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Llegaron en Git 2.23 (2019) marcados como experimentales; Git 2.51 los declaró estables. Git 2.28 es la versión que agregó `init.defaultBranch`."
+  },
+  {
+   "id": "s05-q34",
+   "type": "single",
+   "q": "¿Qué muestra `git branch --contains a1b2c3d`?",
+   "options": [
+    "Los archivos que modificó ese commit",
+    "La rama en la que se creó ese commit",
+    "Las ramas que no incluyen ese commit",
+    "Las ramas cuya historia incluye ese commit"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`--contains` filtra las ramas desde cuya punta se alcanza el commit. Útil, por ejemplo, para saber en qué ramas ya está un arreglo. Git no registra «en qué rama se creó» un commit."
+  },
+  {
+   "id": "s05-q35",
+   "type": "single",
+   "q": "Borraste `feature/pagos` con `-D` y Git respondió `Deleted branch feature/pagos (was 3c9e1f2).` ¿Cómo la recuperas?",
+   "options": [
+    "`git branch feature/pagos 3c9e1f2`",
+    "`git restore feature/pagos`",
+    "`git switch feature/pagos`",
+    "No se puede: los commits se borraron"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Borrar una rama solo elimina el puntero; el commit 3c9e1f2 sigue en el repositorio. Crear una rama en ese hash la deja exactamente como estaba."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Git — git-branch (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-branch"
+  },
+  {
+   "title": "Git — git-switch (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-switch"
+  },
+  {
+   "title": "Git — git-checkout, sección DETACHED HEAD",
+   "url": "https://git-scm.com/docs/git-checkout"
+  },
+  {
+   "title": "Git — git-check-ref-format (reglas de nombres)",
+   "url": "https://git-scm.com/docs/git-check-ref-format"
+  },
+  {
+   "title": "Git — gitrevisions (@{-n}, HEAD~n)",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "Git — git-log (--decorate y log.decorate)",
+   "url": "https://git-scm.com/docs/git-log"
+  },
+  {
+   "title": "Git — git-config (advice.detachedHead, gc.reflogExpireUnreachable, gc.pruneExpire)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — 3.1 Branches in a Nutshell",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell"
+  },
+  {
+   "title": "Pro Git 2.ª ed. (español) — ¿Qué es una rama?",
+   "url": "https://git-scm.com/book/es/v2/Ramificaciones-en-Git-%C2%BFQu%C3%A9-es-una-rama%3F"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — 3.2 Basic Branching and Merging",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — 3.3 Branch Management",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Branch-Management"
+  },
+  {
+   "title": "Pro Git 2.ª ed. (español) — Gestión de ramas",
+   "url": "https://git-scm.com/book/es/v2/Ramificaciones-en-Git-Gesti%C3%B3n-de-Ramas"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — 3.4 Branching Workflows",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Branching-Workflows"
+  },
+  {
+   "title": "Pro Git 2.ª ed. (español) — Flujos de trabajo ramificados",
+   "url": "https://git-scm.com/book/es/v2/Ramificaciones-en-Git-Flujos-de-Trabajo-Ramificados"
+  },
+  {
+   "title": "Notas de versión de Git 2.23 (git switch y git restore)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.23.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.28 (init.defaultBranch)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.28.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.45 (backend reftable)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.45.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.51 (switch/restore dejan de ser experimentales)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.51.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.55 (checkout -m con stash)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.55.0.adoc"
+  },
+  {
+   "title": "Git — BreakingChanges (Git 3.0: rama por defecto main)",
+   "url": "https://github.com/git/git/blob/master/Documentation/BreakingChanges.adoc"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.23",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-23/"
+  },
+  {
+   "title": "GitHub Changelog — The default branch for newly-created repositories is now main (2020-10-01)",
+   "url": "https://github.blog/changelog/2020-10-01-the-default-branch-for-newly-created-repositories-is-now-main/"
+  },
+  {
+   "title": "GitHub Docs — Renaming a branch",
+   "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-branches-in-your-repository/renaming-a-branch"
+  },
+  {
+   "title": "Atlassian — Git branch",
+   "url": "https://www.atlassian.com/git/tutorials/using-branches"
+  },
+  {
+   "title": "Atlassian — Git checkout",
+   "url": "https://www.atlassian.com/git/tutorials/using-branches/git-checkout"
+  }
+ ]
+}

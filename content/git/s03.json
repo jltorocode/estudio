@@ -1,0 +1,2560 @@
+{
+ "id": "s03",
+ "order": 3,
+ "title": "Ver cambios e historia",
+ "domain": "fundamentos",
+ "summary": "Aprende a mirar dentro de tu repositorio como un profesional: qué cambió línea por línea (`git diff` en sus tres variantes), qué hizo cada commit (`git show`), cómo encontrar cualquier cosa en la historia (`git log` con filtros, formatos y rangos) y quién cambió cada línea (`git blame`). Además, controla qué entra al repositorio con `.gitignore` y ordénalo con `git rm`, `git mv` y `git rm --cached`.",
+ "goal": "Responder con Git, en menos de un minuto, qué cambió, quién, cuándo y en qué commit, y mantener fuera del repositorio lo que no debe estar.",
+ "objectives": [
+  "Comparar el directorio de trabajo, el área de preparación y el último commit con `git diff`, `git diff --staged` y `git diff HEAD`, y leer cada parte de un diff",
+  "Comparar commits y ramas con `git diff A B` y referencias relativas (`HEAD~n`), e inspeccionar commits y archivos antiguos con `git show`",
+  "Filtrar el historial con `git log` por autor, fecha, mensaje, contenido (`-S`) y ruta, y seguir renombres con `--follow`",
+  "Personalizar la salida de `git log` con `--format` y listar rangos `A..B`",
+  "Identificar con `git blame` el último commit que cambió cada línea y verificarlo con `git show`",
+  "Escribir y depurar reglas de `.gitignore` (anclajes, `**`, negaciones) con `git check-ignore -v`, y configurar un ignore global",
+  "Borrar, renombrar y dejar de rastrear archivos con `git rm`, `git mv` y `git rm --cached` sin perder historia ni datos"
+ ],
+ "lessons": [
+  {
+   "id": "s03-l1",
+   "title": "¿Qué cambió? git diff y las tres áreas",
+   "minutes": 22,
+   "goals": [
+    "Elegir entre `git diff`, `git diff --staged` y `git diff HEAD` según las dos áreas que quieres comparar",
+    "Leer un diff completo: cabeceras, hunks y líneas con `+`, `-` y contexto",
+    "Resumir cambios con `--stat`, `--name-only`, `--name-status` y `--word-diff`"
+   ],
+   "takeaways": [
+    "`git status` dice **qué archivos** cambiaron; `git diff` dice **qué líneas**.",
+    "`git diff` = trabajo vs preparación; `git diff --staged` (= `--cached`) = preparación vs último commit; `git diff HEAD` = trabajo vs último commit.",
+    "Un `git diff` vacío no significa «sin cambios»: puede que todo esté ya preparado, y los archivos sin seguimiento nunca aparecen.",
+    "En un diff, `-` es la versión de antes (`a/`) y `+` la de después (`b/`); una línea modificada es un `-` más un `+`.",
+    "Revisa siempre `git diff --staged` antes de confirmar: es tu última oportunidad de ver lo que va a quedar en la historia."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s02 aprendiste a mover cambios entre las tres áreas. Ahora toca **mirarlos**. `git status` te dice *qué archivos* cambiaron; `git diff` te muestra *qué líneas* cambiaron exactamente. Un profesional revisa el diff antes de cada commit: es la última barrera contra un `console.log` olvidado, una contraseña pegada por error o un cambio que no querías incluir."
+    },
+    {
+     "type": "h",
+     "text": "Tres áreas, tres comparaciones"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué compara cada variante de git diff",
+     "mermaid": "flowchart LR\n  W[\"Directorio de trabajo\"] -->|\"git add\"| I[\"Área de preparación (index)\"]\n  I -->|\"git commit\"| R[\"Repositorio (último commit = HEAD)\"]\n  W -.-|\"git diff\"| I\n  I -.-|\"git diff --staged\"| R\n  W -.-|\"git diff HEAD\"| R",
+     "caption": "Las flechas continuas mueven cambios; las líneas punteadas son comparaciones: `git diff` nunca modifica nada."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Compara",
+      "Responde a…"
+     ],
+     "rows": [
+      [
+       "`git diff`",
+       "trabajo ↔ preparación",
+       "¿Qué cambié que todavía **no** preparé?"
+      ],
+      [
+       "`git diff --staged` (sinónimo: `--cached`)",
+       "preparación ↔ último commit",
+       "¿Qué va a entrar en el próximo commit?"
+      ],
+      [
+       "`git diff HEAD`",
+       "trabajo ↔ último commit",
+       "¿Qué cambió en total desde el último commit, preparado o no?"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 09:00'\nmkdir -p \"$(dirname 'menu.txt')\"\ncat > 'menu.txt' <<'__FIN__'\nCafetería El Grano — Carta\nEspresso ........ $1.800\nAmericano ....... $2.000\nCortado ......... $2.200\nCapuchino ....... $2.500\nMocaccino ....... $2.900\nTé .............. $1.500\n__FIN__\nmkdir -p \"$(dirname 'horario.txt')\"\ncat > 'horario.txt' <<'__FIN__'\nLunes a viernes: 08:00 a 19:00\nSábado: 09:00 a 14:00\nDomingo: cerrado\n__FIN__\ngit add -A\ngit commit -q -m 'Publica la carta y el horario'\n# cambios de hoy: uno preparado, otro sin preparar y un archivo nuevo\nmkdir -p \"$(dirname 'menu.txt')\"\ncat > 'menu.txt' <<'__FIN__'\nCafetería El Grano — Carta\nEspresso ........ $1.800\nAmericano ....... $2.000\nCortado ......... $2.200\nCapuchino ....... $2.700\nMocaccino ....... $2.900\nTé .............. $1.500\n__FIN__\ngit add menu.txt\nmkdir -p \"$(dirname 'horario.txt')\"\ncat > 'horario.txt' <<'__FIN__'\nLunes a viernes: 08:00 a 19:00\nSábado: 09:00 a 15:00\nDomingo: cerrado\n__FIN__\nmkdir -p \"$(dirname 'promociones.txt')\"\ncat > 'promociones.txt' <<'__FIN__'\n2x1 en cortados los martes\n__FIN__",
+     "cwd": "cafeteria",
+     "code": "git status -s\ngit diff\ngit diff --staged\ngit diff HEAD\ngit diff HEAD --stat",
+     "caption": "Hay un cambio preparado (`menu.txt`), otro sin preparar (`horario.txt`) y un archivo nuevo (`promociones.txt`). Fíjate en que `git diff` solo muestra el horario, `--staged` solo la carta y `HEAD` ambos. `promociones.txt` no aparece en ninguno."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Trampa clásica:** haces `git add`, luego `git diff`… y sale vacío. ¡No perdiste nada! Tus cambios ya están en el área de preparación y `git diff` (sin opciones) solo muestra lo que **no** está preparado. Usa `git diff --staged`. Y los archivos **sin seguimiento** (nuevos, nunca añadidos) no aparecen en ningún `git diff`: para Git aún no tienen versión anterior con la que comparar. `git status` sí los lista."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de un diff"
+    },
+    {
+     "type": "p",
+     "text": "Este es un diff real de un archivo JavaScript en el que se cambiaron dos líneas separadas entre sí:"
+    },
+    {
+     "type": "code",
+     "lang": "diff",
+     "code": "diff --git a/carro.js b/carro.js\nindex d15a16a..300ab0e 100644\n--- a/carro.js\n+++ b/carro.js\n@@ -1,4 +1,4 @@\n-const DESCUENTO_CUPON = 0.05;\n+const DESCUENTO_CUPON = 0.10;\n const COSTO_DESPACHO = 3990;\n \n function subtotal(items) {\n@@ -7,7 +7,7 @@ function subtotal(items) {\n     if (!item.disponible) {\n       continue;\n     }\n-    suma += item.precio * item.cantidad;\n+    suma += item.precio * (item.cantidad || 1);\n   }\n   return suma;\n }"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`diff --git a/carro.js b/carro.js` — el archivo comparado. `a/` es la versión **de antes** y `b/` la **de después**.",
+      "`index d15a16a..300ab0e 100644` — el hash abreviado del contenido antes y después, y el modo del archivo (`100644` = archivo normal; `100755` = ejecutable).",
+      "`--- a/carro.js` y `+++ b/carro.js` — la leyenda: las líneas con `-` son de la versión antigua y las con `+`, de la nueva. En un archivo nuevo verás `--- /dev/null`; en uno borrado, `+++ /dev/null`.",
+      "`@@ -7,7 +7,7 @@ function subtotal(items) {` — la cabecera del **hunk** (bloque de cambios): en la versión antigua empieza en la línea 7 y abarca 7 líneas; en la nueva, igual. El texto tras el segundo `@@` es una pista de dónde estás: la línea anterior más cercana que parece una cabecera (en código, normalmente la función).",
+      "Líneas con `-`: eliminadas. Con `+`: añadidas. Con un espacio: **contexto** sin cambios (3 líneas antes y después por defecto; `-U1` o `-U0` lo reducen)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Git no tiene el concepto de «línea modificada»: una modificación siempre se ve como una línea borrada (`-`) seguida de una añadida (`+`). Cuando cambia solo una palabra dentro de una línea larga, usa `git diff --word-diff`: marca `[-lo que salió-]` y `{+lo que entró+}` en la misma línea. Ideal para textos, documentación y Markdown. `--color-words` hace lo mismo solo con colores."
+    },
+    {
+     "type": "h",
+     "text": "Resúmenes: cuando el diff completo es demasiado"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Muestra",
+      "Ejemplo de salida"
+     ],
+     "rows": [
+      [
+       "`--stat`",
+       "archivos, líneas cambiadas y un histograma",
+       "`menu.txt | 4 ++--`"
+      ],
+      [
+       "`--name-only`",
+       "solo los nombres de los archivos",
+       "`menu.txt`"
+      ],
+      [
+       "`--name-status`",
+       "nombre con su estado: `M` modificado, `A` añadido, `D` borrado, `R` renombrado",
+       "`M\tmenu.txt`"
+      ],
+      [
+       "`--word-diff`",
+       "cambios palabra por palabra",
+       "`de lunes a [-sábado,-]{+domingo,+}`"
+      ],
+      [
+       "`-- ruta`",
+       "solo ese archivo o carpeta",
+       "`git diff -- menu.txt`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 09:00'\nmkdir -p \"$(dirname 'menu.txt')\"\ncat > 'menu.txt' <<'__FIN__'\nCafetería El Grano — Carta\n== Cafés ==\nEspresso ........ $1.800\nAmericano ....... $2.000\nCortado ......... $2.200\nCapuchino ....... $2.500\nMocaccino ....... $2.900\n== Otras bebidas ==\nTé .............. $1.500\nChocolate ....... $2.600\nJugo natural .... $2.800\n== Para comer ==\nMedialuna ....... $1.200\nSándwich ........ $3.900\nQueque .......... $1.800\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\nLa cafetería abre de lunes a sábado, de 8:00 a 19:00, en el centro de Valdivia.\n__FIN__\ngit add -A\ngit commit -q -m 'Publica la carta'\nmkdir -p \"$(dirname 'menu.txt')\"\ncat > 'menu.txt' <<'__FIN__'\nCafetería El Grano — Carta\n== Cafés ==\nEspresso ........ $1.800\nAmericano ....... $2.200\nCortado ......... $2.200\nCapuchino ....... $2.500\nMocaccino ....... $2.900\n== Otras bebidas ==\nTé .............. $1.500\nChocolate ....... $2.600\nJugo natural .... $2.800\n== Para comer ==\nMedialuna ....... $1.200\nSándwich de pollo $4.200\nQueque .......... $1.800\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\nLa cafetería abre de lunes a domingo, de 8:00 a 20:00, en el centro de Valdivia.\n__FIN__",
+     "cwd": "cafeteria",
+     "code": "git diff -- menu.txt\ngit diff --stat\ngit diff --name-only\ngit diff --name-status\ngit diff -- README.md\ngit diff --word-diff -- README.md\ngit diff -U1 -- menu.txt",
+     "caption": "`menu.txt` tiene dos cambios lejanos entre sí: verás **dos hunks**. En un `.txt` la pista tras el segundo `@@` es solo la línea anterior más cercana que empieza con una letra (por eso aparece «Chocolate…»). En el README cambiaron dos palabras de una línea larga: compara la salida normal con la de `--word-diff`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "El `--` separa opciones y revisiones de las rutas. `git diff menu.txt` suele funcionar, pero si un archivo se llamara igual que una rama, Git no sabría qué quieres decir. Con `git diff -- menu.txt` no hay duda. Es un hábito de profesional."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta favorita en entrevistas: «¿qué muestra `git diff` sin argumentos?». Respuesta: los cambios del directorio de trabajo que **aún no están** en el área de preparación. Para ver lo que entrará en el commit: `git diff --staged` (o `--cached`, son sinónimos)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Diff",
+       "en": "diff / patch",
+       "def": "Descripción de las diferencias entre dos versiones, línea por línea. Guardado en un archivo se le llama parche."
+      },
+      {
+       "term": "Hunk",
+       "en": "hunk",
+       "def": "Cada bloque de cambios de un diff, con su cabecera `@@ -inicio,líneas +inicio,líneas @@`."
+      },
+      {
+       "term": "Contexto",
+       "en": "context lines",
+       "def": "Líneas sin cambios que Git muestra alrededor de cada cambio para ubicarlo (3 por defecto)."
+      },
+      {
+       "term": "Área de preparación",
+       "en": "staging area / index",
+       "def": "Donde armas el próximo commit; `git diff --staged` la compara con el último commit."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l2",
+   "title": "Comparar commits: HEAD~n, git diff A B y git show",
+   "minutes": 20,
+   "goals": [
+    "Nombrar commits con su hash, `HEAD`, `HEAD~n` y `HEAD^`",
+    "Comparar dos commits o dos ramas, completos o por archivo, con `git diff A B`",
+    "Inspeccionar un commit con `git show` y ver un archivo antiguo con `git show REV:ruta`"
+   ],
+   "takeaways": [
+    "Un commit se nombra por su hash (bastan 7 caracteres), por `HEAD` o en relación a otro: `HEAD~1` es el padre, `HEAD~3` el bisabuelo.",
+    "`git diff A B` muestra qué cambió para pasar de A a B; el orden importa.",
+    "`git show` = datos del commit + su diff respecto de su padre.",
+    "`git show REV:ruta` imprime un archivo tal como estaba en ese commit sin tocar tu directorio de trabajo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cada commit tiene un **hash** de 40 caracteres hexadecimales (por ejemplo `4a3faf6e…`). No hace falta escribirlo entero: basta un prefijo que no sea ambiguo, y Git suele mostrar 7 caracteres. Pero copiar hashes cansa, así que Git permite nombrar commits **en relación a otros**."
+    },
+    {
+     "type": "diagram",
+     "title": "Referencias relativas a HEAD",
+     "mermaid": "gitGraph\n  commit id: \"HEAD~3\"\n  commit id: \"HEAD~2 = HEAD^^\"\n  commit id: \"HEAD~1 = HEAD^\"\n  commit id: \"HEAD\"",
+     "caption": "`HEAD` es el commit en el que estás (el último de tu rama). Cada `~` retrocede una generación siguiendo al primer padre."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Notación",
+      "Significa",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`a1b2c3d`",
+       "un commit por su hash abreviado (mínimo 4 caracteres; Git muestra 7 o más)",
+       "`git show a1b2c3d`"
+      ],
+      [
+       "`HEAD`",
+       "el commit actual",
+       "`git show HEAD`"
+      ],
+      [
+       "`HEAD~1`, `HEAD~` o `HEAD^`",
+       "el padre de HEAD",
+       "`git diff HEAD~1 HEAD`"
+      ],
+      [
+       "`HEAD~3`",
+       "tres generaciones atrás",
+       "`git log HEAD~3`"
+      ],
+      [
+       "`main` (una rama)",
+       "el último commit de esa rama",
+       "`git diff main temporada-invierno`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En historia lineal `HEAD~2` y `HEAD^^` son lo mismo. La diferencia aparece en los commits de fusión, que tienen dos padres: `HEAD^2` elige el *segundo* padre (lo verás en s06). Consejo práctico: usa `~`. El `^` tiene significado especial en el CMD de Windows y en zsh con ciertas opciones, y a veces hay que ponerlo entre comillas (`'HEAD^'`)."
+    },
+    {
+     "type": "h",
+     "text": "git diff entre dos commits"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git diff HEAD~1 HEAD            # lo que introdujo el último commit\ngit diff HEAD~3 HEAD --stat     # resumen de los últimos 3 commits juntos\ngit diff a1b2c3d HEAD -- precios.csv   # solo un archivo (a1b2c3d = un hash)\ngit diff main temporada-invierno        # dos ramas (compara sus últimos commits)"
+    },
+    {
+     "type": "p",
+     "text": "`git diff A B` compara dos **instantáneas** y te dice cómo pasar de A a B. No le importan los commits intermedios: si algo cambió y luego volvió a su estado original, no aparece."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El orden importa: `git diff HEAD~1 HEAD` muestra lo que *añadió* el último commit; `git diff HEAD HEAD~1` muestra exactamente lo mismo **al revés** (los `+` pasan a ser `-`). Si un diff «no tiene sentido», revisa el orden."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,6990\nIndividual de lana,4990\nCanasto de mimbre,12990\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Artesanías del Sur\nTienda en línea de artesanía de Chiloé.\n__FIN__\ngit add -A\ngit commit -q -m 'Publica el catálogo inicial'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,6990\nIndividual de lana,4990\nCanasto de mimbre,12990\nChal de alpaca,24990\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el chal de alpaca'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-05 16:30'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,7490\nIndividual de lana,4990\nCanasto de mimbre,12990\nChal de alpaca,24990\n__FIN__\ngit add -A\ngit commit -q -m 'Sube el precio de la taza'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:45'\nmkdir -p \"$(dirname 'descripciones.md')\"\ncat > 'descripciones.md' <<'__FIN__'\n## Chal de alpaca\nTejido a mano en Castro, 100 % alpaca.\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Artesanías del Sur\nTienda en línea de artesanía de Chiloé.\nDespachos a todo Chile.\n__FIN__\ngit add -A\ngit commit -q -m 'Describe los productos'\nyo",
+     "cwd": "tienda",
+     "code": "git log --oneline\ngit diff HEAD~1 HEAD --stat\ngit diff HEAD~2 HEAD~1\ngit diff HEAD~3 HEAD --stat\ngit diff HEAD~3 HEAD -- precios.csv\ngit diff HEAD HEAD~3 -- precios.csv",
+     "caption": "Catálogo de una tienda de artesanía con 4 commits. Compara la penúltima y la última línea: es el mismo diff con los signos invertidos."
+    },
+    {
+     "type": "h",
+     "text": "git show: un commit por dentro"
+    },
+    {
+     "type": "p",
+     "text": "`git show` (sin argumentos, `HEAD`) imprime los datos del commit —hash, autor, fecha, mensaje— y, debajo, su diff respecto de su padre. Es la forma directa de responder «¿qué hizo este commit?». Acepta las mismas opciones de resumen que `git diff`: `--stat`, `--name-only`, `--name-status`, `--word-diff`."
+    },
+    {
+     "type": "p",
+     "text": "Con la sintaxis `REV:ruta` ves un **archivo** tal como estaba en cualquier commit, sin tocar tu directorio de trabajo: `git show HEAD~2:precios.csv`. La ruta se escribe desde la raíz del repositorio (o con `./` si quieres que sea relativa a la carpeta en la que estás)."
+    },
+    {
+     "type": "diagram",
+     "title": "Comparar dos ramas",
+     "mermaid": "gitGraph\n  commit id: \"Catálogo inicial\"\n  commit id: \"Chal de alpaca\"\n  commit id: \"Sube la taza\"\n  commit id: \"Descripciones\"\n  branch temporada-invierno\n  commit id: \"Gorros y rebaja\"\n  checkout main",
+     "caption": "`git diff main temporada-invierno` compara la instantánea de «Descripciones» con la de «Gorros y rebaja». Crear y mover ramas lo aprendes en s05; aquí ya vienen hechas."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,6990\nIndividual de lana,4990\nCanasto de mimbre,12990\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Artesanías del Sur\nTienda en línea de artesanía de Chiloé.\n__FIN__\ngit add -A\ngit commit -q -m 'Publica el catálogo inicial'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,6990\nIndividual de lana,4990\nCanasto de mimbre,12990\nChal de alpaca,24990\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el chal de alpaca'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-05 16:30'\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,7490\nIndividual de lana,4990\nCanasto de mimbre,12990\nChal de alpaca,24990\n__FIN__\ngit add -A\ngit commit -q -m 'Sube el precio de la taza'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:45'\nmkdir -p \"$(dirname 'descripciones.md')\"\ncat > 'descripciones.md' <<'__FIN__'\n## Chal de alpaca\nTejido a mano en Castro, 100 % alpaca.\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Artesanías del Sur\nTienda en línea de artesanía de Chiloé.\nDespachos a todo Chile.\n__FIN__\ngit add -A\ngit commit -q -m 'Describe los productos'\nyo\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-09 10:00'\ngit switch -q -c temporada-invierno\nmkdir -p \"$(dirname 'precios.csv')\"\ncat > 'precios.csv' <<'__FIN__'\nproducto,precio\nTaza de cerámica,7490\nIndividual de lana,4990\nCanasto de mimbre,12990\nChal de alpaca,22990\nGorro de lana,8990\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega gorros y rebaja el chal'\ngit switch -q main\nyo",
+     "cwd": "tienda",
+     "code": "git show\ngit show --stat HEAD~2\ngit show HEAD~3:precios.csv\ncat precios.csv\ngit log --oneline --graph --all --decorate\ngit diff main temporada-invierno\ngit diff main temporada-invierno --stat",
+     "caption": "`git show HEAD~3:precios.csv` muestra la versión inicial del catálogo, mientras que `cat` muestra la actual. Al final, compara dos ramas."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "No confundas `git show HEAD` con `git diff HEAD`. El primero muestra **el último commit** (lo que cambió respecto a su padre). El segundo muestra lo que tu **directorio de trabajo** tiene de distinto respecto al último commit (tus cambios sin confirmar)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Hash (SHA)",
+       "en": "commit hash / SHA-1",
+       "def": "Identificador único de un commit: 40 caracteres hexadecimales calculados a partir de su contenido."
+      },
+      {
+       "term": "Revisión",
+       "en": "revision",
+       "def": "Cualquier forma de nombrar un commit: hash, `HEAD`, `HEAD~2`, una rama… Están todas en `git help revisions`."
+      },
+      {
+       "term": "Padre",
+       "en": "parent",
+       "def": "El commit anterior del que parte un commit. Un commit de fusión tiene dos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l3",
+   "title": "git log a fondo: vistas y filtros",
+   "minutes": 25,
+   "goals": [
+    "Ajustar la vista del historial con `--oneline`, `-n`, `--stat`, `-p`, `--graph` y `--all`",
+    "Filtrar commits por autor, fecha, mensaje, contenido y ruta, combinando varios filtros",
+    "Seguir la historia de un archivo renombrado con `--follow`"
+   ],
+   "takeaways": [
+    "Usa `git log` combinando **vista** (cómo se muestra) y **filtros** (qué commits).",
+    "`--author` y `--grep` son expresiones regulares y distinguen mayúsculas (salvo con `-i`): sé específico.",
+    "Filtros de distinto tipo se combinan con «y»; varios `--grep` (o varios `--author`) entre sí, con «o» (salvo `--all-match`).",
+    "Una fecha sin hora en `--since/--until` usa la hora actual: indica la hora cuando busques días exactos.",
+    "`-S\"texto\"` encuentra commits que añadieron o quitaron ese texto; `--follow` sigue un archivo más allá de sus renombres."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un proyecto real tiene cientos o miles de commits, y `git log` a secas es como un libro sin índice. La habilidad profesional es combinar dos cosas: **cómo** quieres ver los commits (la vista) y **cuáles** quieres ver (los filtros)."
+    },
+    {
+     "type": "h",
+     "text": "Vistas"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`--oneline`",
+       "una línea por commit: hash corto + asunto del mensaje"
+      ],
+      [
+       "`-n 5` o `-5`",
+       "solo los 5 commits más recientes (de los que cumplan los filtros)"
+      ],
+      [
+       "`--stat`",
+       "añade qué archivos cambió cada commit y cuántas líneas"
+      ],
+      [
+       "`-p` (`--patch`)",
+       "añade el diff completo de cada commit"
+      ],
+      [
+       "`--graph`",
+       "dibuja las ramas y fusiones a la izquierda"
+      ],
+      [
+       "`--all`",
+       "incluye todas las ramas, no solo lo alcanzable desde `HEAD`"
+      ],
+      [
+       "`--decorate`",
+       "muestra junto a cada commit las ramas y etiquetas que lo apuntan, como `(HEAD -> main)`"
+      ],
+      [
+       "`--reverse`",
+       "del más antiguo al más reciente"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n__FIN__\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el módulo de reservas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:30'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad > personas);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la gestión de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta cómo reservar'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:15'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida la fecha de la reserva'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Permite reservas de hasta 10 personas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 15:40'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad >= personas) ?? null;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige la asignación de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-12 18:05'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n\nfunction cancelarReserva(reserva) {\n  return { ...reserva, estado: 'cancelada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega cancelación de reservas'\n# rama con trabajo en curso (las ramas se ven en s05)\ngit switch -q -c recordatorios\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-13 10:00'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Envía un recordatorio por correo'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-14 11:20'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n\nfunction programarRecordatorios() {\n  return '0 9 * * *';\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Programa recordatorios diarios'\ngit switch -q main\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-15 10:30'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\nPara cancelar, usa cancelarReserva(reserva).\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+     "cwd": "reservas",
+     "code": "git log -2\ngit log --oneline\ngit log --oneline -3\ngit log --stat -2\ngit log -p -1\ngit log --oneline --graph --all --decorate",
+     "caption": "App de reservas de un restaurante con tres personas trabajando. La última orden muestra también la rama `recordatorios`, que `git log` sin `--all` no ve."
+    },
+    {
+     "type": "diagram",
+     "title": "Lo que ve git log con y sin --all",
+     "mermaid": "gitGraph\n  commit id: \"Crea reservas\"\n  commit id: \"Mesas\"\n  commit id: \"Cancelación\"\n  branch recordatorios\n  commit id: \"Envía recordatorio\"\n  commit id: \"Programa diarios\"\n  checkout main\n  commit id: \"Actualiza README\"",
+     "caption": "Estando en `main`, `git log` recorre los padres desde `HEAD` («Actualiza README» y hacia atrás) y no ve los dos commits de `recordatorios`. `--all` parte de todas las ramas."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git log` muestra `(HEAD -> main)` junto al commit al que apunta cada rama: por defecto (`log.decorate=auto`) Git decora cuando la salida va a la pantalla, y la terminal de práctica viene configurada para decorar siempre. Si rediriges la salida a un archivo o a otro programa, las decoraciones desaparecen; `--decorate` las fuerza. El atajo más famoso: `git log --oneline --graph --all --decorate`; algunos lo recuerdan como «a dog» (**a**ll, **d**ecorate, **o**neline, **g**raph)."
+    },
+    {
+     "type": "h",
+     "text": "Filtros"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Filtro",
+      "Selecciona commits…",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`--author=<patrón>`",
+       "cuyo autor (nombre y correo) coincide con el patrón",
+       "`--author=\"Ana Pérez\"`"
+      ],
+      [
+       "`--since` / `--after`",
+       "más recientes que una fecha",
+       "`--since=\"2026-09-10 00:00\"` o `--since=\"2 weeks ago\"`"
+      ],
+      [
+       "`--until` / `--before`",
+       "más antiguos que una fecha",
+       "`--until=\"2026-09-12 23:59\"`"
+      ],
+      [
+       "`--grep=<patrón>`",
+       "cuyo mensaje coincide con el patrón",
+       "`--grep=\"reserva\"`"
+      ],
+      [
+       "`-i`",
+       "hace que `--author` y `--grep` ignoren mayúsculas",
+       "`-i --grep=\"pago\"`"
+      ],
+      [
+       "`-S\"texto\"`",
+       "que cambiaron cuántas veces aparece ese texto (lo añadieron o lo quitaron)",
+       "`-S\"MAX_PERSONAS\"`"
+      ],
+      [
+       "`-- ruta`",
+       "que tocaron ese archivo o carpeta",
+       "`-- src/mesas.js`"
+      ],
+      [
+       "`--no-merges`",
+       "que no son fusiones",
+       "`git log --no-merges`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n__FIN__\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el módulo de reservas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:30'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad > personas);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la gestión de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta cómo reservar'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:15'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida la fecha de la reserva'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Permite reservas de hasta 10 personas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 15:40'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad >= personas) ?? null;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige la asignación de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-12 18:05'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n\nfunction cancelarReserva(reserva) {\n  return { ...reserva, estado: 'cancelada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega cancelación de reservas'\n# rama con trabajo en curso (las ramas se ven en s05)\ngit switch -q -c recordatorios\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-13 10:00'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Envía un recordatorio por correo'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-14 11:20'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n\nfunction programarRecordatorios() {\n  return '0 9 * * *';\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Programa recordatorios diarios'\ngit switch -q main\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-15 10:30'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\nPara cancelar, usa cancelarReserva(reserva).\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+     "cwd": "reservas",
+     "code": "git log --oneline --author=\"Ana Pérez\"\ngit log --oneline --author=Ana\ngit log --oneline -i --grep=\"reserva\"\ngit log --oneline --since=\"2026-09-10 00:00\" --until=\"2026-09-12 23:59\"\ngit log --oneline --author=\"Ana Pérez\" --since=\"2026-09-10 00:00\"\ngit log --oneline -S\"MAX_PERSONAS\"\ngit log --oneline -S\"MAX_PERSONAS = 10\"\ngit log --oneline -- src/mesas.js",
+     "caption": "Compara las dos primeras: `--author=Ana` también encuentra a Ana Luisa Rojas. Y mira el pico (`-S`): el commit que cambió el valor de 8 a 10 **no** aparece con `-S\"MAX_PERSONAS\"`, porque el nombre sigue apareciendo una vez; sí aparece al buscar `\"MAX_PERSONAS = 10\"`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`--author` es una **expresión regular** que se busca en «Nombre <correo>» y distingue mayúsculas. `--author=Ana` encuentra a «Ana Pérez», a «Ana Luisa Rojas» y a cualquiera con «Ana» en el nombre o en el correo. Sé específico (`--author=\"Ana Pérez\"` o `--author=\"ana.perez@\"`) y añade `-i` si no quieres distinguir mayúsculas."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Fechas sin hora: `--until=\"2026-09-12\"` **no** significa «hasta el fin del 12 de septiembre», sino «hasta el 12 de septiembre **a la hora actual**». Si lo ejecutas a las 9 de la mañana, un commit de ese día a las 18:00 queda fuera. Para días exactos escribe la hora: `--since=\"2026-09-10 00:00\" --until=\"2026-09-12 23:59\"`. Las fechas relativas (`\"2 weeks ago\"`, `yesterday`) también funcionan, y `today` significa «desde la medianoche»."
+    },
+    {
+     "type": "h",
+     "text": "El pico: -S para buscar dentro del código"
+    },
+    {
+     "type": "p",
+     "text": "`git log -S\"texto\"` (el *pickaxe* o «pico») no busca en los mensajes, sino en los **cambios**: lista los commits en los que cambió el número de veces que aparece ese texto en algún archivo. En la práctica, los commits que lo **añadieron** o lo **quitaron**. El más antiguo de la lista suele ser el que lo introdujo. Añade `-p` para ver el diff de cada uno. En s11 verás su hermano `-G`, que busca con expresiones regulares."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git log --reverse -1` **no** muestra el commit más antiguo: Git primero limita a 1 (el más reciente) y después invierte el orden. Para ver el más antiguo de una lista, ejecuta la búsqueda con `--oneline` y mira la **última** línea."
+    },
+    {
+     "type": "h",
+     "text": "Historia de un archivo y renombres"
+    },
+    {
+     "type": "p",
+     "text": "`git log -- ruta` lista los commits que tocaron ese archivo. Pero Git **no guarda renombres**: guarda instantáneas, y al comparar dos de ellas *deduce* que un archivo se renombró si desaparece uno y aparece otro muy parecido. Por eso `git log -- src/tarifas.js` se detiene en el commit que movió el archivo: antes de eso, `src/tarifas.js` no existía. `--follow` le pide a Git que siga la pista del archivo a través de los renombres (solo funciona con **un** archivo)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo despachos\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Despachos\nCálculo de costos de envío.\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-02 12:00'\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 2990;\n\nfunction tarifa(kilos, esRegion) {\n  return TARIFA_BASE + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el cálculo de tarifas'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-04 17:10'\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 2990;\nconst RECARGO_REGIONES = 1500;\n\nfunction tarifa(kilos, esRegion) {\n  return TARIFA_BASE + kilos * 450 + (esRegion ? RECARGO_REGIONES : 0);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega recargo para regiones'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-07 09:00'\nmkdir -p src\ngit mv tarifas.js src/tarifas.js\ngit add -A\ngit commit -q -m 'Mueve el código a src/'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-09 15:20'\nmkdir -p \"$(dirname 'src/tarifas.js')\"\ncat > 'src/tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 2990;\nconst RECARGO_REGIONES = 1500;\n\nfunction tarifa(kilos, esRegion) {\n  const total = TARIFA_BASE + kilos * 450 + (esRegion ? RECARGO_REGIONES : 0);\n  return Math.round(total);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Redondea las tarifas al peso'\nyo",
+     "cwd": "despachos",
+     "code": "git log --oneline -- src/tarifas.js\ngit log --oneline --follow -- src/tarifas.js\ngit log --oneline --stat --follow -- src/tarifas.js",
+     "caption": "Sin `--follow` la historia de `src/tarifas.js` parece empezar en «Mueve el código a src/». Con `--follow` aparecen también los commits en los que se llamaba `tarifas.js`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Cómo se combinan los filtros: los de **distinto tipo** se suman con «y» (autor **y** fecha **y** mensaje). Varios `--grep` entre sí se combinan con «o», salvo que añadas `--all-match`; varios `--author` también se combinan con «o». Otra pregunta típica: «¿qué opción muestra la historia de un archivo aunque haya cambiado de nombre?» → `--follow`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Pico",
+       "en": "pickaxe",
+       "def": "La búsqueda `-S\"texto\"` de `git log`: encuentra commits que añadieron o quitaron un texto en el código."
+      },
+      {
+       "term": "Expresión regular",
+       "en": "regular expression / regex",
+       "def": "Patrón de búsqueda de texto. `--author` y `--grep` las usan: `--grep=\"^Corrige\"` busca mensajes que empiezan con «Corrige»."
+      },
+      {
+       "term": "Detección de renombres",
+       "en": "rename detection",
+       "def": "Git deduce que un archivo se renombró comparando contenidos (por defecto, al menos 50 % de similitud)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l4",
+   "title": "Formatos a medida, rangos A..B y git blame",
+   "minutes": 22,
+   "goals": [
+    "Crear una salida de `git log` a medida con `--format` y `--date`",
+    "Listar los commits de un rango `A..B` y distinguirlo de `git diff A..B`",
+    "Averiguar con `git blame` quién cambió cada línea y en qué commit"
+   ],
+   "takeaways": [
+    "`--format=\"%h %an %ad %s\"` arma la salida que necesites; `--date=short` da fechas AAAA-MM-DD.",
+    "El autor escribió el cambio; el *committer* lo aplicó. Casi siempre coinciden, pero no siempre.",
+    "`git log A..B` = commits de B que no están en A. `git diff A..B` = lo mismo que `git diff A B`.",
+    "`git blame` muestra el **último** commit que tocó cada línea; para saber *por qué*, abre ese commit con `git show`."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "Formatos predefinidos y a medida"
+    },
+    {
+     "type": "p",
+     "text": "`--pretty` elige un formato predefinido: `oneline`, `short`, `medium` (el de siempre), `full` y `fuller`. Con `--format=\"…\"` (equivalente a `--pretty=tformat:\"…\"`) armas el tuyo con marcadores:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Marcador",
+      "Imprime",
+      "Marcador",
+      "Imprime"
+     ],
+     "rows": [
+      [
+       "`%H` / `%h`",
+       "hash completo / abreviado",
+       "`%s`",
+       "asunto (primera línea del mensaje)"
+      ],
+      [
+       "`%an` / `%ae`",
+       "nombre / correo del autor",
+       "`%b`",
+       "cuerpo del mensaje"
+      ],
+      [
+       "`%ad`",
+       "fecha del autor (respeta `--date`)",
+       "`%d`",
+       "ramas y etiquetas que apuntan al commit"
+      ],
+      [
+       "`%ar`",
+       "fecha relativa («2 weeks ago»)",
+       "`%cn` / `%cd`",
+       "nombre / fecha de quien hizo el commit"
+      ],
+      [
+       "`%n`",
+       "salto de línea",
+       "`%C(yellow)…%C(reset)`",
+       "colores"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "`--date` controla cómo se imprime `%ad`: `short` (`2026-09-15`), `iso` (`2026-09-15 10:30:00 -0300`), `relative` (`12 days ago`) y más."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n__FIN__\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el módulo de reservas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:30'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad > personas);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la gestión de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta cómo reservar'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:15'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida la fecha de la reserva'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Permite reservas de hasta 10 personas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 15:40'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad >= personas) ?? null;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige la asignación de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-12 18:05'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n\nfunction cancelarReserva(reserva) {\n  return { ...reserva, estado: 'cancelada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega cancelación de reservas'\n# rama con trabajo en curso (las ramas se ven en s05)\ngit switch -q -c recordatorios\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-13 10:00'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Envía un recordatorio por correo'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-14 11:20'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n\nfunction programarRecordatorios() {\n  return '0 9 * * *';\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Programa recordatorios diarios'\ngit switch -q main\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-15 10:30'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\nPara cancelar, usa cancelarReserva(reserva).\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+     "cwd": "reservas",
+     "code": "git log --pretty=short -1\ngit log --pretty=fuller -1\ngit log --format=\"%h %ad %an: %s\" --date=short\ngit log --format=\"%h %ar %s\" -3\ngit log --format=\"%C(yellow)%h%C(reset) %s %C(cyan)(%an)%C(reset)\" -4",
+     "caption": "`fuller` muestra dos personas y dos fechas: autor y *committer*. Las fechas relativas dependen del día en que ejecutes la demostración."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Autor o *committer*? El **autor** es quien escribió el cambio; el **committer**, quien lo registró en el repositorio. Coinciden casi siempre, pero difieren cuando alguien aplica el parche de otra persona o reescribe commits ajenos (cherry-pick en s10, rebase en s09). `--pretty=fuller` muestra ambos."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Un formato largo como `git log --oneline --graph --all --decorate` nadie lo escribe entero cada día: los profesionales lo guardan como **alias** (por ejemplo `git lg`). Lo harás en s13."
+    },
+    {
+     "type": "h",
+     "text": "Rangos A..B (introducción)"
+    },
+    {
+     "type": "p",
+     "text": "`git log A..B` lista los commits alcanzables desde B que **no** son alcanzables desde A. Dicho de forma práctica: «¿qué tiene B que A no tiene?»."
+    },
+    {
+     "type": "diagram",
+     "title": "main..recordatorios",
+     "mermaid": "gitGraph\n  commit id: \"Crea reservas\"\n  commit id: \"Cancelación\"\n  branch recordatorios\n  commit id: \"Envía recordatorio\"\n  commit id: \"Programa diarios\"\n  checkout main\n  commit id: \"Actualiza README\"",
+     "caption": "`git log main..recordatorios` → «Envía recordatorio» y «Programa diarios» (lo que traería fusionar la rama). `git log recordatorios..main` → «Actualiza README»."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git log main..feature` — qué commits traería fusionar `feature` en `main`.",
+      "`git log HEAD~3..HEAD` — los últimos 3 commits.",
+      "`git log origin/main..main` — lo que todavía no subiste al servidor (lo verás en s07)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los dos puntos significan cosas distintas según el comando. En `git log A..B` es un **conjunto de commits**. En `git diff A..B` es simplemente `git diff A B`: compara las dos instantáneas finales, así que también muestra, invertidos, los cambios que hizo A y B no tiene. Para ver solo lo que hizo la rama desde que se separó existe `git diff A...B` (tres puntos); lo retomarás al fusionar ramas."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n__FIN__\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el módulo de reservas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:30'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad > personas);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la gestión de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta cómo reservar'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:15'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 8;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida la fecha de la reserva'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Permite reservas de hasta 10 personas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 15:40'\nmkdir -p \"$(dirname 'src/mesas.js')\"\ncat > 'src/mesas.js' <<'__FIN__'\nconst mesas = [2, 2, 4, 4, 6, 8];\n\nfunction asignarMesa(personas) {\n  return mesas.find((capacidad) => capacidad >= personas) ?? null;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige la asignación de mesas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-12 18:05'\nmkdir -p \"$(dirname 'src/reservas.js')\"\ncat > 'src/reservas.js' <<'__FIN__'\nconst MAX_PERSONAS = 10;\n\nfunction crearReserva(nombre, personas, fecha) {\n  if (personas > MAX_PERSONAS) {\n    throw new Error('Demasiadas personas');\n  }\n  if (fecha < new Date()) {\n    throw new Error('La fecha ya pasó');\n  }\n  return { nombre, personas, fecha, estado: 'confirmada' };\n}\n\nfunction cancelarReserva(reserva) {\n  return { ...reserva, estado: 'cancelada' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega cancelación de reservas'\n# rama con trabajo en curso (las ramas se ven en s05)\ngit switch -q -c recordatorios\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-13 10:00'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Envía un recordatorio por correo'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-14 11:20'\nmkdir -p \"$(dirname 'src/recordatorios.js')\"\ncat > 'src/recordatorios.js' <<'__FIN__'\nfunction enviarRecordatorio(reserva) {\n  return `Hola ${reserva.nombre}, te esperamos`;\n}\n\nfunction programarRecordatorios() {\n  return '0 9 * * *';\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Programa recordatorios diarios'\ngit switch -q main\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-15 10:30'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Reservas — Restaurante La Picá de la Esquina\n\nPara reservar, llama a crearReserva(nombre, personas, fecha).\nPara cancelar, usa cancelarReserva(reserva).\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+     "cwd": "reservas",
+     "code": "git log --oneline --graph --all --decorate\ngit log --oneline main..recordatorios\ngit log --oneline recordatorios..main\ngit log --oneline HEAD~2..HEAD\ngit diff main..recordatorios --stat\ngit diff main...recordatorios --stat",
+     "caption": "Observa las dos últimas: con dos puntos aparece `README.md` (el cambio de `main`, invertido); con tres puntos, solo lo que hizo la rama."
+    },
+    {
+     "type": "h",
+     "text": "git blame: ¿quién cambió esta línea?"
+    },
+    {
+     "type": "p",
+     "text": "`git blame archivo` anota cada línea con el commit, el autor y la fecha del **último cambio** que la tocó. Por ejemplo:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "282b5575 (Camila Torres 2026-09-05 18:30:00 -0300 2) 1. Las canchas se reservan con 48 horas de anticipación."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Parte",
+      "En el ejemplo",
+      "Significa"
+     ],
+     "rows": [
+      [
+       "hash",
+       "`282b5575`",
+       "el último commit que cambió esta línea"
+      ],
+      [
+       "autor",
+       "Camila Torres",
+       "quien escribió ese commit"
+      ],
+      [
+       "fecha",
+       "`2026-09-05 18:30:00 -0300`",
+       "cuándo (fecha de autor, con su zona horaria)"
+      ],
+      [
+       "número",
+       "`2`",
+       "número de línea en la versión actual del archivo"
+      ],
+      [
+       "contenido",
+       "1. Las canchas se reservan…",
+       "la línea tal como está hoy"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "El hash tiene un carácter más de lo normal para dejar sitio al `^`: un `^` delante (`^c3313f7`) marca un commit *límite* de la búsqueda; si no indicas un rango, es el primer commit del repositorio: la línea viene de ahí y no hay nada más antiguo.",
+      "`-L 2,3` limita a esas líneas (también `-L 10,+5`: desde la 10, cinco líneas).",
+      "`--date=short` acorta la fecha; `-e` muestra el correo en vez del nombre.",
+      "Si el archivo se renombró, `blame` lo sigue solo y añade una columna con el nombre que tenía el archivo en cada commit."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo club\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'reglamento.txt')\"\ncat > 'reglamento.txt' <<'__FIN__'\nReglamento de uso de canchas — Club Deportivo Los Aromos\n1. Las canchas se reservan con 24 horas de anticipación.\n2. Cada reserva dura como máximo 90 minutos.\n3. Se debe usar calzado deportivo.\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el reglamento de canchas'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-05 18:30'\nmkdir -p \"$(dirname 'reglamento.txt')\"\ncat > 'reglamento.txt' <<'__FIN__'\nReglamento de uso de canchas — Club Deportivo Los Aromos\n1. Las canchas se reservan con 48 horas de anticipación.\n2. Cada reserva dura como máximo 90 minutos.\n3. Se debe usar calzado deportivo.\n__FIN__\ngit add -A\ngit commit -q -m 'Amplía el plazo de reserva'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 12:00'\nmkdir -p \"$(dirname 'reglamento.txt')\"\ncat > 'reglamento.txt' <<'__FIN__'\nReglamento de uso de canchas — Club Deportivo Los Aromos\n1. Las canchas se reservan con 48 horas de anticipación.\n2. Cada reserva dura como máximo 60 minutos.\n3. Se debe usar calzado deportivo.\n4. Cancela con al menos 12 horas de aviso.\n__FIN__\ngit add -A\ngit commit -q -m 'Ajusta la duración de las reservas'\nyo",
+     "cwd": "club",
+     "code": "git blame reglamento.txt\ngit blame -L 2,3 reglamento.txt\ngit blame --date=short reglamento.txt\ngit show --stat 282b557",
+     "caption": "El reglamento de un club deportivo, editado por tres personas. La última orden abre el commit que cambió el plazo de reserva para leer su mensaje: el *por qué* está ahí."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`blame` no busca culpables: muestra el **último** commit que tocó la línea, no quién la escribió originalmente. Un cambio de sangría o un comentario añadido «se apropian» de la línea. Para ir más atrás tienes `git log -S` y, en s11, `blame -w`, `-C` y `--ignore-rev`. Por cierto: en GitHub cada archivo tiene un botón **Blame**, y editores como VS Code lo muestran junto a cada línea."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: «¿qué comando muestra quién modificó por última vez cada línea de un archivo?» → `git blame`. «¿Cómo limitas blame a las líneas 10 a 20?» → `git blame -L 10,20 archivo`. «¿Qué muestra `git log main..feature`?» → los commits de `feature` que no están en `main`."
+    }
+   ]
+  },
+  {
+   "id": "s03-l5",
+   "title": ".gitignore: que Git no vea lo que no debe",
+   "minutes": 25,
+   "goals": [
+    "Escribir reglas de `.gitignore` con `*`, `/`, `**` y `!` que ignoren exactamente lo que quieres",
+    "Diagnosticar con `git check-ignore -v` por qué un archivo se ignora (o no)",
+    "Configurar un ignore personal para todos tus repositorios con `core.excludesFile`"
+   ],
+   "takeaways": [
+    "`.gitignore` solo afecta a archivos **sin seguimiento**; lo que ya está en un commit se sigue rastreando.",
+    "`/` al final = solo carpetas; `/` al principio o en medio = relativo a la carpeta del `.gitignore`; sin `/` = en cualquier nivel.",
+    "No se puede re-incluir con `!` un archivo cuya carpeta padre está ignorada: ignora el contenido (`logs/*`), no la carpeta.",
+    "`git check-ignore -v ruta` te dice qué archivo, qué línea y qué patrón deciden.",
+    "Lo del proyecto va en `.gitignore` (se confirma); lo tuyo (sistema, editor) en el ignore global."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un repositorio debe contener lo que hace falta para **reconstruir** el proyecto, no lo que se puede regenerar ni lo que es privado. Lo que casi nunca debe entrar:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Dependencias descargables**: `node_modules/`, `venv/`, `vendor/` (se reinstalan con `npm install`, `pip install`…).",
+      "**Resultados de compilar**: `dist/`, `build/`, `*.class`, `__pycache__/`.",
+      "**Logs y temporales**: `*.log`, `*.tmp`.",
+      "**Secretos**: `.env`, claves, credenciales. ¡Lo más grave!",
+      "**Basura del sistema o del editor**: `.DS_Store` (macOS), `Thumbs.db` (Windows), `.idea/`."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "El archivo `.gitignore` (en la raíz del proyecto, con el punto delante) contiene un patrón por línea. Se confirma como cualquier otro archivo para que todo el equipo comparta las mismas reglas."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api-pedidos\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'package.json')\"\ncat > 'package.json' <<'__FIN__'\n{\n  \"name\": \"api-pedidos\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": { \"express\": \"^5.1.0\" }\n}\n__FIN__\nmkdir -p \"$(dirname 'src/index.js')\"\ncat > 'src/index.js' <<'__FIN__'\nconst express = require('express');\nconst app = express();\napp.listen(3000);\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\n# cosas que genera el proyecto y que NO deben ir al repositorio\nmkdir -p \"$(dirname 'node_modules/express/index.js')\"\ncat > 'node_modules/express/index.js' <<'__FIN__'\nmodule.exports = function express() {};\n__FIN__\nmkdir -p \"$(dirname 'node_modules/express/package.json')\"\ncat > 'node_modules/express/package.json' <<'__FIN__'\n{ \"name\": \"express\", \"version\": \"5.1.0\" }\n__FIN__\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nDB_PASSWORD=pedidos_2026_secreto\n__FIN__\nmkdir -p \"$(dirname 'logs/app.log')\"\ncat > 'logs/app.log' <<'__FIN__'\n[2026-09-01 10:00] servidor iniciado\n__FIN__\nmkdir -p \"$(dirname 'npm-debug.log')\"\ncat > 'npm-debug.log' <<'__FIN__'\nnpm ERR! ejemplo\n__FIN__",
+     "cwd": "api-pedidos",
+     "code": "git status -s\necho \"node_modules/\" > .gitignore\necho \".env\" >> .gitignore\necho \"*.log\" >> .gitignore\ncat .gitignore\ngit status -s\ngit check-ignore -v node_modules/express/index.js .env logs/app.log npm-debug.log\ngit status -s --ignored",
+     "caption": "Antes del `.gitignore`, `git status` ofrece añadir dependencias, un secreto y logs. Después solo queda el propio `.gitignore`. `--ignored` lista con `!!` lo que Git está ignorando."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Escribe los patrones **entre comillas**. Sin ellas, la terminal expande `*.log` a los archivos que existan en ese momento (`echo *.log` imprime `npm-debug.log`) y guardarías un nombre concreto en vez del patrón. Para los que empiezan con `!` usa comillas **simples** (`'!logs/.gitkeep'`): en bash y zsh, `!` entre comillas dobles activa la expansión del historial y verás «event not found». Más cómodo aún: `code .gitignore` y escribirlo en el editor."
+    },
+    {
+     "type": "h",
+     "text": "Las reglas de los patrones"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Patrón",
+      "Ignora",
+      "No ignora"
+     ],
+     "rows": [
+      [
+       "`*.log`",
+       "`app.log`, `logs/error.log` (en cualquier nivel)",
+       "`log.txt`"
+      ],
+      [
+       "`node_modules/`",
+       "la carpeta `node_modules` en cualquier nivel",
+       "un *archivo* llamado `node_modules`"
+      ],
+      [
+       "`/build/`",
+       "solo la carpeta `build` de la raíz",
+       "`src/build/`"
+      ],
+      [
+       "`build/`",
+       "cualquier carpeta `build`, también `src/build/`",
+       "—"
+      ],
+      [
+       "`doc/*.txt`",
+       "`doc/notas.txt` (anclado a la raíz por la `/` del medio)",
+       "`doc/api/x.txt` (`*` no cruza `/`) ni `src/doc/a.txt`"
+      ],
+      [
+       "`doc/**/*.txt`",
+       "`doc/a.txt`, `doc/api/x.txt`, `doc/a/b/c.txt`",
+       "—"
+      ],
+      [
+       "`**/temp`",
+       "`temp` en cualquier nivel (igual que `temp`)",
+       "—"
+      ],
+      [
+       "`foto?.png`",
+       "`foto1.png`, `fotoA.png` (`?` = un carácter)",
+       "`foto10.png`"
+      ],
+      [
+       "`!.env.example`",
+       "re-incluye ese archivo si una regla anterior lo ignoraba",
+       "—"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "Las líneas vacías no hacen nada y las que empiezan con `#` son comentarios.",
+      "Una `/` **al final** hace que el patrón solo coincida con carpetas.",
+      "Una `/` **al principio o en medio** ancla el patrón a la carpeta donde está el `.gitignore`. Sin `/` (salvo la final) coincide en cualquier nivel.",
+      "`*` coincide con cualquier cosa menos `/`; `**` cruza carpetas.",
+      "`!` niega: vuelve a incluir lo que una regla anterior excluyó. Si varias reglas coinciden, **gana la última**.",
+      "**No se puede re-incluir un archivo si su carpeta padre está excluida**: Git ni siquiera entra a mirar dentro de una carpeta ignorada."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo informes\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Informes de ventas\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nmkdir -p \"$(dirname 'logs/.gitkeep')\"\ncat > 'logs/.gitkeep' <<'__FIN__'\n\n__FIN__\nmkdir -p \"$(dirname 'logs/app.log')\"\ncat > 'logs/app.log' <<'__FIN__'\n[2026-09-01] inicio\n__FIN__\nmkdir -p \"$(dirname 'logs/errores.log')\"\ncat > 'logs/errores.log' <<'__FIN__'\n[2026-09-01] sin errores\n__FIN__",
+     "cwd": "informes",
+     "code": "printf 'logs/\\n!logs/.gitkeep\\n' > .gitignore\ngit check-ignore -v logs/.gitkeep\ngit status -s\nprintf 'logs/*\\n!logs/.gitkeep\\n' > .gitignore\ngit check-ignore -v logs/.gitkeep logs/app.log\ngit status -s -uall",
+     "caption": "Queremos ignorar los logs pero conservar `logs/.gitkeep` (Git no guarda carpetas vacías, así que se usa un archivo vacío como convención). Con `logs/` la excepción no funciona: la carpeta entera queda fuera. Con `logs/*` sí."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Con `-v`, `git check-ignore` también lista las rutas que coinciden con una regla de negación: en `.gitignore:2:!logs/.gitkeep` el `!` indica que el archivo **no** se ignora. Sin `-v` solo imprime las rutas ignoradas (y `-q` no imprime nada: solo responde con el código de salida, ideal para scripts)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo web\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Web\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nmkdir -p \"$(dirname 'build/app.js')\"\ncat > 'build/app.js' <<'__FIN__'\n// archivo generado por la compilación\n__FIN__\nmkdir -p \"$(dirname 'src/build/generador.js')\"\ncat > 'src/build/generador.js' <<'__FIN__'\n// ¡código fuente que genera la compilación!\n__FIN__",
+     "cwd": "web",
+     "code": "printf 'build/\\n' > .gitignore\ngit check-ignore -v build/app.js src/build/generador.js\nprintf '/build/\\n' > .gitignore\ngit check-ignore -v build/app.js src/build/generador.js\ngit status -s -uall",
+     "caption": "`build/` se come también `src/build/`, que es código fuente. Con `/build/` solo se ignora la carpeta de la raíz."
+    },
+    {
+     "type": "h",
+     "text": "¿Por qué Git ignora (o no) este archivo?"
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo decide Git si ignora una ruta",
+     "mermaid": "flowchart TD\n  A[\"¿La ruta ya está rastreada (en el index)?\"] -->|\"Sí\"| B[\"No se ignora: .gitignore no la afecta\"]\n  A -->|\"No\"| C[\"¿Alguna carpeta padre está ignorada?\"]\n  C -->|\"Sí\"| D[\"Ignorada (ni se mira dentro)\"]\n  C -->|\"No\"| E[\"Busca patrones por orden de prioridad\"]\n  E --> F[\"1. .gitignore más cercano al archivo\"]\n  F --> G[\"2. .git/info/exclude\"]\n  G --> H[\"3. core.excludesFile (global)\"]\n  H --> I[\"En cada fuente gana el último patrón que coincide\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo app\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nconsole.log('hola');\n__FIN__\nmkdir -p \"$(dirname 'config.local.json')\"\ncat > 'config.local.json' <<'__FIN__'\n{ \"puerto\": 3000 }\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'",
+     "cwd": "app",
+     "code": "echo \"config.local.json\" > .gitignore\necho '{ \"puerto\": 4000 }' > config.local.json\ngit status -s\ngit check-ignore -v config.local.json\ngit check-ignore -v --no-index config.local.json",
+     "caption": "`config.local.json` ya estaba confirmado: aunque ahora figure en `.gitignore`, Git sigue mostrando sus cambios. `check-ignore` no dice nada porque el archivo está rastreado; con `--no-index` comprueba solo el patrón. La solución (`git rm --cached`) está en la próxima lección."
+    },
+    {
+     "type": "h",
+     "text": "Tres lugares para las reglas"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Dónde",
+      "Alcance",
+      "¿Se comparte?",
+      "Para qué"
+     ],
+     "rows": [
+      [
+       "`.gitignore` (raíz o subcarpetas)",
+       "ese proyecto (las reglas de una subcarpeta son relativas a ella)",
+       "Sí, se confirma",
+       "dependencias, compilados, logs, secretos del proyecto"
+      ],
+      [
+       "`.git/info/exclude`",
+       "ese repositorio, en tu computador",
+       "No",
+       "archivos tuyos en ese repo (notas, scripts personales)"
+      ],
+      [
+       "`core.excludesFile`",
+       "todos tus repositorios",
+       "No",
+       "basura de tu sistema y editor: `.DS_Store`, `.idea/`, `*.swp`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "echo \".DS_Store\" >> ~/.gitignore_global\ngit config --global core.excludesFile ~/.gitignore_global\ngit config --global core.excludesFile     # comprueba dónde quedó"
+    },
+    {
+     "type": "p",
+     "text": "Si no configuras `core.excludesFile`, Git igual lee `~/.config/git/ignore` (más exactamente, `$XDG_CONFIG_HOME/git/ignore`) si existe. Cualquiera de las dos opciones sirve; lo importante es no llenar el `.gitignore` del equipo con la basura de *tu* sistema operativo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "No escribas los `.gitignore` desde cero: el repositorio **github/gitignore** (https://github.com/github/gitignore) tiene plantillas mantenidas por la comunidad: `Node.gitignore`, `Python.gitignore`, `Java.gitignore`… y en `Global/` las de sistemas y editores (`macOS.gitignore`, `Windows.gitignore`, `VisualStudioCode.gitignore`). GitHub te ofrece una al crear un repositorio nuevo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«Agregué `.env` al `.gitignore` pero `git status` lo sigue mostrando como modificado. ¿Por qué?» → porque ya estaba rastreado; `.gitignore` solo afecta a archivos sin seguimiento. Solución: `git rm --cached .env` y confirmar. Y la otra clásica: «ignoro `logs/` y pongo `!logs/.gitkeep`, pero `.gitkeep` sigue ignorado» → no se puede re-incluir dentro de una carpeta excluida: usa `logs/*`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Ignorado",
+       "en": "ignored",
+       "def": "Archivo sin seguimiento que coincide con un patrón: `git status` no lo muestra y `git add .` no lo añade (`git add -f` lo fuerza)."
+      },
+      {
+       "term": "Rastreado",
+       "en": "tracked",
+       "def": "Archivo que está en el área de preparación / último commit. Las reglas de ignore no lo afectan."
+      },
+      {
+       "term": ".gitkeep",
+       "en": ".gitkeep",
+       "def": "Convención (no es una función de Git) para versionar una carpeta vacía: un archivo vacío dentro de ella."
+      },
+      {
+       "term": "Ignore global",
+       "en": "core.excludesFile",
+       "def": "Archivo de patrones que se aplica a todos tus repositorios; no se comparte con nadie."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l6",
+   "title": "Borrar, mover y dejar de rastrear: git rm, git mv y --cached",
+   "minutes": 22,
+   "goals": [
+    "Borrar archivos del repositorio con `git rm` y dejar de rastrearlos sin borrarlos con `git rm --cached`",
+    "Renombrar o mover archivos con `git mv` de forma que Git detecte el renombre",
+    "Sacar del repositorio un archivo sensible ya confirmado y evaluar qué riesgos quedan"
+   ],
+   "takeaways": [
+    "`git rm` = borra del disco + prepara el borrado. `git rm --cached` = solo lo saca del área de preparación (sigue en tu disco).",
+    "Git no guarda renombres: los detecta por similitud (50 % por defecto). `git mv a b` = `mv` + `git rm` + `git add`.",
+    "Renombra en un commit y modifica en otro: así la detección (y `--follow`, y `blame`) nunca se pierden.",
+    "`git rm --cached` no borra el archivo de los commits anteriores: un secreto confirmado sigue en la historia y hay que **rotarlo**."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "git rm: borrar con Git"
+    },
+    {
+     "type": "p",
+     "text": "Si borras un archivo rastreado con `rm`, Git lo ve como un cambio **sin preparar** (` D` en `git status -s`); tendrías que prepararlo con `git add archivo` o `git rm archivo`. `git rm` hace las dos cosas en un paso: lo borra del disco y prepara el borrado. Para carpetas, `git rm -r carpeta`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Recetario familiar\n__FIN__\nmkdir -p \"$(dirname 'recetas/pan-amasado.md')\"\ncat > 'recetas/pan-amasado.md' <<'__FIN__'\n# Pan amasado\n1 kg de harina, 300 g de manteca, agua tibia y sal.\n__FIN__\nmkdir -p \"$(dirname 'recetas/sopaipillas.md')\"\ncat > 'recetas/sopaipillas.md' <<'__FIN__'\n# Sopaipillas\nZapallo cocido, harina, manteca y polvos de hornear.\n__FIN__\nmkdir -p \"$(dirname 'borrador.txt')\"\ncat > 'borrador.txt' <<'__FIN__'\nideas sueltas para el recetario\n__FIN__\nmkdir -p \"$(dirname 'notas.txt')\"\ncat > 'notas.txt' <<'__FIN__'\ncomprar harina\n__FIN__\nmkdir -p \"$(dirname 'pruebas/prueba1.txt')\"\ncat > 'pruebas/prueba1.txt' <<'__FIN__'\nprueba\n__FIN__\nmkdir -p \"$(dirname 'pruebas/prueba2.txt')\"\ncat > 'pruebas/prueba2.txt' <<'__FIN__'\notra prueba\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'",
+     "cwd": "recetario",
+     "code": "rm notas.txt\ngit status -s\ngit add notas.txt\ngit status -s\ngit rm borrador.txt\ngit rm -r pruebas\ngit status -s\ngit commit -m \"Elimina notas, borrador y pruebas\"\nls\ngit show --stat HEAD",
+     "caption": "Primero la forma larga (`rm` + `git add`), luego la corta (`git rm`). Al final, un solo commit con los cuatro borrados."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si el archivo tiene cambios sin confirmar, `git rm` se niega: «error: the following file has local modifications … (use --cached to keep the file, or -f to force removal)». Te está protegiendo: `-f` borraría esos cambios para siempre. Si lo que quieres es conservar el archivo en tu disco, usa `--cached`."
+    },
+    {
+     "type": "diagram",
+     "title": "git rm frente a git rm --cached",
+     "mermaid": "flowchart LR\n  subgraph X[\"git rm archivo\"]\n    X1[\"Trabajo: se borra\"] --> X2[\"Preparación: se borra\"] --> X3[\"Próximo commit: sin el archivo\"]\n  end\n  subgraph Y[\"git rm --cached archivo\"]\n    Y1[\"Trabajo: se queda\"] --> Y2[\"Preparación: se borra\"] --> Y3[\"Próximo commit: sin el archivo\"]\n  end",
+     "caption": "En ambos casos el próximo commit ya no contiene el archivo. La diferencia es tu disco: con `--cached` el archivo sigue ahí, ahora **sin seguimiento**."
+    },
+    {
+     "type": "h",
+     "text": "git mv: renombrar y mover"
+    },
+    {
+     "type": "p",
+     "text": "Git no guarda «este archivo se renombró». Guarda instantáneas; al comparar dos, si desaparece un archivo y aparece otro con contenido al menos **50 % parecido**, Git *deduce* que es un renombre y lo muestra como `R` (`R100` = idéntico). `git mv viejo nuevo` es solo un atajo de `mv viejo nuevo` + `git rm viejo` + `git add nuevo`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo despachos\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'LEEME.txt')\"\ncat > 'LEEME.txt' <<'__FIN__'\nDespachos: cálculo de costos de envío.\n__FIN__\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 2990;\n\nfunction tarifa(kilos) {\n  return TARIFA_BASE + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el cálculo de tarifas'\nfecha '2026-09-02 10:00'\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 3190;\n\nfunction tarifa(kilos) {\n  return TARIFA_BASE + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza la tarifa base'",
+     "cwd": "despachos",
+     "code": "mkdir src\ngit mv tarifas.js src/tarifas.js\ngit status\ngit commit -m \"Mueve tarifas.js a src/\"\ngit log --oneline --follow -- src/tarifas.js\ngit show --stat HEAD",
+     "caption": "La carpeta de destino debe existir: sin `mkdir src` verías «fatal: renaming 'tarifas.js' failed: No such file or directory». `git status` ya muestra `renamed:`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo despachos\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'LEEME.txt')\"\ncat > 'LEEME.txt' <<'__FIN__'\nDespachos: cálculo de costos de envío.\n__FIN__\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 2990;\n\nfunction tarifa(kilos) {\n  return TARIFA_BASE + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el cálculo de tarifas'\nfecha '2026-09-02 10:00'\nmkdir -p \"$(dirname 'tarifas.js')\"\ncat > 'tarifas.js' <<'__FIN__'\nconst TARIFA_BASE = 3190;\n\nfunction tarifa(kilos) {\n  return TARIFA_BASE + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza la tarifa base'",
+     "cwd": "despachos",
+     "code": "mv LEEME.txt README.md\ngit status -s\ngit add -A\ngit status -s",
+     "caption": "Sin `git mv`: al principio Git ve un borrado (` D`) y un archivo nuevo (`??`). En cuanto ambos están preparados, detecta el renombre (`R`). Mismo resultado que `git mv`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si en el mismo commit renombras **y** cambias mucho el contenido, la similitud puede bajar del 50 % y Git verá un archivo borrado y otro nuevo: `--follow` y `blame` pierden el hilo. Buena práctica: un commit que solo renombra y otro con los cambios."
+    },
+    {
+     "type": "h",
+     "text": "Dejar de rastrear un archivo ya confirmado"
+    },
+    {
+     "type": "p",
+     "text": "El caso típico: alguien confirmó `.env` (o `node_modules/`) antes de tener `.gitignore`. Agregarlo al `.gitignore` no basta (ya está rastreado). La receta:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git rm --cached .env` — lo saca del área de preparación; tu archivo sigue en el disco. Para carpetas: `git rm -r --cached node_modules`.",
+      "Añade la regla al `.gitignore` para que no vuelva a entrar.",
+      "`git add .gitignore` y `git commit`: desde ese commit el archivo ya no forma parte del repositorio."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api-pagos\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nrequire('dotenv').config();\nconsole.log('API de pagos');\n__FIN__\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nAPI_KEY=clave_de_prueba_123\nDB_URL=postgres://localhost/pagos\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'",
+     "cwd": "api-pagos",
+     "code": "git rm --cached .env\ngit status -s\necho \".env\" > .gitignore\ngit add .gitignore\ngit commit -m \"Deja de rastrear .env\"\nls -a\ngit status -s\ngit show HEAD~1:.env",
+     "caption": "Tras el commit, `.env` sigue en tu carpeta y Git lo ignora. Pero fíjate en la última orden: **el secreto sigue en la historia**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Lo más importante de esta lección:** `git rm --cached` no borra nada del pasado. La contraseña sigue en los commits anteriores, en cada clon y en el servidor. Si era un secreto real, **cámbialo (rótalo) de inmediato**: es lo único que de verdad te protege. Purgarlo de toda la historia es otra operación (s15). Y un aviso para el equipo: cuando tus compañeros traigan ese commit, Git **borrará** el `.env` de sus carpetas (para Git, el commit elimina ese archivo): que lo respalden antes."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Directorio de trabajo",
+      "Área de preparación",
+      "Tras confirmar"
+     ],
+     "rows": [
+      [
+       "`rm archivo`",
+       "se borra",
+       "sin cambios (borrado sin preparar)",
+       "nada, hasta que prepares el borrado"
+      ],
+      [
+       "`git rm archivo`",
+       "se borra",
+       "se borra",
+       "el archivo ya no está en el repositorio"
+      ],
+      [
+       "`git rm --cached archivo`",
+       "se queda (sin seguimiento)",
+       "se borra",
+       "ya no está en el repositorio, pero sí en tu disco"
+      ],
+      [
+       "`git mv a b`",
+       "`a` pasa a llamarse `b`",
+       "borra `a` y añade `b`",
+       "Git lo muestra como renombre `R`"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "El ciclo de vida de un archivo, con los comandos de esta sección",
+     "mermaid": "stateDiagram-v2\n  state \"Sin seguimiento\" as SS\n  state \"Ignorado\" as IG\n  state \"Preparado\" as PR\n  state \"Confirmado (sin modificar)\" as CO\n  state \"Modificado\" as MO\n  [*] --> SS: crear archivo\n  SS --> IG: coincide con un patrón\n  SS --> PR: git add\n  PR --> CO: git commit\n  CO --> MO: editar\n  MO --> PR: git add\n  CO --> SS: git rm --cached y commit\n  CO --> [*]: git rm y commit"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Diferencia entre `git rm` y `git rm --cached`: ambos quitan el archivo del próximo commit; el primero además lo borra de tu disco. Y otra frecuente: «¿cómo renombras un archivo para que Git lo registre como renombre?» → `git mv` (o `mv` + `git add -A`): Git lo detecta por similitud de contenido, no porque lo guarde."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Dejar de rastrear",
+       "en": "untrack",
+       "def": "Sacar un archivo del índice (`git rm --cached`) para que los próximos commits ya no lo incluyan, sin borrarlo del disco."
+      },
+      {
+       "term": "Renombre",
+       "en": "rename",
+       "def": "Para Git, un borrado más una creación con contenido parecido; lo deduce al comparar instantáneas."
+      },
+      {
+       "term": "Rotar una credencial",
+       "en": "rotate a secret",
+       "def": "Invalidar una clave o contraseña expuesta y generar una nueva."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s03-e1",
+   "title": "¿Cuánto costaba antes?",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Trabajas en la **Heladería Polar**. Valentina dejó cambios a medio hacer: subió un precio y cambió el horario, pero no alcanzó a confirmar nada. Antes de publicar el alza, tu jefa quiere saber **cuánto costaba el cono de chirimoya alegre en el último commit** para avisar a los clientes.",
+    "Averígualo con Git, sin confirmar ni deshacer nada, y deja solo el número en `~/respuesta.txt`. Por ejemplo:\n```bash\necho 1990 > ~/respuesta.txt\n```",
+    "Ojo: `cat precios.txt` te muestra el precio **nuevo**, no el que está confirmado."
+   ],
+   "setup": "nuevo_repo heladeria\nautor 'Valentina Muñoz' 'valentina.munoz@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'precios.txt')\"\ncat > 'precios.txt' <<'__FIN__'\nHeladería Polar — Precios (cono simple)\nVainilla ............ $2.200\nChocolate ........... $2.200\nLúcuma .............. $2.400\nChirimoya alegre .... $2.300\nFrambuesa ........... $2.400\nManjar .............. $2.500\n__FIN__\nmkdir -p \"$(dirname 'horario.txt')\"\ncat > 'horario.txt' <<'__FIN__'\nLunes a domingo: 12:00 a 21:00\n__FIN__\ngit add -A\ngit commit -q -m 'Publica los precios de temporada'\nfecha '2026-09-10 16:00'\nmkdir -p \"$(dirname 'precios.txt')\"\ncat > 'precios.txt' <<'__FIN__'\nHeladería Polar — Precios (cono simple)\nVainilla ............ $2.200\nChocolate ........... $2.200\nLúcuma .............. $2.400\nChirimoya alegre .... $2.300\nFrambuesa ........... $2.400\nManjar .............. $2.500\nMote con huesillo ... $2.600\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el sabor mote con huesillo'\n# cambios de hoy de Valentina, sin confirmar\nmkdir -p \"$(dirname 'precios.txt')\"\ncat > 'precios.txt' <<'__FIN__'\nHeladería Polar — Precios (cono simple)\nVainilla ............ $2.200\nChocolate ........... $2.200\nLúcuma .............. $2.400\nChirimoya alegre .... $2.700\nFrambuesa ........... $2.400\nManjar .............. $2.500\nMote con huesillo ... $2.600\n__FIN__\ngit add precios.txt\nmkdir -p \"$(dirname 'horario.txt')\"\ncat > 'horario.txt' <<'__FIN__'\nLunes a domingo: 12:00 a 22:00\n__FIN__\nyo",
+   "cwd": "heladeria",
+   "checks": [
+    {
+     "name": "El precio anterior está en ~/respuesta.txt",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el precio con echo\"\nn=$(head -n 1 \"$f\" | tr -cd '0-9')\n[ \"$n\" = \"2700\" ] && falla \"2700 es el precio nuevo. Busca el que está en el último commit (la línea que empieza con -)\"\n[ \"$n\" = \"2300\" ] || falla \"Ese no es el precio que tenía la chirimoya alegre en el último commit\""
+    },
+    {
+     "name": "Los cambios de Valentina siguen sin confirmar",
+     "script": "[ \"$(num_commits)\" -eq 2 ] || falla \"El número de commits cambió: aquí solo había que mirar\"\nif git diff --cached --quiet -- precios.txt; then falla \"El cambio preparado de precios.txt ya no está en el área de preparación\"; fi\nif git diff --quiet -- horario.txt; then falla \"El cambio de horario.txt ya no está en tu directorio de trabajo\"; fi\ntrue"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git diff",
+    "git diff --staged",
+    "echo 2300 > ~/respuesta.txt"
+   ],
+   "hints": [
+    "`git status` te dice en qué área está cada cambio. ¿El cambio de `precios.txt` está preparado o no?",
+    "`git diff` a secas solo muestra lo que **no** está preparado. Para ver lo preparado: `git diff --staged` (o `git diff HEAD`, que muestra todo).",
+    "La línea de la chirimoya que empieza con `-` es la versión del último commit. Deja el número con `echo <precio> > ~/respuesta.txt`."
+   ],
+   "explain": "Valentina ya había hecho `git add precios.txt`, así que ese cambio estaba en el **área de preparación** y `git diff` (trabajo ↔ preparación) solo mostraba `horario.txt`. `git diff --staged` compara la preparación con el último commit: la línea `-Chirimoya alegre .... $2.300` es la versión confirmada y `+Chirimoya alegre .... $2.700` la nueva.\n\nAlternativas: `git diff HEAD -- precios.txt` (todo lo cambiado desde el último commit, preparado o no) o `git show HEAD:precios.txt`, que imprime el archivo tal como quedó en el último commit. Ninguno de estos comandos modifica nada: puedes investigar con total tranquilidad."
+  },
+  {
+   "id": "s03-e2",
+   "title": "¿Qué cambió desde la entrega?",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "El sitio web de la **Panadería La Espiga** se entregó al cliente en el commit «Entrega sprint 1». Desde entonces, Camila y Diego hicieron varios commits. El cliente pregunta: **¿qué archivos son distintos hoy respecto de lo que se entregó?**",
+    "Escribe en `~/respuesta.txt` los nombres de esos archivos, **uno por línea** (el orden no importa). Por ejemplo:\n```bash\nprintf \"a.html\\nb.css\\n\" > ~/respuesta.txt\n```",
+    "Cuidado: la pregunta es qué es distinto entre las dos versiones, no qué archivos se tocaron en algún commit."
+   ],
+   "setup": "nuevo_repo panaderia\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'index.html')\"\ncat > 'index.html' <<'__FIN__'\n<h1>Panadería La Espiga</h1>\n<p>Pan amasado, marraquetas y hallullas todos los días.</p>\n__FIN__\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\nbody { font-family: sans-serif; }\n__FIN__\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nfunction enviarFormulario(datos) {\n  return fetch('/contacto', { method: 'POST', body: datos });\n}\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Sitio de la Panadería La Espiga\n__FIN__\ngit add -A\ngit commit -q -m 'Primera versión del sitio'\nfecha '2026-09-04 17:00'\nmkdir -p \"$(dirname 'index.html')\"\ncat > 'index.html' <<'__FIN__'\n<h1>Panadería La Espiga</h1>\n<p>Pan amasado, marraquetas y hallullas todos los días.</p>\n<p>Pedidos al +56 9 1234 5678.</p>\n__FIN__\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\nbody { font-family: sans-serif; }\nh1 { color: #8b4513; }\n__FIN__\ngit add -A\ngit commit -q -m 'Entrega sprint 1'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-07 11:00'\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nfunction enviarFormulario(datos) {\n  console.log('enviando', datos);\n  return fetch('/contacto', { method: 'POST', body: datos });\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Depura el formulario de contacto'\nfecha '2026-09-08 12:00'\nmkdir -p \"$(dirname 'contacto.html')\"\ncat > 'contacto.html' <<'__FIN__'\n<h1>Contacto</h1>\n<form id=\"contacto\"></form>\n__FIN__\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\nbody { font-family: sans-serif; }\nh1 { color: #8b4513; }\nform { max-width: 30rem; }\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la página de contacto'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-09 09:30'\nmkdir -p \"$(dirname 'index.html')\"\ncat > 'index.html' <<'__FIN__'\n<h1>Panadería La Espiga</h1>\n<p>Pan amasado, marraquetas y hallullas todos los días.</p>\n<p>Pedidos al +56 9 1234 5678.</p>\n<a href=\"contacto.html\">Contacto</a>\n__FIN__\ngit add -A\ngit commit -q -m 'Enlaza la página de contacto'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-10 16:00'\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nfunction enviarFormulario(datos) {\n  return fetch('/contacto', { method: 'POST', body: datos });\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Quita la depuración del formulario'\nyo",
+   "cwd": "panaderia",
+   "checks": [
+    {
+     "name": "La lista de archivos es correcta",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe los nombres de los archivos, uno por línea\"\nbase=$(git log --format=%H --grep='^Entrega sprint 1$' -n 1)\nesperado=$(git diff --name-only \"$base\" HEAD | sort)\ndado=$(tr -d ' \\r\\t' < \"$f\" | sed 's#^\\./##' | grep -v '^$' | sort -u)\nif printf '%s\\n' \"$dado\" | grep -qx 'app.js'; then falla \"Sobra app.js: cambió en dos commits, pero ¿es distinto entre la entrega y hoy? Compara las dos instantáneas\"; fi\nfor a in $esperado; do printf '%s\\n' \"$dado\" | grep -qx \"$a\" || falla \"Falta al menos un archivo que es distinto desde la entrega\"; done\n[ \"$dado\" = \"$esperado\" ] || falla \"Sobra algún archivo en tu lista: ¿es realmente distinto entre la entrega y hoy?\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 6 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git diff --name-only aead290 HEAD",
+    "printf \"contacto.html\\nestilos.css\\nindex.html\\n\" > ~/respuesta.txt"
+   ],
+   "hints": [
+    "Primero ubica el hash del commit «Entrega sprint 1» con `git log --oneline`.",
+    "`git diff <commit> HEAD` compara esa instantánea con la actual; `--name-only` o `--stat` lo resumen.",
+    "Para escribir varias líneas: `printf \"a\\nb\\n\" > ~/respuesta.txt`, o `echo a > ~/respuesta.txt` y luego `echo b >> ~/respuesta.txt`."
+   ],
+   "explain": "`git diff --name-only <entrega> HEAD` compara **dos instantáneas** y responde exactamente a la pregunta: `contacto.html` (nuevo), `estilos.css` e `index.html` (modificados). `--name-status` mostraría además la letra: `A` para el nuevo y `M` para los modificados.\n\nLa trampa era `app.js`: Camila le añadió un `console.log` y unos días después lo quitó, así que el archivo quedó idéntico al entregado. Si hubieras usado `git log --name-only <entrega>..HEAD` (la lista de commits del rango, con sus archivos) habría aparecido, porque se tocó en dos commits. `git log` cuenta la historia; `git diff` compara el antes y el después."
+  },
+  {
+   "id": "s03-e3",
+   "title": "El cupón del 50 %",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En la tienda online, los clientes están recibiendo **un 50 % de descuento** con cualquier cupón. En `carro.js` aparece `const DESCUENTO_CUPON = 0.5;` cuando debía ser `0.05`.",
+    "Encuentra el commit que introdujo ese `0.5` y deja su hash (bastan los 7 primeros caracteres) en `~/respuesta.txt`:\n```bash\necho a1b2c3d > ~/respuesta.txt\n```",
+    "No cambies nada del repositorio: solo investiga. Pista de la vida real: el mensaje del commit culpable no dice nada de descuentos."
+   ],
+   "setup": "nuevo_repo tienda-online\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'carro.js')\"\ncat > 'carro.js' <<'__FIN__'\nfunction subtotal(items) {\n  return items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n}\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Tienda online\nCarro de compras.\n__FIN__\ngit add -A\ngit commit -q -m 'Crea el carro de compras'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'carro.js')\"\ncat > 'carro.js' <<'__FIN__'\nconst DESCUENTO_CUPON = 0.05;\n\nfunction subtotal(items) {\n  return items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n}\n\nfunction aplicarCupon(total) {\n  return Math.round(total * (1 - DESCUENTO_CUPON));\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega cupones de descuento'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-05 15:00'\nmkdir -p \"$(dirname 'carro.css')\"\ncat > 'carro.css' <<'__FIN__'\n.carro { display: grid; gap: 1rem; }\n__FIN__\nmkdir -p \"$(dirname 'carro.js')\"\ncat > 'carro.js' <<'__FIN__'\nconst DESCUENTO_CUPON = 0.5;\n\nfunction subtotal(items) {\n  return items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n}\n\nfunction aplicarCupon(total) {\n  return Math.round(total * (1 - DESCUENTO_CUPON));\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Ajusta estilos del carro'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:00'\nmkdir -p \"$(dirname 'carro.js')\"\ncat > 'carro.js' <<'__FIN__'\nconst DESCUENTO_CUPON = 0.5;\nconst COSTO_DESPACHO = 3990;\n\nfunction subtotal(items) {\n  return items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n}\n\nfunction aplicarCupon(total) {\n  return Math.round(total * (1 - DESCUENTO_CUPON));\n}\n\nfunction total(items) {\n  return aplicarCupon(subtotal(items)) + COSTO_DESPACHO;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega costo de despacho'\nautor 'Valentina Muñoz' 'valentina.munoz@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Tienda online\nCarro de compras.\n\n## Instalación\nnpm install && npm start\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta la instalación'\nyo",
+   "cwd": "tienda-online",
+   "checks": [
+    {
+     "name": "El hash de ~/respuesta.txt es el commit que introdujo el 0.5",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el hash con echo … > ~/respuesta.txt\"\nh=$(head -n 1 \"$f\" | tr -d ' \\r\\t')\necho \"$h\" | grep -Eq '^[0-9a-f]{7,40}$' || falla \"La primera línea de ~/respuesta.txt debe ser un hash (al menos 7 caracteres hexadecimales); ahora dice: $h\"\ndado=$(git rev-parse --verify --quiet \"$h^{commit}\") || falla \"«${h}» no es un commit de este repositorio (¿lo copiaste bien?)\"\nesperado=$(git log --format=%H -S'DESCUENTO_CUPON = 0.5;' | tail -n 1)\ncupones=$(git log --format=%H --grep='^Agrega cupones de descuento$' -n 1)\n[ \"$dado\" = \"$cupones\" ] && falla \"Ese commit creó el cupón con 0.05, que estaba bien. Busca cuándo pasó a 0.5\"\n[ \"$dado\" = \"$esperado\" ] || falla \"Ese commit no es el que introdujo DESCUENTO_CUPON = 0.5\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 5 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log -S\"DESCUENTO_CUPON = 0.5\" --oneline",
+    "echo 96d8a99 > ~/respuesta.txt"
+   ],
+   "hints": [
+    "`git log --grep` busca en los mensajes, y el mensaje no te va a ayudar. Busca en los **cambios**.",
+    "`git log -S\"texto\" --oneline` lista los commits que añadieron o quitaron ese texto. `git blame carro.js` también te lleva directo a la línea.",
+    "Busca exactamente `DESCUENTO_CUPON = 0.5` (no solo `DESCUENTO_CUPON`, que existe desde que se crearon los cupones)."
+   ],
+   "explain": "`git log -S\"DESCUENTO_CUPON = 0.5\" --oneline` devuelve un único commit: «Ajusta estilos del carro». El mensaje no menciona el descuento: Diego mezcló un cambio de estilos con un cambio de lógica (por eso en s02 insistimos en los commits atómicos). Con `git show <hash>` ves el diff: `-const DESCUENTO_CUPON = 0.05;` / `+const DESCUENTO_CUPON = 0.5;`.\n\nAlternativas: `git blame carro.js` (la primera línea apunta a ese mismo commit, porque nadie la ha vuelto a tocar) o `git log -p -- carro.js` leyendo los diffs. Buscar `-S\"DESCUENTO_CUPON\"` solo mostraría el commit que creó la constante, porque cambiar el valor no cambia cuántas veces aparece el nombre.\n\nTruco: la terminal de práctica no permite redirigir la salida de git con `>`, pero Git tiene su propia opción: `git log -1 --format=%h -S\"DESCUENTO_CUPON = 0.5\" --output ~/respuesta.txt`."
+  },
+  {
+   "id": "s03-e4",
+   "title": "¿Cuántos commits hizo Ana Pérez?",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En la **agenda de una clínica veterinaria** trabajan tres personas: Ana Pérez, Ana Luisa Rojas y Diego Soto. Para el informe de fin de mes necesitas saber **cuántos commits hizo Ana Pérez** en la rama `main`.",
+    "Deja solo el número en `~/respuesta.txt` (por ejemplo, `echo 12 > ~/respuesta.txt`)."
+   ],
+   "setup": "nuevo_repo veterinaria\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 09:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Agenda veterinaria\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-02 10:30'\nmkdir -p \"$(dirname 'mascotas.js')\"\ncat > 'mascotas.js' <<'__FIN__'\nfunction registrarMascota(nombre, especie) {\n  return { nombre, especie };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el registro de mascotas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-02 15:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Agenda veterinaria\nRegistra mascotas y agenda horas.\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta el registro'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-03 11:15'\nmkdir -p \"$(dirname 'rut.js')\"\ncat > 'rut.js' <<'__FIN__'\nfunction rutValido(rut) {\n  return /^[0-9]{7,8}-[0-9kK]$/.test(rut);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida el RUT del dueño'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-04 12:00'\nmkdir -p \"$(dirname 'agenda.js')\"\ncat > 'agenda.js' <<'__FIN__'\nconst horas = [];\nfunction agendar(mascota, fecha) {\n  horas.push({ mascota, fecha });\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega la agenda de horas'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-05 16:40'\nmkdir -p \"$(dirname 'agenda.js')\"\ncat > 'agenda.js' <<'__FIN__'\nconst horas = [];\nfunction agendar(mascota, fecha) {\n  horas.push({ mascota, fecha: new Date(fecha) });\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige la zona horaria de la agenda'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 09:50'\nmkdir -p \"$(dirname 'vacunas.js')\"\ncat > 'vacunas.js' <<'__FIN__'\nfunction recordarVacuna(mascota) {\n  return 'Toca vacunar a ' + mascota.nombre;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Envía recordatorio de vacunas'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-09 14:20'\nmkdir -p \"$(dirname 'agenda.js')\"\ncat > 'agenda.js' <<'__FIN__'\nconst horas = [];\n\nfunction agendar(mascota, fecha) {\n  horas.push({ mascota, fecha: new Date(fecha) });\n  return horas.length;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Refactoriza la agenda'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-10 10:05'\nmkdir -p \"$(dirname 'historial.js')\"\ncat > 'historial.js' <<'__FIN__'\nconst historial = new Map();\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el historial clínico'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 17:30'\nmkdir -p \"$(dirname 'mascotas.js')\"\ncat > 'mascotas.js' <<'__FIN__'\nfunction registrarMascota(nombre, especie, nacimiento) {\n  return { nombre, especie, nacimiento };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige el cálculo de edad'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-12 11:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Agenda veterinaria\nRegistra mascotas, agenda horas y recuerda vacunas.\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+   "cwd": "veterinaria",
+   "checks": [
+    {
+     "name": "El número de ~/respuesta.txt es correcto",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el número con echo\"\nn=$(head -n 1 \"$f\" | tr -cd '0-9')\n[ -n \"$n\" ] || falla \"Escribe solo el número en ~/respuesta.txt\"\nesperado=$(git rev-list --count --author='ana.perez@' HEAD)\nambas=$(git rev-list --count --author='Ana' HEAD)\ntotal=$(git rev-list --count HEAD)\n[ \"$n\" = \"$ambas\" ] && falla \"Contaste también los commits de Ana Luisa Rojas: --author busca el patrón en cualquier parte del nombre y del correo\"\n[ \"$n\" = \"$total\" ] && falla \"Ese es el total de commits del repositorio: filtra por autora\"\n[ \"$n\" = \"$esperado\" ] || falla \"Ese no es el número de commits de Ana Pérez; revisa tu filtro\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 11 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline --author=\"Ana Pérez\"",
+    "echo 4 > ~/respuesta.txt"
+   ],
+   "hints": [
+    "`git log --author=...` filtra por autor. Añade `--oneline` para contar líneas fácilmente.",
+    "`--author=Ana` también encuentra a Ana Luisa. Usa el nombre completo entre comillas o el correo."
+   ],
+   "explain": "`git log --oneline --author=\"Ana Pérez\"` muestra 4 commits. La trampa: `--author` es una expresión regular que se busca en «Nombre <correo>», así que `--author=Ana` devuelve 7 (suma los de Ana Luisa Rojas). Con `--author=\"ana.perez@\"` (el correo) también es exacto.\n\nAlternativas profesionales: `git shortlog -sn HEAD` cuenta los commits de cada persona (en la terminal de práctica escribe siempre la revisión, `HEAD`: sin ella, `shortlog` espera leer un log por la entrada estándar y no muestra nada; lo verás a fondo en s11). Y en scripts: `git rev-list --count --author=\"Ana Pérez\" HEAD` imprime directamente el número (plumbing, s16)."
+  },
+  {
+   "id": "s03-e5",
+   "title": "Tres pistas para un commit",
+   "level": "dificil",
+   "minutes": 14,
+   "prompt": [
+    "En la pasarela de pagos hay un commit que agregó una validación clave y hay que revisarlo, pero nadie recuerda su hash. Lo que sí se sabe:",
+    "1) lo hizo **Ana Pérez**; 2) fue **entre el 10 y el 12 de septiembre de 2026** (ambos días incluidos); 3) su mensaje **menciona el pago** (no recuerdan si con mayúscula o minúscula).",
+    "Encuéntralo con **un solo** `git log` que combine filtros (no revises commit por commit) y deja su hash en `~/respuesta.txt`."
+   ],
+   "setup": "nuevo_repo pasarela\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-02 12:00'\nmkdir -p \"$(dirname 'pagos.js')\"\ncat > 'pagos.js' <<'__FIN__'\nfunction pagar(monto) {\n  return { monto, estado: 'pendiente' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega pago con tarjeta'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-04 12:00'\nmkdir -p \"$(dirname 'resumen.js')\"\ncat > 'resumen.js' <<'__FIN__'\nfunction resumen(pedido) {\n  return pedido.items.length + ' productos';\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Crea la pantalla de resumen'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-08 12:00'\nmkdir -p \"$(dirname 'historial.js')\"\ncat > 'historial.js' <<'__FIN__'\nconst historial = [];\n__FIN__\ngit add -A\ngit commit -q -m 'Guarda el historial de pagos'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 12:00'\nmkdir -p \"$(dirname 'pagos.js')\"\ncat > 'pagos.js' <<'__FIN__'\nconst procesados = new Set();\n\nfunction pagar(id, monto) {\n  if (procesados.has(id)) return null;\n  procesados.add(id);\n  return { id, monto, estado: 'pendiente' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige pago duplicado'\nautor 'Ana Luisa Rojas' 'analuisa.rojas@ejemplo.cl'\nfecha '2026-09-11 11:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Pasarela\n\n## Flujo de Pago\n1. Resumen\n2. Pago\n3. Comprobante\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta el flujo de Pago'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-11 15:00'\nmkdir -p \"$(dirname 'pagos.js')\"\ncat > 'pagos.js' <<'__FIN__'\nconst procesados = new Set();\n\nfunction pagar(id, monto) {\n  if (monto <= 0) throw new Error('Monto inválido');\n  if (procesados.has(id)) return null;\n  procesados.add(id);\n  return { id, monto, estado: 'pendiente' };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Valida el monto antes del Pago'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-12 13:00'\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\n.checkout { max-width: 40rem; }\n__FIN__\ngit add -A\ngit commit -q -m 'Mejora los estilos del checkout'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-14 12:00'\nmkdir -p \"$(dirname 'reintentos.js')\"\ncat > 'reintentos.js' <<'__FIN__'\nconst MAX_REINTENTOS = 3;\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega reintentos al pago'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-15 12:00'\nmkdir -p \"$(dirname 'package.json')\"\ncat > 'package.json' <<'__FIN__'\n{ \"name\": \"pasarela\", \"version\": \"1.2.0\" }\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza dependencias'\nyo",
+   "cwd": "pasarela",
+   "checks": [
+    {
+     "name": "El hash de ~/respuesta.txt cumple las tres pistas",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el hash con echo … > ~/respuesta.txt\"\nh=$(head -n 1 \"$f\" | tr -d ' \\r\\t')\necho \"$h\" | grep -Eq '^[0-9a-f]{7,40}$' || falla \"La primera línea de ~/respuesta.txt debe ser un hash (al menos 7 caracteres hexadecimales); ahora dice: $h\"\ndado=$(git rev-parse --verify --quiet \"$h^{commit}\") || falla \"«${h}» no es un commit de este repositorio (¿lo copiaste bien?)\"\nesperado=$(git log --format=%H --grep='^Valida el monto antes del Pago$' -n 1)\nif [ \"$dado\" != \"$esperado\" ]; then\n  an=$(git log -1 --format=%an \"$dado\"); d=$(git log -1 --format=%ad --date=short \"$dado\"); s=$(git log -1 --format=%s \"$dado\")\n  [ \"$an\" = \"Ana Pérez\" ] || falla \"Ese commit es de $an, no de Ana Pérez\"\n  case \"$d\" in 2026-09-10|2026-09-11|2026-09-12) ;; *) falla \"Ese commit es del $d: fuera del rango del 10 al 12 de septiembre\";; esac\n  echo \"$s\" | grep -qi 'pago' || falla \"El mensaje de ese commit («${s}») no menciona el pago\"\n  falla \"Ese no es el commit que buscas\"\nfi\ntrue"
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 9 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline --author=\"Ana Pérez\" --since=\"2026-09-10 00:00\" --until=\"2026-09-12 23:59\" -i --grep=\"pago\"",
+    "echo 9510f86 > ~/respuesta.txt"
+   ],
+   "hints": [
+    "Los filtros de distinto tipo se combinan con «y»: `--author`, `--since`/`--until` y `--grep` pueden ir en el mismo `git log`.",
+    "`--author=Ana` también encuentra a Ana Luisa Rojas, y `--grep` distingue mayúsculas salvo que añadas `-i`.",
+    "Con fechas, indica la hora para no depender de la hora actual: `--since=\"2026-09-10 00:00\" --until=\"2026-09-12 23:59\"`."
+   ],
+   "explain": "La orden completa:\n```bash\ngit log --oneline --author=\"Ana Pérez\" --since=\"2026-09-10 00:00\" --until=\"2026-09-12 23:59\" -i --grep=\"pago\"\n```\ndevuelve un solo commit: «Valida el monto antes del Pago». Cada pista descarta a un «sospechoso»: «Corrige pago duplicado» es de Diego; «Documenta el flujo de Pago» es de Ana **Luisa** (`--author=Ana` lo habría dejado pasar); «Guarda el historial de pagos» y «Agrega reintentos al pago» están fuera de las fechas; y sin `-i`, `--grep=\"pago\"` no encuentra «Pago» con mayúscula.\n\nSobre las fechas: `--until=\"2026-09-12\"` sin hora significa «el 12 a la hora actual», y el resultado cambiaría según la hora a la que lo ejecutes. Con horas explícitas la búsqueda es reproducible. Recuerda también que varios `--grep` se combinan con «o» salvo que añadas `--all-match`."
+  },
+  {
+   "id": "s03-e6",
+   "title": "¿Dónde nació este archivo?",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "En el proyecto de envíos, el archivo `src/envios/costos.js` tiene lógica que nadie entiende. Quieres leer el commit en que se **creó** para ver cómo era al principio y quién lo escribió.",
+    "Deja en `~/respuesta.txt` el hash del commit que creó el archivo que hoy se llama `src/envios/costos.js` (aunque entonces tuviera otro nombre)."
+   ],
+   "setup": "nuevo_repo envios\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Envíos\nCotizador de despachos.\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-02 11:00'\nmkdir -p \"$(dirname 'calculo.js')\"\ncat > 'calculo.js' <<'__FIN__'\nfunction costo(kilos) {\n  return 2990 + kilos * 450;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el cálculo de costos'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-03 12:30'\nmkdir -p \"$(dirname 'calculo.js')\"\ncat > 'calculo.js' <<'__FIN__'\nfunction costo(kilos) {\n  const recargo = kilos > 20 ? 5000 : 0;\n  return 2990 + kilos * 450 + recargo;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega recargo por peso'\nautor 'Valentina Muñoz' 'valentina.munoz@ejemplo.cl'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'calculo.js')\"\ncat > 'calculo.js' <<'__FIN__'\nfunction costo(kilos, bultos = 1) {\n  const recargo = kilos > 20 ? 5000 : 0;\n  const descuento = bultos >= 10 ? 0.1 : 0;\n  return (2990 + kilos * 450 + recargo) * (1 - descuento);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega descuentos por volumen'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-08 09:00'\nmkdir -p src/envios\ngit mv calculo.js src/envios/costos.js\nmkdir -p \"$(dirname 'src/index.js')\"\ncat > 'src/index.js' <<'__FIN__'\nconst { costo } = require('./envios/costos');\n__FIN__\ngit add -A\ngit commit -q -m 'Reorganiza el proyecto en carpetas'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-10 15:00'\nmkdir -p \"$(dirname 'src/envios/costos.js')\"\ncat > 'src/envios/costos.js' <<'__FIN__'\nfunction costo(kilos, bultos = 1) {\n  const recargo = kilos > 20 ? 5000 : 0;\n  const descuento = bultos >= 10 ? 0.1 : 0;\n  return Math.round((2990 + kilos * 450 + recargo) * (1 - descuento));\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Redondea los costos'\nyo",
+   "cwd": "envios",
+   "checks": [
+    {
+     "name": "El hash de ~/respuesta.txt es el commit que creó el archivo",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el hash con echo … > ~/respuesta.txt\"\nh=$(head -n 1 \"$f\" | tr -d ' \\r\\t')\necho \"$h\" | grep -Eq '^[0-9a-f]{7,40}$' || falla \"La primera línea de ~/respuesta.txt debe ser un hash (al menos 7 caracteres hexadecimales); ahora dice: $h\"\ndado=$(git rev-parse --verify --quiet \"$h^{commit}\") || falla \"«${h}» no es un commit de este repositorio (¿lo copiaste bien?)\"\nesperado=$(git log --format=%H --follow -- src/envios/costos.js | tail -n 1)\nreorg=$(git log --format=%H --grep='^Reorganiza el proyecto en carpetas$' -n 1)\n[ \"$dado\" = \"$reorg\" ] && falla \"Ese commit solo movió y renombró el archivo (mira su --stat): la historia sigue más atrás\"\n[ \"$dado\" = \"$esperado\" ] || falla \"Ese no es el commit en que se creó el archivo\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 6 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline -- src/envios/costos.js",
+    "git log --oneline --follow -- src/envios/costos.js",
+    "echo 18c3367 > ~/respuesta.txt"
+   ],
+   "hints": [
+    "`git log --oneline -- src/envios/costos.js` parece empezar en «Reorganiza…». ¿Qué hizo exactamente ese commit? Míralo con `git show --stat`.",
+    "Git no guarda renombres: los deduce. Para que `git log` siga la pista de un archivo a través de sus renombres existe `--follow`.",
+    "El commit que lo creó es el **último** (el más antiguo) de la lista de `git log --oneline --follow -- src/envios/costos.js`."
+   ],
+   "explain": "Sin `--follow`, la historia de `src/envios/costos.js` empieza en «Reorganiza el proyecto en carpetas», porque antes de ese commit no existía ningún archivo con esa ruta. `git show --stat` de ese commit muestra `calculo.js => src/envios/costos.js`: fue un renombre. Con `git log --oneline --follow -- src/envios/costos.js`, Git sigue el rastro por el nombre antiguo y llega a «Agrega el cálculo de costos», de Camila.\n\nAlternativas: `git log --oneline --follow --stat -- src/envios/costos.js` para ver los nombres en cada paso, o `git log --diff-filter=A --follow -- src/envios/costos.js` (`--diff-filter=A` deja solo los commits que **añadieron** el archivo). Recuerda que `--follow` solo funciona con un archivo a la vez."
+  },
+  {
+   "id": "s03-e7",
+   "title": "¿Quién escribió esta norma?",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "En la **Biblioteca Comunal Las Araucarias** discuten sobre la norma 1 del archivo `normas.txt` («Los libros se prestan por 14 días.»). Quieren preguntarle a quien escribió **la versión actual** de esa línea por qué eligió ese plazo.",
+    "Escribe el **nombre completo** de esa persona en `~/respuesta.txt` (por ejemplo, `echo \"Nombre Apellido\" > ~/respuesta.txt`)."
+   ],
+   "setup": "nuevo_repo biblioteca\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'normas.txt')\"\ncat > 'normas.txt' <<'__FIN__'\nNormas de préstamo — Biblioteca Comunal Las Araucarias\n1. Los libros se prestan por 7 días.\n2. Se pueden renovar hasta 2 veces.\n3. La multa por atraso es de $200 por día.\n__FIN__\ngit add -A\ngit commit -q -m 'Publica las normas de préstamo'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-04 12:00'\nmkdir -p \"$(dirname 'normas.txt')\"\ncat > 'normas.txt' <<'__FIN__'\nNormas de préstamo — Biblioteca Comunal Las Araucarias\n1. Los libros se prestan por 14 días.\n2. Se pueden renovar hasta 2 veces.\n3. La multa por atraso es de $200 por día.\n__FIN__\ngit add -A\ngit commit -q -m 'Amplía el plazo de préstamo'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-06 16:30'\nmkdir -p \"$(dirname 'normas.txt')\"\ncat > 'normas.txt' <<'__FIN__'\nNormas de préstamo — Biblioteca Comunal Las Araucarias\n1. Los libros se prestan por 14 días.\n2. Se pueden renovar hasta 2 veces.\n3. La multa por atraso es de $300 por día.\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza la multa por atraso'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-09 10:45'\nmkdir -p \"$(dirname 'normas.txt')\"\ncat > 'normas.txt' <<'__FIN__'\nNormas de préstamo — Biblioteca Comunal Las Araucarias\n1. Los libros se prestan por 14 días.\n2. Se pueden renovar hasta 2 veces.\n3. La multa por atraso es de $300 por día.\n4. En verano los préstamos duran 21 días.\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega los préstamos de verano'\nyo",
+   "cwd": "biblioteca",
+   "checks": [
+    {
+     "name": "El nombre de ~/respuesta.txt es correcto",
+     "script": "f=\"$HOME/respuesta.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/respuesta.txt: escribe ahí el nombre con echo\"\ndado=$(head -n 1 \"$f\" | tr -d '\\r\"' | tr -s ' ' | sed 's/^ //; s/ $//' | tr '[:upper:]' '[:lower:]')\nesperado=$(git log -1 --format=%an -S'14 días' | tr '[:upper:]' '[:lower:]')\n[ \"$dado\" = \"diego soto\" ] && falla \"Diego escribió la norma original (7 días), pero la versión actual de esa línea es de otra persona\"\n[ \"$dado\" = \"$esperado\" ] || falla \"Esa persona no es quien escribió la versión actual de la norma 1\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 4 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git blame normas.txt",
+    "echo \"Camila Torres\" > ~/respuesta.txt"
+   ],
+   "hints": [
+    "Hay un comando que anota cada línea de un archivo con el último commit que la cambió.",
+    "`git blame normas.txt` (o solo esa línea: `git blame -L 2,2 normas.txt`)."
+   ],
+   "explain": "`git blame normas.txt` muestra, para la línea 2 («1. Los libros se prestan por 14 días.»), el commit de **Camila Torres** del 4 de septiembre. Diego creó el archivo con 7 días, pero Camila cambió esa línea después, y `blame` siempre muestra el **último** cambio. Para leer el porqué, copia el hash y ejecuta `git show <hash>`.\n\nAlternativa: `git log -S\"14 días\" --oneline` encuentra el commit que introdujo ese texto, y `git log -L 2,2:normas.txt` muestra toda la historia de esa línea (lo verás en s11)."
+  },
+  {
+   "id": "s03-e8",
+   "title": "Un .gitignore para un proyecto Node",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Acabas de clonar y poner en marcha la API de despachos. `npm install` creó `node_modules/`, configuraste tu `.env` con la contraseña de la base de datos y el servidor ya escribió logs. `git status` está lleno de cosas que no deben entrar al repositorio.",
+    "Crea un `.gitignore` que ignore: la carpeta `node_modules/`, el archivo `.env` y **cualquier** archivo `.log` (estén donde estén, también los que aparezcan en el futuro). La plantilla `.env.example` **sí** debe versionarse: el equipo la necesita.",
+    "Confirma el `.gitignore` y `.env.example` y deja `git status` limpio. Puedes escribir el archivo con `code .gitignore` o con `echo \"patrón\" >> .gitignore`."
+   ],
+   "setup": "nuevo_repo api-despachos\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'package.json')\"\ncat > 'package.json' <<'__FIN__'\n{\n  \"name\": \"api-despachos\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": { \"express\": \"^5.1.0\", \"dotenv\": \"^17.0.0\" }\n}\n__FIN__\nmkdir -p \"$(dirname 'src/index.js')\"\ncat > 'src/index.js' <<'__FIN__'\nrequire('dotenv').config();\nconst express = require('express');\nexpress().listen(3000);\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# API de despachos\nCopia .env.example a .env y completa tus datos.\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nmkdir -p \"$(dirname 'node_modules/express/index.js')\"\ncat > 'node_modules/express/index.js' <<'__FIN__'\nmodule.exports = function express() {};\n__FIN__\nmkdir -p \"$(dirname 'node_modules/express/package.json')\"\ncat > 'node_modules/express/package.json' <<'__FIN__'\n{ \"name\": \"express\" }\n__FIN__\nmkdir -p \"$(dirname 'node_modules/dotenv/main.js')\"\ncat > 'node_modules/dotenv/main.js' <<'__FIN__'\nmodule.exports = { config() {} };\n__FIN__\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nDB_PASSWORD=despachos_2026_secreto\n__FIN__\nmkdir -p \"$(dirname '.env.example')\"\ncat > '.env.example' <<'__FIN__'\nDB_PASSWORD=\n__FIN__\nmkdir -p \"$(dirname 'logs/app.log')\"\ncat > 'logs/app.log' <<'__FIN__'\n[2026-09-01 10:00] servidor iniciado\n__FIN__\nmkdir -p \"$(dirname 'logs/error.log')\"\ncat > 'logs/error.log' <<'__FIN__'\n[2026-09-01 10:05] sin errores\n__FIN__\nmkdir -p \"$(dirname 'npm-debug.log')\"\ncat > 'npm-debug.log' <<'__FIN__'\nnpm ERR! ejemplo\n__FIN__",
+   "cwd": "api-despachos",
+   "checks": [
+    {
+     "name": "node_modules/ está ignorada",
+     "script": "git check-ignore -q node_modules/express/index.js || falla \"Git todavía ve node_modules/ (mira git status)\"\ngit check-ignore -q node_modules/dotenv/main.js || falla \"Hay partes de node_modules/ que no se ignoran\""
+    },
+    {
+     "name": ".env está ignorado y .env.example no",
+     "script": "git check-ignore -q .env || falla \".env no está ignorado: ¡es el archivo con la contraseña!\"\nif git check-ignore -q .env.example; then falla \".env.example también quedó ignorado, y es la plantilla que el equipo necesita\"; fi\ntrue"
+    },
+    {
+     "name": "Todos los .log están ignorados, también los futuros",
+     "script": "for p in logs/app.log logs/error.log npm-debug.log; do git check-ignore -q \"$p\" || falla \"$p no está ignorado\"; done\ngit check-ignore -q otra/carpeta/futuro.log || falla \"Un .log nuevo en otra carpeta no quedaría ignorado: usa un patrón que sirva para cualquier .log\""
+    },
+    {
+     "name": ".gitignore y .env.example están confirmados",
+     "script": "git cat-file -e HEAD:.gitignore 2>/dev/null || falla \"El .gitignore todavía no está en ningún commit\"\ngit cat-file -e HEAD:.env.example 2>/dev/null || falla \".env.example todavía no está en ningún commit\""
+    },
+    {
+     "name": "Nada que debía ignorarse entró al repositorio",
+     "script": "if git ls-tree -r --name-only HEAD | grep -Eq '^node_modules/|^\\.env$|\\.log$'; then falla \"El último commit contiene archivos que debían ignorarse (dependencias, .env o logs)\"; fi\ntrue"
+    },
+    {
+     "name": "git status queda limpio",
+     "script": "limpio \"git status todavía muestra algo: revisa qué falta ignorar o confirmar\""
+    }
+   ],
+   "solution": [
+    "git status -s",
+    "echo \"node_modules/\" > .gitignore",
+    "echo \".env\" >> .gitignore",
+    "echo \"*.log\" >> .gitignore",
+    "git status -s",
+    "git add .gitignore .env.example",
+    "git commit -m \"Agrega .gitignore y la plantilla .env.example\""
+   ],
+   "hints": [
+    "Tres reglas bastan, una por línea. Para las carpetas, termina el patrón en `/`.",
+    "`*.log` (sin `/`) coincide con cualquier `.log` en cualquier carpeta. Y `.env` no coincide con `.env.example`: son nombres distintos.",
+    "Escribe cada patrón entre comillas: `echo \"*.log\" >> .gitignore`. Comprueba con `git check-ignore -v <ruta>` y confirma con `git add .gitignore .env.example`."
+   ],
+   "explain": "Un `.gitignore` válido:\n```text\nnode_modules/\n.env\n*.log\n```\n`node_modules/` (con `/` final) solo coincide con carpetas y, al no tener otra `/`, en cualquier nivel. `.env` coincide exactamente con ese nombre, no con `.env.example`. `*.log` coincide con cualquier `.log` en cualquier carpeta, incluidos los que aún no existen. Una regla como `logs/` habría dejado fuera `npm-debug.log` y los logs futuros de otras carpetas.\n\nBuenas prácticas: confirma `.gitignore` para que todo el equipo comparta las reglas, versiona una plantilla (`.env.example`) sin secretos y usa `git check-ignore -v ruta` cuando dudes de por qué algo se ignora. Para proyectos reales, parte de la plantilla `Node.gitignore` de github/gitignore."
+  },
+  {
+   "id": "s03-e9",
+   "title": ".gitignore con excepciones",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "El proyecto de **análisis de ventas** (Python) necesita un `.gitignore` preciso. Estas son las reglas:",
+    "1) Ignorar todo lo que hay en `logs/`, **excepto** `logs/.gitkeep` (existe para que la carpeta aparezca al clonar).\n2) Ignorar `.env` y cualquier `.env.algo` (`.env.local`…), **excepto** `.env.example`.\n3) Ignorar la carpeta `build/` **de la raíz** (resultado de compilar). ¡Ojo! `src/build/` es código fuente y **no** debe ignorarse.\n4) Ignorar las carpetas `__pycache__/` en cualquier nivel.",
+    "Confirma el `.gitignore` junto con todo lo que sí debe versionarse (`logs/.gitkeep`, `.env.example`, `src/build/compilar.py`) y deja `git status` limpio. Usa `git check-ignore -v` para comprobar cada regla antes de confirmar."
+   ],
+   "setup": "nuevo_repo analisis-ventas\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Análisis de ventas\n__FIN__\nmkdir -p \"$(dirname 'src/main.py')\"\ncat > 'src/main.py' <<'__FIN__'\nfrom build.compilar import compilar\n\nprint('Ventas de septiembre')\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nmkdir -p \"$(dirname 'logs/.gitkeep')\"\ncat > 'logs/.gitkeep' <<'__FIN__'\n\n__FIN__\nmkdir -p \"$(dirname 'logs/2026-09-01.log')\"\ncat > 'logs/2026-09-01.log' <<'__FIN__'\ninicio\n__FIN__\nmkdir -p \"$(dirname 'logs/2026-09-02.log')\"\ncat > 'logs/2026-09-02.log' <<'__FIN__'\ninicio\n__FIN__\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nDB_PASS=ventas_secreto\n__FIN__\nmkdir -p \"$(dirname '.env.local')\"\ncat > '.env.local' <<'__FIN__'\nDB_PASS=local_secreto\n__FIN__\nmkdir -p \"$(dirname '.env.example')\"\ncat > '.env.example' <<'__FIN__'\nDB_PASS=\n__FIN__\nmkdir -p \"$(dirname 'build/ventas.bin')\"\ncat > 'build/ventas.bin' <<'__FIN__'\nbinario generado\n__FIN__\nmkdir -p \"$(dirname 'build/reporte.html')\"\ncat > 'build/reporte.html' <<'__FIN__'\n<h1>Reporte generado</h1>\n__FIN__\nmkdir -p \"$(dirname 'src/build/compilar.py')\"\ncat > 'src/build/compilar.py' <<'__FIN__'\ndef compilar():\n    return 'build/ventas.bin'\n__FIN__\nmkdir -p \"$(dirname 'src/__pycache__/main.cpython-312.pyc')\"\ncat > 'src/__pycache__/main.cpython-312.pyc' <<'__FIN__'\nbytecode\n__FIN__\nmkdir -p \"$(dirname 'src/build/__pycache__/compilar.cpython-312.pyc')\"\ncat > 'src/build/__pycache__/compilar.cpython-312.pyc' <<'__FIN__'\nbytecode\n__FIN__",
+   "cwd": "analisis-ventas",
+   "checks": [
+    {
+     "name": "Regla 1: logs ignorados salvo logs/.gitkeep",
+     "script": "git check-ignore -q logs/2026-09-01.log || falla \"Los .log de logs/ no están ignorados\"\nif git check-ignore -q logs/.gitkeep; then falla \"logs/.gitkeep está ignorado. ¿Ignoraste la carpeta entera? Git no puede re-incluir un archivo si su carpeta padre está excluida\"; fi\ntrue"
+    },
+    {
+     "name": "Regla 2: .env y .env.local ignorados; .env.example no",
+     "script": "git check-ignore -q .env || falla \".env no está ignorado\"\ngit check-ignore -q .env.local || falla \".env.local no está ignorado: usa un patrón que cubra cualquier .env.algo\"\nif git check-ignore -q .env.example; then falla \".env.example está ignorado: añade una excepción con ! después de la regla general\"; fi\ntrue"
+    },
+    {
+     "name": "Regla 3: build/ de la raíz ignorada; src/build/ no",
+     "script": "git check-ignore -q build/ventas.bin || falla \"La carpeta build/ de la raíz no está ignorada\"\nif git check-ignore -q src/build/compilar.py; then falla \"src/build/compilar.py es código fuente y quedó ignorado: ancla el patrón a la raíz con una / al principio\"; fi\ntrue"
+    },
+    {
+     "name": "Regla 4: __pycache__/ ignorada en cualquier nivel",
+     "script": "git check-ignore -q src/__pycache__/main.cpython-312.pyc || falla \"src/__pycache__/ no está ignorada\"\ngit check-ignore -q src/build/__pycache__/compilar.cpython-312.pyc || falla \"src/build/__pycache__/ no está ignorada: el patrón debe valer en cualquier nivel\""
+    },
+    {
+     "name": "Lo que sí se versiona está confirmado",
+     "script": "for p in .gitignore logs/.gitkeep .env.example src/build/compilar.py; do git cat-file -e \"HEAD:$p\" 2>/dev/null || falla \"$p no está en el último commit\"; done\nif git ls-tree -r --name-only HEAD | grep -Eq '\\.log$|^\\.env$|^\\.env\\.local$|^build/|__pycache__'; then falla \"El último commit contiene archivos que debían ignorarse\"; fi\ntrue"
+    },
+    {
+     "name": "git status queda limpio",
+     "script": "limpio \"git status todavía muestra algo: revisa qué falta ignorar o confirmar\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "printf 'logs/*\\n!logs/.gitkeep\\n.env*\\n!.env.example\\n/build/\\n__pycache__/\\n' > .gitignore",
+    "cat .gitignore",
+    "git check-ignore -v logs/.gitkeep .env.example src/build/compilar.py build/ventas.bin",
+    "git status -s -uall",
+    "git add .",
+    "git commit -m \"Agrega .gitignore con excepciones\""
+   ],
+   "hints": [
+    "Las excepciones se escriben con `!` **después** de la regla general: si varias reglas coinciden, gana la última.",
+    "Si ignoras `logs/` (la carpeta), `!logs/.gitkeep` no funciona: Git no entra en carpetas ignoradas. Ignora su **contenido**: `logs/*`.",
+    "`build/` coincide en cualquier nivel (también `src/build/`). Una `/` al principio, `/build/`, lo ancla a la raíz. `__pycache__/` sin `/` inicial vale en cualquier nivel."
+   ],
+   "explain": "Un `.gitignore` que cumple las cuatro reglas:\n```text\nlogs/*\n!logs/.gitkeep\n.env*\n!.env.example\n/build/\n__pycache__/\n```\n- `logs/*` ignora el **contenido** de `logs/` pero no la carpeta, así que `!logs/.gitkeep` puede re-incluir ese archivo. Con `logs/` la excepción no tendría efecto: «no se puede re-incluir un archivo si su carpeta padre está excluida».\n- `.env*` cubre `.env`, `.env.local` y también `.env.example`; por eso la excepción `!.env.example` va **después** (gana la última regla que coincide).\n- `/build/`: la `/` inicial ancla a la raíz y la final exige que sea carpeta; `src/build/` queda a salvo.\n- `__pycache__/` no tiene `/` al principio ni en medio, así que vale en cualquier nivel (igual que `**/__pycache__/`).\n\nAlternativa para la regla 1: ignorar `logs/` y forzar el archivo con `git add -f logs/.gitkeep` (un archivo rastreado nunca se ignora). Funciona, pero la regla `logs/*` + excepción deja la intención escrita en el propio `.gitignore`."
+  },
+  {
+   "id": "s03-e10",
+   "title": "Tu ignore global",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Trabajas en macOS y el Finder va dejando archivos `.DS_Store` en todas tus carpetas. En tu portafolio ya aparecieron dos (`.DS_Store` e `img/.DS_Store`) y te ofrecen añadirlos en cada `git status`.",
+    "Tu equipo no usa Mac, así que la regla **no** debe ir en el `.gitignore` del proyecto. Configura un ignore **global** (para todos tus repositorios) que ignore `.DS_Store` en cualquier carpeta y deja `git status` limpio. No hace falta ningún commit."
+   ],
+   "setup": "nuevo_repo portafolio\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'index.html')\"\ncat > 'index.html' <<'__FIN__'\n<h1>Mi portafolio</h1>\n__FIN__\nmkdir -p \"$(dirname 'img/logo.svg')\"\ncat > 'img/logo.svg' <<'__FIN__'\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n__FIN__\nmkdir -p \"$(dirname '.gitignore')\"\ncat > '.gitignore' <<'__FIN__'\nnode_modules/\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nmkdir -p \"$(dirname '.DS_Store')\"\ncat > '.DS_Store' <<'__FIN__'\nbasura de Finder\n__FIN__\nmkdir -p \"$(dirname 'img/.DS_Store')\"\ncat > 'img/.DS_Store' <<'__FIN__'\nbasura de Finder\n__FIN__",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": ".DS_Store se ignora en cualquier carpeta",
+     "script": "for p in .DS_Store img/.DS_Store otra/carpeta/.DS_Store; do git check-ignore -q \"$p\" || falla \"$p no está ignorado\"; done"
+    },
+    {
+     "name": "La regla viene de tu configuración personal, no del proyecto",
+     "script": "origen=$(git check-ignore -v .DS_Store | cut -f1 | cut -d: -f1)\n[ -n \"$origen\" ] || falla \"Todavía no hay ninguna regla que ignore .DS_Store\"\ncase \"$origen\" in\n  .gitignore|*/.gitignore) falla \"La regla está en un .gitignore del proyecto: así se la impondrías a todo el equipo. Debe ir en tu ignore global\";;\n  .git/info/exclude) falla \".git/info/exclude solo vale para este repositorio; queremos una regla para todos tus proyectos\";;\nesac\ntrue"
+    },
+    {
+     "name": "El proyecto no cambió",
+     "script": "git diff --quiet HEAD -- .gitignore || falla \"Modificaste el .gitignore del proyecto; déjalo como estaba (node_modules/)\"\n[ \"$(num_commits)\" -eq 1 ] || falla \"No hacía falta ningún commit: la configuración global no forma parte del proyecto\""
+    },
+    {
+     "name": "git status queda limpio",
+     "script": "limpio \"git status todavía muestra archivos: ¿se ignoran todos los .DS_Store?\""
+    }
+   ],
+   "solution": [
+    "echo \".DS_Store\" > ~/.gitignore_global",
+    "git config --global core.excludesFile ~/.gitignore_global",
+    "git config --global core.excludesFile",
+    "git status -s",
+    "git check-ignore -v img/.DS_Store"
+   ],
+   "hints": [
+    "Necesitas dos cosas: un archivo con el patrón (por ejemplo `~/.gitignore_global`) y decirle a Git dónde está.",
+    "La opción de configuración es `core.excludesFile`, a nivel `--global`.",
+    "`echo \".DS_Store\" > ~/.gitignore_global` y luego `git config --global core.excludesFile ~/.gitignore_global`. Comprueba con `git check-ignore -v img/.DS_Store`: la regla debe venir de ese archivo."
+   ],
+   "explain": "`core.excludesFile` apunta a un archivo de patrones que Git aplica en **todos** tus repositorios, sin que forme parte de ninguno. `git check-ignore -v img/.DS_Store` muestra `~/.gitignore_global` como origen de la regla (en una terminal normal verás la ruta completa, por ejemplo `/Users/tu-usuario/.gitignore_global`: al escribir `~` sin comillas, la terminal lo expande antes de que Git lo guarde).\n\nAlternativa sin configurar nada: Git lee por defecto `~/.config/git/ignore` (`$XDG_CONFIG_HOME/git/ignore`), así que `mkdir -p ~/.config/git` + `echo \".DS_Store\" > ~/.config/git/ignore` también funciona. Para lo que es tuyo solo en **un** repositorio está `.git/info/exclude`.\n\nBuena práctica: en el ignore global van la basura del sistema operativo y del editor (`.DS_Store`, `Thumbs.db`, `.idea/`, `*.swp`); en el `.gitignore` del proyecto, lo que genera el propio proyecto. La carpeta `Global/` de github/gitignore tiene plantillas para macOS, Windows, Linux y los editores más usados."
+  },
+  {
+   "id": "s03-e11",
+   "title": "Limpieza de borradores con git rm",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "El recetario familiar acumuló archivos que sobran: `borrador_v1.txt`, `borrador_v2.txt` y la carpeta `pruebas/`. Bórralos **del repositorio y de tu carpeta** en **un solo commit**. Las recetas no se tocan."
+   ],
+   "setup": "nuevo_repo recetario\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Recetario familiar\n__FIN__\nmkdir -p \"$(dirname 'recetas/pan-amasado.md')\"\ncat > 'recetas/pan-amasado.md' <<'__FIN__'\n# Pan amasado\n1 kg de harina, 300 g de manteca, agua tibia y sal.\n__FIN__\nmkdir -p \"$(dirname 'recetas/sopaipillas.md')\"\ncat > 'recetas/sopaipillas.md' <<'__FIN__'\n# Sopaipillas\nZapallo cocido, harina, manteca y polvos de hornear.\n__FIN__\nmkdir -p \"$(dirname 'borrador_v1.txt')\"\ncat > 'borrador_v1.txt' <<'__FIN__'\nprimeras ideas\n__FIN__\nmkdir -p \"$(dirname 'pruebas/prueba1.txt')\"\ncat > 'pruebas/prueba1.txt' <<'__FIN__'\nprueba\n__FIN__\nmkdir -p \"$(dirname 'pruebas/prueba2.txt')\"\ncat > 'pruebas/prueba2.txt' <<'__FIN__'\notra prueba\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nfecha '2026-09-03 18:00'\nmkdir -p \"$(dirname 'recetas/pastel-de-choclo.md')\"\ncat > 'recetas/pastel-de-choclo.md' <<'__FIN__'\n# Pastel de choclo\nPino de carne, pollo, aceitunas, huevo duro y pastelera de choclo.\n__FIN__\nmkdir -p \"$(dirname 'borrador_v2.txt')\"\ncat > 'borrador_v2.txt' <<'__FIN__'\nmás ideas\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el pastel de choclo'",
+   "cwd": "recetario",
+   "checks": [
+    {
+     "name": "Los borradores y pruebas/ ya no están en el último commit",
+     "script": "for p in borrador_v1.txt borrador_v2.txt pruebas/prueba1.txt pruebas/prueba2.txt; do\n  if git cat-file -e \"HEAD:$p\" 2>/dev/null; then falla \"El último commit todavía contiene $p\"; fi\ndone\ntrue"
+    },
+    {
+     "name": "Tampoco quedan en tu carpeta",
+     "script": "for p in borrador_v1.txt borrador_v2.txt pruebas; do\n  if [ -e \"$p\" ]; then falla \"$p sigue en tu carpeta (¿usaste --cached?)\"; fi\ndone\ntrue"
+    },
+    {
+     "name": "Un único commit nuevo y las recetas intactas",
+     "script": "[ \"$(num_commits)\" -eq 3 ] || falla \"Debe haber exactamente un commit nuevo con todos los borrados (hay $(num_commits) commits en total, se esperaban 3)\"\nfor p in recetas/pan-amasado.md recetas/sopaipillas.md recetas/pastel-de-choclo.md README.md; do git cat-file -e \"HEAD:$p\" 2>/dev/null || falla \"Falta $p en el último commit\"; done"
+    },
+    {
+     "name": "Directorio de trabajo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git rm borrador_v1.txt borrador_v2.txt",
+    "git rm -r pruebas",
+    "git status -s",
+    "git commit -m \"Elimina borradores y pruebas\""
+   ],
+   "hints": [
+    "`git rm archivo` borra el archivo y prepara el borrado en un solo paso.",
+    "Para una carpeta necesitas `-r`: `git rm -r pruebas`. Luego un único `git commit -m \"…\"`."
+   ],
+   "explain": "`git rm` borra del disco y prepara el borrado; `-r` lo hace recursivo para carpetas. Con todos los borrados preparados, un solo commit los registra juntos. Otras formas válidas: `git rm borrador_*.txt` (la terminal expande el comodín) o `git rm 'borrador_*.txt'` (entre comillas, el patrón lo interpreta Git); también `rm` + `git add` de cada ruta, o `rm` + `git commit -a`.\n\nLos archivos borrados siguen existiendo en los commits anteriores: `git show HEAD~1:borrador_v2.txt` los muestra. Borrar en Git nunca destruye la historia (recuperarlos lo verás en s04)."
+  },
+  {
+   "id": "s03-e12",
+   "title": "Renombrar sin perder la historia",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En el proyecto `conversor` hay que ordenar: `LEEME.txt` debe llamarse `README.md` y `funciones.js` debe quedar en `src/funciones.js`.",
+    "Haz ambos cambios en **un solo commit**, sin modificar el contenido de los archivos, de forma que Git los reconozca como **renombres** y `git log --follow -- src/funciones.js` siga mostrando toda su historia."
+   ],
+   "setup": "nuevo_repo conversor\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'LEEME.txt')\"\ncat > 'LEEME.txt' <<'__FIN__'\nConversor de unidades.\nUso: node funciones.js\n__FIN__\nmkdir -p \"$(dirname 'funciones.js')\"\ncat > 'funciones.js' <<'__FIN__'\nfunction celsiusAFahrenheit(c) {\n  return c * 9 / 5 + 32;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega funciones de conversión'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'funciones.js')\"\ncat > 'funciones.js' <<'__FIN__'\nfunction celsiusAFahrenheit(c) {\n  return c * 9 / 5 + 32;\n}\n\nfunction kmAMillas(km) {\n  return km * 0.621371;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega conversión de kilómetros a millas'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-05 15:30'\nmkdir -p \"$(dirname 'funciones.js')\"\ncat > 'funciones.js' <<'__FIN__'\nfunction celsiusAFahrenheit(c) {\n  return Math.round((c * 9 / 5 + 32) * 10) / 10;\n}\n\nfunction kmAMillas(km) {\n  return Math.round(km * 0.621371 * 100) / 100;\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Corrige el redondeo'\nyo",
+   "cwd": "conversor",
+   "checks": [
+    {
+     "name": "Los archivos tienen su nombre nuevo en el último commit",
+     "script": "git cat-file -e HEAD:README.md 2>/dev/null || falla \"README.md no está en el último commit\"\ngit cat-file -e HEAD:src/funciones.js 2>/dev/null || falla \"src/funciones.js no está en el último commit\"\nif git cat-file -e HEAD:LEEME.txt 2>/dev/null; then falla \"El último commit todavía contiene LEEME.txt\"; fi\nif git cat-file -e HEAD:funciones.js 2>/dev/null; then falla \"El último commit todavía contiene funciones.js en la raíz\"; fi\ntrue"
+    },
+    {
+     "name": "Git detecta los dos renombres",
+     "script": "[ \"$(num_commits)\" -ge 4 ] || falla \"Todavía no hay un commit nuevo\"\nns=$(git diff --name-status -M HEAD~1 HEAD | tr '\\t' ' ')\necho \"$ns\" | grep -Eq '^R[0-9]+ LEEME.txt README.md$' || falla \"En el último commit Git no ve LEEME.txt → README.md como un renombre (¿cambiaste el contenido o lo hiciste en otro commit?)\"\necho \"$ns\" | grep -Eq '^R[0-9]+ funciones.js src/funciones.js$' || falla \"En el último commit Git no ve funciones.js → src/funciones.js como un renombre\""
+    },
+    {
+     "name": "La historia de src/funciones.js llega hasta su creación",
+     "script": "primero=$(git log --follow --format=%s -- src/funciones.js | tail -n 1)\n[ \"$primero\" = \"Agrega funciones de conversión\" ] || falla \"git log --follow -- src/funciones.js no llega hasta el commit que creó el archivo\""
+    },
+    {
+     "name": "Un solo commit nuevo y todo limpio",
+     "script": "[ \"$(num_commits)\" -eq 4 ] || falla \"Haz los dos renombres en un único commit (hay $(num_commits) commits; se esperaban 4)\"\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git mv LEEME.txt README.md",
+    "mkdir src",
+    "git mv funciones.js src/funciones.js",
+    "git status",
+    "git commit -m \"Renombra LEEME.txt y mueve funciones.js a src/\"",
+    "git log --oneline --follow -- src/funciones.js"
+   ],
+   "hints": [
+    "`git mv viejo nuevo` renombra y prepara el cambio en un paso.",
+    "Para mover a `src/` la carpeta tiene que existir: `mkdir src` primero (si no, verás «fatal: renaming 'funciones.js' failed: No such file or directory»).",
+    "Antes de confirmar, `git status` debe mostrar dos líneas `renamed:`. Luego un solo `git commit`."
+   ],
+   "explain": "`git mv` equivale a `mv` + `git rm` (del nombre viejo) + `git add` (del nuevo). Git no guarda que hubo un renombre: al comparar el commit con su padre ve que desapareció `funciones.js` y apareció `src/funciones.js` con el mismo contenido, y lo muestra como `R100` (100 % de similitud). Por eso era importante no cambiar el contenido: por debajo del 50 % de similitud, Git vería un borrado y un archivo nuevo.\n\nAlternativa: `mkdir src`, `mv funciones.js src/`, `mv LEEME.txt README.md` y `git add -A`; el resultado es idéntico. Compruébalo con `git show --stat HEAD` (`LEEME.txt => README.md`) y con `git log --follow`. Como `README.md` se muestra en GitHub, tendría sentido también pasarlo a formato Markdown, pero en **otro** commit."
+  },
+  {
+   "id": "s03-e13",
+   "title": "Secretos confirmados por error",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En el bot del clima alguien confirmó `.env` (con la clave de la API) y `config/credenciales.json`. Haz que Git **deje de rastrear** esos dos archivos **sin borrarlos de tu carpeta** (el bot los necesita para funcionar) y que no vuelvan a entrar por error.",
+    "`config/app.json` no tiene secretos y debe seguir en el repositorio. Termina con un commit y `git status` limpio."
+   ],
+   "setup": "nuevo_repo bot-clima\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'bot.js')\"\ncat > 'bot.js' <<'__FIN__'\nconst config = require('./config/app.json');\nconsole.log('Bot del clima para', config.ciudad);\n__FIN__\nmkdir -p \"$(dirname 'config/app.json')\"\ncat > 'config/app.json' <<'__FIN__'\n{ \"ciudad\": \"Concepción\", \"unidades\": \"metric\" }\n__FIN__\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Bot del clima\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nfecha '2026-09-03 12:00'\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nAPI_CLIMA_KEY=clave_de_prueba_7f3a9c\n__FIN__\nmkdir -p \"$(dirname 'config/credenciales.json')\"\ncat > 'config/credenciales.json' <<'__FIN__'\n{ \"cliente\": \"bot-clima\", \"secreto\": \"no-compartir-9d2e\" }\n__FIN__\nmkdir -p \"$(dirname 'bot.js')\"\ncat > 'bot.js' <<'__FIN__'\nrequire('dotenv').config();\nconst config = require('./config/app.json');\nconsole.log('Bot del clima para', config.ciudad);\n__FIN__\ngit add -A\ngit commit -q -m 'Conecta el bot con la API del clima'\nfecha '2026-09-05 17:00'\nmkdir -p \"$(dirname 'bot.js')\"\ncat > 'bot.js' <<'__FIN__'\nrequire('dotenv').config();\nconst config = require('./config/app.json');\nconsole.log('Pronóstico de 3 días para', config.ciudad);\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega pronóstico de 3 días'",
+   "cwd": "bot-clima",
+   "checks": [
+    {
+     "name": "Los secretos siguen en tu carpeta",
+     "script": "archivo_tiene .env \"API_CLIMA_KEY=\" \".env ya no está en tu carpeta (o cambió): debías conservarlo en el disco\"\narchivo_existe config/credenciales.json \"config/credenciales.json ya no está en tu carpeta: debías conservarlo en el disco\""
+    },
+    {
+     "name": "Ya no están en el último commit",
+     "script": "if git cat-file -e HEAD:.env 2>/dev/null; then falla \"El último commit todavía contiene .env\"; fi\nif git cat-file -e HEAD:config/credenciales.json 2>/dev/null; then falla \"El último commit todavía contiene config/credenciales.json\"; fi\ntrue"
+    },
+    {
+     "name": "Quedan ignorados para el futuro",
+     "script": "git check-ignore -q .env || falla \".env no está ignorado: podría volver a entrar con un git add .\"\ngit check-ignore -q config/credenciales.json || falla \"config/credenciales.json no está ignorado\""
+    },
+    {
+     "name": "config/app.json sigue en el repositorio",
+     "script": "git cat-file -e HEAD:config/app.json 2>/dev/null || falla \"config/app.json desapareció del último commit: solo había que sacar los secretos\"\ngit ls-files --error-unmatch config/app.json >/dev/null 2>&1 || falla \"config/app.json ya no está rastreado\"\nif git check-ignore -q --no-index config/app.json; then falla \"Tu .gitignore también cubre config/app.json (¿ignoraste toda la carpeta config/?): escribe la ruta exacta del archivo con secretos\"; fi\ntrue"
+    },
+    {
+     "name": ".gitignore confirmado y todo limpio",
+     "script": "git cat-file -e HEAD:.gitignore 2>/dev/null || falla \"Confirma también el .gitignore\"\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git rm --cached .env config/credenciales.json",
+    "git status -s",
+    "printf \".env\\nconfig/credenciales.json\\n\" > .gitignore",
+    "git add .gitignore",
+    "git commit -m \"Deja de rastrear los secretos\"",
+    "ls -a",
+    "git status"
+   ],
+   "hints": [
+    "`.gitignore` no sirve para archivos que ya están rastreados. Primero hay que sacarlos del área de preparación sin tocar el disco.",
+    "`git rm --cached archivo` hace justo eso. Después, añade las rutas al `.gitignore`.",
+    "No uses `config/` como regla: ignoraría también `config/app.json` para el futuro. Escribe la ruta exacta `config/credenciales.json`."
+   ],
+   "explain": "`git rm --cached` quita los archivos del área de preparación (el próximo commit ya no los incluye) pero los deja en tu disco, ahora sin seguimiento; el `.gitignore` evita que un `git add .` los vuelva a meter. Si se hubieran confirmado carpetas, usarías `git rm -r --cached carpeta`.\n\nLo más importante no es de Git: **esas claves siguen en la historia**. `git show HEAD~1:.env` todavía las muestra, igual que cualquier clon o el servidor. Hay que **rotarlas** (generar claves nuevas e invalidar las viejas) de inmediato; purgar la historia es de s15. Y avisa al equipo: al traer tu commit, Git borrará el `.env` de sus carpetas porque, para Git, ese commit elimina el archivo.\n\nEl consejo del ejercicio «Un .gitignore para un proyecto Node» aplica aquí también: versiona un `.env.example` sin valores para que otros sepan qué variables configurar."
+  },
+  {
+   "id": "s03-e14",
+   "title": "Proyecto: sanear un repositorio heredado",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "Heredaste el repositorio de la **tienda de artesanía** que dejó Diego. Revísalo con `git status`, `git log --stat` y `ls -a`: confirmó las dependencias (`node_modules/`), la clave de la pasarela de pago (`.env`) y un log (`debug.log`), y el README se llama `LEEME.txt`.",
+    "Tu misión:\n1) Que Git **deje de rastrear** `node_modules/`, `.env` y `debug.log`, **sin borrarlos de tu carpeta** (la tienda los necesita para funcionar en tu computador).\n2) Crear un `.gitignore` que los ignore, y también cualquier `.log` futuro.\n3) Renombrar `LEEME.txt` a `README.md` **conservando su historia**.\n4) Dejarlo todo confirmado (en uno o varios commits; lo profesional es separar temas) y `git status` limpio.",
+    "El código de la tienda (`index.html`, `app.js`, `estilos.css`, `package.json`) debe seguir en el repositorio."
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'LEEME.txt')\"\ncat > 'LEEME.txt' <<'__FIN__'\nTienda de artesanía\n1. npm install\n2. npm start\n__FIN__\nmkdir -p \"$(dirname 'package.json')\"\ncat > 'package.json' <<'__FIN__'\n{\n  \"name\": \"tienda-artesania\",\n  \"dependencies\": { \"lodash\": \"^4.17.21\", \"dayjs\": \"^1.11.13\" }\n}\n__FIN__\nmkdir -p \"$(dirname 'index.html')\"\ncat > 'index.html' <<'__FIN__'\n<h1>Artesanías del Sur</h1>\n<div id=\"catalogo\"></div>\n__FIN__\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nconst productos = [];\nfunction mostrarCatalogo() {\n  return productos;\n}\n__FIN__\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\nbody { font-family: serif; }\n__FIN__\nmkdir -p \"$(dirname 'node_modules/lodash/index.js')\"\ncat > 'node_modules/lodash/index.js' <<'__FIN__'\nmodule.exports = {};\n__FIN__\nmkdir -p \"$(dirname 'node_modules/lodash/package.json')\"\ncat > 'node_modules/lodash/package.json' <<'__FIN__'\n{ \"name\": \"lodash\" }\n__FIN__\nmkdir -p \"$(dirname 'node_modules/dayjs/index.js')\"\ncat > 'node_modules/dayjs/index.js' <<'__FIN__'\nmodule.exports = function dayjs() {};\n__FIN__\nmkdir -p \"$(dirname '.env')\"\ncat > '.env' <<'__FIN__'\nPASARELA_KEY=clave_super_secreta_123\n__FIN__\nmkdir -p \"$(dirname 'debug.log')\"\ncat > 'debug.log' <<'__FIN__'\n[2026-09-01] inicio\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'app.js')\"\ncat > 'app.js' <<'__FIN__'\nconst productos = [];\nconst carrito = [];\nfunction mostrarCatalogo() {\n  return productos;\n}\nfunction agregarAlCarrito(p) {\n  carrito.push(p);\n}\n__FIN__\nmkdir -p \"$(dirname 'debug.log')\"\ncat > 'debug.log' <<'__FIN__'\n[2026-09-01] inicio\n[2026-09-03] carrito listo\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega el carrito'\nfecha '2026-09-05 16:00'\nmkdir -p \"$(dirname 'estilos.css')\"\ncat > 'estilos.css' <<'__FIN__'\nbody { font-family: serif; }\n#catalogo { display: grid; gap: 1rem; }\n__FIN__\nmkdir -p \"$(dirname 'node_modules/dayjs/index.js')\"\ncat > 'node_modules/dayjs/index.js' <<'__FIN__'\nmodule.exports = function dayjs() { return new Date(); };\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza dependencias y estilos'\nyo",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "node_modules/ salió del repositorio pero sigue en tu carpeta",
+     "script": "if git ls-tree -r --name-only HEAD | grep -q '^node_modules/'; then falla \"El último commit todavía contiene archivos de node_modules/\"; fi\narchivo_existe node_modules/lodash/index.js \"node_modules/ ya no está en tu carpeta: debías dejar de rastrearla, no borrarla\""
+    },
+    {
+     "name": ".env y debug.log salieron del repositorio pero siguen en tu carpeta",
+     "script": "for p in .env debug.log; do\n  if git cat-file -e \"HEAD:$p\" 2>/dev/null; then falla \"El último commit todavía contiene $p\"; fi\n  archivo_existe \"$p\" \"$p ya no está en tu carpeta: debías dejar de rastrearlo, no borrarlo\"\ndone"
+    },
+    {
+     "name": "Todo eso queda ignorado (también los .log futuros)",
+     "script": "for p in node_modules/lodash/index.js node_modules/dayjs/index.js .env debug.log; do git check-ignore -q \"$p\" || falla \"$p no está ignorado\"; done\ngit check-ignore -q logs/errores.log || falla \"Un .log nuevo no quedaría ignorado: usa un patrón general para los .log\""
+    },
+    {
+     "name": ".gitignore está confirmado",
+     "script": "git cat-file -e HEAD:.gitignore 2>/dev/null || falla \"El .gitignore no está en el último commit\""
+    },
+    {
+     "name": "README.md reemplaza a LEEME.txt conservando la historia",
+     "script": "git cat-file -e HEAD:README.md 2>/dev/null || falla \"README.md no está en el último commit\"\nif git cat-file -e HEAD:LEEME.txt 2>/dev/null; then falla \"El último commit todavía contiene LEEME.txt\"; fi\nprimero=$(git log --follow --format=%s -- README.md | tail -n 1)\n[ \"$primero\" = \"Primer commit\" ] || falla \"La historia de README.md no llega hasta el primer commit: ¿Git detectó el renombre? (renombra sin cambiar el contenido)\""
+    },
+    {
+     "name": "El código de la tienda sigue en el repositorio",
+     "script": "for p in index.html app.js estilos.css package.json; do git cat-file -e \"HEAD:$p\" 2>/dev/null || falla \"Falta $p en el último commit\"; done\ngit ls-files --error-unmatch app.js >/dev/null 2>&1 || falla \"app.js dejó de estar rastreado\""
+    },
+    {
+     "name": "Hay commits nuevos y la historia anterior sigue intacta",
+     "script": "[ \"$(num_commits)\" -ge 4 ] || falla \"Todavía no confirmaste los cambios\"\n[ \"$(git log --format=%s --reverse | head -n 1)\" = \"Primer commit\" ] || falla \"La historia anterior cambió\""
+    },
+    {
+     "name": "Directorio limpio y sin operaciones a medias",
+     "script": "limpio \"git status todavía muestra cambios: confirma o ignora lo que falta\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git log --stat --oneline",
+    "git rm -r --cached node_modules .env debug.log",
+    "printf \"node_modules/\\n.env\\n*.log\\n\" > .gitignore",
+    "git add .gitignore",
+    "git status -s",
+    "git commit -m \"Deja de rastrear dependencias, secretos y logs\"",
+    "git mv LEEME.txt README.md",
+    "git commit -m \"Renombra LEEME.txt a README.md\"",
+    "git log --oneline --follow -- README.md",
+    "git status"
+   ],
+   "hints": [
+    "Para dejar de rastrear sin borrar: `git rm --cached` (con `-r` para la carpeta). Puedes pasar varias rutas a la vez.",
+    "Tres reglas en el `.gitignore`: `node_modules/`, `.env` y `*.log`. Confírmalo junto con los borrados del índice.",
+    "Para el README: `git mv LEEME.txt README.md`, sin tocar el contenido en ese mismo commit, y compruébalo con `git log --follow -- README.md`.",
+    "Antes de cada commit revisa `git status -s`: deberías ver `D` en la primera columna (borrado preparado) para lo que sale del índice, `A` para el `.gitignore` y, para el renombre, `R`."
+   ],
+   "explain": "Una solución profesional en dos commits, cada uno con un tema:\n```bash\ngit rm -r --cached node_modules .env debug.log\nprintf \"node_modules/\\n.env\\n*.log\\n\" > .gitignore\ngit add .gitignore\ngit commit -m \"Deja de rastrear dependencias, secretos y logs\"\ngit mv LEEME.txt README.md\ngit commit -m \"Renombra LEEME.txt a README.md\"\n```\nQué pasa por dentro: `git rm --cached` quita esas rutas del índice (en `git status` aparecen como `D` preparados y, a la vez, como archivos sin seguimiento, hasta que el `.gitignore` los oculta). El commit registra una instantánea sin ellos. `git mv` prepara el borrado de `LEEME.txt` y la creación de `README.md` con idéntico contenido, y Git lo detecta como `R100`, por eso `--follow` llega hasta «Primer commit».\n\nLo que no resuelve este saneamiento: la clave `PASARELA_KEY` sigue en los commits anteriores (`git show HEAD~2:.env`). En un proyecto real, lo primero sería **rotarla**; limpiar la historia es de s15. Y un aviso al equipo: quien traiga estos commits verá desaparecer su `.env` y su `node_modules/` (se recuperan con su respaldo y `npm install`)."
+  },
+  {
+   "id": "s03-e15",
+   "title": "Proyecto: informe forense del IVA",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "El sistema de boletas de la **Ferretería El Tornillo** está cobrando el IVA mal: en Chile es 19 %, pero `src/impuestos.js` dice `const IVA = 0.18;`. Gerencia pide un informe: **qué commit introdujo el 0.18, quién lo hizo y cuándo**.",
+    "Crea `~/informe.txt` con exactamente tres líneas:\n```text\n<hash del commit que cambió el IVA a 0.18 (7 caracteres o más)>\n<nombre completo de quien lo hizo>\n<fecha de ese commit en formato AAAA-MM-DD>\n```",
+    "Cuidado: la primera pista que encuentres puede no ser la buena. Comprueba cada sospechoso con `git show` antes de acusar a nadie. No modifiques el repositorio."
+   ],
+   "setup": "nuevo_repo boletas\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-01 10:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Boletas — Ferretería El Tornillo\n__FIN__\nmkdir -p \"$(dirname 'impuestos.js')\"\ncat > 'impuestos.js' <<'__FIN__'\nconst IVA = 0.19;\n\nfunction conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}\n\nmodule.exports = { conIva };\n__FIN__\nmkdir -p \"$(dirname 'boleta.js')\"\ncat > 'boleta.js' <<'__FIN__'\nconst { conIva } = require('./impuestos');\n\nfunction totalBoleta(items) {\n  const neto = items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n  return conIva(neto);\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Primer commit'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-03 11:00'\nmkdir -p \"$(dirname 'boleta.js')\"\ncat > 'boleta.js' <<'__FIN__'\nconst { conIva } = require('./impuestos');\n\nlet ultimoNumero = 0;\n\nfunction totalBoleta(items) {\n  const neto = items.reduce((suma, item) => suma + item.precio * item.cantidad, 0);\n  ultimoNumero += 1;\n  return { numero: ultimoNumero, total: conIva(neto) };\n}\n__FIN__\ngit add -A\ngit commit -q -m 'Agrega número de boleta correlativo'\nautor 'Martina Fuentes' 'martina.fuentes@ejemplo.cl'\nfecha '2026-09-08 16:45'\nmkdir -p \"$(dirname 'impuestos.js')\"\ncat > 'impuestos.js' <<'__FIN__'\nconst IVA = 0.18;\n\nfunction conIva(neto) {\n  return redondear(neto * (1 + IVA));\n}\n\nfunction redondear(monto) {\n  return Math.round(monto);\n}\n\nmodule.exports = { conIva, redondear };\n__FIN__\ngit add -A\ngit commit -q -m 'Refactoriza el cálculo de impuestos'\nautor 'Diego Soto' 'diego.soto@ejemplo.cl'\nfecha '2026-09-10 09:30'\nmkdir -p src\ngit mv impuestos.js src/impuestos.js\ngit mv boleta.js src/boleta.js\ngit add -A\ngit commit -q -m 'Mueve el código a src/'\nautor 'Ana Pérez' 'ana.perez@ejemplo.cl'\nfecha '2026-09-12 12:15'\nmkdir -p \"$(dirname 'src/impuestos.js')\"\ncat > 'src/impuestos.js' <<'__FIN__'\nconst IVA = 0.18; // tasa vigente\n\nfunction conIva(neto) {\n  return redondear(neto * (1 + IVA));\n}\n\nfunction redondear(monto) {\n  return Math.round(monto);\n}\n\nmodule.exports = { conIva, redondear };\n__FIN__\ngit add -A\ngit commit -q -m 'Documenta las constantes'\nautor 'Camila Torres' 'camila.torres@ejemplo.cl'\nfecha '2026-09-15 17:00'\nmkdir -p \"$(dirname 'README.md')\"\ncat > 'README.md' <<'__FIN__'\n# Boletas — Ferretería El Tornillo\nCalcula boletas con IVA incluido.\n__FIN__\ngit add -A\ngit commit -q -m 'Actualiza el README'\nyo",
+   "cwd": "boletas",
+   "checks": [
+    {
+     "name": "~/informe.txt existe y tiene tres líneas",
+     "script": "f=\"$HOME/informe.txt\"\n[ -s \"$f\" ] || falla \"No encuentro ~/informe.txt\"\n[ \"$(grep -c . \"$f\")\" -ge 3 ] || falla \"~/informe.txt debe tener tres líneas: hash, nombre y fecha\""
+    },
+    {
+     "name": "Línea 1: el commit que introdujo el 0.18",
+     "script": "f=\"$HOME/informe.txt\"\nh=$(sed -n '1p' \"$f\" | tr -d ' \\r\\t')\necho \"$h\" | grep -Eq '^[0-9a-f]{7,40}$' || falla \"La línea 1 debe ser un hash (al menos 7 caracteres hexadecimales)\"\ndado=$(git rev-parse --verify --quiet \"$h^{commit}\") || falla \"La línea 1 («${h}») no es un commit de este repositorio\"\nesperado=$(git log --format=%H --grep='^Refactoriza el cálculo de impuestos$' -n 1)\nmover=$(git log --format=%H --grep='^Mueve el código a src/$' -n 1)\ncoment=$(git log --format=%H --grep='^Documenta las constantes$' -n 1)\n[ \"$dado\" = \"$coment\" ] && falla \"Ese commit solo añadió un comentario a la línea: blame muestra el último cambio, no el origen. Sigue buscando\"\n[ \"$dado\" = \"$mover\" ] && falla \"Ese commit solo movió el archivo a src/: el 0.18 ya existía antes\"\n[ \"$dado\" = \"$esperado\" ] || falla \"Ese no es el commit que cambió el IVA a 0.18\""
+    },
+    {
+     "name": "Línea 2: quién lo hizo",
+     "script": "f=\"$HOME/informe.txt\"\nn=$(sed -n '2p' \"$f\" | tr -d '\\r\"' | tr -s ' ' | sed 's/^ //; s/ $//' | tr '[:upper:]' '[:lower:]')\n[ \"$n\" = \"martina fuentes\" ] || falla \"La línea 2 no es el nombre de quien introdujo el 0.18 (escribe nombre y apellido, como aparecen en git log)\""
+    },
+    {
+     "name": "Línea 3: la fecha en formato AAAA-MM-DD",
+     "script": "f=\"$HOME/informe.txt\"\nd=$(sed -n '3p' \"$f\" | tr -d ' \\r\\t')\necho \"$d\" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || falla \"La línea 3 debe tener el formato AAAA-MM-DD (--date=short te ayuda)\"\n[ \"$d\" = \"2026-09-08\" ] || falla \"Esa no es la fecha del commit que introdujo el 0.18\""
+    },
+    {
+     "name": "El repositorio queda intacto (solo había que investigar)",
+     "script": "limpio \"Hay cambios sin confirmar: en este ejercicio solo había que mirar, no modificar archivos\"\n[ \"$(num_commits)\" -eq 6 ] || falla \"El número de commits cambió: aquí solo había que investigar, no confirmar nada\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git blame src/impuestos.js",
+    "git show 30a5d0f",
+    "git log -S\"0.18\" --oneline",
+    "git show --stat 76c62f7",
+    "git log -1 --format=\"%h%n%an%n%ad\" --date=short 76c62f7",
+    "printf \"76c62f7\\nMartina Fuentes\\n2026-09-08\\n\" > ~/informe.txt",
+    "cat ~/informe.txt"
+   ],
+   "hints": [
+    "Empieza por `git blame src/impuestos.js` y abre con `git show` el commit que te indique para la línea del IVA. ¿Cambió el valor o solo algo más de la línea?",
+    "`blame` muestra el **último** cambio de la línea. Para encontrar el commit que **introdujo** el texto, busca en los cambios: `git log -S\"0.18\" --oneline`.",
+    "`git log -1 --format=\"%h%n%an%n%ad\" --date=short <hash>` imprime justo las tres líneas del informe. Escríbelas con `printf \"…\\n…\\n…\\n\" > ~/informe.txt`."
+   ],
+   "explain": "La investigación paso a paso:\n1. `git blame src/impuestos.js` señala para la línea 1 el commit «Documenta las constantes» de Ana Pérez (12 de septiembre). Pero `git show` de ese commit revela que solo añadió `// tasa vigente`: el `0.18` ya estaba. Primera pista falsa.\n2. `git log -S\"0.18\" --oneline` busca los commits que cambiaron cuántas veces aparece `0.18`: solo sale «Refactoriza el cálculo de impuestos». El commit de Ana no aparece (el texto siguió apareciendo una vez) y tampoco «Mueve el código a src/»: Git detecta el renombre y ve que el contenido no cambió.\n3. `git show` de ese commit confirma `-const IVA = 0.19;` / `+const IVA = 0.18;`, escondido en una «refactorización» de **Martina Fuentes** del **2026-09-08**.\n\nAtajo profesional: `git log -1 --format=\"%h%n%an%n%ad\" --date=short <hash>` da las tres líneas del informe; en la terminal de práctica puedes añadir `--output ~/informe.txt` para que Git las escriba directamente en el archivo. Lección de fondo: un mensaje engañoso («Refactoriza») escondió un cambio de lógica de negocio. Commits atómicos y mensajes honestos (s02) hacen que estas investigaciones duren un minuto."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué compara `git diff` sin argumentos?",
+   "back": "El directorio de trabajo con el área de preparación: los cambios que aún **no** preparaste."
+  },
+  {
+   "front": "¿Qué compara `git diff --staged`?",
+   "back": "El área de preparación con el último commit: lo que entrará en el próximo commit. `--cached` es sinónimo."
+  },
+  {
+   "front": "¿Qué compara `git diff HEAD`?",
+   "back": "El directorio de trabajo con el último commit: todos tus cambios, preparados o no."
+  },
+  {
+   "front": "¿Por qué un archivo nuevo no aparece en `git diff`?",
+   "back": "Porque no tiene seguimiento: no hay versión anterior con la que comparar. `git status` sí lo muestra."
+  },
+  {
+   "front": "¿Qué significa `@@ -12,7 +12,8 @@`?",
+   "back": "Cabecera de un hunk: en la versión antigua empieza en la línea 12 y abarca 7 líneas; en la nueva, empieza en la 12 y abarca 8."
+  },
+  {
+   "front": "En un diff, ¿qué son `a/`, `b/`, `-` y `+`?",
+   "back": "`a/` y `-` = versión de antes; `b/` y `+` = versión de después. Las líneas con espacio son contexto."
+  },
+  {
+   "front": "¿Para qué sirve `--word-diff`?",
+   "back": "Para ver cambios palabra por palabra dentro de una línea: `[-antes-]{+después+}`. Ideal para textos."
+  },
+  {
+   "front": "`--stat` vs `--name-only` vs `--name-status`",
+   "back": "Resumen con líneas cambiadas / solo nombres / nombres con estado (M, A, D, R)."
+  },
+  {
+   "front": "¿Qué es `HEAD~3`?",
+   "back": "El commit tres generaciones antes de `HEAD` (siguiendo al primer padre). `HEAD~1` = `HEAD^` = el padre."
+  },
+  {
+   "front": "¿Qué hace `git show HEAD~2:config.js`?",
+   "back": "Imprime config.js tal como estaba en ese commit, sin tocar tu directorio de trabajo."
+  },
+  {
+   "front": "¿Qué muestra `git show <commit>`?",
+   "back": "Los datos del commit (autor, fecha, mensaje) y su diff respecto de su padre."
+  },
+  {
+   "front": "¿Qué hace `git log --oneline --graph --all --decorate`?",
+   "back": "Muestra todas las ramas, un commit por línea, con el dibujo del grafo y las ramas que apuntan a cada commit («a dog»)."
+  },
+  {
+   "front": "¿Qué busca `--author=Ana`?",
+   "back": "Una expresión regular en «Nombre <correo>» del autor: también encuentra a «Ana Luisa» o a cualquiera con «Ana» en el correo. Distingue mayúsculas salvo con `-i`."
+  },
+  {
+   "front": "¿Qué significa `--until=\"2026-09-12\"` (sin hora)?",
+   "back": "Hasta el 12 de septiembre a la hora actual. Para días completos, escribe la hora: \"2026-09-12 23:59\"."
+  },
+  {
+   "front": "¿Cómo se combinan `--author`, `--since` y `--grep`?",
+   "back": "Con «y». Varios `--grep` entre sí (o varios `--author`) se combinan con «o», salvo `--all-match` para los `--grep`."
+  },
+  {
+   "front": "¿Qué encuentra `git log -S\"texto\"`?",
+   "back": "Los commits que cambiaron el número de veces que aparece ese texto: los que lo añadieron o lo quitaron (el pickaxe)."
+  },
+  {
+   "front": "¿Para qué sirve `--follow`?",
+   "back": "Para que git log siga la historia de un archivo a través de sus renombres. Solo funciona con un archivo."
+  },
+  {
+   "front": "¿Qué lista `git log A..B`?",
+   "back": "Los commits alcanzables desde B que no lo son desde A: «lo que B tiene y A no». En `git diff`, `A..B` = `A B`."
+  },
+  {
+   "front": "Marcadores de `--format`: `%h`, `%an`, `%ad`, `%s`",
+   "back": "Hash corto, nombre del autor, fecha del autor (según `--date`) y asunto del mensaje."
+  },
+  {
+   "front": "Autor vs committer",
+   "back": "El autor escribió el cambio; el committer lo registró en el repositorio. Difieren al aplicar parches ajenos, en cherry-pick o rebase."
+  },
+  {
+   "front": "¿Qué muestra `git blame archivo`? ¿Y el `^` delante de un hash?",
+   "back": "Para cada línea, el último commit que la cambió, su autor y fecha. El `^` marca un commit límite (si no indicas un rango, el primer commit del repositorio)."
+  },
+  {
+   "front": "`.gitignore`: ¿qué significa una `/` al final, al principio o en medio?",
+   "back": "Al final: solo carpetas. Al principio o en medio: anclado a la carpeta del .gitignore. Sin / (salvo la final): en cualquier nivel."
+  },
+  {
+   "front": "¿Por qué `logs/` + `!logs/.gitkeep` no funciona?",
+   "back": "Porque no se puede re-incluir un archivo si su carpeta padre está excluida. Usa `logs/*` + `!logs/.gitkeep`."
+  },
+  {
+   "front": "¿Qué hace `git check-ignore -v ruta`?",
+   "back": "Dice qué archivo, qué línea y qué patrón deciden que esa ruta se ignore (o, con !, que se re-incluya)."
+  },
+  {
+   "front": "¿Dónde van las reglas de ignore personales para todos tus repos?",
+   "back": "En el archivo de `core.excludesFile` (por defecto, `~/.config/git/ignore`). Para un solo repo, sin compartir: `.git/info/exclude`."
+  },
+  {
+   "front": "¿Cómo dejas de rastrear un archivo ya confirmado sin borrarlo del disco?",
+   "back": "`git rm --cached archivo` (`-r` para carpetas), lo añades al `.gitignore` y confirmas."
+  },
+  {
+   "front": "¿Qué hace `git mv a b`?",
+   "back": "Lo mismo que `mv a b` + `git rm a` + `git add b`. Git detecta el renombre por similitud (≥ 50 % por defecto)."
+  },
+  {
+   "front": "Confirmaste un `.env` con una clave. Tras `git rm --cached`, ¿qué falta?",
+   "back": "Rotar la clave: sigue en la historia, en los clones y en el servidor. Purgar la historia es otra operación (s15)."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s03-q1",
+   "type": "single",
+   "q": "¿Qué muestra `git diff` sin argumentos?",
+   "options": [
+    "Los cambios del último commit",
+    "Los cambios del directorio de trabajo que aún no están preparados",
+    "Todos los cambios desde el último commit, preparados o no",
+    "Los archivos sin seguimiento"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git diff` compara el directorio de trabajo con el área de preparación. Lo del último commit se ve con `git show`; todo lo cambiado desde el último commit, con `git diff HEAD`; y los archivos sin seguimiento no aparecen en ningún `git diff`."
+  },
+  {
+   "id": "s03-q2",
+   "type": "single",
+   "q": "Editas `app.js`, ejecutas `git add app.js` y luego `git diff` no muestra nada. ¿Qué pasó?",
+   "options": [
+    "Git perdió los cambios",
+    "Los cambios ya están en el área de preparación; se ven con git diff --staged",
+    "Hay que ejecutar git commit para verlos",
+    "app.js está en el .gitignore"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git add` copió el cambio al área de preparación, y `git diff` solo muestra lo que **no** está preparado. `git diff --staged` (o `--cached`) compara la preparación con el último commit. No se perdió nada, y no hace falta confirmar para verlos."
+  },
+  {
+   "id": "s03-q3",
+   "type": "multi",
+   "q": "¿Qué comandos muestran lo que entrará en el próximo commit? (Selecciona DOS.)",
+   "options": [
+    "`git diff --staged`",
+    "`git diff`",
+    "`git diff --cached`",
+    "`git show`",
+    "`git log -p`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`--staged` y `--cached` son sinónimos: comparan el área de preparación con el último commit. `git diff` muestra lo no preparado; `git show` y `git log -p` muestran commits ya hechos."
+  },
+  {
+   "id": "s03-q4",
+   "type": "single",
+   "q": "En un diff aparece la cabecera `@@ -12,7 +12,8 @@`. ¿Qué indica?",
+   "options": [
+    "Que se modificaron las líneas 7 y 8",
+    "Que el bloque empieza en la línea 12 en ambas versiones y la nueva tiene una línea más en ese bloque",
+    "Que hay 12 cambios en total",
+    "Que el archivo pasó de 7 a 8 líneas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Formato `-inicio,cantidad +inicio,cantidad`: en la versión antigua el hunk empieza en la línea 12 y abarca 7 líneas; en la nueva, empieza en la 12 y abarca 8. No habla del total de cambios ni del tamaño del archivo."
+  },
+  {
+   "id": "s03-q5",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre git diff, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Un archivo nuevo sin seguimiento aparece en `git diff HEAD`.",
+     "answer": false
+    },
+    {
+     "text": "Una línea modificada aparece como una línea con `-` seguida de una con `+`.",
+     "answer": true
+    },
+    {
+     "text": "`git diff HEAD` incluye tanto los cambios preparados como los no preparados.",
+     "answer": true
+    },
+    {
+     "text": "`git diff` modifica el área de preparación.",
+     "answer": false
+    }
+   ],
+   "explain": "Los archivos sin seguimiento no aparecen en ningún `git diff`. Git no tiene «línea modificada»: la muestra como borrada + añadida. `git diff HEAD` compara el trabajo con el último commit, así que incluye todo. Y `git diff` solo compara: nunca modifica nada."
+  },
+  {
+   "id": "s03-q6",
+   "type": "single",
+   "q": "Solo cambiaron dos palabras en un párrafo largo de `README.md`. ¿Qué opción las muestra marcadas dentro de la misma línea?",
+   "options": [
+    "`--stat`",
+    "`--name-status`",
+    "`--word-diff`",
+    "`-U0`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`--word-diff` muestra `[-antes-]{+después+}` dentro de la línea. `--stat` y `--name-status` resumen por archivo; `-U0` quita el contexto, pero sigue mostrando la línea entera como `-` y `+`."
+  },
+  {
+   "id": "s03-q7",
+   "type": "single",
+   "q": "¿Qué muestra `git diff HEAD~1 HEAD`?",
+   "options": [
+    "Los cambios sin confirmar",
+    "Los cambios que introdujo el último commit",
+    "La lista de los dos últimos commits",
+    "Los cambios del penúltimo commit, invertidos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Compara la instantánea del padre (`HEAD~1`) con la del último commit (`HEAD`): lo que introdujo ese commit. Es lo mismo que el diff de `git show HEAD`. Al revés (`git diff HEAD HEAD~1`) verías esos cambios invertidos."
+  },
+  {
+   "id": "s03-q8",
+   "type": "single",
+   "q": "¿Cuál es la diferencia entre `git show HEAD` y `git diff HEAD`?",
+   "options": [
+    "Ninguna, son sinónimos",
+    "git show HEAD muestra el último commit; git diff HEAD, tus cambios sin confirmar respecto de él",
+    "git show HEAD muestra los cambios sin confirmar; git diff HEAD, el último commit",
+    "git diff HEAD solo funciona si hay cambios preparados"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git show HEAD` imprime el commit (datos + su diff contra el padre). `git diff HEAD` compara tu directorio de trabajo con ese commit, es decir, tus cambios pendientes (preparados o no)."
+  },
+  {
+   "id": "s03-q9",
+   "type": "single",
+   "q": "Quieres ver cómo era `config.js` hace tres commits sin modificar tus archivos. ¿Qué comando usas?",
+   "options": [
+    "`git diff HEAD~3`",
+    "`git show HEAD~3:config.js`",
+    "`git log -3 config.js`",
+    "`git blame HEAD~3`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La sintaxis `REV:ruta` de `git show` imprime el archivo tal como estaba en esa revisión. `git diff HEAD~3` muestra diferencias, no el archivo; `git log -3` lista commits; y `git blame` necesita un archivo."
+  },
+  {
+   "id": "s03-q10",
+   "type": "single",
+   "q": "En historia lineal, ¿a qué commit se refiere `HEAD^^`?",
+   "options": [
+    "Al mismo que `HEAD~2`",
+    "Al segundo padre de `HEAD`",
+    "Al mismo que `HEAD~1`",
+    "Al primer commit del repositorio"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Cada `^` (sin número) sube al primer padre, así que `HEAD^^` = `HEAD~2` (el abuelo). `HEAD^2` (con número) sería el segundo padre, que solo existe en commits de fusión."
+  },
+  {
+   "id": "s03-q11",
+   "type": "single",
+   "q": "El repositorio tiene commits de «Ana Pérez» y de «Ana Luisa Rojas». ¿Qué muestra `git log --author=Ana`?",
+   "options": [
+    "Solo los de Ana Pérez",
+    "Los de ambas",
+    "Ninguno: hay que escribir el nombre completo",
+    "Solo los de Ana Luisa Rojas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--author` es una expresión regular que se busca en «Nombre <correo>»: «Ana» aparece en ambos nombres. Para una sola persona usa el nombre completo (`--author=\"Ana Pérez\"`) o su correo."
+  },
+  {
+   "id": "s03-q12",
+   "type": "single",
+   "q": "Son las 9:00 y ejecutas `git log --until=\"2026-09-12\"`. ¿Aparece un commit hecho el 12 de septiembre a las 18:00?",
+   "options": [
+    "Sí, --until incluye el día completo",
+    "No: sin hora, Git usa la hora actual (hasta el 12 a las 9:00)",
+    "Sí, pero solo con --all",
+    "No, --until excluye siempre ese día"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una fecha sin hora toma la hora actual del día. Para incluir el día completo escribe `--until=\"2026-09-12 23:59\"`. `--all` no tiene nada que ver con las fechas."
+  },
+  {
+   "id": "s03-q13",
+   "type": "single",
+   "q": "¿Qué commits muestra `git log --author=\"Diego\" --grep=\"login\"`?",
+   "options": [
+    "Los de Diego más los que mencionan login",
+    "Los de Diego cuyo mensaje menciona login",
+    "Solo los que mencionan login",
+    "Ninguno: no se pueden combinar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los filtros de distinto tipo se combinan con «y». La combinación con «o» se da entre varios `--grep` (o entre varios `--author`), salvo que uses `--all-match` para los `--grep`."
+  },
+  {
+   "id": "s03-q14",
+   "type": "single",
+   "q": "Un commit cambió `const MAX = 8;` por `const MAX = 10;`. ¿Aparece en `git log -S\"MAX\"`?",
+   "options": [
+    "Sí, porque tocó una línea que contiene MAX",
+    "No, porque MAX sigue apareciendo el mismo número de veces",
+    "Sí, pero solo con -p",
+    "Solo si el mensaje menciona MAX"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-S` lista los commits que cambian **cuántas veces** aparece el texto. Cambiar el valor no altera el conteo de «MAX». `git log -S\"MAX = 10\"` sí lo encontraría. `-p` solo añade el diff, y el mensaje no influye."
+  },
+  {
+   "id": "s03-q15",
+   "type": "single",
+   "q": "`git log -- src/app.js` se detiene en el commit que movió el archivo desde la raíz. ¿Qué opción muestra la historia anterior?",
+   "options": [
+    "`--all`",
+    "`--follow`",
+    "`--graph`",
+    "`--stat`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--follow` sigue el archivo a través de sus renombres (solo para un archivo). `--all` incluye todas las ramas, `--graph` dibuja el grafo y `--stat` resume los cambios; ninguno sigue renombres."
+  },
+  {
+   "id": "s03-q16",
+   "type": "yesno",
+   "q": "Sobre renombres en Git, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Git guarda en cada commit un registro explícito de los renombres.",
+     "answer": false
+    },
+    {
+     "text": "`git mv a b` equivale a `mv a b` + `git rm a` + `git add b`.",
+     "answer": true
+    },
+    {
+     "text": "Por defecto, Git considera renombre un par borrado/añadido con al menos 50 % de similitud.",
+     "answer": true
+    },
+    {
+     "text": "`git log --follow` funciona con varios archivos a la vez.",
+     "answer": false
+    }
+   ],
+   "explain": "Git guarda instantáneas y *deduce* los renombres al comparar (umbral por defecto: 50 %). `git mv` es solo un atajo. `--follow` solo funciona con un archivo."
+  },
+  {
+   "id": "s03-q17",
+   "type": "single",
+   "q": "¿Qué muestra `git log main..feature`?",
+   "options": [
+    "Los commits de main que no están en feature",
+    "Los commits de feature que no están en main",
+    "Todos los commits de ambas ramas",
+    "Las diferencias de archivos entre las ramas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`A..B` = commits alcanzables desde B que no lo son desde A: lo que traería fusionar `feature` en `main`. Para diferencias de archivos se usa `git diff`."
+  },
+  {
+   "id": "s03-q18",
+   "type": "single",
+   "q": "¿Qué hace `git diff main..feature`?",
+   "options": [
+    "Lo mismo que git diff main feature: compara las dos instantáneas",
+    "Lista los commits de feature que no están en main",
+    "Muestra solo lo que hizo feature desde que se separó",
+    "Da error: .. solo existe en git log"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "En `git diff`, `A..B` es un sinónimo de `A B`. Listar commits es cosa de `git log`. Ver solo lo que hizo la rama desde que se separó es `git diff main...feature` (tres puntos)."
+  },
+  {
+   "id": "s03-q19",
+   "type": "single",
+   "q": "¿Qué muestra `git log --reverse -1`?",
+   "options": [
+    "El commit más antiguo",
+    "El commit más reciente",
+    "Ningún commit",
+    "Los dos extremos de la historia"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git primero limita la lista (`-1` = el más reciente) y después la invierte, así que el resultado es el más reciente. Para ver el más antiguo, lista con `--oneline` y mira la última línea."
+  },
+  {
+   "id": "s03-q20",
+   "type": "single",
+   "q": "¿Qué formato produce líneas como `4a3faf6 2026-09-10 Diego Soto: Permite reservas`?",
+   "options": [
+    "`--format=\"%H %ad %cn: %b\"`",
+    "`--format=\"%h %ad %an: %s\" --date=short`",
+    "`--pretty=fuller`",
+    "`--oneline --stat`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`%h` hash corto, `%ad` fecha del autor (`--date=short` la deja en AAAA-MM-DD), `%an` autor, `%s` asunto. `%H` sería el hash completo y `%b` el cuerpo del mensaje."
+  },
+  {
+   "id": "s03-q21",
+   "type": "single",
+   "q": "En `git log --pretty=fuller` ves un **Author** y un **Commit** distintos. ¿Qué significa?",
+   "options": [
+    "Que el commit está corrupto",
+    "Que una persona escribió el cambio y otra lo registró en el repositorio",
+    "Que el commit es una fusión",
+    "Que el commit fue firmado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El autor escribió el cambio y el *committer* lo aplicó: pasa, por ejemplo, al aplicar parches ajenos o al reescribir commits (cherry-pick, rebase). No indica corrupción, fusión ni firma."
+  },
+  {
+   "id": "s03-q22",
+   "type": "single",
+   "q": "En la salida de `git blame`, una línea empieza con `^c3313f7`. ¿Qué indica el `^`?",
+   "options": [
+    "Que la línea tiene un conflicto",
+    "Que ese commit es un límite de la búsqueda (aquí, el primer commit): no hay nada más antiguo",
+    "Que la línea fue borrada",
+    "Que el commit es de una rama remota"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`^` marca un commit *boundary* (límite). En un repositorio sin límites explícitos, es el commit raíz: la línea viene de ahí y no se puede ir más atrás."
+  },
+  {
+   "id": "s03-q23",
+   "type": "single",
+   "q": "¿Qué comando muestra quién cambió por última vez las líneas 10 a 20 de `app.js`?",
+   "options": [
+    "`git log -L 10,20`",
+    "`git blame -L 10,20 app.js`",
+    "`git show 10..20 app.js`",
+    "`git diff -U10 app.js`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git blame -L inicio,fin archivo` anota solo ese rango. `git log -L` existe pero con otra sintaxis (`-L 10,20:app.js`) y muestra la historia completa del rango (s11). Las otras dos no son válidas para esto."
+  },
+  {
+   "id": "s03-q24",
+   "type": "single",
+   "q": "Tu `.gitignore` contiene `logs/` y, debajo, `!logs/.gitkeep`. ¿Qué pasa con `logs/.gitkeep`?",
+   "options": [
+    "Se versiona, porque la última regla gana",
+    "Sigue ignorado: no se puede re-incluir un archivo si su carpeta padre está excluida",
+    "Git muestra un error de sintaxis",
+    "Se ignora solo en subcarpetas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git no entra en carpetas ignoradas, así que la negación no tiene efecto. La solución es ignorar el contenido (`logs/*`) en lugar de la carpeta, y entonces `!logs/.gitkeep` funciona."
+  },
+  {
+   "id": "s03-q25",
+   "type": "single",
+   "q": "Quieres ignorar la carpeta `build/` de la raíz pero no `src/build/`, que es código fuente. ¿Qué patrón usas?",
+   "options": [
+    "`build/`",
+    "`/build/`",
+    "`**/build/`",
+    "`build`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La `/` inicial ancla el patrón a la carpeta del `.gitignore` (la raíz). `build/`, `**/build/` y `build` no tienen `/` al principio ni en medio, así que coinciden en cualquier nivel e ignorarían también `src/build/` (`build`, además, coincide con archivos llamados así)."
+  },
+  {
+   "id": "s03-q26",
+   "type": "multi",
+   "q": "Con el patrón `*.log` en el `.gitignore` de la raíz, ¿qué rutas se ignoran? (Selecciona TRES.)",
+   "options": [
+    "`app.log`",
+    "`logs/error.log`",
+    "`log.txt`",
+    "`a/b/c/debug.log`",
+    "`catalog`"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "Sin `/` el patrón vale en cualquier nivel, y `*` coincide con cualquier nombre terminado en `.log`. `log.txt` termina en `.txt` y `catalog` no tiene `.log`."
+  },
+  {
+   "id": "s03-q27",
+   "type": "single",
+   "q": "Añadiste `.env` al `.gitignore`, pero `git status` lo sigue mostrando como modificado. ¿Por qué y cómo se arregla?",
+   "options": [
+    "El .gitignore necesita un commit antes de funcionar",
+    "El archivo ya estaba rastreado; hay que sacarlo del índice con git rm --cached .env y confirmar",
+    "Hay que escribir /.env en vez de .env",
+    "Hay que reiniciar la terminal"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`.gitignore` solo afecta a archivos sin seguimiento. Un archivo ya confirmado sigue rastreado hasta que lo sacas del índice (`git rm --cached`). Las reglas funcionan aunque el `.gitignore` aún no esté confirmado, y `/.env` no cambiaría nada."
+  },
+  {
+   "id": "s03-q28",
+   "type": "single",
+   "q": "`git check-ignore -v debug.log` imprime `.gitignore:3:*.log\tdebug.log`. ¿Qué significa?",
+   "options": [
+    "Que debug.log tiene 3 líneas",
+    "Que debug.log se ignora por el patrón *.log de la línea 3 del archivo .gitignore",
+    "Que hay 3 archivos .log",
+    "Que debug.log está rastreado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El formato es `origen:línea:patrón<TAB>ruta`. Sirve para depurar reglas: te dice exactamente qué línea decide. Si el archivo estuviera rastreado, `check-ignore` no lo mostraría (salvo con `--no-index`)."
+  },
+  {
+   "id": "s03-q29",
+   "type": "single",
+   "q": "¿Dónde pones `.DS_Store` para que se ignore en todos tus repositorios sin imponérselo a tu equipo?",
+   "options": [
+    "En el `.gitignore` de cada proyecto",
+    "En el archivo indicado por `core.excludesFile` (o en `~/.config/git/ignore`)",
+    "En `.git/info/exclude`",
+    "En `.gitattributes`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El ignore global (`core.excludesFile`; si no lo configuras, `~/.config/git/ignore`) vale para todos tus repos y no se comparte. El `.gitignore` se confirma para todo el equipo; `.git/info/exclude` es solo para un repositorio; `.gitattributes` es otra cosa (s13)."
+  },
+  {
+   "id": "s03-q30",
+   "type": "yesno",
+   "q": "Ejecutas `git rm --cached .env` y confirmas. Indica Sí o No.",
+   "statements": [
+    {
+     "text": "`.env` se borra de tu disco.",
+     "answer": false
+    },
+    {
+     "text": "`.env` desaparece de los commits anteriores.",
+     "answer": false
+    },
+    {
+     "text": "El nuevo commit ya no contiene `.env`.",
+     "answer": true
+    },
+    {
+     "text": "Cuando un compañero traiga ese commit, Git borrará el `.env` de su carpeta.",
+     "answer": true
+    }
+   ],
+   "explain": "`--cached` solo quita el archivo del índice: tu copia se queda y la historia anterior no cambia (el secreto sigue ahí; hay que rotarlo). Para Git, el nuevo commit *elimina* `.env`, así que al traerlo, los demás lo pierden de su carpeta."
+  },
+  {
+   "id": "s03-q31",
+   "type": "single",
+   "q": "`git rm notas.txt` responde «error: the following file has local modifications». ¿Qué significa?",
+   "options": [
+    "Que notas.txt no existe",
+    "Que notas.txt tiene cambios sin confirmar y Git se niega a borrarlos; puedes usar --cached para conservarlo o -f para forzar",
+    "Que hay que hacer git add antes",
+    "Que el archivo está ignorado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git te protege de perder cambios no confirmados. `--cached` lo deja en tu disco (y lo quita del índice); `-f` lo borra igualmente, con esos cambios incluidos."
+  },
+  {
+   "id": "s03-q32",
+   "type": "multi",
+   "q": "Borraste `notas.txt` con `rm` y `git status -s` muestra ` D notas.txt`. ¿Qué comandos preparan ese borrado? (Selecciona DOS.)",
+   "options": [
+    "`git rm notas.txt`",
+    "`git add notas.txt`",
+    "`git diff notas.txt`",
+    "`git show notas.txt`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Ambos llevan el borrado al área de preparación (`git add` de un archivo borrado prepara su eliminación). `git diff` y `git show` solo muestran información."
+  },
+  {
+   "id": "s03-q33",
+   "type": "single",
+   "q": "Quieres mover `utils.js` a `src/` y además reescribir la mitad de su código. ¿Qué es lo más recomendable?",
+   "options": [
+    "Hacer todo en un solo commit",
+    "Renombrar en un commit y modificar en otro",
+    "Borrar el archivo y crearlo de nuevo",
+    "Usar git mv -f"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Si en el mismo commit el contenido cambia demasiado, la similitud puede bajar del 50 % y Git verá un borrado y un archivo nuevo: `--follow` y `blame` pierden el hilo. Separarlo garantiza que el renombre se detecte."
+  },
+  {
+   "id": "s03-q34",
+   "type": "single",
+   "q": "Estás en `main` y existe la rama `recordatorios` con commits propios. ¿Por qué `git log --oneline` no los muestra?",
+   "options": [
+    "Porque están corruptos",
+    "Porque git log solo recorre lo alcanzable desde HEAD; hay que añadir --all o nombrar la rama",
+    "Porque falta --graph",
+    "Porque --oneline oculta las ramas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git log` parte de `HEAD` y sigue los padres; los commits de otra rama no son alcanzables desde ahí. `--all` parte de todas las referencias (o puedes escribir `git log recordatorios`). `--graph` solo dibuja el grafo."
+  },
+  {
+   "id": "s03-q35",
+   "type": "single",
+   "q": "¿Qué letra usa `git diff --name-status` para un archivo renombrado?",
+   "options": [
+    "`M`",
+    "`D`",
+    "`R` (seguida del porcentaje de similitud)",
+    "`C`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`R100` indica un renombre con 100 % de similitud. `M` es modificado, `D` borrado y `C` copiado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-diff — documentación oficial",
+   "url": "https://git-scm.com/docs/git-diff"
+  },
+  {
+   "title": "git-log — documentación oficial",
+   "url": "https://git-scm.com/docs/git-log"
+  },
+  {
+   "title": "git-show — documentación oficial",
+   "url": "https://git-scm.com/docs/git-show"
+  },
+  {
+   "title": "git-blame — documentación oficial",
+   "url": "https://git-scm.com/docs/git-blame"
+  },
+  {
+   "title": "gitrevisions — cómo nombrar commits y rangos",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "pretty-formats — marcadores de --format",
+   "url": "https://git-scm.com/docs/pretty-formats"
+  },
+  {
+   "title": "gitignore — documentación oficial",
+   "url": "https://git-scm.com/docs/gitignore"
+  },
+  {
+   "title": "git-check-ignore — documentación oficial",
+   "url": "https://git-scm.com/docs/git-check-ignore"
+  },
+  {
+   "title": "git-rm — documentación oficial",
+   "url": "https://git-scm.com/docs/git-rm"
+  },
+  {
+   "title": "git-mv — documentación oficial",
+   "url": "https://git-scm.com/docs/git-mv"
+  },
+  {
+   "title": "git-config (core.excludesFile)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "Pro Git 2.2 — Guardando cambios en el repositorio",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Guardando-cambios-en-el-Repositorio"
+  },
+  {
+   "title": "Pro Git 2.3 — Ver el historial de confirmaciones",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Ver-el-Historial-de-Confirmaciones"
+  },
+  {
+   "title": "Pro Git 7.1 — Revision Selection",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Revision-Selection"
+  },
+  {
+   "title": "github/gitignore — plantillas de .gitignore",
+   "url": "https://github.com/github/gitignore"
+  },
+  {
+   "title": "GitHub Docs — Ignoring files",
+   "url": "https://docs.github.com/en/get-started/git-basics/ignoring-files"
+  },
+  {
+   "title": "Atlassian — .gitignore",
+   "url": "https://www.atlassian.com/git/tutorials/saving-changes/gitignore"
+  },
+  {
+   "title": "Atlassian — Advanced Git log",
+   "url": "https://www.atlassian.com/git/tutorials/git-log"
+  }
+ ]
+}

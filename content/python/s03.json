@@ -1,0 +1,3053 @@
+{
+ "id": "s03",
+ "order": 3,
+ "title": "Control de flujo",
+ "domain": "basico",
+ "summary": "Aprendes a que tus programas tomen decisiones (`if`/`elif`/`else`, la expresión condicional y `match`/`case`) y repitan trabajo (`while`, `for` con `range()`), controlando cada vuelta con `break`, `continue`, el `else` de los bucles y el operador morsa `:=`. Es el salto de «calculadora» a «programa»: con estas piezas ya puedes escribir algoritmos reales, validar entradas y resolver los clásicos de entrevista.",
+ "goal": "Escribir y trazar a mano programas con decisiones y bucles (if, match, while, for, break, continue, else) que resuelvan problemas clásicos como FizzBuzz, primos o validación de entradas, pasando sus tests.",
+ "objectives": [
+  "Escribir cadenas `if`/`elif`/`else` y condiciones compuestas correctas, evitando trampas como `x == a or b`.",
+  "Usar la expresión condicional y simplificar condiciones con las leyes de De Morgan.",
+  "Aplicar `match`/`case` con literales, alternativas, capturas, `as` y guardas, evitando la trampa de las constantes.",
+  "Construir bucles `while` con contadores, acumuladores y centinelas que terminen siempre.",
+  "Recorrer rangos y cadenas con `for` y `range()`, incluidos pasos negativos y rangos vacíos.",
+  "Controlar bucles con `break`, `continue`, la cláusula `else` y el operador morsa `:=`, también en bucles anidados.",
+  "Trazar código a mano y traducir diagramas de flujo a Python para predecir su salida."
+ ],
+ "lessons": [
+  {
+   "id": "s03-l1",
+   "title": "Tomar decisiones con if, elif y else",
+   "minutes": 20,
+   "goals": [
+    "Escribir bloques `if`/`elif`/`else` con la sangría correcta y predecir qué rama se ejecuta.",
+    "Combinar condiciones con `and`, `or`, `not` y comparaciones encadenadas sin caer en la trampa de `x == a or b`.",
+    "Reescribir `if` anidados como cadenas `elif` o cláusulas de guarda cuando mejore la legibilidad."
+   ],
+   "takeaways": [
+    "Un `if` evalúa su condición en contexto booleano (*truthiness*): no hace falta que valga `True` o `False`, basta con que sea «verdadera» o «falsa».",
+    "En una cadena `if`/`elif`/`else` se ejecuta **solo la primera** rama cuya condición es verdadera; por eso el orden de las condiciones importa.",
+    "La sangría (4 espacios, PEP 8) no es decoración: define qué instrucciones pertenecen a cada bloque.",
+    "`x == 1 or 2` no significa «x vale 1 o 2»: es siempre verdadero. Escribe `x == 1 or x == 2`.",
+    "Las cláusulas de guarda (comprobar lo excepcional primero y salir con `return`) evitan pirámides de `if` anidados."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora tus programas eran una receta en línea recta: Python ejecutaba cada instrucción una vez, de arriba abajo. El **control de flujo** (*control flow*) es lo que permite que un programa **decida** qué hacer según los datos y **repita** trabajo sin copiar código. Un resultado clásico de la informática, el teorema de Böhm-Jacopini, demuestra que con tres estructuras —secuencia, decisión y repetición— se puede expresar cualquier algoritmo. Los saltos como `break` y `continue` no añaden poder, pero sí comodidad. El resto del curso combina estas piezas con herramientas cada vez más potentes."
+    },
+    {
+     "type": "diagram",
+     "title": "Mapa de la sección",
+     "mermaid": "mindmap\n  root((\"Control de flujo\"))\n    d[\"Decidir\"]\n      d1[\"if / elif / else\"]\n      d2[\"expresión condicional\"]\n      d3[\"match / case\"]\n    r[\"Repetir\"]\n      r1[\"while\"]\n      r2[\"for con range()\"]\n    s[\"Saltar\"]\n      s1[\"break\"]\n      s2[\"continue\"]\n      s3[\"else en bucles\"]\n    u[\"Utilidades\"]\n      u1[\"pass\"]\n      u2[\"operador morsa :=\"]",
+     "caption": "Las familias de herramientas que verás en esta sección."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de un `if`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "temperatura = 31\n\nif temperatura > 30:\n    print(\"Hace calor\")       # dentro del if\n    print(\"Bebe agua\")        # dentro del if\nprint(\"Fin del parte\")        # fuera del if: se ejecuta siempre",
+     "run": true,
+     "caption": "Cambia `temperatura` a 25 y vuelve a ejecutar: las dos líneas sangradas desaparecen de la salida; la última, no."
+    },
+    {
+     "type": "p",
+     "text": "Un `if` tiene una **cabecera** —la palabra `if`, una condición y dos puntos `:`— y un **bloque** (*suite*) de una o más instrucciones sangradas. Python ejecuta el bloque solo si la condición es verdadera. El bloque termina en la primera línea que vuelve al nivel de sangría anterior. Esa es toda la regla: no hay llaves `{}` ni palabras `end`; **la sangría es sintaxis**."
+    },
+    {
+     "type": "p",
+     "text": "La condición puede ser cualquier expresión. Python la evalúa en **contexto booleano**, exactamente como haría `bool(...)`: `0`, `0.0`, `\"\"` (cadena vacía) y `None` cuentan como falsos, y casi todo lo demás como verdadero (es la *truthiness* de s02). Por eso `if nombre:` se lee «si `nombre` no está vacío»."
+    },
+    {
+     "type": "h",
+     "text": "Varias ramas: `elif` y `else`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "hora = 17\n\nif hora < 12:\n    saludo = \"Buenos días\"\nelif hora < 20:\n    saludo = \"Buenas tardes\"\nelse:\n    saludo = \"Buenas noches\"\n\nprint(saludo)",
+     "run": true,
+     "caption": "Prueba con 9, 12, 19, 20 y 23. ¿Qué rama se ejecuta con exactamente 12? ¿Y con 20?"
+    },
+    {
+     "type": "diagram",
+     "title": "Una cadena if/elif/else",
+     "mermaid": "flowchart TD\n  A[\"hora = 17\"] --> B{\"¿hora < 12?\"}\n  B -- \"Sí\" --> C[\"saludo = Buenos días\"]\n  B -- \"No\" --> D{\"¿hora < 20?\"}\n  D -- \"Sí\" --> E[\"saludo = Buenas tardes\"]\n  D -- \"No\" --> F[\"saludo = Buenas noches\"]\n  C --> G[\"print(saludo)\"]\n  E --> G\n  F --> G",
+     "caption": "Las condiciones se prueban en orden y gana la primera verdadera: las siguientes ni siquiera se evalúan."
+    },
+    {
+     "type": "p",
+     "text": "`elif` es la contracción de *else if*. Puede haber cero o más `elif` y un `else` opcional al final, que recoge «todo lo demás». La clave: **solo se ejecuta una rama**, la primera cuya condición sea verdadera. Por eso la segunda condición puede ser `hora < 20` a secas: si Python llega a evaluarla es porque `hora < 12` fue falso, así que en la práctica significa `12 <= hora < 20`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**El orden importa.** Si escribes primero `if hora < 20:` y después `elif hora < 12:`, la segunda rama no se ejecutará nunca: toda hora menor que 12 también es menor que 20 y se queda en la primera. Ordena de la condición más restrictiva a la más general. Y el `else` siempre va el último: desde Python 3.14 el mensaje de error lo dice con todas las letras, `SyntaxError: 'elif' block follows an 'else' block`."
+    },
+    {
+     "type": "h",
+     "text": "Condiciones compuestas"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Herramienta",
+      "Ejemplo",
+      "Se lee como"
+     ],
+     "rows": [
+      [
+       "`and`",
+       "`edad >= 18 and tiene_documento`",
+       "tienen que cumplirse las dos"
+      ],
+      [
+       "`or`",
+       "`es_socio or edad < 12`",
+       "basta con que se cumpla una"
+      ],
+      [
+       "`not`",
+       "`not bloqueado`",
+       "invierte el valor de verdad"
+      ],
+      [
+       "Comparación encadenada",
+       "`0 <= nota <= 10`",
+       "`0 <= nota and nota <= 10` (evaluando `nota` una sola vez)"
+      ],
+      [
+       "`in` con cadenas",
+       "`letra in \"aeiou\"`",
+       "¿aparece `letra` dentro de la cadena?"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Recuerda de s02 que `and` y `or` hacen **cortocircuito**: `and` no evalúa la parte derecha si la izquierda ya es falsa, y `or` no la evalúa si la izquierda ya es verdadera. No es solo una optimización: te permite **proteger** una operación peligrosa poniendo delante la comprobación que la hace segura."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "alumnos = 0\npuntos = 45\n\n# Si alumnos es 0, la división NUNCA se evalúa: and ya sabe que el resultado es falso\nif alumnos != 0 and puntos / alumnos > 10:\n    print(\"Buena media\")\nelse:\n    print(\"Sin alumnos o media baja\")\n\nletra = \"é\"\nif letra in \"aeiouáéíóú\":\n    print(letra, \"es una vocal\")",
+     "run": true,
+     "caption": "Invierte el orden de la primera condición (`puntos / alumnos > 10 and alumnos != 0`) y verás un `ZeroDivisionError`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**La trampa más famosa de los principiantes:** `if color == \"rojo\" or \"azul\":` entra **siempre**. Python lo agrupa como `(color == \"rojo\") or \"azul\"`, y una cadena no vacía es verdadera. Escribe la comparación completa a cada lado del `or`: `color == \"rojo\" or color == \"azul\"`. En la lección 3 verás `match` con alternativas (`case \"rojo\" | \"azul\":`) y en s04 la forma idiomática con una tupla: `color in (\"rojo\", \"azul\")`."
+    },
+    {
+     "type": "h",
+     "text": "Anidar, aplanar y salir pronto"
+    },
+    {
+     "type": "p",
+     "text": "Puedes meter un `if` dentro de otro (anidarlo), pero cada nivel añade sangría y carga mental. Dos técnicas para aplanar el código: **unir condiciones** con `and` cuando el `if` interior no tiene alternativa, y usar **cláusulas de guarda** (*guard clauses*): comprobar primero los casos especiales o erróneos y salir de la función con `return` en cuanto se conoce la respuesta."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Anidado: funciona, pero hay que seguir cuatro niveles de sangría\ndef precio_entrada(edad):\n    if edad >= 0:\n        if edad < 3:\n            return 0\n        else:\n            if edad < 18 or edad >= 65:\n                return 5\n            else:\n                return 9\n    else:\n        return None",
+     "caption": "Versión anidada: correcta pero difícil de seguir."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Con cláusulas de guarda: se lee de arriba abajo, como una lista de reglas\ndef precio_entrada(edad):\n    if edad < 0:\n        return None          # dato imposible: salimos cuanto antes\n    if edad < 3:\n        return 0\n    if edad < 18 or edad >= 65:\n        return 5\n    return 9\n\n\nprint(precio_entrada(2), precio_entrada(15), precio_entrada(40), precio_entrada(70), precio_entrada(-1))",
+     "run": true,
+     "caption": "Misma lógica, sin anidar. Salida: 0 5 9 5 None."
+    },
+    {
+     "type": "p",
+     "text": "Como cada `return` termina la función, tras una guarda no hace falta `elif` ni `else`: si la ejecución llega a la línea siguiente es porque la condición anterior fue falsa. En s06 profundizarás en `return`; de momento basta con saber que devuelve un valor y sale de la función."
+    },
+    {
+     "type": "h",
+     "text": "`pass`: el bloque que no hace nada"
+    },
+    {
+     "type": "p",
+     "text": "Un bloque no puede estar vacío: si escribes `if saldo >= 0:` sin ninguna línea sangrada debajo, Python protesta con `IndentationError: expected an indented block after 'if' statement`. `pass` es una instrucción nula que rellena ese hueco mientras diseñas el programa."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "saldo = -20\n\nif saldo >= 0:\n    pass  # TODO: aquí irá el informe mensual\nelse:\n    print(\"Cuenta en números rojos\")",
+     "run": true
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "x = 7\nif x = 5:        # SyntaxError: invalid syntax. Maybe you meant '==' or ':=' instead of '='?\n    print(\"cinco\")\n\nif x > 5         # SyntaxError: expected ':'\n    print(\"mayor\")\n\nif x > 5:\nprint(\"mayor\")   # IndentationError: expected an indented block after 'if' statement on line 8",
+     "caption": "Tres errores típicos y el mensaje exacto de Python 3.14 (este código no se puede ejecutar: es para leerlo)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "PEP 8: sangra con **4 espacios** y no mezcles tabuladores y espacios (si la mezcla es ambigua, Python lanza `TabError`). Evita también el bloque en la misma línea (`if x: hacer()`): es válido, pero PEP 8 lo desaconseja. Si una condición es muy larga, rodéala de paréntesis y pártela en varias líneas."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica del PCEP: `if`/`else` anidados en los que la **sangría** decide a qué `if` pertenece el `else`. Regla: un `else` pertenece al `if` que está **en su misma columna**. Lee la sangría antes que las palabras. En el PCEP-30-02 el bloque de control de flujo (condicionales y bucles) es el de más peso: 8 de las 30 preguntas, el 29 % de la nota."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Condición",
+       "en": "condition",
+       "def": "Expresión cuyo valor de verdad decide si se ejecuta un bloque."
+      },
+      {
+       "term": "Bloque",
+       "en": "suite, block",
+       "def": "Instrucciones sangradas bajo una cabecera que termina en `:`."
+      },
+      {
+       "term": "Rama",
+       "en": "branch",
+       "def": "Cada camino alternativo de una decisión (`if`, `elif`, `else`)."
+      },
+      {
+       "term": "Cortocircuito",
+       "en": "short-circuit evaluation",
+       "def": "`and`/`or` dejan de evaluar en cuanto conocen el resultado."
+      },
+      {
+       "term": "Cláusula de guarda",
+       "en": "guard clause",
+       "def": "Comprobación al principio de una función que sale pronto ante un caso especial."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l2",
+   "title": "La expresión condicional y el arte de escribir condiciones",
+   "minutes": 15,
+   "goals": [
+    "Distinguir una sentencia (*statement*) de una expresión y usar `a if condición else b` para elegir entre dos valores.",
+    "Predecir el resultado de una expresión condicional teniendo en cuenta su precedencia, de las más bajas del lenguaje.",
+    "Simplificar condiciones con las leyes de De Morgan, comparaciones encadenadas y devolviendo directamente expresiones booleanas."
+   ],
+   "takeaways": [
+    "`valor_si if condición else valor_no` es una **expresión**: produce un valor y se puede usar dentro de otras expresiones.",
+    "Primero se evalúa la condición y después **solo** una de las dos ramas.",
+    "Su precedencia es más baja que la de `or`: ante la duda, pon paréntesis.",
+    "`return n % 2 == 0` es mejor que un `if` que devuelve `True` o `False`: la comparación ya es un `bool`.",
+    "De Morgan: `not (a and b)` equivale a `not a or not b`, y `not (a or b)` a `not a and not b`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En Python hay **sentencias** (*statements*), que *hacen* algo —un `if`, un `while`, una asignación—, y **expresiones** (*expressions*), que *valen* algo —`3 + 4`, `edad >= 18`, `len(nombre)`—. Un `if` es una sentencia: no produce ningún valor. Pero muchas veces solo quieres **elegir entre dos valores**, y para eso existe la **expresión condicional** (el «operador ternario» de otros lenguajes)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "edad = 16\nestado = \"mayor de edad\" if edad >= 18 else \"menor de edad\"\nprint(estado)\n\nmensajes = 1\nprint(f\"Tienes {mensajes} {'mensaje nuevo' if mensajes == 1 else 'mensajes nuevos'}\")",
+     "run": true,
+     "caption": "Cambia `edad` y `mensajes` y observa cómo se elige el texto. Dentro de una f-string con comillas dobles usamos comillas simples para las cadenas interiores."
+    },
+    {
+     "type": "p",
+     "text": "Se lee casi como en español: «`estado` vale `\"mayor de edad\"` si `edad >= 18`; si no, `\"menor de edad\"`». El **orden de evaluación** importa: Python evalúa **primero la condición** y después **solo una** de las dos ramas. Por eso es seguro escribir `media = total / n if n != 0 else 0`: si `n` es 0, la división ni se intenta."
+    },
+    {
+     "type": "h",
+     "text": "Precedencia: por debajo de `or`"
+    },
+    {
+     "type": "p",
+     "text": "La expresión condicional tiene una de las precedencias **más bajas** del lenguaje: todo lo que hay a su izquierda y a su derecha se agrupa antes (solo `lambda` y `:=` quedan por debajo). Casi siempre es lo que quieres —`x = a + 1 if c else b` es `(a + 1) if c else b`—, pero hay una trampa clásica cuando se mezcla con `+`:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "precio = 0\nprint(\"Total: \" + \"gratis\" if precio == 0 else str(precio))    # Total: gratis\n\nprecio = 12\nprint(\"Total: \" + \"gratis\" if precio == 0 else str(precio))    # ¡12 a secas!\nprint(\"Total: \" + (\"gratis\" if precio == 0 else str(precio)))  # Total: 12",
+     "run": true,
+     "caption": "El `+` se agrupa antes que el `if`: las dos primeras líneas eligen entre `\"Total: gratis\"` y `str(precio)`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "La expresión condicional **siempre** necesita `else` (`x = 5 if c` da `SyntaxError: expected 'else' after 'if' expression`) y sus ramas deben ser **expresiones**, no sentencias: `x = 1 if c else pass` falla, y Python 3.14 lo explica con `expected expression after 'else', but statement is given`. Tampoco la uses para ejecutar acciones: `print(\"a\") if c else print(\"b\")` funciona, pero es un `if` disfrazado y se lee peor."
+    },
+    {
+     "type": "p",
+     "text": "Se pueden encadenar: `\"grande\" if n > 100 else \"mediano\" if n > 10 else \"pequeño\"` se agrupa por la derecha, es decir, `\"grande\" if n > 100 else (\"mediano\" if n > 10 else \"pequeño\")`. Es válido, pero a partir de dos condiciones un `if`/`elif` suele leerse mejor."
+    },
+    {
+     "type": "h",
+     "text": "Condiciones que se leen solas"
+    },
+    {
+     "type": "p",
+     "text": "Un programador experto no escribe `if es_valido == True:`. Escribe condiciones que se leen como frases. Estas transformaciones son equivalentes y aparecen en cualquier revisión de código:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "En vez de…",
+      "Escribe…",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "`if activo == True:`",
+       "`if activo:`",
+       "PEP 8: no compares booleanos con `==` (y con `is` es peor aún)"
+      ],
+      [
+       "`if len(nombre) == 0:`",
+       "`if not nombre:`",
+       "la cadena vacía ya es falsa"
+      ],
+      [
+       "`if not x is None:`",
+       "`if x is not None:`",
+       "PEP 8 prefiere `is not`; con `None` usa siempre `is`"
+      ],
+      [
+       "`if n > 0 and n < 10:`",
+       "`if 0 < n < 10:`",
+       "la comparación encadenada se lee como en matemáticas"
+      ],
+      [
+       "`if not (a > b):`",
+       "`if a <= b:`",
+       "invierte la comparación en lugar de negar su resultado"
+      ],
+      [
+       "`if n % 2 == 0:` + `return True` + `else:` + `return False`",
+       "`return n % 2 == 0`",
+       "la comparación ya produce `True` o `False`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def es_par(n):\n    return n % 2 == 0            # la comparación YA es un bool\n\n\ndef puede_votar(edad, es_ciudadano):\n    return edad >= 18 and es_ciudadano\n\n\nprint(es_par(10), es_par(7))\nprint(puede_votar(20, True), puede_votar(20, False), puede_votar(16, True))",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Leyes de De Morgan"
+    },
+    {
+     "type": "p",
+     "text": "Negar una condición compuesta es una fuente inagotable de errores. Las **leyes de De Morgan** dicen cómo hacerlo bien: al meter el `not` dentro del paréntesis, **cada parte se niega y `and` se convierte en `or`** (y viceversa)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Expresión",
+      "Equivale a"
+     ],
+     "rows": [
+      [
+       "`not (a and b)`",
+       "`not a or not b`"
+      ],
+      [
+       "`not (a or b)`",
+       "`not a and not b`"
+      ],
+      [
+       "`not (edad >= 18 and con_entrada)`",
+       "`edad < 18 or not con_entrada`"
+      ],
+      [
+       "`not (0 <= x <= 10)`",
+       "`x < 0 or x > 10`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "edad = 15\ncon_entrada = True\n\nno_pasa_1 = not (edad >= 18 and con_entrada)\nno_pasa_2 = edad < 18 or not con_entrada\nprint(no_pasa_1, no_pasa_2)          # siempre coinciden\n\nx = 12\nprint(not (0 <= x <= 10), x < 0 or x > 10)",
+     "run": true,
+     "caption": "Cambia `edad`, `con_entrada` y `x`: las dos columnas coinciden siempre."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si una condición cuesta leerla, dale nombre: `es_fin_de_semana = dia == \"sábado\" or dia == \"domingo\"` y luego `if es_fin_de_semana and not llueve:`. Una variable booleana bien nombrada documenta mejor que un comentario."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué imprime `print(\"sí\" if 0 else \"no\" if \"\" else \"quizá\")`? Se agrupa como `\"sí\" if 0 else (\"no\" if \"\" else \"quizá\")`; `0` y `\"\"` son falsos, así que imprime `quizá`. Los exámenes combinan *truthiness*, precedencia y cortocircuito en una sola línea: añade paréntesis mentalmente antes de evaluar. (El temario del PCEP-30-02 no menciona la expresión condicional, pero es imprescindible para leer código real y aparece en entrevistas.)"
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Sentencia",
+       "en": "statement",
+       "def": "Instrucción que hace algo (`if`, `while`, asignación); no produce un valor."
+      },
+      {
+       "term": "Expresión",
+       "en": "expression",
+       "def": "Fragmento de código que se evalúa y produce un valor."
+      },
+      {
+       "term": "Expresión condicional",
+       "en": "conditional expression",
+       "def": "`a if c else b`: vale `a` si `c` es verdadera y `b` si no."
+      },
+      {
+       "term": "Leyes de De Morgan",
+       "en": "De Morgan's laws",
+       "def": "Reglas para negar `and`/`or`: se niega cada parte y se intercambia el operador."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l3",
+   "title": "match/case: elegir por patrones",
+   "minutes": 22,
+   "goals": [
+    "Escribir sentencias `match` con patrones literales, comodín `_`, alternativas `|`, capturas, `as` y guardas.",
+    "Predecir qué `case` se ejecuta aplicando la regla «gana el primero que encaja» y sabiendo que no hay *fall-through*.",
+    "Detectar la trampa de usar una constante sin punto como patrón y elegir entre `match` e `if`/`elif`."
+   ],
+   "takeaways": [
+    "`match` evalúa el sujeto **una vez** y prueba los `case` en orden; se ejecuta solo el primero que encaja. Si ninguno encaja, no pasa nada (no es un error).",
+    "`case _:` es el comodín: encaja siempre, no liga ningún nombre y tiene que ir el último.",
+    "Un nombre suelto en un patrón (`case x:`) **no compara**: captura el valor. Para comparar con una constante hace falta un nombre con punto o una guarda.",
+    "Los literales se comparan con `==`, salvo `None`, `True` y `False`, que se comparan con `is`.",
+    "Una guarda (`case x if x > 0:`) añade una condición que se evalúa después de que el patrón encaje."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`match` llegó en **Python 3.10** (PEP 634, con su justificación en la PEP 635 y un tutorial en la PEP 636). A primera vista parece el `switch` de C o Java, pero es más que eso: la **coincidencia estructural de patrones** (*structural pattern matching*) puede comparar valores **y** descomponer datos. En esta sección usarás la parte esencial —literales, alternativas, capturas y guardas—; los patrones de secuencia los verás con las colecciones (s04) y los de clases y diccionarios en s11."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def describir_estado(codigo):\n    match codigo:\n        case 200:\n            return \"OK\"\n        case 301 | 302:\n            return \"Redirección\"\n        case 404:\n            return \"No encontrado\"\n        case 418:\n            return \"Soy una tetera\"\n        case _:\n            return \"Otro código\"\n\n\nprint(describir_estado(404))\nprint(describir_estado(302))\nprint(describir_estado(500))",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "El valor que va tras `match` es el **sujeto** (*subject*). Python lo evalúa una sola vez y lo compara con el **patrón** de cada `case`, **de arriba abajo**. Ejecuta el bloque del **primer** patrón que encaje y sale del `match`. No hay *fall-through* como en el `switch` de C: no necesitas (ni debes poner) `break` al final de cada caso. Si ningún patrón encaja y no hay comodín, simplemente no se ejecuta nada."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo se elige un case",
+     "mermaid": "flowchart TD\n  S[\"Evaluar el sujeto una vez\"] --> C1{\"¿Encaja el patrón del case 1?\"}\n  C1 -- \"No\" --> C2{\"¿Encaja el patrón del case 2?\"}\n  C1 -- \"Sí\" --> G1{\"¿Guarda ausente o verdadera?\"}\n  G1 -- \"Sí\" --> B1[\"Ejecutar el bloque 1\"]\n  G1 -- \"No\" --> C2\n  C2 -- \"Sí\" --> B2[\"Ejecutar el bloque 2\"]\n  C2 -- \"No\" --> N[\"Siguiente case... si ninguno encaja, no se hace nada\"]\n  B1 --> F[\"Continuar tras el match\"]\n  B2 --> F\n  N --> F",
+     "caption": "Gana el primer case cuyo patrón encaje y cuya guarda (si la tiene) sea verdadera."
+    },
+    {
+     "type": "h",
+     "text": "Los patrones que necesitas ya"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Patrón",
+      "Ejemplo",
+      "Encaja si…",
+      "¿Liga un nombre?"
+     ],
+     "rows": [
+      [
+       "Literal",
+       "`case 404:` · `case \"sí\":` · `case None:`",
+       "sujeto `==` literal (`is` para `None`, `True` y `False`)",
+       "No"
+      ],
+      [
+       "Comodín",
+       "`case _:`",
+       "siempre",
+       "No"
+      ],
+      [
+       "Captura",
+       "`case otro:`",
+       "siempre",
+       "Sí: `otro` pasa a valer el sujeto"
+      ],
+      [
+       "Alternativas (OR)",
+       "`case 301 | 302:`",
+       "encaja alguna de las alternativas",
+       "Solo si todas ligan los mismos nombres"
+      ],
+      [
+       "AS",
+       "`case 1 | 2 | 3 as n:`",
+       "encaja el patrón de la izquierda",
+       "Sí: `n` pasa a valer el sujeto"
+      ],
+      [
+       "Valor (nombre con punto)",
+       "`case math.pi:`",
+       "sujeto `==` ese valor",
+       "No"
+      ],
+      [
+       "Con guarda",
+       "`case n if n < 0:`",
+       "encaja el patrón **y** la condición es verdadera",
+       "Lo que ligue el patrón"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Capturas y guardas"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def clasificar(n):\n    match n:\n        case 0:\n            return \"cero\"\n        case x if x < 0:\n            return f\"negativo ({x})\"\n        case x if x % 2 == 0:\n            return \"positivo par\"\n        case _:\n            return \"positivo impar\"\n\n\nprint(clasificar(0), clasificar(-4), clasificar(10), clasificar(7), sep=\" | \")",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`case x if x < 0:` se lee «captura el sujeto en `x` y elige este caso solo si `x < 0`». El orden es siempre el mismo: primero se comprueba el patrón (y se ligan los nombres) y **después** la guarda. Si la guarda es falsa, Python sigue con los `case` siguientes. Seamos honestos: con un único número y rangos, este `match` no mejora a un `if`/`elif`. `match` brilla cuando comparas **un sujeto con muchos valores concretos** o cuando hay **estructura** que descomponer."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "respuesta = \"sí\"\n\nmatch respuesta:\n    case \"s\" | \"si\" | \"sí\" as afirmativa:\n        print(f\"Confirmado: escribiste «{afirmativa}»\")\n    case \"n\" | \"no\":\n        print(\"Cancelado\")\n    case otra:\n        print(f\"No entiendo «{otra}»\")",
+     "run": true,
+     "caption": "`as` liga el valor que encajó con las alternativas; `case otra:` es una captura irrefutable, así que debe ir la última."
+    },
+    {
+     "type": "h",
+     "text": "La trampa de las constantes"
+    },
+    {
+     "type": "p",
+     "text": "Un nombre suelto en un `case` es **siempre** una captura, aunque ya exista una variable con ese nombre. Python no compara: asigna."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "LIMITE = 10\nvalor = 3\n\nmatch valor:\n    case LIMITE:          # ¡no compara con 10! Captura: LIMITE = 3\n        print(\"Entré en el case y ahora LIMITE vale\", LIMITE)",
+     "run": true,
+     "caption": "Este código se ejecuta… y estropea la constante sin avisar."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si ese `case LIMITE:` no fuera el último, Python ni siquiera ejecutaría el programa: `SyntaxError: name capture 'LIMITE' makes remaining patterns unreachable`. Lo mismo con un comodín en medio: `SyntaxError: wildcard makes remaining patterns unreachable`. Para comparar con una constante usa un **nombre con punto** (`case math.pi:`, o los `Enum` de s11) o una guarda: `case v if v == LIMITE:`."
+    },
+    {
+     "type": "h",
+     "text": "Detalles finos"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Los literales se comparan con `==`: `case 1:` encaja con `1.0` y también con `True` (porque `True == 1`). En cambio `case True:` usa `is` y **no** encaja con `1`.",
+      "Un patrón no es una expresión cualquiera: para comparar con un valor solo admite literales y nombres con punto. Una f-string (`case f\"...\":`) o una operación (`case 2 + 3:`) dan `SyntaxError`.",
+      "`match` y `case` son **palabras clave blandas** (*soft keywords*): solo son reservadas dentro de la sentencia `match`, así que el código antiguo que tenía una variable llamada `match` sigue funcionando (no lo imites).",
+      "Los nombres ligados en el `case` que encajó siguen existiendo después del `match`. Si un patrón **falla**, no confíes en lo que haya pasado con sus capturas: la documentación lo deja a criterio de cada implementación.",
+      "Una cadena **no** se descompone letra a letra en un patrón de secuencia: los patrones de secuencia nunca encajan con `str` (lo retomarás en s04)."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def probar(sujeto):\n    match sujeto:\n        case True:\n            return \"encaja con True\"\n        case 1:\n            return \"encaja con 1\"\n        case _:\n            return \"no encaja con ninguno\"\n\n\nprint(probar(1))      # case True usa is: 1 is True es falso -> encaja con 1\nprint(probar(1.0))    # 1.0 == 1 -> encaja con 1\nprint(probar(True))   # encaja con True\nprint(probar(\"1\"))    # la cadena \"1\" no es igual al número 1",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿`match` o `if`/`elif`? Usa `match` cuando comparas **un mismo sujeto** con varios valores concretos o alternativas (menús, comandos, códigos de estado) y, más adelante, cuando quieras descomponer estructuras. Usa `if`/`elif` para rangos (`nota < 5`), para condiciones sobre variables distintas o para lógica compuesta. Elige el que se lea mejor."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El temario del PCEP-30-02 no incluye `match`, pero es habitual en entrevistas y en exámenes de nivel superior. Preguntas típicas: ¿qué pasa si ningún `case` encaja? (nada); ¿hace falta `break`? (no, no hay *fall-through*); ¿qué hace `case x:` si `x` ya existía? (lo sobrescribe con el sujeto); ¿se puede poner `case _:` en medio? (no, `SyntaxError`)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Sujeto",
+       "en": "subject",
+       "def": "Valor que se compara con los patrones de un `match`."
+      },
+      {
+       "term": "Patrón",
+       "en": "pattern",
+       "def": "Forma que debe tener el sujeto para que un `case` encaje."
+      },
+      {
+       "term": "Comodín",
+       "en": "wildcard",
+       "def": "`_`: patrón que encaja siempre y no liga ningún nombre."
+      },
+      {
+       "term": "Captura",
+       "en": "capture pattern",
+       "def": "Nombre suelto en un patrón: encaja siempre y asigna el sujeto a ese nombre."
+      },
+      {
+       "term": "Guarda",
+       "en": "guard",
+       "def": "`if condición` tras un patrón; se evalúa solo si el patrón encaja."
+      },
+      {
+       "term": "Palabra clave blanda",
+       "en": "soft keyword",
+       "def": "Palabra reservada solo en ciertos contextos, como `match`, `case` y `_`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l4",
+   "title": "while: repetir mientras se cumpla una condición",
+   "minutes": 20,
+   "goals": [
+    "Construir bucles `while` con contador, acumulador o centinela asegurando que la condición llegue a ser falsa.",
+    "Validar la entrada del usuario con el patrón `while True` + `break`.",
+    "Descomponer un entero en sus cifras con `% 10` y `// 10`."
+   ],
+   "takeaways": [
+    "`while` comprueba la condición **antes** de cada vuelta: si es falsa desde el principio, el cuerpo no se ejecuta ni una vez.",
+    "Todo bucle necesita tres piezas: inicialización, condición y actualización. Sin actualización, el bucle es infinito.",
+    "Un **centinela** es un valor especial que marca el final de los datos (por ejemplo, `0` o `\"fin\"`).",
+    "`while True:` con un `break` en medio es la forma idiomática de «pedir hasta que el dato sea válido» (Python no tiene `do … while`).",
+    "`n % 10` da la última cifra y `n // 10` la quita: es la base de todos los ejercicios de dígitos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un `while` es un `if` que se repite: mientras su condición sea verdadera, ejecuta el bloque y vuelve arriba a comprobarla de nuevo. Úsalo cuando **no sabes de antemano cuántas vueltas** darás: hasta que el usuario acierte, hasta que un número llegue a 1, hasta que se lea «fin»…"
+    },
+    {
+     "type": "diagram",
+     "title": "Las tres piezas de un while",
+     "mermaid": "flowchart TD\n  I[\"Inicializar: cuenta = 5\"] --> C{\"¿cuenta > 0?\"}\n  C -- \"Sí\" --> B[\"Cuerpo: print(cuenta)\"]\n  B --> U[\"Actualizar: cuenta -= 1\"]\n  U --> C\n  C -- \"No\" --> F[\"Seguir tras el bucle: print(Despegue)\"]",
+     "caption": "La condición se comprueba antes de cada vuelta; la actualización es lo que acerca el bucle a su fin."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "cuenta = 5\nwhile cuenta > 0:\n    print(cuenta, end=\" \")\n    cuenta -= 1\nprint(\"¡Despegue!\")",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en las tres piezas: **inicialización** (`cuenta = 5`), **condición** (`cuenta > 0`) y **actualización** (`cuenta -= 1`). Traza rápida: la condición se comprueba 6 veces (con 5, 4, 3, 2, 1 y 0) y el cuerpo se ejecuta 5. Si olvidas la actualización, la condición no cambia nunca y el bucle es **infinito**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Bucles infinitos.** Las causas típicas: olvidar la actualización, actualizar la variable equivocada o una condición que nunca llega a ser falsa. Un clásico con `float`: con `x = 0.0` y `while x != 1.0: x += 0.1` el bucle no termina, porque por la representación binaria de IEEE 754 (s02) `x` pasa de `0.9999999999999999` a `1.0999999999999999` sin valer nunca exactamente `1.0`. Usa `<` en vez de `!=`, o cuenta con enteros. En una terminal, un bucle infinito se detiene con Ctrl+C (`KeyboardInterrupt`)."
+    },
+    {
+     "type": "h",
+     "text": "Contadores y acumuladores"
+    },
+    {
+     "type": "p",
+     "text": "Dos patrones que usarás a diario: un **contador** cuenta cuántas veces pasa algo (`veces += 1`) y un **acumulador** va agregando valores (`total += x`, `producto *= x`, `texto += c`). Ambos se inicializan **antes** del bucle con el elemento neutro de su operación: `0` para sumar, `1` para multiplicar y `\"\"` para concatenar."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Suma de los impares menores que 20 y cuántos hay\nn = 1\nsuma = 0        # acumulador\ncantidad = 0    # contador\nwhile n < 20:\n    suma += n\n    cantidad += 1\n    n += 2\nprint(\"Impares:\", cantidad, \"Suma:\", suma)    # 10 impares que suman 100",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Centinela: leer hasta una señal de fin"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "total = 0\ncantidad = 0\nnumero = int(input(\"Número (0 para terminar): \"))\nwhile numero != 0:\n    total += numero\n    cantidad += 1\n    numero = int(input(\"Número (0 para terminar): \"))\nprint(f\"Has introducido {cantidad} números que suman {total}\")",
+     "run": true,
+     "stdin": [
+      "5",
+      "8",
+      "-3",
+      "0"
+     ],
+     "caption": "Edita la entrada y pon un 0 el primero: el cuerpo no se ejecuta nunca."
+    },
+    {
+     "type": "p",
+     "text": "El **centinela** (aquí, `0`) no es un dato: marca el final. Observa que `input` aparece **dos veces**: una lectura antes del bucle y otra al final de cada vuelta. Funciona, pero duplica código. Hay dos formas de evitarlo: `while True` con `break` (a continuación) y el operador morsa `:=` (lección 6)."
+    },
+    {
+     "type": "h",
+     "text": "`while True` + `break`: pedir hasta que sea válido"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "while True:\n    numero = int(input(\"Elige un número del 1 al 10: \"))\n    if 1 <= numero <= 10:\n        break                     # dato válido: salimos del bucle\n    print(\"Fuera de rango, prueba otra vez\")\n\nprint(\"Has elegido\", numero)",
+     "run": true,
+     "stdin": [
+      "0",
+      "15",
+      "7"
+     ],
+     "caption": "Prueba otras entradas. ¿Qué pasa si escribes letras? Lo resolverás en los ejercicios comprobando los caracteres (y en s08, con excepciones)."
+    },
+    {
+     "type": "p",
+     "text": "`while True` sería infinito por sí solo; lo que lo termina es el `break`, que sale del bucle de inmediato (lo estudiarás a fondo en la lección 6). Es el patrón del «bucle y medio» (*loop and a half*): una parte del cuerpo se ejecuta siempre, en medio se decide si salir y la otra parte solo se ejecuta si no se sale. Como Python no tiene `do … while`, es la forma idiomática de validar entradas."
+    },
+    {
+     "type": "h",
+     "text": "Recorrer las cifras de un número"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "n = 4096\nsuma = 0\ncifras = 0\nwhile n > 0:\n    digito = n % 10     # última cifra\n    suma += digito\n    cifras += 1\n    n //= 10            # quita la última cifra\nprint(\"Cifras:\", cifras, \"Suma:\", suma)     # Cifras: 4 Suma: 19",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Vuelta",
+      "n al empezar",
+      "digito",
+      "suma",
+      "cifras",
+      "n al acabar"
+     ],
+     "rows": [
+      [
+       "1",
+       "4096",
+       "6",
+       "6",
+       "1",
+       "409"
+      ],
+      [
+       "2",
+       "409",
+       "9",
+       "15",
+       "2",
+       "40"
+      ],
+      [
+       "3",
+       "40",
+       "0",
+       "15",
+       "3",
+       "4"
+      ],
+      [
+       "4",
+       "4",
+       "4",
+       "19",
+       "4",
+       "0"
+      ],
+      [
+       "—",
+       "0",
+       "—",
+       "19",
+       "4",
+       "`n > 0` es falso: fin"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos bordes que fallan casi siempre la primera vez: si `n` es **0**, el bucle no da ninguna vuelta y cuenta 0 cifras (pero el 0 tiene una); si `n` es **negativo**, `n > 0` es falso desde el principio. Trabaja con `abs(n)` y trata el 0 aparte, o usa un bucle que dé al menos una vuelta (`while True` + `break`)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿`while` o `for`? Si vas a recorrer algo conocido (los números del 1 al 100, las letras de una cadena), usa `for` (siguiente lección). Si repites **hasta que ocurra algo** (el usuario acierta, el número llega a 1, se lee «fin»), usa `while`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Cuántas veces se imprime?» es la pregunta estrella de los bucles. Con `i = 0` y `while i < 5:` → `print(i)` → `i += 2`, se imprimen 3 valores (0, 2, 4). Anota el valor **en el momento de comprobar la condición** y vigila el orden de las instrucciones: si `i += 2` va antes del `print`, se imprimen 2, 4 y 6."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Iteración",
+       "en": "iteration",
+       "def": "Cada vuelta de un bucle."
+      },
+      {
+       "term": "Contador",
+       "en": "counter",
+       "def": "Variable que se incrementa para contar cuántas veces ocurre algo."
+      },
+      {
+       "term": "Acumulador",
+       "en": "accumulator",
+       "def": "Variable que va agregando valores (suma, producto, texto…)."
+      },
+      {
+       "term": "Centinela",
+       "en": "sentinel",
+       "def": "Valor especial que indica el final de una serie de datos."
+      },
+      {
+       "term": "Bucle infinito",
+       "en": "infinite loop",
+       "def": "Bucle cuya condición nunca llega a ser falsa."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l5",
+   "title": "for y range(): recorrer secuencias",
+   "minutes": 20,
+   "goals": [
+    "Generar progresiones con `range(stop)`, `range(start, stop)` y `range(start, stop, step)`, incluidos pasos negativos y rangos vacíos.",
+    "Recorrer una cadena carácter a carácter acumulando resultados.",
+    "Predecir el valor de la variable de control durante el bucle y después de él."
+   ],
+   "takeaways": [
+    "El `for` de Python recorre los elementos de un iterable (cadenas, rangos y, desde s04, listas, tuplas, diccionarios…); no es un contador como el `for` de C.",
+    "`range(inicio, fin, paso)` **nunca** incluye `fin`: para llegar hasta `n` escribe `range(1, n + 1)`.",
+    "`range` no crea una lista: guarda inicio, fin y paso, y ocupa lo mismo sea cual sea su tamaño.",
+    "Reasignar la variable de control dentro del cuerpo no cambia las vueltas; al terminar, la variable conserva su último valor.",
+    "Usa `_` como nombre de variable cuando no necesitas su valor: `for _ in range(3):`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El `for` de Python es un «para cada»: toma una colección de elementos (un **iterable**) y ejecuta el bloque una vez **por cada elemento**, asignándolo a la **variable de control**. No gestionas índices, condiciones ni incrementos: el `for` sabe cuándo se acaban los elementos. De momento recorrerás dos iterables: las **cadenas** y los **rangos** de números."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for letra in \"Pingüino\":\n    print(letra, end=\" \")\nprint()",
+     "run": true,
+     "caption": "Cada vuelta, `letra` vale el siguiente carácter, incluida la `ü`."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo avanza un for",
+     "mermaid": "flowchart TD\n  A[\"for letra in texto:\"] --> B{\"¿Quedan elementos?\"}\n  B -- \"Sí\" --> C[\"letra = siguiente elemento\"]\n  C --> D[\"Ejecutar el cuerpo\"]\n  D --> B\n  B -- \"No\" --> E[\"Seguir tras el bucle\"]",
+     "caption": "El for pide elementos uno a uno hasta que se agotan (en s12 verás que por dentro usa iter() y next())."
+    },
+    {
+     "type": "h",
+     "text": "`range()`: progresiones de enteros"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Llamada",
+      "Valores que produce",
+      "Nota"
+     ],
+     "rows": [
+      [
+       "`range(5)`",
+       "0, 1, 2, 3, 4",
+       "5 valores; empieza en 0"
+      ],
+      [
+       "`range(2, 6)`",
+       "2, 3, 4, 5",
+       "el fin (6) no se incluye"
+      ],
+      [
+       "`range(1, 10, 3)`",
+       "1, 4, 7",
+       "de 3 en 3"
+      ],
+      [
+       "`range(10, 0, -2)`",
+       "10, 8, 6, 4, 2",
+       "paso negativo: cuenta atrás; el 0 no se incluye"
+      ],
+      [
+       "`range(5, 2)`",
+       "(ninguno)",
+       "vacío: con paso positivo, inicio ≥ fin"
+      ],
+      [
+       "`range(0, 10, 0)`",
+       "—",
+       "`ValueError`: el paso no puede ser 0"
+      ],
+      [
+       "`range(2.5)`",
+       "—",
+       "`TypeError`: solo admite enteros"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for i in range(1, 6):\n    print(i, end=\" \")\nprint()\n\nfor i in range(10, 0, -3):\n    print(i, end=\" \")\nprint()\n\nfor i in range(5, 2):\n    print(\"esto no se imprime nunca\")\n\nprint(range(10))                # range(0, 10): no es una lista\nprint(len(range(0, 100, 7)))    # 15 valores: 0, 7, 14, ..., 98\nprint(42 in range(0, 100, 2))   # True",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Un `range` es **perezoso**: no fabrica todos los números, solo guarda `start`, `stop` y `step` y calcula cada valor cuando el `for` lo pide. Por eso `range(10**12)` se crea al instante y ocupa lo mismo que `range(3)`. También admite `len()` e `in` (y, con enteros, `in` lo resuelve con aritmética, sin recorrerlo). Para ver sus valores como lista usarás `list(range(...))` en s04."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Errores de uno** (*off-by-one errors*): el fin de `range` siempre queda fuera. Para sumar del 1 al 100 necesitas `range(1, 101)`; `range(1, 100)` se deja el 100 y `range(100)` empieza en 0 y acaba en 99. Para contar hacia atrás hasta el 1 incluido: `range(10, 0, -1)`."
+    },
+    {
+     "type": "h",
+     "text": "Acumular mientras recorres"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Suma de los cuadrados del 1 al 10\nsuma = 0\nfor n in range(1, 11):\n    suma += n ** 2\nprint(\"Suma de cuadrados:\", suma)          # 385\n\n# Contar vocales (con y sin tilde) de una frase\nfrase = \"El murciélago comió kiwi\"\nvocales = 0\nfor c in frase:\n    if c in \"aeiouáéíóúüAEIOUÁÉÍÓÚÜ\":\n        vocales += 1\nprint(\"Vocales:\", vocales)                 # 11\n\n# Invertir una cadena: cada carácter se coloca DELANTE de lo acumulado\ninvertida = \"\"\nfor c in \"ámbar\":\n    invertida = c + invertida\nprint(invertida)                           # rabmá",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "La variable de control"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for i in range(3):\n    print(\"Vuelta\", i)\n    i = 100      # no afecta: en la siguiente vuelta i recibe el siguiente valor del rango\nprint(\"Después del bucle, i =\", i)    # 100: conserva lo último que se le asignó",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "El `for` **asigna** el siguiente elemento a la variable al principio de cada vuelta, pisando lo que hubiera. Cuando termina, la variable no se borra: conserva su último valor. Pero si el iterable está vacío, el cuerpo no se ejecuta y la variable **no se asigna nunca**: si no existía antes, usarla después provoca `NameError`."
+    },
+    {
+     "type": "p",
+     "text": "Cuando solo quieres repetir algo N veces y no usas el valor, la convención es llamar `_` a la variable: le dice al lector «este valor no importa»."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for _ in range(3):\n    print(\"¡Hip, hip, hurra!\")",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla práctica: `for` cuando **recorres algo** (una cadena, un rango conocido); `while` cuando **repites hasta que ocurra algo**. Todo `for` sobre un `range` se puede escribir con `while`, pero el `for` no puede olvidarse de actualizar el contador: es más corto y más seguro."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Fórmula rápida para «¿cuántas vueltas?»: con paso positivo, `range(a, b, p)` produce ⌈(b − a) / p⌉ valores si `a < b`, y ninguno en otro caso. Ejemplo: `range(2, 20, 3)` → ⌈18 / 3⌉ = 6 valores (2, 5, 8, 11, 14, 17). Con paso negativo, lo mismo con (a − b) / |p|. En el PCEP es habitual combinarlo con `print(..., end=\"\")`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Iterable",
+       "en": "iterable",
+       "def": "Objeto que se puede recorrer elemento a elemento con `for` (cadenas, rangos…)."
+      },
+      {
+       "term": "Variable de control",
+       "en": "loop variable",
+       "def": "Variable a la que el `for` asigna cada elemento."
+      },
+      {
+       "term": "Rango",
+       "en": "range",
+       "def": "Secuencia inmutable y perezosa de enteros en progresión aritmética."
+      },
+      {
+       "term": "Error de uno",
+       "en": "off-by-one error",
+       "def": "Fallo por dar una vuelta de más o de menos, típico con los límites de `range`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l6",
+   "title": "Controlar el bucle: break, continue, else, bucles anidados y :=",
+   "minutes": 25,
+   "goals": [
+    "Interrumpir un bucle con `break` o saltar a la siguiente vuelta con `continue`, también dentro de bucles anidados.",
+    "Usar la cláusula `else` de `for` y `while` para distinguir «terminó sin `break`» de «se interrumpió».",
+    "Calcular cuántas veces se ejecuta el cuerpo de dos bucles anidados.",
+    "Aplicar el operador morsa `:=` en condiciones de `while` e `if` con los paréntesis correctos."
+   ],
+   "takeaways": [
+    "`break` sale del bucle **más interno** que lo contiene; `continue` salta a la siguiente vuelta de ese mismo bucle.",
+    "El `else` de un bucle se ejecuta si el bucle termina **sin `break`** (también si no dio ninguna vuelta): léelo como «si no hubo break».",
+    "Dos bucles anidados de `n` y `m` vueltas ejecutan el cuerpo interior `n × m` veces.",
+    "`:=` asigna y devuelve el valor a la vez; como tiene la precedencia más baja, casi siempre necesita paréntesis: `while (x := input()) != \"fin\":`.",
+    "Un `break` dentro de un `match` que está dentro de un bucle sale del **bucle**: `match` no es un bucle."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "A veces no quieres completar todas las vueltas. `break` **termina** el bucle en ese instante; `continue` **abandona la vuelta actual** y pasa a la siguiente (en un `while`, vuelve a comprobar la condición). Ambos afectan solo al bucle más interno que los contiene, y fuera de un bucle son un error: `SyntaxError: 'break' outside loop`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# break: el primer múltiplo de 7 mayor que 50\nfor n in range(51, 100):\n    if n % 7 == 0:\n        print(\"Encontrado:\", n)\n        break\n\n# continue: una frase sin espacios ni vocales\nfor c in \"control de flujo\":\n    if c == \" \" or c in \"aeiou\":\n        continue            # salta el resto del cuerpo y pasa al siguiente carácter\n    print(c, end=\"\")\nprint()",
+     "run": true
+    },
+    {
+     "type": "diagram",
+     "title": "break, continue y else en un bucle",
+     "mermaid": "flowchart TD\n  A{\"¿Quedan elementos o la condición es verdadera?\"} -- \"Sí\" --> B[\"Cuerpo del bucle\"]\n  B --> C{\"¿break?\"}\n  C -- \"Sí\" --> F[\"Salir SIN ejecutar el else\"]\n  C -- \"No\" --> D{\"¿continue?\"}\n  D -- \"Sí\" --> A\n  D -- \"No\" --> E[\"Resto del cuerpo\"]\n  E --> A\n  A -- \"No\" --> G[\"Bloque else del bucle, si existe\"]\n  G --> H[\"Código tras el bucle\"]\n  F --> H",
+     "caption": "El else del bucle solo se alcanza cuando el bucle se agota por sí mismo."
+    },
+    {
+     "type": "h",
+     "text": "`else` en bucles: «si no hubo `break`»"
+    },
+    {
+     "type": "p",
+     "text": "`for` y `while` admiten una cláusula `else` que sorprende a casi todo el mundo: **se ejecuta cuando el bucle termina sin haber pasado por un `break`**. En un `for`, cuando se agotan los elementos; en un `while`, cuando la condición se vuelve falsa. Si sales con `break` (o con `return`, o por una excepción), el `else` se salta. Su uso natural son las **búsquedas**: el `else` es el sitio para «no lo encontré»."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "n = 91\nfor divisor in range(2, n):\n    if n % divisor == 0:\n        print(n, \"no es primo: es divisible entre\", divisor)\n        break\nelse:\n    print(n, \"es primo\")",
+     "run": true,
+     "caption": "Prueba con 97 y con 2. Con 2, `range(2, 2)` está vacío: el bucle no da ninguna vuelta… y el `else` sí se ejecuta."
+    },
+    {
+     "type": "p",
+     "text": "Sin `else` necesitarías una variable **bandera** (*flag*): `es_primo = True` antes del bucle, `es_primo = False` antes del `break` y un `if es_primo:` al final. Funciona igual, pero son más líneas y un estado que mantener. La documentación oficial lo compara con el `else` de `try` (s08): el de `try` se ejecuta si no hubo excepción; el del bucle, si no hubo `break`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El `else` de un bucle **no** significa «si el bucle no se ejecutó» ni «después de cada vuelta». Si te ayuda, léelo mentalmente como `nobreak:`. Y vigila la sangría: un `else` alineado con el `if` interior pertenece al `if`, no al `for`, y el programa hace algo completamente distinto."
+    },
+    {
+     "type": "h",
+     "text": "Bucles anidados"
+    },
+    {
+     "type": "p",
+     "text": "Un bucle puede contener otro. Por cada vuelta del **exterior**, el **interior** se ejecuta completo. Si el exterior da `n` vueltas y el interior `m`, el cuerpo interior se ejecuta `n × m` veces: con 1000 × 1000 ya es un millón. Formalizarás esta intuición de coste en s15 con la notación O grande (esto es O(n²))."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for fila in range(1, 6):\n    for columna in range(1, 6):\n        print(fila * columna, end=\"\\t\")    # \\t es un tabulador\n    print()                                # salto de línea al acabar cada fila",
+     "run": true,
+     "caption": "Tabla de multiplicar de 5 × 5: 25 ejecuciones del print interior."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "altura = 4\nfor fila in range(1, altura + 1):\n    for _ in range(fila):       # el interior depende del exterior\n        print(\"*\", end=\"\")\n    print()",
+     "run": true,
+     "caption": "Aquí el interior da 1, 2, 3 y 4 vueltas: 10 en total, n(n + 1) / 2."
+    },
+    {
+     "type": "p",
+     "text": "Un `break` en el bucle interior **solo** rompe el interior: el exterior sigue con su siguiente vuelta. Para salir de todo a la vez, lo más limpio es envolver los bucles en una función y usar `return`:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def buscar_pareja(suma, producto):\n    for a in range(1, suma):\n        for b in range(a, suma):\n            if a + b == suma and a * b == producto:\n                return f\"{a} y {b}\"     # sale de AMBOS bucles y de la función\n    return \"no existe\"\n\n\nprint(buscar_pareja(10, 21))    # 3 y 7\nprint(buscar_pareja(10, 50))    # no existe",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**`break` dentro de `match`.** `match` no es un bucle, así que un `break` escrito en un `case` rompe el bucle que rodea al `match`. En un menú es justo lo que quieres. Y otra trampa: en un `while`, un `continue` colocado **antes** de la actualización del contador se la salta y el bucle puede volverse infinito."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "while True:\n    orden = input(\"> \")\n    match orden:\n        case \"salir\" | \"q\":\n            break                      # sale del while, no solo del match\n        case \"hola\":\n            print(\"¡Hola!\")\n        case _:\n            print(\"Orden desconocida:\", orden)\nprint(\"Adiós\")",
+     "run": true,
+     "stdin": [
+      "hola",
+      "bailar",
+      "salir"
+     ],
+     "caption": "Menú típico: `while True` + `match` + `break`."
+    },
+    {
+     "type": "h",
+     "text": "El operador morsa `:=` (desde Python 3.8)"
+    },
+    {
+     "type": "p",
+     "text": "La **expresión de asignación** `nombre := expresión` (PEP 572; se llama «operador morsa» porque `:=` recuerda los ojos y colmillos de una morsa) asigna un valor **y lo devuelve** a la vez, así que puede ir dentro de una condición. Su caso estrella es el centinela de la lección 4, sin la lectura duplicada:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "total = 0\nwhile (texto := input(\"Número o 'fin': \")) != \"fin\":\n    total += int(texto)\nprint(\"Total:\", total)",
+     "run": true,
+     "stdin": [
+      "4",
+      "10",
+      "-1",
+      "fin"
+     ],
+     "caption": "Una sola llamada a `input`: se lee, se guarda en `texto` y se compara, todo en la cabecera del `while`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "n = 47\nif (resto := n % 5) != 0:\n    print(f\"{n} no es múltiplo de 5: sobran {resto}\")",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Paréntesis casi siempre obligatorios.** `:=` tiene la precedencia más baja de todas. Sin paréntesis, `while texto := input() != \"fin\":` significa `texto := (input() != \"fin\")`: ¡`texto` vale `True`! Además, `x := 5` suelto como instrucción es `SyntaxError` (para eso está `=`) y solo puede asignar a un nombre simple. La guía de estilo de la PEP 572: si una asignación normal sirve igual de bien, úsala; reserva `:=` para cuando evita duplicar código o repetir un cálculo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Novedad de Python 3.14 (PEP 765): el compilador emite un `SyntaxWarning` si un `break`, `continue` o `return` sale de un bloque `finally`. Todavía no conoces `finally` (s08); quédate con la idea de que el lenguaje desaconseja los saltos que ocultan lo que ha pasado."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Trampas favoritas de examen: (1) `break` en el bucle interior no detiene el exterior; (2) el `else` de un bucle se ejecuta si no hubo `break`, **incluso con cero vueltas**; (3) un `continue` en un `while` antes del incremento provoca un bucle infinito; (4) el `else` pertenece al bloque con el que está alineado. El PCEP-30-02 cita expresamente `while-else`, `for-else`, `break`, `continue` y los bucles anidados."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "break",
+       "en": "break",
+       "def": "Termina de inmediato el bucle más interno y se salta su `else`."
+      },
+      {
+       "term": "continue",
+       "en": "continue",
+       "def": "Abandona la vuelta actual y pasa a la siguiente del bucle más interno."
+      },
+      {
+       "term": "Cláusula else de un bucle",
+       "en": "loop else clause",
+       "def": "Bloque que se ejecuta cuando el bucle termina sin `break`."
+      },
+      {
+       "term": "Bucle anidado",
+       "en": "nested loop",
+       "def": "Bucle dentro del cuerpo de otro bucle."
+      },
+      {
+       "term": "Bandera",
+       "en": "flag",
+       "def": "Variable booleana que recuerda si algo ocurrió durante el bucle."
+      },
+      {
+       "term": "Expresión de asignación",
+       "en": "assignment expression",
+       "def": "`nombre := valor`: asigna y devuelve el valor (operador morsa, PEP 572)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l7",
+   "title": "Pensar antes de teclear: trazas y diagramas de flujo",
+   "minutes": 18,
+   "goals": [
+    "Trazar a mano un bucle con una tabla de variables y predecir su salida exacta.",
+    "Traducir un diagrama de flujo a código Python y dibujar el diagrama de un programa dado.",
+    "Diseñar casos de prueba de borde (0, 1, negativos, vacío, límites) para un bucle."
+   ],
+   "takeaways": [
+    "Una **traza** es una tabla con una columna por variable y una fila por paso: es la forma más fiable de responder «¿qué imprime?».",
+    "En un diagrama de flujo, el rombo es una decisión; si de él sale una flecha que vuelve hacia arriba, hay un bucle.",
+    "Una variable de estado y un `match` dentro de un bucle forman una máquina de estados sencilla.",
+    "Los errores de bucle se esconden en los bordes: prueba siempre 0, 1, negativos, vacío y el último valor válido.",
+    "Un `print` de depuración con los valores de las variables en cada vuelta es una traza automática."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Antes de escribir código, los buenos programadores **simulan** mentalmente lo que hará. Es una habilidad que se entrena y la base de las preguntas «¿qué imprime este código?» de exámenes y entrevistas. Tienes dos herramientas: la **tabla de trazas**, para el código ya escrito, y el **diagrama de flujo**, para diseñar el que vas a escribir."
+    },
+    {
+     "type": "h",
+     "text": "La tabla de trazas"
+    },
+    {
+     "type": "p",
+     "text": "Una columna por variable (y otra para la condición o la salida) y una fila cada vez que algo cambia. Veamos el algoritmo de Euclides para el máximo común divisor, que tiene más de 2000 años:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "a = 48\nb = 18\nwhile b != 0:\n    resto = a % b\n    a = b\n    b = resto\nprint(\"MCD:\", a)",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Momento",
+      "resto",
+      "a",
+      "b",
+      "¿b != 0?"
+     ],
+     "rows": [
+      [
+       "antes del bucle",
+       "—",
+       "48",
+       "18",
+       "sí"
+      ],
+      [
+       "tras la vuelta 1",
+       "48 % 18 = 12",
+       "18",
+       "12",
+       "sí"
+      ],
+      [
+       "tras la vuelta 2",
+       "18 % 12 = 6",
+       "12",
+       "6",
+       "sí"
+      ],
+      [
+       "tras la vuelta 3",
+       "12 % 6 = 0",
+       "6",
+       "0",
+       "no: sale del bucle"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Salida: `MCD: 6`. Con la tabla no hay que «imaginar» nada: cada fila se obtiene de la anterior aplicando el cuerpo del bucle."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Con la asignación múltiple de s02 el cuerpo cabe en una línea: `a, b = b, a % b`. Funciona porque Python evalúa **toda** la parte derecha antes de asignar. Y la biblioteca estándar ya lo trae hecho: `math.gcd(48, 18)` devuelve 6."
+    },
+    {
+     "type": "h",
+     "text": "Diagramas de flujo"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Símbolo",
+      "Significado",
+      "En Python"
+     ],
+     "rows": [
+      [
+       "Óvalo",
+       "Inicio o fin",
+       "principio y final del programa o de la función"
+      ],
+      [
+       "Rectángulo",
+       "Proceso",
+       "asignaciones y cálculos"
+      ],
+      [
+       "Paralelogramo",
+       "Entrada o salida",
+       "`input()`, `print()`"
+      ],
+      [
+       "Rombo",
+       "Decisión",
+       "`if`, `elif`, condición de un `while`"
+      ],
+      [
+       "Flecha que vuelve atrás",
+       "Repetición",
+       "`while` o `for`"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Euclides como diagrama de flujo",
+     "mermaid": "flowchart TD\n  I([\"Inicio\"]) --> L[/\"Leer a y b\"/]\n  L --> D{\"¿b != 0?\"}\n  D -- \"Sí\" --> P[\"resto = a % b<br/>a = b<br/>b = resto\"]\n  P --> D\n  D -- \"No\" --> S[/\"Mostrar a\"/]\n  S --> F([\"Fin\"])",
+     "caption": "El rombo con una flecha que vuelve hacia arriba es el while."
+    },
+    {
+     "type": "p",
+     "text": "Del diagrama al código hay una traducción casi mecánica: cada rombo con una flecha que vuelve hacia arriba es un `while`; cada rombo sin vuelta atrás, un `if`. Si al dibujarlo te salen flechas cruzándose por todas partes, es señal de que el diseño se puede simplificar. Prueba con este: tres intentos para acertar un PIN."
+    },
+    {
+     "type": "diagram",
+     "title": "Tres intentos para un PIN",
+     "mermaid": "flowchart TD\n  I([\"Inicio\"]) --> A[\"intentos = 0\"]\n  A --> C{\"¿intentos < 3?\"}\n  C -- \"No\" --> X[/\"Tarjeta bloqueada\"/]\n  C -- \"Sí\" --> L[/\"Leer pin\"/]\n  L --> N[\"intentos += 1\"]\n  N --> Q{\"¿pin correcto?\"}\n  Q -- \"Sí\" --> OK[/\"Acceso concedido\"/]\n  Q -- \"No\" --> M[/\"PIN incorrecto\"/]\n  M --> C\n  OK --> F([\"Fin\"])\n  X --> F",
+     "caption": "La salida por «No» del primer rombo es el else del while; la salida por «Sí» del segundo, un break."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "intentos = 0\nwhile intentos < 3:\n    pin = input(\"PIN: \")\n    intentos += 1\n    if pin == \"1234\":\n        print(\"Acceso concedido\")\n        break\n    print(\"PIN incorrecto\")\nelse:\n    print(\"Tarjeta bloqueada\")",
+     "run": true,
+     "stdin": [
+      "0000",
+      "1111",
+      "1234"
+     ],
+     "caption": "Traducción directa del diagrama. Cambia la entrada para que falle tres veces."
+    },
+    {
+     "type": "h",
+     "text": "Máquinas de estados"
+    },
+    {
+     "type": "p",
+     "text": "Muchos programas se describen mejor como una **máquina de estados**: el programa está en un estado, y según lo que ocurre pasa a otro. En Python basta con una variable que guarda el estado actual y un `match` dentro de un bucle que decide el siguiente. En s11 lo harás más robusto con `Enum`."
+    },
+    {
+     "type": "diagram",
+     "title": "Un semáforo como máquina de estados",
+     "mermaid": "stateDiagram-v2\n  state \"verde\" as verde\n  state \"ámbar\" as ambar\n  state \"rojo\" as rojo\n  [*] --> verde\n  verde --> ambar\n  ambar --> rojo\n  rojo --> verde",
+     "caption": "Cada flecha es una transición; el programa siempre está en exactamente un estado."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "estado = \"verde\"\nfor _ in range(5):\n    print(estado)\n    match estado:\n        case \"verde\":\n            estado = \"ámbar\"\n        case \"ámbar\":\n            estado = \"rojo\"\n        case \"rojo\":\n            estado = \"verde\"",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Los bordes: donde se esconden los errores"
+    },
+    {
+     "type": "p",
+     "text": "Un **print de depuración** muestra el estado en cada vuelta: es una traza automática. Aquí revela un error de uno:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def suma_hasta(n):\n    total = 0\n    for i in range(1, n):             # ¿seguro que llega hasta n?\n        total += i\n        print(\"  i =\", i, \"total =\", total)    # print de depuración\n    return total\n\n\nprint(suma_hasta(4))     # esperábamos 10 (1 + 2 + 3 + 4)",
+     "run": true,
+     "caption": "La traza muestra que el 4 nunca se suma. Corrígelo con `range(1, n + 1)` y borra el print de depuración (en s08 verás `logging` y el depurador)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Cero y uno**: ¿qué hace tu bucle si no debe dar ninguna vuelta? ¿Y si da exactamente una?",
+      "**Negativos**: ¿tu condición `n > 0` los deja fuera sin querer?",
+      "**Vacío**: con una cadena `\"\"` o un rango vacío, ¿los acumuladores tienen un valor inicial correcto?",
+      "**Límites exactos**: si la regla es «hasta 120», prueba 120 y 121.",
+      "**Primera y última vuelta**: ¿se procesa el último grupo? (verás este fallo en el ejercicio de compresión).",
+      "**Terminación**: ¿cambia en cada vuelta algo que acerque la condición a ser falsa?"
+     ],
+     "ordered": false
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Estrategia para «¿qué imprime?» con bucles: (1) calcula cuántas vueltas da cada bucle (fórmula de `range`); (2) traza solo las variables que se imprimen o deciden algo; (3) fíjate en `end=` y `sep=` de `print`; (4) localiza `break`, `continue` y `else`, y a qué bucle pertenecen según su sangría. En examen el tiempo cuenta: si la traza pasa de 6–8 filas, busca el patrón en lugar de seguir fila a fila."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Traza",
+       "en": "trace",
+       "def": "Registro paso a paso de los valores de las variables durante la ejecución."
+      },
+      {
+       "term": "Diagrama de flujo",
+       "en": "flowchart",
+       "def": "Dibujo de un algoritmo con símbolos para procesos, decisiones y entradas/salidas."
+      },
+      {
+       "term": "Máquina de estados",
+       "en": "state machine",
+       "def": "Modelo en el que el programa pasa de un estado a otro según los eventos."
+      },
+      {
+       "term": "Caso borde",
+       "en": "edge case",
+       "def": "Entrada en el límite de lo válido (0, vacío, máximo…) donde suelen aparecer los errores."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s03-e1",
+   "title": "Calificación con if/elif/else",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe la función `clasificar_nota(nota)`, que recibe una nota numérica (entera o decimal) y **devuelve** (no imprime) su calificación:",
+    "- menor que 5 → `\"Reprobado\"`\n- de 5 a menos de 7 → `\"Aprobado\"`\n- de 7 a menos de 9 → `\"Bueno\"`\n- de 9 a 10 (incluido) → `\"Excelente\"`\n- menor que 0 o mayor que 10 → `\"Nota no válida\"`",
+    "Fíjate bien en los límites: 5 ya es Aprobado, 7 ya es Bueno y 9 ya es Excelente."
+   ],
+   "examples": [
+    {
+     "call": "clasificar_nota(6.5)",
+     "result": "'Aprobado'"
+    },
+    {
+     "call": "clasificar_nota(9)",
+     "result": "'Excelente'"
+    },
+    {
+     "call": "clasificar_nota(4.99)",
+     "result": "'Reprobado'"
+    },
+    {
+     "call": "clasificar_nota(11)",
+     "result": "'Nota no válida'"
+    }
+   ],
+   "starter": "def clasificar_nota(nota):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def clasificar_nota(nota):\n    if nota < 0 or nota > 10:\n        return \"Nota no válida\"      # cláusula de guarda: lo raro, primero\n    if nota < 5:\n        return \"Reprobado\"\n    elif nota < 7:\n        return \"Aprobado\"\n    elif nota < 9:\n        return \"Bueno\"\n    else:\n        return \"Excelente\"\n",
+   "tests": [
+    {
+     "name": "Una nota de cada tipo",
+     "code": "for nota, esperado in [(3, \"Reprobado\"), (6.5, \"Aprobado\"), (8, \"Bueno\"), (9.5, \"Excelente\")]:\n    obtenido = clasificar_nota(nota)\n    assert obtenido == esperado, f\"clasificar_nota({nota}) debería devolver {esperado!r}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Límites exactos entre categorías",
+     "code": "for nota, esperado in [(0, \"Reprobado\"), (4.99, \"Reprobado\"), (5, \"Aprobado\"), (6.99, \"Aprobado\"),\n                       (7, \"Bueno\"), (8.999, \"Bueno\"), (9, \"Excelente\"), (10, \"Excelente\")]:\n    obtenido = clasificar_nota(nota)\n    assert obtenido == esperado, f\"clasificar_nota({nota}) debería devolver {esperado!r}, pero devolvió {obtenido!r}. Revisa si usas < o <= en ese límite\""
+    },
+    {
+     "name": "Notas fuera de rango",
+     "code": "for nota in [-1, -0.01, 10.01, 11, 100]:\n    obtenido = clasificar_nota(nota)\n    assert obtenido == \"Nota no válida\", f\"clasificar_nota({nota}) debería devolver 'Nota no válida', pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Devuelve el texto en lugar de imprimirlo",
+     "code": "salida = capturar(clasificar_nota, 7)\nassert salida == \"\", \"La función no debe imprimir nada: tiene que usar return\"\nassert clasificar_nota(7) == \"Bueno\", \"clasificar_nota(7) debe devolver 'Bueno'\""
+    }
+   ],
+   "hints": [
+    "Empieza por el caso raro: si la nota está fuera de 0–10, devuelve el mensaje de error y la función termina ahí (`return`).",
+    "Después, una cadena `if`/`elif`/`else` de menor a mayor. Si llegas a `elif nota < 7:` es porque `nota < 5` fue falso, así que no hace falta escribir `5 <= nota < 7`.",
+    "Para el rango, `nota < 0 or nota > 10` y `not 0 <= nota <= 10` son equivalentes (leyes de De Morgan)."
+   ],
+   "explain": "La solución usa una **cláusula de guarda** para descartar primero las notas imposibles y luego una cadena `elif` en orden creciente. Cada `elif` hereda implícitamente el límite inferior: si Python evalúa `nota < 7` es porque `nota < 5` fue falso. Por eso el orden importa: si pusieras `nota < 9` antes que `nota < 7`, nunca saldría «Aprobado».\n\nEl coste es constante, O(1): como mucho cinco comparaciones.\n\n¿Y con `match`? No encaja: `match` compara con valores concretos, y aquí tenemos **rangos**. Tendrías que usar guardas en cada caso (`case n if n < 5:`), que es un `if`/`elif` con más ruido. Regla: rangos → `if`/`elif`; valores concretos → `match`."
+  },
+  {
+   "id": "s03-e2",
+   "title": "¿Año bisiesto?",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "En el calendario gregoriano un año es **bisiesto** si es divisible entre 4, **excepto** los que son divisibles entre 100, que no lo son… **salvo** que también sean divisibles entre 400, que sí lo son.",
+    "Escribe `es_bisiesto(anio)`, que devuelva `True` o `False` (valores `bool` de verdad, no `0`/`1` ni cadenas)."
+   ],
+   "examples": [
+    {
+     "call": "es_bisiesto(2024)",
+     "result": "True"
+    },
+    {
+     "call": "es_bisiesto(1900)",
+     "result": "False"
+    },
+    {
+     "call": "es_bisiesto(2000)",
+     "result": "True"
+    }
+   ],
+   "starter": "def es_bisiesto(anio):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def es_bisiesto(anio):\n    if anio % 400 == 0:\n        return True\n    elif anio % 100 == 0:\n        return False\n    elif anio % 4 == 0:\n        return True\n    else:\n        return False\n",
+   "tests": [
+    {
+     "name": "Bisiestos corrientes",
+     "code": "for anio in [2024, 2020, 1996, 4]:\n    assert es_bisiesto(anio) is True, f\"{anio} es divisible entre 4 y no entre 100: es bisiesto (se obtuvo {es_bisiesto(anio)!r})\""
+    },
+    {
+     "name": "No bisiestos corrientes",
+     "code": "for anio in [2023, 2025, 2019, 1]:\n    assert es_bisiesto(anio) is False, f\"{anio} no es divisible entre 4: no es bisiesto (se obtuvo {es_bisiesto(anio)!r})\""
+    },
+    {
+     "name": "Siglos: la excepción y la excepción de la excepción",
+     "code": "for anio in [1900, 2100, 1800, 2200]:\n    assert es_bisiesto(anio) is False, f\"{anio} es divisible entre 100 pero no entre 400: NO es bisiesto (se obtuvo {es_bisiesto(anio)!r})\"\nfor anio in [2000, 2400, 1600]:\n    assert es_bisiesto(anio) is True, f\"{anio} es divisible entre 400: SÍ es bisiesto (se obtuvo {es_bisiesto(anio)!r})\""
+    },
+    {
+     "name": "Devuelve un bool",
+     "code": "assert type(es_bisiesto(2024)) is bool and type(es_bisiesto(2023)) is bool, \"La función debe devolver True o False (tipo bool), no números ni cadenas\""
+    }
+   ],
+   "hints": [
+    "Hay tres reglas y la más específica (divisible entre 400) debe comprobarse **antes** que las generales.",
+    "«Divisible entre k» se escribe `anio % k == 0`.",
+    "Orden que funciona: ¿divisible entre 400? → sí. ¿Entre 100? → no. ¿Entre 4? → sí. En otro caso → no."
+   ],
+   "explain": "La cadena `if`/`elif` va de la regla más específica a la más general, igual que en el ejercicio anterior. Una comparación como `anio % 4 == 0` ya produce un `bool`, así que la versión **pro** devuelve directamente la expresión lógica:\n\n```python\ndef es_bisiesto(anio):\n    return anio % 4 == 0 and (anio % 100 != 0 or anio % 400 == 0)\n```\n\nLéela en voz alta: «divisible entre 4 y, además, o no es un siglo o es divisible entre 400». Los paréntesis son imprescindibles, porque `and` tiene más prioridad que `or`. La biblioteca estándar ya trae esta función: `calendar.isleap(anio)`. Coste: O(1)."
+  },
+  {
+   "id": "s03-e3",
+   "title": "Días de la semana con match",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `describir_dia(dia)` usando `match`. Recibe el nombre de un día en minúsculas y devuelve:",
+    "- `\"laborable\"` para lunes, martes, miércoles, jueves y viernes (acepta también `\"miercoles\"` sin tilde);\n- `\"fin de semana\"` para sábado (acepta también `\"sabado\"`) y domingo;\n- `\"desconocido\"` para cualquier otra cosa (incluidas las mayúsculas, como `\"Lunes\"`)."
+   ],
+   "examples": [
+    {
+     "call": "describir_dia(\"miércoles\")",
+     "result": "'laborable'"
+    },
+    {
+     "call": "describir_dia(\"sabado\")",
+     "result": "'fin de semana'"
+    },
+    {
+     "call": "describir_dia(\"festivo\")",
+     "result": "'desconocido'"
+    }
+   ],
+   "starter": "def describir_dia(dia):\n    # Escribe tu código aquí usando match\n    pass\n",
+   "solution": "def describir_dia(dia):\n    match dia:\n        case \"lunes\" | \"martes\" | \"miércoles\" | \"miercoles\" | \"jueves\" | \"viernes\":\n            return \"laborable\"\n        case \"sábado\" | \"sabado\" | \"domingo\":\n            return \"fin de semana\"\n        case _:\n            return \"desconocido\"\n",
+   "tests": [
+    {
+     "name": "Días laborables",
+     "code": "for dia in [\"lunes\", \"martes\", \"miércoles\", \"miercoles\", \"jueves\", \"viernes\"]:\n    obtenido = describir_dia(dia)\n    assert obtenido == \"laborable\", f\"describir_dia({dia!r}) debería devolver 'laborable', pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Fin de semana (con y sin tilde)",
+     "code": "for dia in [\"sábado\", \"sabado\", \"domingo\"]:\n    obtenido = describir_dia(dia)\n    assert obtenido == \"fin de semana\", f\"describir_dia({dia!r}) debería devolver 'fin de semana', pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Valores desconocidos",
+     "code": "for dia in [\"Lunes\", \"\", \"festivo\", \"lunes \", \"DOMINGO\"]:\n    obtenido = describir_dia(dia)\n    assert obtenido == \"desconocido\", f\"describir_dia({dia!r}) debería devolver 'desconocido', pero devolvió {obtenido!r}. ¿Tienes un case _ al final?\""
+    }
+   ],
+   "hints": [
+    "Un `case` puede tener varias alternativas separadas por `|`: `case \"sábado\" | \"sabado\" | \"domingo\":`.",
+    "El último caso debe ser el comodín `case _:`, que encaja con todo lo que no encajó antes."
+   ],
+   "explain": "Cada `case` agrupa con `|` todas las formas válidas de un mismo grupo, y el comodín `_` recoge el resto. La comparación es **exacta** (`==`): `\"Lunes\"` o `\"lunes \"` (con un espacio al final) no encajan. En s05 aprenderás a normalizar la entrada con `dia.strip().casefold()` antes del `match`.\n\nLa alternativa con `if` sería mucho más larga: `if dia == \"lunes\" or dia == \"martes\" or ...`. Cuando comparas **un mismo sujeto** con muchos valores concretos, `match` es la herramienta natural. Coste: Python prueba las alternativas en orden, así que en el peor caso hace tantas comparaciones como literales hay (aquí, 9)."
+  },
+  {
+   "id": "s03-e4",
+   "title": "Tabla de multiplicar",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `tabla_multiplicar(n, hasta)`, que **imprima** la tabla de multiplicar de `n` desde 1 hasta `hasta` (incluido), una línea por multiplicación con el formato `n x i = resultado`.",
+    "Si `hasta` es menor que 1, en lugar de la tabla imprime `Nada que mostrar`.",
+    "Por ejemplo, `tabla_multiplicar(7, 3)` imprime:\n```text\n7 x 1 = 7\n7 x 2 = 14\n7 x 3 = 21\n```"
+   ],
+   "examples": [
+    {
+     "call": "capturar(tabla_multiplicar, 7, 3)",
+     "result": "'7 x 1 = 7\\n7 x 2 = 14\\n7 x 3 = 21\\n'"
+    },
+    {
+     "call": "capturar(tabla_multiplicar, 5, 0)",
+     "result": "'Nada que mostrar\\n'"
+    }
+   ],
+   "starter": "def tabla_multiplicar(n, hasta):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def tabla_multiplicar(n, hasta):\n    if hasta < 1:\n        print(\"Nada que mostrar\")\n        return\n    for i in range(1, hasta + 1):\n        print(f\"{n} x {i} = {n * i}\")\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Tabla del 7 hasta 10",
+     "code": "esperado = (\"7 x 1 = 7\\n7 x 2 = 14\\n7 x 3 = 21\\n7 x 4 = 28\\n7 x 5 = 35\\n\"\n            \"7 x 6 = 42\\n7 x 7 = 49\\n7 x 8 = 56\\n7 x 9 = 63\\n7 x 10 = 70\\n\")\n_comprobar_salida(capturar(tabla_multiplicar, 7, 10), esperado, \"tabla_multiplicar(7, 10)\")"
+    },
+    {
+     "name": "Un solo renglón (hasta = 1)",
+     "code": "_comprobar_salida(capturar(tabla_multiplicar, 5, 1), \"5 x 1 = 5\\n\", \"tabla_multiplicar(5, 1)\")"
+    },
+    {
+     "name": "Números negativos y el cero",
+     "code": "_comprobar_salida(capturar(tabla_multiplicar, -3, 4), \"-3 x 1 = -3\\n-3 x 2 = -6\\n-3 x 3 = -9\\n-3 x 4 = -12\\n\", \"tabla_multiplicar(-3, 4)\")\n_comprobar_salida(capturar(tabla_multiplicar, 0, 3), \"0 x 1 = 0\\n0 x 2 = 0\\n0 x 3 = 0\\n\", \"tabla_multiplicar(0, 3)\")"
+    },
+    {
+     "name": "Nada que mostrar si hasta < 1",
+     "code": "_comprobar_salida(capturar(tabla_multiplicar, 5, 0), \"Nada que mostrar\\n\", \"tabla_multiplicar(5, 0)\")\n_comprobar_salida(capturar(tabla_multiplicar, 5, -2), \"Nada que mostrar\\n\", \"tabla_multiplicar(5, -2)\")"
+    }
+   ],
+   "hints": [
+    "`range(1, hasta + 1)` recorre de 1 a `hasta` incluido (el fin de `range` nunca se incluye).",
+    "Cada línea es una f-string: `print(f\"{n} x {i} = {n * i}\")`.",
+    "Si `hasta < 1`, `range(1, hasta + 1)` está vacío y no imprimiría nada: comprueba ese caso **antes** del bucle."
+   ],
+   "explain": "El bucle `for` sobre `range(1, hasta + 1)` da exactamente `hasta` vueltas. El caso `hasta < 1` hay que tratarlo aparte porque el rango estaría vacío y no se imprimiría nada. El `return` sin valor tras el aviso es una cláusula de guarda: termina la función sin llegar al bucle (un `if`/`else` también sería válido).\n\n¿Por qué no un `for` con `else`? Porque el `else` de un bucle se ejecuta cuando el bucle termina **sin `break`**, es decir, también después de imprimir una tabla normal. No significa «si no hubo vueltas».\n\nCoste: O(hasta). En s05 aprenderás a alinear las columnas con especificaciones de formato como `{i:>2}`."
+  },
+  {
+   "id": "s03-e5",
+   "title": "FizzBuzz",
+   "level": "facil",
+   "minutes": 12,
+   "prompt": [
+    "El clásico de las entrevistas. Escribe `fizzbuzz(n)`, que **imprima** los números del 1 al `n`, uno por línea, pero:",
+    "- si el número es múltiplo de 3, imprime `Fizz` en su lugar;\n- si es múltiplo de 5, imprime `Buzz`;\n- si es múltiplo de 3 **y** de 5, imprime `FizzBuzz`.",
+    "Si `n` es menor que 1 no se imprime nada. Por ejemplo, `fizzbuzz(5)` imprime:\n```text\n1\n2\nFizz\n4\nBuzz\n```"
+   ],
+   "examples": [
+    {
+     "call": "capturar(fizzbuzz, 5)",
+     "result": "'1\\n2\\nFizz\\n4\\nBuzz\\n'"
+    }
+   ],
+   "starter": "def fizzbuzz(n):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def fizzbuzz(n):\n    for i in range(1, n + 1):\n        if i % 15 == 0:          # múltiplo de 3 y de 5 a la vez\n            print(\"FizzBuzz\")\n        elif i % 3 == 0:\n            print(\"Fizz\")\n        elif i % 5 == 0:\n            print(\"Buzz\")\n        else:\n            print(i)\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Del 1 al 15",
+     "code": "esperado = \"1\\n2\\nFizz\\n4\\nBuzz\\nFizz\\n7\\n8\\nFizz\\nBuzz\\n11\\nFizz\\n13\\n14\\nFizzBuzz\\n\"\n_comprobar_salida(capturar(fizzbuzz, 15), esperado, \"fizzbuzz(15)\")"
+    },
+    {
+     "name": "n = 1",
+     "code": "_comprobar_salida(capturar(fizzbuzz, 1), \"1\\n\", \"fizzbuzz(1)\")"
+    },
+    {
+     "name": "n = 0 o negativo: no imprime nada",
+     "code": "assert capturar(fizzbuzz, 0) == \"\", \"Con n = 0 no debe imprimirse nada\"\nassert capturar(fizzbuzz, -5) == \"\", \"Con n negativo no debe imprimirse nada\""
+    },
+    {
+     "name": "Hasta 100: comprobaciones sueltas",
+     "code": "lineas = capturar(fizzbuzz, 100).split(\"\\n\")\nassert len(lineas) == 101 and lineas[-1] == \"\", f\"fizzbuzz(100) debe imprimir exactamente 100 líneas y se imprimieron {len(lineas) - 1}\"\nfor numero, esperado in [(30, \"FizzBuzz\"), (45, \"FizzBuzz\"), (99, \"Fizz\"), (100, \"Buzz\"), (98, \"98\"), (97, \"97\")]:\n    assert lineas[numero - 1] == esperado, f\"En la línea {numero} se esperaba {esperado!r} y se obtuvo {lineas[numero - 1]!r}\""
+    }
+   ],
+   "hints": [
+    "Recorre `range(1, n + 1)` y decide qué imprimir para cada número.",
+    "«Es múltiplo de 3» se escribe `i % 3 == 0`.",
+    "El orden de las condiciones importa: si preguntas primero por el 3, el 15 imprimirá `Fizz` y nunca llegará a `FizzBuzz`. Comprueba primero el caso doble (múltiplo de 15)."
+   ],
+   "explain": "La trampa de FizzBuzz es el **orden**: en una cadena `if`/`elif` gana la primera condición verdadera, así que el caso más específico (múltiplo de 3 y de 5, o sea, de 15) tiene que ir antes que los generales. `i % 15 == 0` equivale a `i % 3 == 0 and i % 5 == 0` porque 3 y 5 no tienen divisores comunes.\n\nVersión **pro**, fácil de ampliar (añadir «Bazz» para el 7 es una línea más):\n\n```python\ndef fizzbuzz(n):\n    for i in range(1, n + 1):\n        texto = \"\"\n        if i % 3 == 0:\n            texto += \"Fizz\"\n        if i % 5 == 0:\n            texto += \"Buzz\"\n        print(texto or i)     # or devuelve i si texto está vacío\n```\n\nAquí son dos `if` **independientes** (no `elif`), y `texto or i` aprovecha que `or` devuelve uno de sus operandos (s02). Coste: O(n)."
+  },
+  {
+   "id": "s03-e6",
+   "title": "Calculadora con match y guardas",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `calculadora(a, operador, b)` con `match`. `operador` es una cadena y la función **devuelve** el resultado:",
+    "- `\"+\"` suma, `\"-\"` resta;\n- `\"*\"` o `\"x\"` multiplican;\n- `\"/\"` divide, `\"//\"` hace la división entera y `\"%\"` da el resto;\n- `\"**\"` o `\"^\"` elevan `a` a la potencia `b`.",
+    "Casos especiales: si el operador es `/`, `//` o `%` y `b` vale 0, devuelve `None` (sin que salte ningún error). Si el operador no es ninguno de los anteriores, devuelve también `None`."
+   ],
+   "examples": [
+    {
+     "call": "calculadora(7, \"x\", 3)",
+     "result": "21"
+    },
+    {
+     "call": "calculadora(7, \"//\", 2)",
+     "result": "3"
+    },
+    {
+     "call": "calculadora(2, \"^\", 10)",
+     "result": "1024"
+    },
+    {
+     "call": "calculadora(7, \"/\", 0)",
+     "result": "None"
+    },
+    {
+     "call": "calculadora(7, \"?\", 1)",
+     "result": "None"
+    }
+   ],
+   "starter": "def calculadora(a, operador, b):\n    # Escribe tu código aquí usando match\n    pass\n",
+   "solution": "def calculadora(a, operador, b):\n    match operador:\n        case \"+\":\n            return a + b\n        case \"-\":\n            return a - b\n        case \"*\" | \"x\":\n            return a * b\n        case \"/\" | \"//\" | \"%\" if b == 0:\n            return None                 # la guarda evita la división entre cero\n        case \"/\":\n            return a / b\n        case \"//\":\n            return a // b\n        case \"%\":\n            return a % b\n        case \"**\" | \"^\":\n            return a ** b\n        case _:\n            return None\n",
+   "tests": [
+    {
+     "name": "Suma, resta y multiplicación",
+     "code": "for a, op, b, esperado in [(7, \"+\", 3, 10), (7, \"-\", 10, -3), (7, \"*\", 3, 21), (7, \"x\", 3, 21), (-2, \"x\", 4, -8)]:\n    obtenido = calculadora(a, op, b)\n    assert obtenido == esperado, f\"calculadora({a}, {op!r}, {b}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Divisiones, restos y negativos",
+     "code": "for a, op, b, esperado in [(7, \"/\", 2, 3.5), (7, \"//\", 2, 3), (7, \"%\", 2, 1), (-7, \"//\", 2, -4), (-7, \"%\", 2, 1), (0, \"/\", 5, 0.0)]:\n    obtenido = calculadora(a, op, b)\n    assert obtenido == esperado, f\"calculadora({a}, {op!r}, {b}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Potencias con ** y con ^",
+     "code": "assert calculadora(2, \"**\", 10) == 1024, \"calculadora(2, '**', 10) debería devolver 1024\"\nassert calculadora(2, \"^\", 10) == 1024, f\"calculadora(2, '^', 10) debería devolver 1024 y devolvió {calculadora(2, '^', 10)!r}. Ojo: en Python ^ NO es la potencia\"\nassert calculadora(5, \"**\", 0) == 1, \"Cualquier número elevado a 0 da 1\""
+    },
+    {
+     "name": "División entre cero devuelve None",
+     "code": "for op in [\"/\", \"//\", \"%\"]:\n    try:\n        obtenido = calculadora(7, op, 0)\n    except ZeroDivisionError:\n        raise AssertionError(f\"calculadora(7, {op!r}, 0) lanzó ZeroDivisionError: debe devolver None antes de dividir\") from None\n    assert obtenido is None, f\"calculadora(7, {op!r}, 0) debería devolver None, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Un cero que no es divisor no es un error",
+     "code": "assert calculadora(7, \"+\", 0) == 7, \"calculadora(7, '+', 0) debe devolver 7: la guarda solo afecta a las divisiones\"\nassert calculadora(0, \"*\", 5) == 0, \"calculadora(0, '*', 5) debe devolver 0\"\nassert calculadora(9, \"-\", 0) == 9, \"calculadora(9, '-', 0) debe devolver 9\""
+    },
+    {
+     "name": "Operador desconocido",
+     "code": "for op in [\"?\", \"\", \"plus\", \"÷\", \"+ \"]:\n    obtenido = calculadora(7, op, 2)\n    assert obtenido is None, f\"calculadora(7, {op!r}, 2) debería devolver None (operador desconocido), pero devolvió {obtenido!r}\""
+    }
+   ],
+   "hints": [
+    "Estructura: `match operador:` con un `case` por operación. Dos símbolos equivalentes van en el mismo caso: `case \"*\" | \"x\":`.",
+    "La división entre cero se resuelve con una **guarda** que se comprueba antes que los casos de división: `case \"/\" | \"//\" | \"%\" if b == 0:`.",
+    "El comodín `case _:` (el último) recoge cualquier operador desconocido."
+   ],
+   "explain": "La clave es la **guarda** `case \"/\" | \"//\" | \"%\" if b == 0:` colocada **antes** de los casos de división: el patrón encaja con cualquiera de los tres operadores y la guarda decide si el divisor es 0. Si la guarda es falsa, `match` sigue probando los casos siguientes, así que `7 / 2` llega a `case \"/\":` con normalidad. Como la guarda solo acompaña a las divisiones, un `b` igual a 0 no afecta a la suma ni a la potencia.\n\nDos detalles:\n\n- En Python `^` **no** es la potencia, sino el «o exclusivo» bit a bit: `2 ^ 10` vale 8. Por eso lo traducimos explícitamente a `**`.\n- Devolver `None` para indicar «no hay resultado» es habitual, pero obliga a quien llama a comprobarlo. En s08 verás la alternativa profesional: lanzar una excepción (`ZeroDivisionError`, `ValueError`).\n\nAlternativa igual de válida: sin guarda, resolver el cero dentro de cada caso con una expresión condicional, `case \"/\": return a / b if b != 0 else None`. Es más repetitiva, pero cada caso queda autocontenido."
+  },
+  {
+   "id": "s03-e7",
+   "title": "Dígitos: suma y raíz digital",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Sin convertir el número a texto (usa `%` y `//`), escribe dos funciones:",
+    "1. `suma_digitos(n)`: devuelve la suma de las cifras del entero `n`. El signo se ignora: `suma_digitos(-907)` es 16.\n2. `raiz_digital(n)`: suma las cifras de `n`, después las del resultado, y así sucesivamente hasta obtener **una sola cifra**, que devuelve. Por ejemplo, 9875 → 29 → 11 → 2. El signo también se ignora.",
+    "Puedes (y te conviene) llamar a `suma_digitos` desde `raiz_digital`."
+   ],
+   "examples": [
+    {
+     "call": "suma_digitos(4096)",
+     "result": "19"
+    },
+    {
+     "call": "suma_digitos(0)",
+     "result": "0"
+    },
+    {
+     "call": "raiz_digital(9875)",
+     "result": "2"
+    },
+    {
+     "call": "raiz_digital(-38)",
+     "result": "2"
+    }
+   ],
+   "starter": "def suma_digitos(n):\n    # Escribe tu código aquí\n    pass\n\n\ndef raiz_digital(n):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def suma_digitos(n):\n    n = abs(n)\n    suma = 0\n    while n > 0:\n        suma += n % 10      # última cifra\n        n //= 10            # la quitamos\n    return suma\n\n\ndef raiz_digital(n):\n    n = abs(n)\n    while n >= 10:          # mientras tenga más de una cifra\n        n = suma_digitos(n)\n    return n\n",
+   "tests": [
+    {
+     "name": "suma_digitos: números corrientes",
+     "code": "for n, esperado in [(1234, 10), (4096, 19), (7, 7), (1000, 1)]:\n    obtenido = suma_digitos(n)\n    assert obtenido == esperado, f\"suma_digitos({n}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "suma_digitos: cero y negativos",
+     "code": "assert suma_digitos(0) == 0, f\"suma_digitos(0) debería devolver 0, pero devolvió {suma_digitos(0)!r}\"\nassert suma_digitos(-907) == 16, f\"suma_digitos(-907) debería devolver 16 (se ignora el signo), pero devolvió {suma_digitos(-907)!r}\"\nassert suma_digitos(-5) == 5, f\"suma_digitos(-5) debería devolver 5, pero devolvió {suma_digitos(-5)!r}\""
+    },
+    {
+     "name": "suma_digitos: enteros enormes",
+     "code": "assert suma_digitos(10 ** 30) == 1, \"suma_digitos(10**30) debería devolver 1\"\nassert suma_digitos(2 ** 100) == 115, f\"suma_digitos(2**100) debería devolver 115, pero devolvió {suma_digitos(2 ** 100)!r}\"\nassert suma_digitos(99999999999999999999) == 180, \"Veinte nueves suman 180\""
+    },
+    {
+     "name": "raiz_digital: varios pasos",
+     "code": "for n, esperado in [(9875, 2), (38, 2), (123456789, 9), (99999999999999999999, 9)]:\n    obtenido = raiz_digital(n)\n    assert obtenido == esperado, f\"raiz_digital({n}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "raiz_digital: una cifra, cero y negativos",
+     "code": "for n, esperado in [(7, 7), (0, 0), (10, 1), (-9875, 2)]:\n    obtenido = raiz_digital(n)\n    assert obtenido == esperado, f\"raiz_digital({n}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Devuelven enteros",
+     "code": "assert type(suma_digitos(123)) is int and type(raiz_digital(123)) is int, \"Ambas funciones deben devolver int (usa // y no /)\""
+    }
+   ],
+   "hints": [
+    "`abs(n)` quita el signo. Después, mientras `n > 0`: suma `n % 10` al acumulador y haz `n //= 10`.",
+    "Para `raiz_digital`, repite `n = suma_digitos(n)` mientras el número tenga más de una cifra, es decir, mientras `n >= 10`.",
+    "Si usas `/` en vez de `//`, obtendrás decimales y el bucle no terminará como esperas: la división entera es imprescindible."
+   ],
+   "explain": "`suma_digitos` es el patrón de la lección 4: `n % 10` extrae la última cifra y `n //= 10` la elimina, hasta que no queda nada. El 0 funciona solo (el bucle no da vueltas y la suma es 0). El coste es proporcional al número de cifras, O(d): unas 30 vueltas incluso para `10**30`, gracias a que los `int` de Python tienen precisión arbitraria.\n\n`raiz_digital` es un bucle que llama a otra función: un **bucle dentro de otro**, aunque el interior esté escondido en `suma_digitos`. Cada paso reduce drásticamente el número, así que termina enseguida.\n\nCuriosidad **pro**: para `n > 0` la raíz digital tiene fórmula cerrada, `1 + (n - 1) % 9`, porque un número y la suma de sus cifras dan el mismo resto al dividir entre 9 (es la base de la clásica «prueba del nueve»). Y en s12 verás la versión con texto: `sum(int(c) for c in str(abs(n)))`, más corta pero más lenta y que no enseña aritmética."
+  },
+  {
+   "id": "s03-e8",
+   "title": "¿Es primo? (y rápido)",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `es_primo(n)`, que devuelva `True` si el entero `n` es primo y `False` si no. Un número primo es un entero **mayor que 1** cuyos únicos divisores positivos son 1 y él mismo.",
+    "Tiene que ser **eficiente**: los tests incluyen primos cercanos al millón. Pista de matemáticas: si `n` tiene algún divisor distinto de 1 y de `n`, tiene alguno menor o igual que su raíz cuadrada."
+   ],
+   "examples": [
+    {
+     "call": "es_primo(97)",
+     "result": "True"
+    },
+    {
+     "call": "es_primo(91)",
+     "result": "False"
+    },
+    {
+     "call": "es_primo(1)",
+     "result": "False"
+    }
+   ],
+   "starter": "def es_primo(n):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def es_primo(n):\n    if n < 2:\n        return False\n    divisor = 2\n    while divisor * divisor <= n:     # basta con llegar a la raíz cuadrada\n        if n % divisor == 0:\n            return False              # encontrado un divisor: no es primo\n        divisor += 1\n    return True\n",
+   "tests": [
+    {
+     "name": "Primos pequeños",
+     "code": "for n in [2, 3, 5, 7, 11, 13, 29]:\n    assert es_primo(n) is True, f\"{n} es primo, pero es_primo({n}) devolvió {es_primo(n)!r}\""
+    },
+    {
+     "name": "Compuestos pequeños",
+     "code": "for n in [4, 6, 8, 12, 15, 21, 91]:\n    assert es_primo(n) is False, f\"{n} no es primo, pero es_primo({n}) devolvió {es_primo(n)!r}\""
+    },
+    {
+     "name": "Menores que 2 no son primos",
+     "code": "for n in [1, 0, -1, -7]:\n    assert es_primo(n) is False, f\"{n} no es primo (los primos son mayores que 1), pero es_primo({n}) devolvió {es_primo(n)!r}\""
+    },
+    {
+     "name": "Cuadrados de primos (el límite de la raíz)",
+     "code": "for n in [9, 25, 49, 121, 169, 10201]:\n    assert es_primo(n) is False, f\"{n} es un cuadrado perfecto y no es primo, pero es_primo({n}) devolvió {es_primo(n)!r}. ¿Tu bucle llega hasta la raíz INCLUIDA (<=)?\""
+    },
+    {
+     "name": "Números grandes, con eficiencia",
+     "code": "for n in [7919, 999983, 1000003]:\n    assert es_primo(n) is True, f\"{n} es primo, pero es_primo({n}) devolvió {es_primo(n)!r}\"\nassert es_primo(1000001) is False, \"1000001 = 101 × 9901 no es primo\"\nassert es_primo(1000000007) is True, \"1000000007 es primo (si este test tarda mucho, no estás parando en la raíz cuadrada)\""
+    }
+   ],
+   "hints": [
+    "Descarta primero los `n < 2`: no son primos.",
+    "Prueba divisores empezando en 2. En cuanto uno divida a `n` (`n % divisor == 0`) ya sabes la respuesta: `return False`. Si ninguno divide, es primo.",
+    "No hace falta llegar hasta `n`: basta con seguir mientras `divisor * divisor <= n`. Así evitas calcular raíces con decimales."
+   ],
+   "explain": "Si `n = a × b` con `a ≤ b`, entonces `a × a ≤ n`: todo número compuesto tiene un divisor que no supera su raíz cuadrada. Por eso el bucle se detiene cuando `divisor * divisor > n`. La condición debe ser `<=`: con `<`, los cuadrados de primos (9, 25, 49…) se colarían como primos.\n\nLa diferencia de coste es enorme: probar hasta `n` es O(n) y hasta la raíz es O(√n). Para `1000000007`, son unos 1000 millones de vueltas frente a unas 31 600.\n\nVersión alternativa con `for` y la raíz cuadrada entera exacta que calcula `math.isqrt` (desde Python 3.8):\n\n```python\nimport math\n\ndef es_primo(n):\n    if n < 2:\n        return False\n    for divisor in range(2, math.isqrt(n) + 1):\n        if n % divisor == 0:\n            return False\n    return True\n```\n\nMejora **pro**: tras comprobar el 2, prueba solo divisores impares (`range(3, math.isqrt(n) + 1, 2)`), lo que reduce el trabajo a la mitad. Para listar muchos primos a la vez existe la criba de Eratóstenes, que verás con listas."
+  },
+  {
+   "id": "s03-e9",
+   "title": "Validar una edad",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `pedir_edad()`, que pida la edad con `input(\"Edad: \")` **una y otra vez** hasta recibir un dato válido. Para cada respuesta no válida imprime un mensaje y vuelve a preguntar:",
+    "- si la respuesta está vacía → `Error: no has escrito nada`;\n- si contiene algún carácter que no sea uno de los dígitos `0123456789` (letras, signos, espacios, puntos… y también dígitos de otros alfabetos, como `٣` o el superíndice `²`) → `Error: escribe solo dígitos`;\n- si es un número mayor que 120 → `Error: la edad debe estar entre 0 y 120`.",
+    "Cuando la edad sea válida, imprime `Edad registrada: N` (con N como número entero) y **devuelve** N como `int`.",
+    "Ejemplo de sesión (las respuestas del usuario tras `Edad: `):\n```text\nEdad: \nError: no has escrito nada\nEdad: veinte\nError: escribe solo dígitos\nEdad: 130\nError: la edad debe estar entre 0 y 120\nEdad: 030\nEdad registrada: 30\n```",
+    "Importante: no uses `int()` para validar, porque acepta cosas como `\" 30\"` o `\"+7\"`. Comprueba tú los caracteres."
+   ],
+   "examples": [
+    {
+     "call": "capturar(pedir_edad, entradas=[\"abc\", \"42\"])",
+     "result": "'Error: escribe solo dígitos\\nEdad registrada: 42\\n'"
+    }
+   ],
+   "starter": "def pedir_edad():\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def pedir_edad():\n    while True:\n        texto = input(\"Edad: \")\n        if texto == \"\":\n            print(\"Error: no has escrito nada\")\n            continue\n        for c in texto:\n            if c not in \"0123456789\":\n                print(\"Error: escribe solo dígitos\")\n                break\n        else:                                  # ningún carácter malo: son todo dígitos\n            edad = int(texto)\n            if edad <= 120:\n                print(f\"Edad registrada: {edad}\")\n                return edad\n            print(\"Error: la edad debe estar entre 0 y 120\")\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Edad válida a la primera",
+     "code": "_comprobar_salida(capturar(pedir_edad, entradas=[\"30\"]), \"Edad registrada: 30\\n\", \"Con la entrada '30'\")"
+    },
+    {
+     "name": "Vacío y letras",
+     "code": "salida = capturar(pedir_edad, entradas=[\"\", \"abc\", \"25\"])\n_comprobar_salida(salida, \"Error: no has escrito nada\\nError: escribe solo dígitos\\nEdad registrada: 25\\n\", \"Con las entradas '', 'abc', '25'\")"
+    },
+    {
+     "name": "Signos, espacios y decimales no valen",
+     "code": "salida = capturar(pedir_edad, entradas=[\"-5\", \" 30\", \"3.5\", \"+7\", \"4 0\", \"40\"])\n_comprobar_salida(salida, \"Error: escribe solo dígitos\\n\" * 5 + \"Edad registrada: 40\\n\", \"Con '-5', ' 30', '3.5', '+7', '4 0' y luego '40'\")"
+    },
+    {
+     "name": "Límite de 120",
+     "code": "salida = capturar(pedir_edad, entradas=[\"121\", \"999\", \"120\"])\n_comprobar_salida(salida, \"Error: la edad debe estar entre 0 y 120\\n\" * 2 + \"Edad registrada: 120\\n\", \"Con '121', '999' y '120'\")"
+    },
+    {
+     "name": "Cero y ceros a la izquierda",
+     "code": "_comprobar_salida(capturar(pedir_edad, entradas=[\"0\"]), \"Edad registrada: 0\\n\", \"Con la entrada '0' (0 es una edad válida)\")\n_comprobar_salida(capturar(pedir_edad, entradas=[\"007\"]), \"Edad registrada: 7\\n\", \"Con la entrada '007' (se muestra como número)\")"
+    },
+    {
+     "name": "Dígitos Unicode que no son del 0 al 9",
+     "code": "try:\n    salida = capturar(pedir_edad, entradas=[\"²\", \"٣\", \"5\"])\nexcept ValueError:\n    raise AssertionError(\"Con la entrada '²' (dos en superíndice) el programa falló al convertir con int(): comprueba que cada carácter esté en \\\"0123456789\\\"\") from None\n_comprobar_salida(salida, \"Error: escribe solo dígitos\\n\" * 2 + \"Edad registrada: 5\\n\", \"Con '²' (superíndice), '٣' (tres arábigo-índico) y '5'\")"
+    },
+    {
+     "name": "Devuelve la edad como int",
+     "code": "salida, valor = _ejecutar(pedir_edad, entradas=[\"x\", \"18\"])\nassert valor == 18 and type(valor) is int, f\"pedir_edad() debe DEVOLVER 18 como int y devolvió {valor!r}\""
+    },
+    {
+     "name": "Deja de preguntar en cuanto la edad es válida",
+     "code": "salida = capturar(pedir_edad, entradas=[\"5\", \"6\", \"7\"])\n_comprobar_salida(salida, \"Edad registrada: 5\\n\", \"Con '5' como primera entrada solo debe registrarse esa edad\")"
+    }
+   ],
+   "hints": [
+    "Estructura: `while True:` → leer → si hay un error, imprimirlo y volver a pedir (`continue`) → si todo va bien, imprimir y `return edad` (el `return` también sale del bucle).",
+    "Para saber si todos los caracteres son dígitos, recorre el texto con `for c in texto:` y comprueba `c not in \"0123456789\"`. La cláusula `else` del `for` se ejecuta solo si no hubo `break`, es decir, si no apareció ningún carácter malo.",
+    "Solo cuando sabes que el texto son todo dígitos es seguro hacer `int(texto)` y compararlo con 120."
+   ],
+   "explain": "Es el patrón «pedir hasta que sea válido» (`while True` + salida en medio) combinado con un `for`/`else`: el `for` busca un carácter no válido y, si lo encuentra, imprime el error y hace `break`; el `else` solo se ejecuta si el bucle terminó **sin `break`**, es decir, si todos eran dígitos. La cadena vacía se trata antes porque un `for` sobre `\"\"` no da vueltas y su `else` la daría por buena.\n\n¿Por qué no fiarse de `int()`? Porque es más permisivo de lo que parece: `int(\" 30 \")` da 30 (ignora espacios), `int(\"+7\")` da 7, `int(\"3_0\")` da 30 (acepta guiones bajos entre cifras) e incluso `int(\"٣\")` da 3 (dígitos arábigo-índicos). Si tu programa exige «solo dígitos del 0 al 9», hay que comprobarlo.\n\nEn s05 conocerás `str.isdigit()` y `str.isdecimal()`, con matices: `\"²\".isdigit()` es `True`, pero `int(\"²\")` falla. En s08 verás el enfoque EAFP: intentar `int(texto)` y capturar `ValueError` con `try`/`except`."
+  },
+  {
+   "id": "s03-e10",
+   "title": "Adivina el número",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `adivinar(secreto)`, un juego en el que el usuario tiene **5 intentos** para acertar `secreto` (un entero entre 1 y 100). En cada turno:",
+    "1. Pide un número con `input(\"Tu número: \")` y conviértelo con `int()` (puedes suponer que siempre se escribe un entero).\n2. Si está fuera de 1–100, imprime `Fuera de rango (1-100)` y vuelve a preguntar **sin gastar intento**.\n3. Si es menor que el secreto, imprime `Más alto`; si es mayor, `Más bajo`.\n4. Si acierta, imprime `¡Correcto! Lo adivinaste en N intento` (o `intentos` si N es distinto de 1) y el juego termina.",
+    "Si se gastan los 5 intentos sin acertar, imprime `Sin intentos. El número era S`.",
+    "Ejemplo con `secreto = 42` y las respuestas 50, 25 y 42:\n```text\nMás bajo\nMás alto\n¡Correcto! Lo adivinaste en 3 intentos\n```"
+   ],
+   "examples": [
+    {
+     "call": "capturar(adivinar, 42, entradas=[\"42\"])",
+     "result": "'¡Correcto! Lo adivinaste en 1 intento\\n'"
+    }
+   ],
+   "starter": "def adivinar(secreto):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def adivinar(secreto):\n    intentos = 0\n    while intentos < 5:\n        numero = int(input(\"Tu número: \"))\n        if numero < 1 or numero > 100:\n            print(\"Fuera de rango (1-100)\")\n            continue                        # no cuenta como intento\n        intentos += 1\n        if numero < secreto:\n            print(\"Más alto\")\n        elif numero > secreto:\n            print(\"Más bajo\")\n        else:\n            palabra = \"intento\" if intentos == 1 else \"intentos\"\n            print(f\"¡Correcto! Lo adivinaste en {intentos} {palabra}\")\n            break\n    else:\n        print(f\"Sin intentos. El número era {secreto}\")\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Acierto a la primera (singular)",
+     "code": "_comprobar_salida(capturar(adivinar, 42, entradas=[\"42\"]), \"¡Correcto! Lo adivinaste en 1 intento\\n\", \"secreto 42, respuesta 42\")"
+    },
+    {
+     "name": "Pistas y acierto (plural)",
+     "code": "salida = capturar(adivinar, 42, entradas=[\"50\", \"25\", \"42\"])\n_comprobar_salida(salida, \"Más bajo\\nMás alto\\n¡Correcto! Lo adivinaste en 3 intentos\\n\", \"secreto 42, respuestas 50, 25, 42\")"
+    },
+    {
+     "name": "Se agotan los 5 intentos",
+     "code": "salida = capturar(adivinar, 99, entradas=[\"1\", \"2\", \"3\", \"4\", \"5\"])\n_comprobar_salida(salida, \"Más alto\\n\" * 5 + \"Sin intentos. El número era 99\\n\", \"secreto 99, cinco fallos\")"
+    },
+    {
+     "name": "Acierto justo en el quinto intento",
+     "code": "salida = capturar(adivinar, 10, entradas=[\"1\", \"2\", \"3\", \"4\", \"10\"])\n_comprobar_salida(salida, \"Más alto\\n\" * 4 + \"¡Correcto! Lo adivinaste en 5 intentos\\n\", \"secreto 10, acierto en el quinto intento\")"
+    },
+    {
+     "name": "Fuera de rango no gasta intento",
+     "code": "salida = capturar(adivinar, 50, entradas=[\"0\", \"101\", \"-5\", \"50\"])\n_comprobar_salida(salida, \"Fuera de rango (1-100)\\n\" * 3 + \"¡Correcto! Lo adivinaste en 1 intento\\n\", \"secreto 50, tres respuestas fuera de rango y luego 50\")"
+    },
+    {
+     "name": "Fuera de rango mezclado con fallos",
+     "code": "salida = capturar(adivinar, 7, entradas=[\"200\", \"8\", \"6\", \"0\", \"7\"])\n_comprobar_salida(salida, \"Fuera de rango (1-100)\\nMás bajo\\nMás alto\\nFuera de rango (1-100)\\n¡Correcto! Lo adivinaste en 3 intentos\\n\", \"secreto 7, respuestas 200, 8, 6, 0, 7\")"
+    },
+    {
+     "name": "1 y 100 son respuestas válidas",
+     "code": "salida = capturar(adivinar, 100, entradas=[\"1\", \"100\"])\n_comprobar_salida(salida, \"Más alto\\n¡Correcto! Lo adivinaste en 2 intentos\\n\", \"secreto 100, respuestas 1 y 100\")"
+    },
+    {
+     "name": "Deja de preguntar al acertar",
+     "code": "salida = capturar(adivinar, 42, entradas=[\"42\", \"1\", \"1\"])\n_comprobar_salida(salida, \"¡Correcto! Lo adivinaste en 1 intento\\n\", \"Tras acertar el juego debe terminar\")"
+    }
+   ],
+   "hints": [
+    "Lleva un contador de intentos **válidos**. Un `while intentos < 5:` con `break` al acertar y un `else` del `while` para el mensaje de «Sin intentos» encaja a la perfección.",
+    "Si el número está fuera de 1–100, imprime el aviso y usa `continue` **antes** de incrementar el contador.",
+    "Para el singular/plural: `palabra = \"intento\" if intentos == 1 else \"intentos\"`."
+   ],
+   "explain": "El `else` del `while` expresa justo la regla del juego: se ejecuta cuando la condición `intentos < 5` se vuelve falsa, es decir, cuando se agotan los intentos **sin** haber salido por el `break` del acierto. Sin él necesitarías una bandera `acertado = False`.\n\nEl `continue` del fuera de rango va **antes** del `intentos += 1`: así el aviso no consume intento. Es la trampa contraria a la de la lección 6 (allí el `continue` se saltaba la actualización sin querer; aquí lo hace a propósito, y el bucle termina porque cada respuesta válida sí incrementa el contador).\n\nEstrategia óptima para el jugador: la **búsqueda binaria** (probar siempre la mitad del intervalo restante). Con 1–100 garantiza acertar en 7 intentos como mucho (2⁷ = 128 ≥ 100); con 5 no siempre llega. Para un juego real, el secreto se generaría con `random.randint(1, 100)` (s07)."
+  },
+  {
+   "id": "s03-e11",
+   "title": "Pirámide numérica",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Escribe `piramide(n)`, que imprima una pirámide de `n` filas en la que cada fila sube de 1 hasta el número de la fila y vuelve a bajar hasta 1, centrada con espacios a la izquierda. Por ejemplo, `piramide(4)` imprime:",
+    "```text\n   1\n  121\n 12321\n1234321\n```",
+    "Reglas: la fila `i` lleva exactamente `n - i` espacios delante y **ningún espacio al final**. Solo se admiten alturas de 1 a 9 (con 10 o más, los números tendrían dos cifras y se descuadraría); para cualquier otro `n` imprime `Altura no válida`.",
+    "El objetivo es practicar los bucles anidados: escribe los números de uno en uno con `print(..., end=\"\")`."
+   ],
+   "examples": [
+    {
+     "call": "capturar(piramide, 3)",
+     "result": "'  1\\n 121\\n12321\\n'"
+    },
+    {
+     "call": "capturar(piramide, 0)",
+     "result": "'Altura no válida\\n'"
+    }
+   ],
+   "starter": "def piramide(n):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def piramide(n):\n    if n < 1 or n > 9:\n        print(\"Altura no válida\")\n        return\n    for fila in range(1, n + 1):\n        for _ in range(n - fila):                # espacios de la izquierda\n            print(\" \", end=\"\")\n        for k in range(1, fila + 1):             # subida: 1, 2, ..., fila\n            print(k, end=\"\")\n        for k in range(fila - 1, 0, -1):         # bajada: fila - 1, ..., 1\n            print(k, end=\"\")\n        print()                                  # fin de la fila\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Altura 1",
+     "code": "_comprobar_salida(capturar(piramide, 1), \"1\\n\", \"piramide(1)\")"
+    },
+    {
+     "name": "Altura 3",
+     "code": "_comprobar_salida(capturar(piramide, 3), \"  1\\n 121\\n12321\\n\", \"piramide(3)\")"
+    },
+    {
+     "name": "Altura 4",
+     "code": "_comprobar_salida(capturar(piramide, 4), \"   1\\n  121\\n 12321\\n1234321\\n\", \"piramide(4)\")"
+    },
+    {
+     "name": "Altura 9 (la máxima)",
+     "code": "_comprobar_salida(capturar(piramide, 9), \"        1\\n       121\\n      12321\\n     1234321\\n    123454321\\n   12345654321\\n  1234567654321\\n 123456787654321\\n12345678987654321\\n\", \"piramide(9)\")"
+    },
+    {
+     "name": "Ninguna línea termina en espacio",
+     "code": "for numero, linea in enumerate(capturar(piramide, 6).split(\"\\n\"), start=1):\n    assert not linea.endswith(\" \"), f\"La línea {numero} de piramide(6) termina en espacio: {linea!r}\""
+    },
+    {
+     "name": "Alturas no válidas",
+     "code": "for n in [0, 10, -3]:\n    _comprobar_salida(capturar(piramide, n), \"Altura no válida\\n\", f\"piramide({n})\")"
+    }
+   ],
+   "hints": [
+    "Piensa fila a fila: `for fila in range(1, n + 1):`. Dentro, tres bucles seguidos: espacios, subida y bajada. Todo con `print(..., end=\"\")` y un `print()` al final de la fila.",
+    "Los espacios de la fila `fila` son `n - fila`. La subida es `range(1, fila + 1)`.",
+    "La bajada empieza en `fila - 1` y termina en 1: `range(fila - 1, 0, -1)` (el 0 no se incluye). En la primera fila ese rango está vacío, y es justo lo que quieres."
+   ],
+   "explain": "Es un ejercicio de **bucles anidados** y límites de `range`. Por cada fila (bucle exterior) hay tres bucles interiores: `n - fila` espacios, la subida `range(1, fila + 1)` y la bajada `range(fila - 1, 0, -1)`, con paso negativo y el 0 excluido. Como todo se imprime con `end=\"\"`, el `print()` final pone el salto de línea. Ningún bucle escribe espacios después de los números, así que no quedan espacios al final.\n\nCoste: la fila `i` imprime `(n - i) + (2i - 1)` caracteres, en total n² + n(n − 1)/2 caracteres (117 para n = 9): O(n²).\n\nVersión **pro** con repetición de cadenas y una curiosidad matemática (111² = 12321, 1111² = 1234321…):\n\n```python\ndef piramide(n):\n    if not 1 <= n <= 9:\n        print(\"Altura no válida\")\n        return\n    for fila in range(1, n + 1):\n        unos = int(\"1\" * fila)          # 1, 11, 111, ...\n        print(\" \" * (n - fila) + str(unos ** 2))\n```\n\nEs ingeniosa, pero la versión con bucles es la que se entiende y se modifica (por ejemplo, para usar letras en lugar de números)."
+  },
+  {
+   "id": "s03-e12",
+   "title": "De números romanos a enteros",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Escribe `romano_a_entero(romano)`, que convierta un número romano (cadena en **mayúsculas**) a entero. Los símbolos valen: I = 1, V = 5, X = 10, L = 50, C = 100, D = 500, M = 1000.",
+    "Normalmente los valores se suman (`VIII` = 5 + 1 + 1 + 1 = 8), pero si un símbolo va **delante de otro mayor**, se resta: `IV` = 4, `IX` = 9, `XL` = 40, `XC` = 90, `CD` = 400, `CM` = 900. Así, `MCMXCIV` = 1000 + 900 + 90 + 4 = 1994.",
+    "Si la cadena está vacía o contiene algún carácter que no sea uno de esos siete símbolos (incluidas las minúsculas), devuelve `None`. No hace falta comprobar que el numeral esté «bien formado» (por ejemplo, no tienes que rechazar `IIII`).",
+    "Restricción didáctica: recorre la cadena con `for` (sin índices ni diccionarios, que aún no conoces) y usa `match` para el valor de cada símbolo."
+   ],
+   "examples": [
+    {
+     "call": "romano_a_entero(\"LVIII\")",
+     "result": "58"
+    },
+    {
+     "call": "romano_a_entero(\"MCMXCIV\")",
+     "result": "1994"
+    },
+    {
+     "call": "romano_a_entero(\"XIV2\")",
+     "result": "None"
+    }
+   ],
+   "starter": "def romano_a_entero(romano):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def romano_a_entero(romano):\n    if romano == \"\":\n        return None\n    total = 0\n    anterior = 0\n    for simbolo in romano:\n        match simbolo:\n            case \"I\":\n                valor = 1\n            case \"V\":\n                valor = 5\n            case \"X\":\n                valor = 10\n            case \"L\":\n                valor = 50\n            case \"C\":\n                valor = 100\n            case \"D\":\n                valor = 500\n            case \"M\":\n                valor = 1000\n            case _:\n                return None                  # símbolo no válido\n        total += valor\n        if valor > anterior:\n            total -= 2 * anterior            # el anterior se sumó, pero había que restarlo\n        anterior = valor\n    return total\n",
+   "tests": [
+    {
+     "name": "Solo sumas",
+     "code": "for romano, esperado in [(\"I\", 1), (\"III\", 3), (\"VIII\", 8), (\"LXVI\", 66), (\"MDCCC\", 1800)]:\n    obtenido = romano_a_entero(romano)\n    assert obtenido == esperado, f\"romano_a_entero({romano!r}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Las seis restas",
+     "code": "for romano, esperado in [(\"IV\", 4), (\"IX\", 9), (\"XL\", 40), (\"XC\", 90), (\"CD\", 400), (\"CM\", 900)]:\n    obtenido = romano_a_entero(romano)\n    assert obtenido == esperado, f\"romano_a_entero({romano!r}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Numerales completos",
+     "code": "for romano, esperado in [(\"XIV\", 14), (\"LVIII\", 58), (\"MCMXCIV\", 1994), (\"MMXXVI\", 2026), (\"MMMCMXCIX\", 3999), (\"CDXLIV\", 444)]:\n    obtenido = romano_a_entero(romano)\n    assert obtenido == esperado, f\"romano_a_entero({romano!r}) debería devolver {esperado}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "Cadena vacía",
+     "code": "assert romano_a_entero(\"\") is None, f\"romano_a_entero('') debería devolver None, pero devolvió {romano_a_entero('')!r}\""
+    },
+    {
+     "name": "Símbolos no válidos",
+     "code": "for romano in [\"ABC\", \"XIV2\", \"iv\", \"X V\", \"MMXXVIZ\"]:\n    obtenido = romano_a_entero(romano)\n    assert obtenido is None, f\"romano_a_entero({romano!r}) debería devolver None (hay un símbolo no válido), pero devolvió {obtenido!r}\""
+    }
+   ],
+   "hints": [
+    "Dentro del `for`, un `match simbolo:` con un `case` por letra que asigne `valor` (`case \"I\": valor = 1` …) y un `case _: return None` para cualquier otro carácter.",
+    "Guarda el valor del símbolo anterior (empieza en 0). Suma siempre el valor actual. Si el actual es **mayor** que el anterior, el anterior no debía sumarse sino restarse: corrige restando `2 * anterior`.",
+    "Traza `\"IV\"`: con la I, total = 1 y anterior = 1. Con la V, total = 1 + 5 = 6, y como 5 > 1, total = 6 − 2 = 4."
+   ],
+   "explain": "Sin poder mirar el símbolo siguiente (necesitarías índices, s05), el truco es **corregir a posteriori**: sumas cada valor y, si descubres que es mayor que el anterior, deshaces la suma del anterior y lo restas, o sea, `total -= 2 * anterior`. Traza de `MCMXCIV`: M → 1000; C → 1100; M → 2100 − 200 = 1900; X → 1910; C → 2010 − 20 = 1990; I → 1991; V → 1996 − 2 = 1994.\n\nEl `return None` dentro del `case _` sale de la función en cuanto aparece un símbolo extraño, aunque estemos dentro del `for` y del `match`. La cadena vacía se trata aparte porque el bucle no daría vueltas y devolvería 0.\n\nAlternativas **pro**: con un diccionario (s04) `valores = {\"I\": 1, \"V\": 5, ...}` desaparece el `match`; recorriendo al revés con `reversed()` basta con restar cuando el valor es menor que el máximo visto. Para validar que el numeral esté bien formado se suele usar una expresión regular (s05). Coste: O(longitud)."
+  },
+  {
+   "id": "s03-e13",
+   "title": "Compresión por repeticiones (RLE)",
+   "level": "dificil",
+   "minutes": 30,
+   "prompt": [
+    "La codificación **RLE** (*run-length encoding*) comprime un texto sustituyendo cada grupo de caracteres iguales **consecutivos** por el carácter seguido de cuántas veces se repite. Escribe dos funciones:",
+    "1. `comprimir(texto)`: `\"aaabccdddd\"` → `\"a3b1c2d4\"`. Los grupos que no están seguidos se codifican por separado: `\"aabbaa\"` → `\"a2b2a2\"`. Los espacios y cualquier carácter Unicode cuentan como caracteres normales. El texto vacío da `\"\"`.\n2. `descomprimir(codigo)`: la operación inversa. Ojo: el contador puede tener **varias cifras** (`\"a12\"` son doce aes).",
+    "Puedes suponer que el texto original no contiene dígitos (si los tuviera, el formato sería ambiguo). Usa solo lo visto hasta ahora: `for` sobre cadenas, acumuladores, `str()`, `int()` y la repetición de cadenas con `*`."
+   ],
+   "examples": [
+    {
+     "call": "comprimir(\"aaabccdddd\")",
+     "result": "'a3b1c2d4'"
+    },
+    {
+     "call": "comprimir(\"ññ  🐍\")",
+     "result": "'ñ2 2🐍1'"
+    },
+    {
+     "call": "descomprimir(\"x2y12\")",
+     "result": "'xxyyyyyyyyyyyy'"
+    }
+   ],
+   "starter": "def comprimir(texto):\n    # Escribe tu código aquí\n    pass\n\n\ndef descomprimir(codigo):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def comprimir(texto):\n    resultado = \"\"\n    anterior = \"\"\n    contador = 0\n    for c in texto:\n        if c == anterior:\n            contador += 1\n        else:\n            if contador > 0:                         # volcar el grupo que termina\n                resultado += anterior + str(contador)\n            anterior = c\n            contador = 1\n    if contador > 0:                                 # volcar el último grupo\n        resultado += anterior + str(contador)\n    return resultado\n\n\ndef descomprimir(codigo):\n    resultado = \"\"\n    simbolo = \"\"\n    numero = 0\n    for c in codigo:\n        if c in \"0123456789\":\n            numero = numero * 10 + int(c)            # el contador crece cifra a cifra\n        else:\n            resultado += simbolo * numero            # volcar el símbolo anterior\n            simbolo = c\n            numero = 0\n    resultado += simbolo * numero                    # volcar el último\n    return resultado\n",
+   "tests": [
+    {
+     "name": "comprimir: casos normales",
+     "code": "for texto, esperado in [(\"aaabccdddd\", \"a3b1c2d4\"), (\"abc\", \"a1b1c1\"), (\"aabbaa\", \"a2b2a2\")]:\n    obtenido = comprimir(texto)\n    assert obtenido == esperado, f\"comprimir({texto!r}) debería devolver {esperado!r}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "comprimir: bordes (vacío, un carácter, grupos largos)",
+     "code": "assert comprimir(\"\") == \"\", f\"comprimir('') debería devolver '' (texto vacío, resultado vacío), pero devolvió {comprimir('')!r}\"\nfor texto, esperado in [(\"x\", \"x1\"), (\"z\" * 12, \"z12\"), (\"ab\" + \"b\" * 100, \"a1b101\")]:\n    obtenido = comprimir(texto)\n    assert obtenido == esperado, f\"comprimir({texto!r}) debería devolver {esperado!r}, pero devolvió {obtenido!r}. ¿Vuelcas el último grupo al salir del bucle?\""
+    },
+    {
+     "name": "comprimir: espacios y Unicode",
+     "code": "for texto, esperado in [(\"ññ  🐍\", \"ñ2 2🐍1\"), (\"¡¡hola!!\", \"¡2h1o1l1a1!2\")]:\n    obtenido = comprimir(texto)\n    assert obtenido == esperado, f\"comprimir({texto!r}) debería devolver {esperado!r}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "descomprimir: casos normales",
+     "code": "for codigo, esperado in [(\"a3b1c2d4\", \"aaabccdddd\"), (\"x1\", \"x\"), (\"ñ2 2🐍1\", \"ññ  🐍\")]:\n    obtenido = descomprimir(codigo)\n    assert obtenido == esperado, f\"descomprimir({codigo!r}) debería devolver {esperado!r}, pero devolvió {obtenido!r}\""
+    },
+    {
+     "name": "descomprimir: contadores de varias cifras",
+     "code": "assert descomprimir(\"a12b3\") == \"a\" * 12 + \"bbb\", f\"descomprimir('a12b3') debería dar doce 'a' y tres 'b', pero dio {descomprimir('a12b3')!r}\"\nassert descomprimir(\"z100\") == \"z\" * 100, \"descomprimir('z100') debería dar cien 'z'\"\nassert descomprimir(\"q10w1\") == \"q\" * 10 + \"w\", f\"descomprimir('q10w1') falló: {descomprimir('q10w1')!r}\""
+    },
+    {
+     "name": "descomprimir: vacío",
+     "code": "assert descomprimir(\"\") == \"\", f\"descomprimir('') debería devolver '', pero devolvió {descomprimir('')!r}\""
+    },
+    {
+     "name": "Ida y vuelta",
+     "code": "for texto in [\"hoooola  mundo\", \"ñandú\", \"a\" * 25 + \"b\", \"Mississippi\", \"x\"]:\n    ida = comprimir(texto)\n    vuelta = descomprimir(ida)\n    assert vuelta == texto, f\"descomprimir(comprimir({texto!r})) debería devolver el texto original y devolvió {vuelta!r} (comprimido: {ida!r})\""
+    }
+   ],
+   "hints": [
+    "Para comprimir, recorre el texto recordando el carácter `anterior` y un `contador`. Si el carácter actual es igual al anterior, incrementa; si cambia, añade al resultado el grupo que acaba (`anterior + str(contador)`) y empieza uno nuevo.",
+    "El error clásico: al terminar el bucle, el **último grupo** todavía no se ha añadido. Vuélcalo después del `for` (y cuidado con el texto vacío).",
+    "Para descomprimir, construye el número cifra a cifra con `numero = numero * 10 + int(c)`. Cuando llega un carácter que no es dígito, añade el símbolo anterior repetido `numero` veces (`simbolo * numero`) y empieza uno nuevo."
+   ],
+   "explain": "Los dos algoritmos siguen el mismo patrón, muy común al procesar secuencias: **acumular un grupo y volcarlo cuando cambia**, más un **volcado final** tras el bucle, porque el último grupo nunca ve «el cambio». Olvidar ese volcado final es el error número uno (el test «bordes» lo detecta).\n\nEn `descomprimir`, `numero * 10 + int(c)` es la forma de leer un número de varias cifras de izquierda a derecha: con `\"12\"`, primero 0 × 10 + 1 = 1 y después 1 × 10 + 2 = 12. Al empezar, `simbolo` es `\"\"` y `\"\" * 0` es `\"\"`, así que el primer volcado no añade nada: un detalle elegante que evita un `if`.\n\nCoste: O(n) vueltas. Construir cadenas con `+=` dentro de un bucle puede ser cuadrático en el peor caso (cada `+=` puede copiar la cadena); CPython lo optimiza a menudo, pero lo idiomático es acumular trozos en una lista y unirlos con `\"\".join(...)` (s04–s05). Con `itertools.groupby` (s12), `comprimir` cabe en una línea."
+  },
+  {
+   "id": "s03-e14",
+   "title": "Proyecto: cajero automático",
+   "level": "proyecto",
+   "minutes": 45,
+   "prompt": [
+    "Vas a programar el menú de un cajero automático. Escribe `cajero(saldo)`, donde `saldo` es el saldo inicial (un entero; usamos el símbolo `$`, válido para pesos, dólares o cualquier otra moneda). La función repite estos pasos hasta que la sesión termine:",
+    "**1.** Pide la opción con `input(\"Opción: \")`.\n\n**2.** Según la opción:\n- `\"1\"` o `\"saldo\"`: imprime `Saldo: $S`.\n- `\"2\"` o `\"depositar\"`: pide la cantidad con `input(\"Cantidad: \")` (entero). Si es menor o igual que 0 → `Error: cantidad no válida`. Si no, la suma e imprime `Depositados $C. Saldo: $S`.\n- `\"3\"` o `\"retirar\"`: pide la cantidad con `input(\"Cantidad: \")` y comprueba **en este orden**: si es ≤ 0 → `Error: cantidad no válida`; si no es múltiplo de 10 → `Error: solo múltiplos de $10` (el cajero solo tiene billetes de $10, $20 y $50); si es mayor que el saldo → `Error: saldo insuficiente`; si con ella el total retirado en la sesión superaría $600 → `Error: límite de $600 por sesión`. Si todo va bien, la resta e imprime `Retirados $C. Saldo: $S`.\n- `\"4\"` o `\"salir\"`: imprime `Operaciones realizadas: N` y `¡Hasta pronto!`, y la función termina **devolviendo** el saldo final.\n- Cualquier otra cosa: imprime `Opción no válida`.",
+    "**3.** Seguridad: tras **3 opciones no válidas seguidas**, imprime `Demasiados errores. Sesión cerrada.` y la función termina devolviendo el saldo (sin imprimir el resumen). Cualquier opción válida, aunque su operación falle, reinicia la cuenta de errores seguidos.",
+    "`N` cuenta solo los depósitos y retiros **realizados con éxito**. Puedes suponer que las cantidades siempre se escriben como enteros. Ejemplo de sesión con `cajero(100)` (entre paréntesis, lo que escribe el usuario, que no forma parte de la salida):\n```text\n(Opción: 2, Cantidad: 50)   Depositados $50. Saldo: $150\n(Opción: retirar, Cantidad: 15)   Error: solo múltiplos de $10\n(Opción: 3, Cantidad: 70)   Retirados $70. Saldo: $80\n(Opción: 1)   Saldo: $80\n(Opción: 4)   Operaciones realizadas: 2\n              ¡Hasta pronto!\n```"
+   ],
+   "examples": [
+    {
+     "call": "capturar(cajero, 100, entradas=[\"1\", \"4\"])",
+     "result": "'Saldo: $100\\nOperaciones realizadas: 0\\n¡Hasta pronto!\\n'"
+    }
+   ],
+   "starter": "def cajero(saldo):\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "LIMITE_SESION = 600\n\n\ndef cajero(saldo):\n    operaciones = 0          # depósitos y retiros con éxito\n    retirado = 0             # total retirado en esta sesión\n    errores_seguidos = 0     # opciones no válidas consecutivas\n\n    while True:\n        opcion = input(\"Opción: \")\n        match opcion:\n            case \"1\" | \"saldo\":\n                print(f\"Saldo: ${saldo}\")\n            case \"2\" | \"depositar\":\n                cantidad = int(input(\"Cantidad: \"))\n                if cantidad <= 0:\n                    print(\"Error: cantidad no válida\")\n                else:\n                    saldo += cantidad\n                    operaciones += 1\n                    print(f\"Depositados ${cantidad}. Saldo: ${saldo}\")\n            case \"3\" | \"retirar\":\n                cantidad = int(input(\"Cantidad: \"))\n                if cantidad <= 0:\n                    print(\"Error: cantidad no válida\")\n                elif cantidad % 10 != 0:\n                    print(\"Error: solo múltiplos de $10\")\n                elif cantidad > saldo:\n                    print(\"Error: saldo insuficiente\")\n                elif retirado + cantidad > LIMITE_SESION:\n                    print(f\"Error: límite de ${LIMITE_SESION} por sesión\")\n                else:\n                    saldo -= cantidad\n                    retirado += cantidad\n                    operaciones += 1\n                    print(f\"Retirados ${cantidad}. Saldo: ${saldo}\")\n            case \"4\" | \"salir\":\n                print(f\"Operaciones realizadas: {operaciones}\")\n                print(\"¡Hasta pronto!\")\n                return saldo\n            case _:\n                errores_seguidos += 1\n                print(\"Opción no válida\")\n                if errores_seguidos == 3:\n                    print(\"Demasiados errores. Sesión cerrada.\")\n                    return saldo\n                continue             # vuelve a pedir opción SIN reiniciar los errores\n        errores_seguidos = 0         # solo se llega aquí tras una opción válida\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "Salir directamente",
+     "code": "salida, valor = _ejecutar(cajero, 100, entradas=[\"4\"])\n_comprobar_salida(salida, \"Operaciones realizadas: 0\\n¡Hasta pronto!\\n\", \"cajero(100) con la opción 4\")\nassert valor == 100, f\"Al salir, cajero(100) debe devolver el saldo 100 y devolvió {valor!r}\""
+    },
+    {
+     "name": "Consultar el saldo (por número y por palabra)",
+     "code": "salida = capturar(cajero, 100, entradas=[\"1\", \"saldo\", \"salir\"])\n_comprobar_salida(salida, \"Saldo: $100\\nSaldo: $100\\nOperaciones realizadas: 0\\n¡Hasta pronto!\\n\", \"Opciones 1, saldo, salir\")"
+    },
+    {
+     "name": "Depositar dinero",
+     "code": "salida = capturar(cajero, 100, entradas=[\"2\", \"50\", \"1\", \"4\"])\n_comprobar_salida(salida, \"Depositados $50. Saldo: $150\\nSaldo: $150\\nOperaciones realizadas: 1\\n¡Hasta pronto!\\n\", \"Depositar 50 y consultar\")"
+    },
+    {
+     "name": "Depósitos no válidos",
+     "code": "salida = capturar(cajero, 100, entradas=[\"depositar\", \"0\", \"2\", \"-20\", \"4\"])\n_comprobar_salida(salida, \"Error: cantidad no válida\\nError: cantidad no válida\\nOperaciones realizadas: 0\\n¡Hasta pronto!\\n\", \"Depositar 0 y -20\")"
+    },
+    {
+     "name": "Retirar dinero",
+     "code": "salida, valor = _ejecutar(cajero, 100, entradas=[\"3\", \"40\", \"retirar\", \"60\", \"4\"])\n_comprobar_salida(salida, \"Retirados $40. Saldo: $60\\nRetirados $60. Saldo: $0\\nOperaciones realizadas: 2\\n¡Hasta pronto!\\n\", \"Retirar 40 y 60 con saldo 100\")\nassert valor == 0, f\"Tras retirarlo todo, cajero debe devolver 0 y devolvió {valor!r}\""
+    },
+    {
+     "name": "Errores de retiro y su orden",
+     "code": "salida = capturar(cajero, 100, entradas=[\"3\", \"-5\", \"3\", \"15\", \"3\", \"155\", \"3\", \"150\", \"4\"])\nesperado = (\"Error: cantidad no válida\\nError: solo múltiplos de $10\\nError: solo múltiplos de $10\\n\"\n            \"Error: saldo insuficiente\\nOperaciones realizadas: 0\\n¡Hasta pronto!\\n\")\n_comprobar_salida(salida, esperado, \"Retirar -5, 15, 155 y 150 con saldo 100 (comprueba el orden de las validaciones)\")"
+    },
+    {
+     "name": "Límite de $600 por sesión",
+     "code": "salida, valor = _ejecutar(cajero, 2000, entradas=[\"3\", \"500\", \"3\", \"200\", \"3\", \"100\", \"3\", \"10\", \"4\"])\nesperado = (\"Retirados $500. Saldo: $1500\\nError: límite de $600 por sesión\\nRetirados $100. Saldo: $1400\\n\"\n            \"Error: límite de $600 por sesión\\nOperaciones realizadas: 2\\n¡Hasta pronto!\\n\")\n_comprobar_salida(salida, esperado, \"Retirar 500, 200, 100 y 10 con saldo 2000\")\nassert valor == 1400, f\"El saldo final debería ser 1400 y se devolvió {valor!r}\""
+    },
+    {
+     "name": "Opción no válida",
+     "code": "salida = capturar(cajero, 100, entradas=[\"5\", \"1\", \"4\"])\n_comprobar_salida(salida, \"Opción no válida\\nSaldo: $100\\nOperaciones realizadas: 0\\n¡Hasta pronto!\\n\", \"Opción 5 y luego 1 y 4\")"
+    },
+    {
+     "name": "Tres errores seguidos cierran la sesión",
+     "code": "salida, valor = _ejecutar(cajero, 100, entradas=[\"x\", \"9\", \"\"])\n_comprobar_salida(salida, \"Opción no válida\\n\" * 3 + \"Demasiados errores. Sesión cerrada.\\n\", \"Tres opciones no válidas seguidas\")\nassert valor == 100, f\"Al cerrar la sesión debe devolverse el saldo (100) y se devolvió {valor!r}\""
+    },
+    {
+     "name": "Una opción válida reinicia los errores",
+     "code": "salida = capturar(cajero, 100, entradas=[\"x\", \"y\", \"1\", \"z\", \"w\", \"3\", \"5\", \"k\", \"l\", \"4\"])\nesperado = (\"Opción no válida\\nOpción no válida\\nSaldo: $100\\nOpción no válida\\nOpción no válida\\n\"\n            \"Error: solo múltiplos de $10\\nOpción no válida\\nOpción no válida\\n\"\n            \"Operaciones realizadas: 0\\n¡Hasta pronto!\\n\")\n_comprobar_salida(salida, esperado, \"Errores intercalados con opciones válidas (una operación fallida también reinicia)\")"
+    },
+    {
+     "name": "Sesión completa",
+     "code": "salida, valor = _ejecutar(cajero, 250, entradas=[\"2\", \"30\", \"retirar\", \"80\", \"?\", \"saldo\", \"3\", \"300\", \"salir\"])\nesperado = (\"Depositados $30. Saldo: $280\\nRetirados $80. Saldo: $200\\nOpción no válida\\nSaldo: $200\\n\"\n            \"Error: saldo insuficiente\\nOperaciones realizadas: 2\\n¡Hasta pronto!\\n\")\n_comprobar_salida(salida, esperado, \"Sesión con depósito, retiro, error y consulta\")\nassert valor == 200, f\"cajero debe devolver el saldo final 200 y devolvió {valor!r}\""
+    }
+   ],
+   "hints": [
+    "Estructura general: `while True:` → `opcion = input(\"Opción: \")` → `match opcion:` con un `case` por opción (usa `|` para aceptar el número o la palabra). Para terminar, `return saldo`: sale del bucle y de la función a la vez.",
+    "Además del saldo necesitas tres variables inicializadas antes del bucle: operaciones con éxito, total retirado en la sesión y errores seguidos.",
+    "Para el retiro, una cadena `if`/`elif`/`else` en el orden exacto del enunciado: así, con -5 sale «cantidad no válida» (y no «múltiplos de $10») y con 155 y saldo 100 sale «múltiplos de $10» (y no «saldo insuficiente»).",
+    "Errores seguidos: en `case _` incrementa el contador y comprueba si llegó a 3; en cualquier opción válida vuelve a ponerlo a 0."
+   ],
+   "explain": "El programa es una pequeña **máquina de estados** guiada por un menú: `while True` repite, `match` elige la acción y `return` termina la sesión desde dentro del bucle. El estado vive en cuatro variables (saldo, operaciones, retirado, errores seguidos) inicializadas antes del bucle.\n\nDetalles de diseño:\n\n- **Orden de validaciones.** Una cadena `elif` aplica la primera regla que falla; el orden del enunciado da el mensaje más útil (de nada sirve decir «saldo insuficiente» a quien pidió −$5). Además `-5 % 10` es 5 en Python, así que sin ese orden −5 caería en «múltiplos de $10».\n- **Reiniciar los errores.** La solución usa un truco legible: en `case _` hace `continue` (que, aunque esté dentro del `match`, afecta al `while`), y la línea `errores_seguidos = 0` tras el `match` solo se alcanza con opciones válidas. Poner `errores_seguidos = 0` en cada `case` válido también es correcto, aunque más repetitivo.\n- **Constantes con nombre.** `LIMITE_SESION = 600` en mayúsculas (PEP 8) evita un «número mágico» repetido.\n- **Dinero en enteros.** Con `float` aparecerían errores de redondeo (s02); en la práctica se trabaja en centavos (enteros) o con `decimal.Decimal`.\n\nCómo evolucionará este proyecto a lo largo del curso: una función por operación (s06), excepciones cuando la cantidad no sea numérica (s08), persistencia en archivo o SQLite (s09) y una clase `Cuenta` (s10)."
+  },
+  {
+   "id": "s03-e15",
+   "title": "Proyecto: estadísticas sobre la marcha",
+   "level": "proyecto",
+   "minutes": 40,
+   "prompt": [
+    "Escribe `estadisticas()`, que lea números enteros con `input(\"Número: \")` hasta que se escriba exactamente `fin` y después muestre un informe. Todavía no conoces las listas, así que calcularás todo **sobre la marcha**, con acumuladores, sin guardar los números.",
+    "**Validación.** Un dato es válido si está formado solo por dígitos del 0 al 9, con un `-` opcional **solo al principio**, y tiene al menos un dígito: `42`, `-7`, `007` y `-0` son válidos; `3.5`, `+2`, `\" 7\"`, `7-`, `--1`, `-`, `abc` o la cadena vacía no lo son. Cada dato no válido se descarta imprimiendo `Ignorado: 'texto'` (el texto entre comillas simples) y no cuenta en las estadísticas.",
+    "**Informe.** Al escribir `fin`, si hubo al menos un número válido, imprime estas líneas (en este orden):\n```text\nCantidad: 5\nSuma: 23\nMedia: 4.6\nMínimo: -2\nMáximo: 10\nPares: 4\nIgnorados: 1\n```\nLa media se calcula como `round(suma / cantidad, 2)` y se imprime tal cual la muestra Python (por ejemplo `4.6`, `1.67` o `0.0`). `Pares` cuenta los números pares (el 0 y los negativos pares también lo son). Si no hubo ningún número válido, imprime solo `Sin datos` y después `Ignorados: N`.",
+    "El ejemplo corresponde a las entradas `4`, `-2`, `abc`, `10`, `7`, `4`, `fin` (antes del informe aparece `Ignorado: 'abc'`)."
+   ],
+   "examples": [
+    {
+     "call": "capturar(estadisticas, entradas=[\"fin\"])",
+     "result": "'Sin datos\\nIgnorados: 0\\n'"
+    },
+    {
+     "call": "capturar(estadisticas, entradas=[\"x\", \"5\", \"fin\"])",
+     "result": "\"Ignorado: 'x'\\nCantidad: 1\\nSuma: 5\\nMedia: 5.0\\nMínimo: 5\\nMáximo: 5\\nPares: 0\\nIgnorados: 1\\n\""
+    }
+   ],
+   "starter": "def estadisticas():\n    # Escribe tu código aquí\n    pass\n",
+   "solution": "def es_entero(texto):\n    \"\"\"True si texto es un entero con un '-' opcional al principio.\"\"\"\n    posicion = 0\n    digitos = 0\n    for c in texto:\n        if c == \"-\" and posicion == 0:\n            pass                        # el signo solo se admite en la primera posición\n        elif c in \"0123456789\":\n            digitos += 1\n        else:\n            return False\n        posicion += 1\n    return digitos > 0                  # \"\" y \"-\" no tienen dígitos\n\n\ndef estadisticas():\n    cantidad = 0\n    suma = 0\n    pares = 0\n    ignorados = 0\n    minimo = None\n    maximo = None\n\n    while (texto := input(\"Número: \")) != \"fin\":\n        if not es_entero(texto):\n            print(f\"Ignorado: '{texto}'\")\n            ignorados += 1\n            continue\n        numero = int(texto)\n        cantidad += 1\n        suma += numero\n        if numero % 2 == 0:\n            pares += 1\n        if minimo is None or numero < minimo:\n            minimo = numero\n        if maximo is None or numero > maximo:\n            maximo = numero\n\n    if cantidad == 0:\n        print(\"Sin datos\")\n    else:\n        print(f\"Cantidad: {cantidad}\")\n        print(f\"Suma: {suma}\")\n        print(f\"Media: {round(suma / cantidad, 2)}\")\n        print(f\"Mínimo: {minimo}\")\n        print(f\"Máximo: {maximo}\")\n        print(f\"Pares: {pares}\")\n    print(f\"Ignorados: {ignorados}\")\n",
+   "setup": "def _primera_diferencia(obtenido, esperado):\n    if obtenido == \"\":\n        return \"no se imprimió nada\"\n    if obtenido + \"\\n\" == esperado:\n        return \"falta el salto de línea final de la última línea\"\n    lineas_o = obtenido.split(\"\\n\")\n    lineas_e = esperado.split(\"\\n\")\n    for i in range(min(len(lineas_o), len(lineas_e))):\n        if lineas_o[i] != lineas_e[i]:\n            if i == len(lineas_e) - 1 and lineas_e[i] == \"\":\n                return f\"sobra texto a partir de la línea {i + 1}: {lineas_o[i]!r}\"\n            if i == len(lineas_o) - 1 and lineas_o[i] == \"\":\n                return f\"falta texto: en la línea {i + 1} se esperaba {lineas_e[i]!r}\"\n            return f\"en la línea {i + 1} se esperaba {lineas_e[i]!r} y se obtuvo {lineas_o[i]!r}\"\n    if len(lineas_o) > len(lineas_e):\n        return f\"sobra texto al final: {lineas_o[len(lineas_e)]!r}\"\n    return f\"falta texto al final: se esperaba {lineas_e[len(lineas_o)]!r}\"\n\n\ndef _comprobar_salida(obtenido, esperado, contexto):\n    assert obtenido == esperado, f\"{contexto}: {_primera_diferencia(obtenido, esperado)}\"\n\n\ndef _ejecutar(funcion, *args, entradas=None):\n    \"\"\"Devuelve (texto impreso, valor devuelto) de funcion(*args).\"\"\"\n    caja = {}\n\n    def envoltorio():\n        caja[\"valor\"] = funcion(*args)\n\n    salida = capturar(envoltorio, entradas=entradas)\n    return salida, caja.get(\"valor\")\n",
+   "tests": [
+    {
+     "name": "El ejemplo del enunciado",
+     "code": "salida = capturar(estadisticas, entradas=[\"4\", \"-2\", \"abc\", \"10\", \"7\", \"4\", \"fin\"])\nesperado = \"Ignorado: 'abc'\\nCantidad: 5\\nSuma: 23\\nMedia: 4.6\\nMínimo: -2\\nMáximo: 10\\nPares: 4\\nIgnorados: 1\\n\"\n_comprobar_salida(salida, esperado, \"Entradas 4, -2, abc, 10, 7, 4, fin\")"
+    },
+    {
+     "name": "fin inmediato",
+     "code": "_comprobar_salida(capturar(estadisticas, entradas=[\"fin\"]), \"Sin datos\\nIgnorados: 0\\n\", \"Solo 'fin'\")"
+    },
+    {
+     "name": "Solo datos no válidos",
+     "code": "salida = capturar(estadisticas, entradas=[\"abc\", \"\", \"fin\"])\n_comprobar_salida(salida, \"Ignorado: 'abc'\\nIgnorado: ''\\nSin datos\\nIgnorados: 2\\n\", \"Entradas 'abc', '' y fin\")"
+    },
+    {
+     "name": "Formatos engañosos que no son enteros válidos",
+     "code": "malos = [\"3.5\", \"-\", \"--1\", \"1-\", \"+2\", \" 7\", \"7 \", \"FIN\", \"1e3\", \"٣\"]\nsalida = capturar(estadisticas, entradas=malos + [\"fin\"])\nesperado = \"\"\nfor m in malos:\n    esperado += f\"Ignorado: '{m}'\\n\"\nesperado += f\"Sin datos\\nIgnorados: {len(malos)}\\n\"\n_comprobar_salida(salida, esperado, f\"Entradas {malos}\")"
+    },
+    {
+     "name": "Un único número: el cero",
+     "code": "salida = capturar(estadisticas, entradas=[\"0\", \"fin\"])\n_comprobar_salida(salida, \"Cantidad: 1\\nSuma: 0\\nMedia: 0.0\\nMínimo: 0\\nMáximo: 0\\nPares: 1\\nIgnorados: 0\\n\", \"Entradas 0, fin (el 0 es par)\")"
+    },
+    {
+     "name": "Solo negativos (el máximo no puede empezar en 0)",
+     "code": "salida = capturar(estadisticas, entradas=[\"-5\", \"-12\", \"-3\", \"fin\"])\n_comprobar_salida(salida, \"Cantidad: 3\\nSuma: -20\\nMedia: -6.67\\nMínimo: -12\\nMáximo: -3\\nPares: 1\\nIgnorados: 0\\n\", \"Entradas -5, -12, -3\")"
+    },
+    {
+     "name": "Solo positivos (el mínimo no puede empezar en 0) y redondeo",
+     "code": "salida = capturar(estadisticas, entradas=[\"1\", \"2\", \"2\", \"fin\"])\n_comprobar_salida(salida, \"Cantidad: 3\\nSuma: 5\\nMedia: 1.67\\nMínimo: 1\\nMáximo: 2\\nPares: 2\\nIgnorados: 0\\n\", \"Entradas 1, 2, 2\")"
+    },
+    {
+     "name": "Ceros a la izquierda y -0",
+     "code": "salida = capturar(estadisticas, entradas=[\"007\", \"-0\", \"fin\"])\n_comprobar_salida(salida, \"Cantidad: 2\\nSuma: 7\\nMedia: 3.5\\nMínimo: 0\\nMáximo: 7\\nPares: 1\\nIgnorados: 0\\n\", \"Entradas 007 y -0 (valen 7 y 0)\")"
+    },
+    {
+     "name": "Enteros enormes",
+     "code": "grande = \"123456789012345678901234567890\"\nsalida = capturar(estadisticas, entradas=[grande, \"1\", \"fin\"])\ntotal = 123456789012345678901234567891\nesperado = (f\"Cantidad: 2\\nSuma: {total}\\nMedia: {round(total / 2, 2)}\\n\"\n            f\"Mínimo: 1\\nMáximo: {grande}\\nPares: 1\\nIgnorados: 0\\n\")\n_comprobar_salida(salida, esperado, \"Un entero de 30 cifras y el 1\")"
+    },
+    {
+     "name": "Se detiene exactamente en fin",
+     "code": "salida = capturar(estadisticas, entradas=[\"3\", \"fin\", \"5\", \"7\"])\n_comprobar_salida(salida, \"Cantidad: 1\\nSuma: 3\\nMedia: 3.0\\nMínimo: 3\\nMáximo: 3\\nPares: 0\\nIgnorados: 0\\n\", \"Lo que venga después de 'fin' no se lee\")"
+    }
+   ],
+   "hints": [
+    "Divide el problema. Escribe primero una función auxiliar `es_entero(texto)` que recorra los caracteres: el `-` solo se admite en la primera posición (lleva un contador de posición), cualquier otro carácter tiene que estar en `\"0123456789\"` y al final tiene que haber al menos un dígito.",
+    "El bucle principal queda muy limpio con el operador morsa: `while (texto := input(\"Número: \")) != \"fin\":`. Si el dato no es válido, imprime el aviso, cuenta el ignorado y `continue`.",
+    "Para mínimo y máximo empieza con `None` y actualiza con `if minimo is None or numero < minimo:`. Si empiezas en 0, fallará cuando todos los números sean positivos (mínimo) o todos negativos (máximo).",
+    "El informe tiene dos ramas (`cantidad == 0` o no), pero la línea `Ignorados:` se imprime en ambas: ponla después del `if`/`else`."
+   ],
+   "explain": "Este proyecto es un **procesamiento en flujo** (*streaming*): cada dato se procesa al llegar y se descarta, así que la memoria usada es constante, O(1), aunque se introduzcan millones de números. El tiempo es O(n).\n\nPiezas clave:\n\n- **Validación en una función aparte.** `es_entero` usa un contador de posición para admitir el `-` solo al principio, `pass` para «aceptar sin hacer nada» y la condición final `digitos > 0` para rechazar `\"\"` y `\"-\"`. Separarla hace que el bucle principal se lea como el enunciado.\n- **Centinela con morsa.** `while (texto := input(...)) != \"fin\":` lee, guarda y compara en una línea, sin la lectura duplicada de la lección 4.\n- **`None` como «todavía no hay valor».** Inicializar mínimo y máximo con `None` (y comparar con `is None`) es correcto para cualquier dato. Alternativa: inicializarlos con el primer número válido, o con `float(\"inf\")` y `float(\"-inf\")`.\n- **Acumuladores**: `cantidad`, `suma`, `pares` e `ignorados` empiezan en 0 antes del bucle.\n\nCuando conozcas las listas (s04), `min()`, `max()`, `sum()` y el módulo `statistics` (s07) harán el trabajo en pocas líneas, pero tendrás que guardar todos los datos en memoria. Y en s08 validarás con `try: int(texto)` / `except ValueError`, aunque recuerda que `int()` acepta formatos (`\" 7\"`, `\"+2\"`, `\"٣\"`) que este enunciado prohíbe."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "En una cadena `if`/`elif`/`else`, ¿qué pasa si varias condiciones son verdaderas?",
+   "back": "Solo se ejecuta la **primera** rama cuya condición es verdadera; las condiciones siguientes ni se evalúan."
+  },
+  {
+   "front": "¿Por qué `if x == 1 or 2:` entra siempre?",
+   "back": "Se agrupa como `(x == 1) or 2`, y `2` es verdadero. Lo correcto: `x == 1 or x == 2`."
+  },
+  {
+   "front": "Sintaxis de la expresión condicional",
+   "back": "`valor_si if condición else valor_no`. El `else` es obligatorio y ambas ramas deben ser expresiones."
+  },
+  {
+   "front": "En `a if c else b`, ¿qué se evalúa primero?",
+   "back": "La condición `c`. Después se evalúa **solo** `a` (si `c` es verdadera) o **solo** `b`."
+  },
+  {
+   "front": "¿Qué imprime `print(\"Total: \" + \"gratis\" if p == 0 else str(p))` con `p = 12`?",
+   "back": "`12`. El `+` se agrupa antes que el `if`: se elige entre `\"Total: gratis\"` y `str(p)`."
+  },
+  {
+   "front": "Leyes de De Morgan",
+   "back": "`not (a and b)` ≡ `not a or not b`  ·  `not (a or b)` ≡ `not a and not b`."
+  },
+  {
+   "front": "¿Para qué sirve `pass`?",
+   "back": "Es una instrucción que no hace nada; rellena un bloque que la sintaxis exige (por ejemplo, un `if` aún sin implementar)."
+  },
+  {
+   "front": "¿Desde qué versión existe `match` y en qué PEP se define?",
+   "back": "Desde Python 3.10. Especificación: PEP 634; justificación: PEP 635; tutorial: PEP 636."
+  },
+  {
+   "front": "¿Qué ocurre si ningún `case` encaja?",
+   "back": "Nada: no se ejecuta ningún bloque y el programa sigue tras el `match`. No es un error."
+  },
+  {
+   "front": "¿Qué hace `case _:`?",
+   "back": "Es el comodín: encaja con cualquier valor, no liga ningún nombre y debe ser el último `case`."
+  },
+  {
+   "front": "`LIMITE = 10` y luego `case LIMITE:` dentro de un `match`. ¿Qué hace?",
+   "back": "**Captura**: asigna el sujeto a `LIMITE` (no compara con 10). Para comparar, usa un nombre con punto o una guarda `case v if v == LIMITE:`."
+  },
+  {
+   "front": "¿Cómo compara `match` los literales?",
+   "back": "Con `==`, salvo `None`, `True` y `False`, que se comparan con `is`. Por eso `case 1:` encaja con `True`, pero `case True:` no encaja con `1`."
+  },
+  {
+   "front": "¿Qué es una guarda en `match` y cuándo se evalúa?",
+   "back": "Un `if condición` tras el patrón (`case x if x > 0:`). Se evalúa solo si el patrón encajó y después de ligar los nombres."
+  },
+  {
+   "front": "¿Necesita `break` cada `case`?",
+   "back": "No. `match` no tiene *fall-through*: se ejecuta un único bloque. Un `break` dentro de un `case` rompería el **bucle** que rodea al `match`."
+  },
+  {
+   "front": "Las tres piezas de un bucle `while`",
+   "back": "Inicialización (antes), condición (en la cabecera) y actualización (en el cuerpo). Sin actualización, bucle infinito."
+  },
+  {
+   "front": "¿Qué es un centinela?",
+   "back": "Un valor especial que marca el final de los datos (por ejemplo, `0` o `\"fin\"`) y que no se procesa como dato."
+  },
+  {
+   "front": "¿Cómo obtienes la última cifra de `n` y cómo la quitas?",
+   "back": "Última cifra: `n % 10`. Quitarla: `n //= 10` (con `n` no negativo)."
+  },
+  {
+   "front": "¿Tiene Python `do … while`?",
+   "back": "No. Se usa `while True:` con un `break` en medio («bucle y medio»)."
+  },
+  {
+   "front": "¿Qué valores produce `range(10, 0, -3)`?",
+   "back": "10, 7, 4, 1. El fin (0) nunca se incluye."
+  },
+  {
+   "front": "¿Cuántos valores produce `range(a, b, p)` con `p > 0` y `a < b`?",
+   "back": "⌈(b − a) / p⌉. Ejemplo: `range(2, 20, 3)` → 6 valores (2, 5, 8, 11, 14, 17)."
+  },
+  {
+   "front": "¿Por qué `range(10**12)` no agota la memoria?",
+   "back": "Porque `range` es perezoso: solo guarda `start`, `stop` y `step` y calcula cada valor cuando se pide."
+  },
+  {
+   "front": "¿Qué vale la variable de control al terminar un `for`?",
+   "back": "Su último valor asignado. Si el iterable estaba vacío, el bucle no la asigna (y si no existía, usarla da `NameError`)."
+  },
+  {
+   "front": "¿Cuándo se ejecuta el `else` de un `for` o un `while`?",
+   "back": "Cuando el bucle termina **sin `break`**: al agotarse los elementos o volverse falsa la condición, incluso con cero vueltas."
+  },
+  {
+   "front": "`break` dentro de dos bucles anidados: ¿de cuál sale?",
+   "back": "Solo del más interno. Para salir de ambos: `return` desde una función, o una bandera."
+  },
+  {
+   "front": "Peligro de `continue` en un `while`",
+   "back": "Si está antes de la actualización del contador, se la salta y el bucle puede volverse infinito."
+  },
+  {
+   "front": "¿Qué hace el operador morsa `:=`?",
+   "back": "Asigna un valor a un nombre y devuelve ese valor dentro de una expresión. Existe desde Python 3.8 (PEP 572)."
+  },
+  {
+   "front": "¿Qué vale `texto` tras `while texto := input() != \"fin\":`?",
+   "back": "Un `bool`: sin paréntesis se agrupa como `texto := (input() != \"fin\")`. Correcto: `while (texto := input()) != \"fin\":`."
+  },
+  {
+   "front": "Dos bucles anidados de `n` y `m` vueltas: ¿cuántas veces se ejecuta el cuerpo interior?",
+   "back": "`n × m` veces (crecimiento cuadrático si ambos dependen de `n`)."
+  },
+  {
+   "front": "Mensajes de error nuevos de Python 3.14 relacionados con el control de flujo",
+   "back": "`'elif' block follows an 'else' block`, sugerencias de palabras clave mal escritas (`Did you mean 'while'?`) y `expected expression after 'else', but statement is given`."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s03-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 15\nif x > 10:\n    print(\"A\")\nelif x > 5:\n    print(\"B\")\nelse:\n    print(\"C\")\n```",
+   "options": [
+    "`A`",
+    "`A` y después `B`",
+    "`B`",
+    "`C`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Solo se ejecuta la primera rama verdadera. `x > 10` ya es verdadero, así que se imprime `A` y el `elif` ni se evalúa."
+  },
+  {
+   "id": "s03-q2",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ncolor = \"verde\"\nif color == \"rojo\" or \"azul\":\n    print(\"primario\")\nelse:\n    print(\"otro\")\n```",
+   "options": [
+    "`primario`",
+    "`otro`",
+    "`TypeError`",
+    "No imprime nada"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Se agrupa como `(color == \"rojo\") or \"azul\"`. La comparación es `False`, así que `or` devuelve `\"azul\"`, que es verdadero: entra siempre. Lo correcto sería `color == \"rojo\" or color == \"azul\"`."
+  },
+  {
+   "id": "s03-q3",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 5\nif x > 0:\n    if x > 10:\n        print(\"grande\")\nelse:\n    print(\"no positivo\")\n```",
+   "options": [
+    "`grande`",
+    "`no positivo`",
+    "No imprime nada",
+    "`IndentationError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El `else` está alineado con el `if x > 0:`, así que pertenece a él. Como `x > 0` es verdadero se entra en el bloque, pero `x > 10` es falso y el `if` interior no tiene `else`: no se imprime nada."
+  },
+  {
+   "id": "s03-q4",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 15\nif n % 3 == 0:\n    print(\"Fizz\")\nelif n % 5 == 0:\n    print(\"Buzz\")\nelif n % 15 == 0:\n    print(\"FizzBuzz\")\n```",
+   "options": [
+    "`FizzBuzz`",
+    "`Fizz`",
+    "`Fizz` y después `Buzz`",
+    "`Buzz`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "15 es múltiplo de 3, así que la primera condición ya es verdadera y las demás no se evalúan. Por eso en FizzBuzz el caso de 15 debe comprobarse **primero**."
+  },
+  {
+   "id": "s03-q5",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `if` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "Un `if` puede tener cero o más `elif` y, como mucho, un `else`.",
+     "answer": true
+    },
+    {
+     "text": "Un `elif` puede ir después del `else` si se sangra igual.",
+     "answer": false
+    },
+    {
+     "text": "La condición de un `if` tiene que ser obligatoriamente de tipo `bool`.",
+     "answer": false
+    },
+    {
+     "text": "`if nombre:` entra cuando `nombre` es una cadena no vacía.",
+     "answer": true
+    },
+    {
+     "text": "`pass` hace que la función termine.",
+     "answer": false
+    }
+   ],
+   "explain": "`elif` después de `else` es `SyntaxError` (3.14: «'elif' block follows an 'else' block»). La condición se evalúa por *truthiness*, así que vale cualquier objeto: la cadena vacía es falsa y cualquier otra, verdadera. `pass` no hace nada; quien termina una función es `return`."
+  },
+  {
+   "id": "s03-q6",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 0\nprint(\"positivo\" if n > 0 else \"cero\" if n == 0 else \"negativo\")\n```",
+   "options": [
+    "`positivo`",
+    "`cero`",
+    "`negativo`",
+    "`SyntaxError`: no se pueden encadenar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las expresiones condicionales encadenadas se agrupan por la derecha: `\"positivo\" if n > 0 else (\"cero\" if n == 0 else \"negativo\")`. Con `n = 0` se obtiene `\"cero\"`."
+  },
+  {
+   "id": "s03-q7",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprecio = 5\nprint(\"Precio: \" + \"gratis\" if precio == 0 else str(precio))\n```",
+   "options": [
+    "`Precio: 5`",
+    "`5`",
+    "`Precio: gratis`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La expresión condicional tiene menos precedencia que `+`: se agrupa como `(\"Precio: \" + \"gratis\") if precio == 0 else str(precio)`. Como `precio` no es 0, se imprime solo `5`. Solución: paréntesis alrededor de la expresión condicional."
+  },
+  {
+   "id": "s03-q8",
+   "type": "single",
+   "q": "¿Qué expresión es equivalente a `not (a > 0 and b > 0)` para números `a` y `b`?",
+   "options": [
+    "`a <= 0 or b <= 0`",
+    "`a <= 0 and b <= 0`",
+    "`a < 0 or b < 0`",
+    "`not a > 0 and not b > 0`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Por De Morgan, `not (P and Q)` es `not P or not Q`, y `not (a > 0)` es `a <= 0`. Las demás cambian mal el operador lógico o el de comparación (`a < 0` olvida el caso `a == 0`)."
+  },
+  {
+   "id": "s03-q9",
+   "type": "multi",
+   "q": "¿Qué dos condiciones comprueban correctamente que el entero `n` está entre 1 y 10, **ambos incluidos**? (Selecciona DOS.)",
+   "options": [
+    "`1 <= n <= 10`",
+    "`n >= 1 and n <= 10`",
+    "`n >= 1 or n <= 10`",
+    "`n in range(1, 10)`",
+    "`not (n < 1 and n > 10)`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`or` haría verdadera la condición para cualquier número; `range(1, 10)` no incluye el 10; y `n < 1 and n > 10` nunca es verdadero, así que su negación siempre lo es. Por De Morgan, lo correcto habría sido `not (n < 1 or n > 10)`."
+  },
+  {
+   "id": "s03-q10",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ncodigo = 302\nmatch codigo:\n    case 200:\n        print(\"OK\")\n    case 301 | 302:\n        print(\"Redirección\")\n    case 302:\n        print(\"Encontrado\")\n    case _:\n        print(\"Otro\")\n```",
+   "options": [
+    "`Redirección`",
+    "`Redirección` y después `Encontrado`",
+    "`Encontrado`",
+    "`Otro`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Gana el primer `case` que encaja (`301 | 302`) y no hay *fall-through*: el `case 302` posterior nunca se alcanza."
+  },
+  {
+   "id": "s03-q11",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nLIMITE = 100\nvalor = 7\nmatch valor:\n    case LIMITE:\n        print(\"límite\")\nprint(LIMITE)\n```",
+   "options": [
+    "Solo `100`",
+    "`límite` y después `7`",
+    "`límite` y después `100`",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un nombre suelto en un patrón es una **captura**: encaja siempre y asigna el sujeto al nombre. Se imprime `límite` y `LIMITE` pasa a valer 7. No hay `SyntaxError` porque es el último (y único) `case`."
+  },
+  {
+   "id": "s03-q12",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nmatch True:\n    case 1:\n        print(\"uno\")\n    case True:\n        print(\"verdadero\")\n```",
+   "options": [
+    "`uno`",
+    "`verdadero`",
+    "`uno` y después `verdadero`",
+    "No imprime nada"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El literal `1` se compara con `==`, y `True == 1` es verdadero, así que encaja el primer `case`. Solo `None`, `True` y `False` como **patrones** se comparan con `is`."
+  },
+  {
+   "id": "s03-q13",
+   "type": "multi",
+   "q": "¿Qué dos `case` provocan un `SyntaxError` si se colocan antes que otros `case`? (Selecciona DOS.)",
+   "options": [
+    "`case _:`",
+    "`case otro:`",
+    "`case 0 | 1:`",
+    "`case n if n > 0:`",
+    "`case None:`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El comodín y la captura son **irrefutables** (encajan siempre), así que los `case` posteriores serían inalcanzables: «wildcard makes remaining patterns unreachable» / «name capture 'otro' makes remaining patterns unreachable». Una captura con guarda no es irrefutable, porque la guarda puede fallar."
+  },
+  {
+   "id": "s03-q14",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = -4\nmatch n:\n    case x if x > 0:\n        print(\"positivo\")\n    case x if x % 2 == 0:\n        print(\"par\")\n    case _:\n        print(\"otro\")\n```",
+   "options": [
+    "`positivo`",
+    "`par`",
+    "`otro`",
+    "`par` y después `otro`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El primer patrón encaja (captura `x = -4`), pero su guarda `x > 0` es falsa, así que se prueba el siguiente `case`: `-4 % 2 == 0` es verdadero y se imprime `par`."
+  },
+  {
+   "id": "s03-q15",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `match` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "Si ningún `case` encaja, Python lanza una excepción.",
+     "answer": false
+    },
+    {
+     "text": "No hace falta escribir `break` al final de cada `case`.",
+     "answer": true
+    },
+    {
+     "text": "`case \"s\" | \"sí\" as r:` guarda en `r` el valor del sujeto que encajó.",
+     "answer": true
+    },
+    {
+     "text": "`match` y `case` son palabras reservadas en todo el programa, así que ninguna variable puede llamarse `match`.",
+     "answer": false
+    },
+    {
+     "text": "Un patrón puede ser una f-string, como `case f\"{x}\":`.",
+     "answer": false
+    }
+   ],
+   "explain": "Si nada encaja, no pasa nada. No hay *fall-through*. `as` liga el valor que encajó. `match` y `case` son palabras clave **blandas**: solo son especiales dentro de la sentencia `match`. Las f-strings no pueden ser patrones (`SyntaxError`)."
+  },
+  {
+   "id": "s03-q16",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ni = 0\nwhile i < 5:\n    i += 2\n    print(i, end=\" \")\n```",
+   "options": [
+    "`0 2 4`",
+    "`2 4`",
+    "`2 4 6`",
+    "`0 2 4 6`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La condición se comprueba con 0, 2 y 4 (verdadera) y con 6 (falsa). Como el incremento va **antes** del `print`, se imprimen 2, 4 y 6."
+  },
+  {
+   "id": "s03-q17",
+   "type": "single",
+   "q": "¿Cuántas veces se evalúa la condición `k > 0` en este bucle?\n```python\nk = 3\nwhile k > 0:\n    k -= 1\n```",
+   "options": [
+    "3",
+    "4",
+    "2",
+    "Infinitas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Se evalúa con 3, 2 y 1 (verdadera, 3 vueltas) y una última vez con 0 (falsa), que es la que termina el bucle: 4 evaluaciones y 3 ejecuciones del cuerpo."
+  },
+  {
+   "id": "s03-q18",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 507\nsuma = 0\nwhile n > 0:\n    suma += n % 10\n    n //= 10\nprint(suma)\n```",
+   "options": [
+    "`12`",
+    "`507`",
+    "`57`",
+    "`0`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Suma las cifras de derecha a izquierda: 7 + 0 + 5 = 12. `n % 10` extrae la última cifra y `n //= 10` la elimina."
+  },
+  {
+   "id": "s03-q19",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este código?\n```python\ni = 0\nwhile i < 5:\n    if i == 2:\n        continue\n    print(i)\n    i += 1\n```",
+   "options": [
+    "Imprime 0, 1, 3 y 4",
+    "Imprime 0, 1, 2, 3 y 4",
+    "Imprime 0 y 1 y se queda en un bucle infinito",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Cuando `i` vale 2, `continue` vuelve a la condición **sin** ejecutar `i += 1`: `i` se queda en 2 para siempre. Es la trampa clásica de `continue` en un `while`."
+  },
+  {
+   "id": "s03-q20",
+   "type": "single",
+   "q": "¿Qué valores produce `range(10, 0, -3)`?",
+   "options": [
+    "10, 7, 4, 1",
+    "10, 7, 4, 1, -2",
+    "10, 7, 4",
+    "9, 6, 3, 0"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Empieza en 10 y resta 3 mientras el valor sea **mayor** que el fin (0): 10, 7, 4, 1. El siguiente, −2, ya no cumple `> 0`."
+  },
+  {
+   "id": "s03-q21",
+   "type": "single",
+   "q": "¿Cuántas líneas imprime este código?\n```python\nfor i in range(2, 20, 3):\n    print(i)\n```",
+   "options": [
+    "5",
+    "6",
+    "7",
+    "18"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "⌈(20 − 2) / 3⌉ = 6 valores: 2, 5, 8, 11, 14 y 17. El 20 nunca se alcanza."
+  },
+  {
+   "id": "s03-q22",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nfor i in range(3):\n    i = 10\n    print(i, end=\" \")\nprint(i)\n```",
+   "options": [
+    "`10 10 10 10`",
+    "`10 2`",
+    "`0 1 2 2`",
+    "`10 10 10 2`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Reasignar `i` dentro del cuerpo no altera las vueltas (el `for` asigna el siguiente valor al empezar cada una), pero tras el bucle `i` conserva lo último que se le asignó: 10."
+  },
+  {
+   "id": "s03-q23",
+   "type": "single",
+   "q": "¿Qué imprime `print(range(3))`?",
+   "options": [
+    "`0 1 2`",
+    "`[0, 1, 2]`",
+    "`range(0, 3)`",
+    "`range(3)`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un `range` no es una lista: su representación muestra inicio y fin, `range(0, 3)`. Para ver los valores harías `list(range(3))` (s04)."
+  },
+  {
+   "id": "s03-q24",
+   "type": "multi",
+   "q": "¿Qué bucles **no** ejecutan su cuerpo ninguna vez? (Selecciona TRES.)",
+   "options": [
+    "`for i in range(5, 2):`",
+    "`for i in range(0):`",
+    "`for i in range(5, 2, -1):`",
+    "`while 0:`",
+    "`for c in \"0\":`"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "`range(5, 2)` y `range(0)` están vacíos, y `0` es falso. En cambio, `range(5, 2, -1)` produce 5, 4 y 3, y la cadena `\"0\"` tiene un carácter (no está vacía)."
+  },
+  {
+   "id": "s03-q25",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `range` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`range(1.0, 5.0)` produce 1, 2, 3 y 4.",
+     "answer": false
+    },
+    {
+     "text": "`range(0, 10, 0)` lanza `ValueError`.",
+     "answer": true
+    },
+    {
+     "text": "`5 in range(0, 10, 2)` vale `False`.",
+     "answer": true
+    },
+    {
+     "text": "`range(10**12)` crea un billón de enteros en memoria.",
+     "answer": false
+    }
+   ],
+   "explain": "`range` solo admite enteros (`TypeError` con `float`) y el paso no puede ser 0. `range(0, 10, 2)` contiene 0, 2, 4, 6 y 8. Un `range` es perezoso y ocupa lo mismo sea cual sea su tamaño."
+  },
+  {
+   "id": "s03-q26",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nfor n in range(2, 6):\n    if n == 7:\n        break\nelse:\n    print(\"sin break\")\nprint(\"fin\")\n```",
+   "options": [
+    "Solo `fin`",
+    "`sin break` y después `fin`",
+    "No imprime nada",
+    "`SyntaxError`: `else` sin `if`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El bucle recorre 2, 3, 4 y 5 sin encontrar el 7, así que termina **sin `break`** y se ejecuta su `else`."
+  },
+  {
+   "id": "s03-q27",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 3\nwhile n > 0:\n    if n == 2:\n        break\n    n -= 1\nelse:\n    print(\"agotado\")\nprint(n)\n```",
+   "options": [
+    "`agotado` y después `2`",
+    "`2`",
+    "`agotado` y después `0`",
+    "`0`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `n = 3` se decrementa a 2; en la siguiente vuelta `n == 2` provoca `break`, que se salta el `else`. Se imprime solo `2`."
+  },
+  {
+   "id": "s03-q28",
+   "type": "single",
+   "q": "¿Cuántas líneas imprime este código?\n```python\nfor i in range(3):\n    for j in range(3):\n        if j == 1:\n            break\n        print(i, j)\n```",
+   "options": [
+    "Una: `0 0`",
+    "Tres: `0 0`, `1 0` y `2 0`",
+    "Seis",
+    "Nueve"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El `break` solo corta el bucle de `j`. En cada vuelta de `i` se imprime la pareja con `j = 0` y al llegar a `j = 1` se sale del interior; el exterior continúa."
+  },
+  {
+   "id": "s03-q29",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ncontador = 0\nfor i in range(4):\n    for j in range(i):\n        contador += 1\nprint(contador)\n```",
+   "options": [
+    "`16`",
+    "`6`",
+    "`10`",
+    "`4`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El bucle interior da 0, 1, 2 y 3 vueltas según `i`: 0 + 1 + 2 + 3 = 6."
+  },
+  {
+   "id": "s03-q30",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ntotal = 0\nfor n in range(1, 8):\n    if n % 3 == 0:\n        continue\n    total += n\nprint(total)\n```",
+   "options": [
+    "`28`",
+    "`19`",
+    "`9`",
+    "`21`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Se saltan los múltiplos de 3 (3 y 6): 1 + 2 + 4 + 5 + 7 = 19."
+  },
+  {
+   "id": "s03-q31",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 0\nwhile n < 10:\n    n += 1\n    match n:\n        case 3:\n            break\nprint(n)\n```",
+   "options": [
+    "`3`",
+    "`10`",
+    "`4`",
+    "`SyntaxError`: `break` fuera de un bucle"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`match` no es un bucle: el `break` dentro del `case` sale del `while` que lo rodea. Cuando `n` vale 3, el bucle termina y se imprime 3."
+  },
+  {
+   "id": "s03-q32",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nn = 10\nif mitad := n // 2 > 3:\n    print(mitad)\n```",
+   "options": [
+    "`5`",
+    "`True`",
+    "`SyntaxError`",
+    "No imprime nada"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`:=` tiene la precedencia más baja: se agrupa como `mitad := (n // 2 > 3)`, así que `mitad` vale `True`. Para guardar el 5 hacen falta paréntesis: `if (mitad := n // 2) > 3:`."
+  },
+  {
+   "id": "s03-q33",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre el operador morsa `:=` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`x := 5` escrito solo en una línea es una instrucción válida.",
+     "answer": false
+    },
+    {
+     "text": "Se introdujo en Python 3.8 (PEP 572).",
+     "answer": true
+    },
+    {
+     "text": "`while (linea := input()) != \"fin\":` lee, guarda y compara en la misma línea.",
+     "answer": true
+    },
+    {
+     "text": "Permite asignar a atributos o posiciones, como `obj.x := 1`.",
+     "answer": false
+    }
+   ],
+   "explain": "Una expresión de asignación sin paréntesis no puede ser una instrucción por sí sola (para eso está `=`), y su destino solo puede ser un nombre simple. Su uso típico es evitar la lectura duplicada en bucles con centinela."
+  },
+  {
+   "id": "s03-q34",
+   "type": "single",
+   "q": "Python 3.14 muestra `SyntaxError: 'elif' block follows an 'else' block`. ¿Qué has hecho mal?",
+   "options": [
+    "Escribir un `elif` después del `else`",
+    "Olvidar los dos puntos al final del `if`",
+    "Mezclar tabuladores y espacios",
+    "Usar `=` en lugar de `==` en la condición"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Es uno de los mensajes mejorados de 3.14: el `else` debe ser siempre la última rama. Olvidar `:` da `expected ':'`; mezclar tabuladores, `TabError`; y `if x = 5:` da `invalid syntax. Maybe you meant '==' or ':=' instead of '='?`."
+  },
+  {
+   "id": "s03-q35",
+   "type": "single",
+   "q": "Quieres pedir un número al usuario **hasta** que esté entre 1 y 10. ¿Qué estructura es la más idiomática en Python?",
+   "options": [
+    "`while True:` con un `break` cuando el dato es válido",
+    "`for i in range(10):` con `input()` dentro",
+    "Un `if` con un `else` que vuelve a llamar a `input()`",
+    "`do … while`, como en C"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "No sabes cuántas veces habrá que preguntar, así que un `for` con un número fijo de vueltas no sirve, y un `if` solo repite una vez. Python no tiene `do … while`: el patrón es `while True` + `break` (o un centinela con `:=`)."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Tutorial de Python · 4. More Control Flow Tools",
+   "url": "https://docs.python.org/3/tutorial/controlflow.html"
+  },
+  {
+   "title": "Tutorial de Python · 3.2 First Steps Towards Programming",
+   "url": "https://docs.python.org/3/tutorial/introduction.html"
+  },
+  {
+   "title": "Language Reference · 8. Compound statements (if, while, for, match)",
+   "url": "https://docs.python.org/3/reference/compound_stmts.html"
+  },
+  {
+   "title": "Language Reference · 7. Simple statements (pass, break, continue)",
+   "url": "https://docs.python.org/3/reference/simple_stmts.html"
+  },
+  {
+   "title": "Language Reference · 6. Expressions (conditional expressions, :=, precedencia)",
+   "url": "https://docs.python.org/3/reference/expressions.html"
+  },
+  {
+   "title": "Language Reference · 2. Lexical analysis (sangría, soft keywords)",
+   "url": "https://docs.python.org/3/reference/lexical_analysis.html"
+  },
+  {
+   "title": "Built-in Types · Ranges y Truth Value Testing",
+   "url": "https://docs.python.org/3/library/stdtypes.html"
+  },
+  {
+   "title": "Design and History FAQ (sangría, asignación en expresiones, switch/case)",
+   "url": "https://docs.python.org/3/faq/design.html"
+  },
+  {
+   "title": "What's New In Python 3.14 (PEP 765, mensajes de error mejorados)",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "PEP 634 – Structural Pattern Matching: Specification",
+   "url": "https://peps.python.org/pep-0634/"
+  },
+  {
+   "title": "PEP 635 – Structural Pattern Matching: Motivation and Rationale",
+   "url": "https://peps.python.org/pep-0635/"
+  },
+  {
+   "title": "PEP 636 – Structural Pattern Matching: Tutorial",
+   "url": "https://peps.python.org/pep-0636/"
+  },
+  {
+   "title": "PEP 572 – Assignment Expressions",
+   "url": "https://peps.python.org/pep-0572/"
+  },
+  {
+   "title": "PEP 8 – Style Guide for Python Code",
+   "url": "https://peps.python.org/pep-0008/"
+  },
+  {
+   "title": "PEP 765 – Disallow return/break/continue that exit a finally block",
+   "url": "https://peps.python.org/pep-0765/"
+  },
+  {
+   "title": "Python Institute · PCEP-30-0x Exam Syllabus",
+   "url": "https://pythoninstitute.org/pcep-exam-syllabus"
+  }
+ ]
+}

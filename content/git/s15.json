@@ -1,0 +1,2699 @@
+{
+ "id": "s15",
+ "order": 15,
+ "title": "Reescritura avanzada, seguridad y mantenimiento",
+ "domain": "experto",
+ "summary": "Qué hacer cuando un secreto llega a la historia (rotar la credencial, purgar con filter-repo o filter-branch, limpiar reflog y objetos, publicar y sanear los clones), cómo cambiar lo que Git muestra sin reescribir (replace, notes), cómo reutilizar resoluciones de conflictos (rerere), qué estrategia de fusión elegir (ort, octopus, -s ours frente a -X ours), cómo mover y exportar repositorios sin red (bundle, archive) y cómo mantener y verificar un repositorio (gc, maintenance, fsck, firmas).",
+ "goal": "Purgar un secreto de toda la historia de un repositorio y de su servidor, verificándolo con comandos plumbing, y aplicar con criterio replace, notes, rerere, estrategias de fusión, bundle, archive y las herramientas de mantenimiento.",
+ "objectives": [
+  "Aplicar el protocolo ante una filtración: rotar la credencial, reescribir toda la historia, forzar la publicación y limpiar el servidor y los clones del equipo",
+  "Purgar un archivo de todas las ramas y etiquetas con filter-branch y verificar con git log --all y git cat-file que ningún commit ni objeto lo conserva",
+  "Escribir los comandos de git filter-repo para eliminar rutas o reemplazar textos y justificar por qué es la herramienta recomendada",
+  "Unir historias y anotar commits sin reescribirlos con git replace --graft y git notes, y compartirlos con el servidor",
+  "Reutilizar resoluciones de conflictos con rerere en merges y rebases, y corregirlas con forget",
+  "Elegir entre ort, octopus, -s ours y -X ours/theirs según el resultado que se busca",
+  "Transportar un repositorio sin red con bundles completos e incrementales y exportar versiones con git archive",
+  "Mantener y diagnosticar un repositorio con gc, maintenance y fsck, y verificar firmas de commits y etiquetas"
+ ],
+ "lessons": [
+  {
+   "id": "s15-l1",
+   "title": "Un secreto en la historia: por qué borrarlo no basta",
+   "minutes": 25,
+   "goals": [
+    "Localizar en qué commits, ramas y etiquetas sigue presente un archivo o una cadena secreta con git log --all y git log -S",
+    "Explicar por qué quitar un secreto obliga a reescribir todos los commits posteriores y a sincronizar a todo el equipo",
+    "Ordenar los pasos de respuesta ante una filtración, empezando por revocar y rotar la credencial",
+    "Escribir los comandos de git filter-repo para eliminar un archivo o reemplazar un texto en toda la historia"
+   ],
+   "takeaways": [
+    "Un `git rm` (o `git rm --cached`) en un commit nuevo no borra nada del pasado: el secreto sigue en cada commit anterior, en las etiquetas y en todos los clones.",
+    "El paso cero es **revocar y rotar** la credencial. Purgar la historia reduce la exposición, pero no deshace que alguien ya la haya copiado.",
+    "Purgar reescribe el commit que introdujo el secreto y **todos** sus descendientes: cambian los hashes, hay que forzar la publicación y el equipo debe sincronizarse.",
+    "`git filter-repo` es la herramienta que recomienda el propio proyecto Git (se instala aparte); `git filter-branch` está obsoleto y BFG es una alternativa más limitada."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Martes, 23:40. Diego sube la integración con la pasarela de pagos y, de paso, el archivo `.env` con la clave de la API. A los días alguien lo nota, agrega `.env` al `.gitignore` y hace `git rm --cached .env`. Asunto resuelto… ¿o no? En esta lección vas a comprobar que **no**: la clave sigue ahí, en la historia, al alcance de cualquiera que tenga un clon."
+    },
+    {
+     "type": "h",
+     "text": "Modelo mental: la historia es inmutable y está encadenada"
+    },
+    {
+     "type": "p",
+     "text": "Recuerda lo que viste en s12: un commit apunta a un árbol, el árbol apunta a los blobs (el contenido de cada archivo) y el commit guarda además el hash de su padre. El blob con el contenido de `.env` existe desde el commit que lo agregó. Que un commit posterior ya no lo incluya no cambia a los anteriores: siguen apuntando a ese blob, y `git show <commit>:.env` lo muestra sin problemas."
+    },
+    {
+     "type": "diagram",
+     "title": "El secreto vive en todos los commits que lo incluyen",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  commit id: \"Integra pagos (+ .env)\" type: HIGHLIGHT\n  commit id: \"Agrega carrito\" tag: \"v1.0\"\n  branch despacho\n  commit id: \"Cálculo de despacho\"\n  checkout main\n  commit id: \"Deja de versionar .env\"",
+     "caption": "El `.env` está en «Integra pagos», «Agrega carrito» (y por eso en `v1.0`) y en «Cálculo de despacho». El último commit de main ya no lo tiene, pero eso no borra los anteriores."
+    },
+    {
+     "type": "p",
+     "text": "Para que el secreto desaparezca hay que fabricar un commit nuevo sin el `.env` (otro árbol, luego otro hash). Como el hijo guarda el hash de su padre, también cambia el hijo, y el nieto, y así hasta la punta de **cada rama y cada etiqueta** que desciendan de él. **Purgar un secreto = reescribir la historia desde el primer commit que lo contiene.** Todo lo que viste de reescritura en s09 (hashes nuevos, `push --force`, compañeros que deben sincronizarse) aplica aquí, pero a lo grande."
+    },
+    {
+     "type": "h",
+     "text": "Compruébalo: la clave sigue ahí"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\nfecha '2026-08-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Agrega carrito'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/despacho\nfecha '2026-08-05 10:00'\ncommit_archivo despacho.js 'const despacho = 2990;' 'Cálculo de despacho'\ngit switch -q main\nfecha '2026-08-06 10:00'\ngit rm -q --cached .env\nescribir .gitignore '.env'\ngit add .gitignore\ngit commit -q -m 'Deja de versionar .env'\nyo",
+     "cwd": "tienda",
+     "code": "git log --oneline --graph --all\ncat .gitignore\ngit log --all --oneline -- .env\ngit show v1.0:.env\ngit log -S pk_demo_4f9a1c77e2 --all --oneline",
+     "caption": "`git log --all -- .env` lista los commits que tocaron el archivo en cualquier rama o etiqueta; `-S` (pickaxe, s11) encuentra dónde aparece o desaparece el texto."
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en tres detalles. Primero, `git log --all -- .env` muestra «Integra pasarela de pagos» (donde se agregó) y «Deja de versionar .env» (donde se quitó). Segundo, la etiqueta `v1.0` todavía entrega la clave completa con `git show v1.0:.env`. Tercero, `git log -S` encuentra los mismos dos commits buscando el **texto** de la clave: es la forma de rastrear secretos pegados dentro de cualquier archivo (un `config.js`, un README…), no solo en un `.env`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\nfecha '2026-08-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Agrega carrito'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/despacho\nfecha '2026-08-05 10:00'\ncommit_archivo despacho.js 'const despacho = 2990;' 'Cálculo de despacho'\ngit switch -q main\nfecha '2026-08-06 10:00'\ngit rm -q --cached .env\nescribir .gitignore '.env'\ngit add .gitignore\ngit commit -q -m 'Deja de versionar .env'\nyo",
+     "cwd": "tienda",
+     "code": "echo 'PAGOS_API_KEY=pk_demo_4f9a1c77e2' | git hash-object --stdin\ngit cat-file -t 00a04b789b914d5b26f8552b22c53e7bb35e6c21\ngit cat-file -p 00a04b789b914d5b26f8552b22c53e7bb35e6c21\ngit rev-list --all --objects",
+     "caption": "El contenido del `.env` es un objeto más de la base de datos: mismo contenido, mismo hash, en cualquier computador."
+    },
+    {
+     "type": "p",
+     "text": "Como Git direcciona por contenido, cualquiera que conozca (o adivine) el contenido puede calcular su hash y comprobar si el objeto existe en un clon. `git rev-list --all --objects` recorre todo lo alcanzable y muestra cada blob con la ruta en que aparece: ahí está la línea con `.env`. Este mismo par de comandos (`hash-object` + `cat-file`) te servirá en la lección 2 para **verificar** que la purga funcionó de verdad."
+    },
+    {
+     "type": "h",
+     "text": "¿Dónde más vive el secreto?"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Todas las ramas y etiquetas** que contengan el commit (locales y del servidor).",
+      "El **reflog** y el **stash** de cada clon: mantienen vivos los commits antiguos aunque ya no estén en ninguna rama (s10).",
+      "Las **ramas remotas** (`origin/*`) de tu clon, hasta que las actualices.",
+      "Los **clones de tus compañeros**, los **forks** y cualquier copia (CI, respaldos, bundles).",
+      "En las plataformas: vistas en caché, referencias de pull requests (`refs/pull/*` en GitHub) y registros de CI. Eso solo lo limpia el soporte de la plataforma.",
+      "Y lo más importante: en manos de quien ya lo haya copiado. Hay bots que rastrean los repositorios públicos en busca de claves recién publicadas."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Paso 0, siempre: revoca y rota la credencial.** Genera una clave nueva en el proveedor, cámbiala donde se use y anula la antigua. Si la clave ya no sirve, la filtración deja de ser una emergencia y la purga pasa a ser higiene. La propia documentación de GitHub y la de git-filter-repo lo dicen: rotar puede resolver el problema sin tener que reescribir nada; purgar sin rotar, nunca."
+    },
+    {
+     "type": "diagram",
+     "title": "Respuesta ante una filtración",
+     "mermaid": "flowchart TD\n  A[\"Detectas un secreto confirmado\"] --> B[\"1. Revocar y rotar la credencial\"]\n  B --> C{\"¿Los commits ya se publicaron?\"}\n  C -- \"No, solo están en tu computador\" --> D[\"Corregir con commit --amend o rebase -i\"]\n  C -- \"Sí\" --> E[\"2. Avisar al equipo: que nadie haga push\"]\n  E --> F[\"3. Reescribir TODA la historia (filter-repo)\"]\n  F --> G[\"4. Forzar la publicación de ramas y etiquetas\"]\n  G --> H[\"5. Limpiar el servidor: soporte de la plataforma\"]\n  H --> I[\"6. Compañeros: volver a clonar o limpiar su clon\"]\n  D --> J[\"7. Prevenir: .gitignore, hooks, push protection\"]\n  I --> J"
+    },
+    {
+     "type": "h",
+     "text": "La herramienta recomendada: git filter-repo"
+    },
+    {
+     "type": "p",
+     "text": "`git filter-repo` es un único script en Python escrito por Elijah Newren (también autor de la estrategia de fusión `ort`). La documentación de `git filter-branch` lo recomienda expresamente y GitHub lo usa en su guía oficial para eliminar datos sensibles. Es rápido, evita las trampas de `filter-branch` y, al terminar, él mismo expira el reflog y ejecuta la recolección de basura. **No viene con Git**: se instala aparte (requiere Git ≥ 2.36 y Python ≥ 3.6), así que en la terminal de práctica no lo usaremos; aquí va cómo se usa en tu computador."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Instalación (elige la de tu sistema)\nbrew install git-filter-repo          # macOS con Homebrew\npipx install git-filter-repo          # con Python (cualquier sistema)\nsudo apt install git-filter-repo      # Debian / Ubuntu\nscoop install git-filter-repo         # Windows con Scoop\ngit filter-repo --version",
+     "caption": "Si no puedes instalar paquetes, basta con copiar el script `git-filter-repo` en una carpeta de tu PATH."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# 1. Trabaja SIEMPRE en un clon recién hecho (filter-repo se niega a reescribir otro)\ngit clone https://github.com/tienda-austral/tienda.git\ncd tienda\n\n# 2a. Eliminar un archivo de todas las ramas, etiquetas y refs\ngit filter-repo --sensitive-data-removal --invert-paths --path .env\n\n# 2b. …o reemplazar un texto dentro de cualquier archivo\n#     reemplazos.txt contiene una línea:  pk_demo_4f9a1c77e2==>***REMOVED***\ngit filter-repo --sensitive-data-removal --replace-text ../reemplazos.txt\n\n# 3. Verificar que no quedó nada\ngit log --all --name-status -- .env\ngit log -S pk_demo_4f9a1c77e2 --all -p --\n\n# 4. Publicar la historia nueva (todas las refs)\ngit push --force --mirror origin",
+     "caption": "Comandos de la guía «Removing sensitive data from a repository» de GitHub y del manual de git-filter-repo (versión 2.47 o posterior para `--sensitive-data-removal`)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`--path .env --invert-paths`: `--path` selecciona rutas y `--invert-paths` invierte la selección, o sea, **conserva todo menos** `.env`. Si el archivo cambió de nombre alguna vez, agrega un `--path` por cada nombre.",
+      "`--replace-text archivo`: cada línea es un texto literal (o `regex:…`, `glob:…`) que se reemplaza por `***REMOVED***`, o por lo que indiques después de `==>`.",
+      "`--sensitive-data-removal` (o `--sdr`): antes de reescribir trae **todas** las refs del remoto (no solo ramas y etiquetas), anota los «First Changed Commits» (los primeros commits reescritos) y al final imprime los pasos siguientes para limpiar el servidor y los clones del equipo.",
+      "Por seguridad, un `filter-repo` normal **elimina el remoto `origin`** para que no publiques por accidente sobre la historia vieja; con `--sensitive-data-removal` lo conserva, porque el siguiente paso es justamente el `push --force --mirror`.",
+      "Si lo ejecutas fuera de un clon recién hecho, se detiene con «Refusing to destructively overwrite repo history since this does not look like a fresh clone». Existe `--force`, pero acostumbrarse a usarlo es la mejor manera de reescribir el repositorio equivocado algún día."
+     ]
+    },
+    {
+     "type": "table",
+     "head": [
+      "Herramienta",
+      "Cuándo",
+      "Ojo con"
+     ],
+     "rows": [
+      [
+       "`git commit --amend` / `git rebase -i`",
+       "El secreto está en commits **locales** que nadie más tiene (lo practicarás en los ejercicios)",
+       "Solo sirve si la historia no está publicada; igual hay que limpiar el reflog"
+      ],
+      [
+       "`git filter-repo`",
+       "Cualquier purga de historia publicada: archivos, textos, archivos grandes",
+       "Se instala aparte; trabaja en un clon nuevo; quita `origin` salvo con `--sdr`"
+      ],
+      [
+       "BFG Repo-Cleaner",
+       "Alternativa clásica (Java): `--delete-files`, `--replace-text`, `--strip-blobs-bigger-than`",
+       "Por defecto no toca el último commit de la rama; menos flexible que filter-repo"
+      ],
+      [
+       "`git filter-branch`",
+       "Viene con Git: útil para aprender y cuando no puedes instalar nada",
+       "Obsoleto: lento y lleno de trampas. Lo usarás en la lección 2 para practicar"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Mejor que purgar es no filtrar: pon `.env` y similares en el `.gitignore` **antes** del primer commit, usa variables de entorno o un gestor de secretos, revisa con `git diff --staged` antes de confirmar, agrega un hook `pre-commit` que detecte claves (s13; herramientas como gitleaks o git-secrets) y activa **push protection** de GitHub, que bloquea el push cuando detecta un secreto conocido."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «Borraste el archivo con la contraseña en un commit nuevo, ¿ya está a salvo?». No: sigue en los commits anteriores y en todos los clones. Lo primero es **rotar la credencial**; después, si hace falta, reescribir toda la historia (filter-repo), forzar la publicación y hacer que el equipo vuelva a clonar."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Rotar una credencial",
+       "en": "rotate / revoke",
+       "def": "Invalidar la clave filtrada y reemplazarla por una nueva en todos los lugares donde se usa. Es el único paso que neutraliza la filtración."
+      },
+      {
+       "term": "Purgar la historia",
+       "en": "history rewrite / purge",
+       "def": "Reescribir todos los commits que contienen un archivo o texto para que deje de existir en el repositorio. Cambia los hashes desde el primer commit afectado."
+      },
+      {
+       "term": "git filter-repo",
+       "en": "git filter-repo",
+       "def": "Herramienta externa (Python) recomendada por el proyecto Git para reescribir la historia de forma masiva: quitar rutas, reemplazar textos, extraer carpetas…"
+      },
+      {
+       "term": "First Changed Commit",
+       "en": "first changed commit",
+       "def": "El primer commit que la reescritura modificó. Sirve para comprobar que un clon ya está limpio: `git cat-file -t <hash>` debe fallar."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l2",
+   "title": "Purga práctica: filter-branch, limpieza total y publicación",
+   "minutes": 30,
+   "goals": [
+    "Eliminar un archivo de todas las ramas y etiquetas con git filter-branch --index-filter",
+    "Borrar los respaldos refs/original, expirar el reflog y ejecutar git gc --prune=now para que el objeto desaparezca de verdad",
+    "Verificar con git log --all y git cat-file que ningún commit ni objeto conserva el secreto",
+    "Publicar la historia reescrita en el servidor y explicar qué deben hacer los compañeros con sus clones"
+   ],
+   "takeaways": [
+    "`--index-filter 'git rm --cached --ignore-unmatch RUTA'` quita un archivo de cada commit sin hacer checkout: es la forma rápida de `filter-branch`.",
+    "Tras reescribir, el secreto sigue alcanzable desde `refs/original/`, el reflog y las ramas remotas: hasta que no los limpies, `git gc` no puede borrar nada.",
+    "La verificación final es objetiva: `git log --all -- RUTA` vacío y `git cat-file -t <hash-del-blob>` con error.",
+    "Publicar exige `push --force` de **todas** las ramas y etiquetas; el servidor también necesita una recolección de basura, y los compañeros deben volver a clonar (o rebasear su trabajo sobre la historia nueva), nunca fusionar la vieja."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git filter-branch` es la herramienta de reescritura masiva que trae Git desde siempre. Desde Git 2.24 el proyecto desaconseja su uso: es lenta y tiene trampas de sobra (la documentación les dedica una sección entera, «SAFETY»). ¿Por qué aprenderla? Porque viene instalada en todas partes, porque la encontrarás en tutoriales y scripts antiguos, y porque te permite practicar aquí, con Git real, **el proceso completo** de una purga: reescribir, limpiar, verificar y publicar. Con `filter-repo` los pasos son los mismos, solo que varios los hace él solo."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía del comando"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty --tag-name-filter cat -- --branches --tags"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`--index-filter '…'`: por cada commit, Git carga su árbol en un índice temporal, ejecuta el comando y crea el commit nuevo con el índice resultante. No hace checkout de archivos, por eso es mucho más rápido que `--tree-filter` (que sí extrae cada commit en disco).",
+      "`git rm --cached --ignore-unmatch .env`: quita `.env` del índice; `--ignore-unmatch` evita que falle en los commits donde el archivo no existe (sin él, el filtro se cae en el primer commit sin `.env`).",
+      "`--prune-empty`: si un commit queda vacío (por ejemplo, uno que **solo** agregaba el `.env`), lo descarta.",
+      "`--tag-name-filter cat`: reescribe también las etiquetas que apunten a commits reescritos, conservando su nombre (`cat` devuelve el mismo nombre). Sin esto, `v1.0` seguiría apuntando a la historia vieja.",
+      "`-- --branches --tags`: después de `--` van los argumentos de `rev-list`: qué refs reescribir. La documentación sugiere `--all`; ojo, en un clon `--all` incluye también las ramas remotas `origin/*`, que no te conviene reescribir a mano."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Al ejecutarlo verás primero este aviso, y Git **esperará 10 segundos** antes de seguir (es a propósito, para que alcances a cancelar con Ctrl+C):"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "WARNING: git-filter-branch has a glut of gotchas generating mangled history\n\t rewrites.  Hit Ctrl-C before proceeding to abort, then use an\n\t alternative filtering tool such as 'git filter-repo'\n\t (https://github.com/newren/git-filter-repo/) instead.  See the\n\t filter-branch manual page for more details; to squelch this warning,\n\t set FILTER_BRANCH_SQUELCH_WARNING=1.\nProceeding with filter-branch..."
+    },
+    {
+     "type": "p",
+     "text": "En tu computador puedes silenciarlo con `FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch …`; la terminal de práctica no admite variables, así que aquí simplemente esperarás esos segundos."
+    },
+    {
+     "type": "h",
+     "text": "Reescribir, limpiar y verificar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\nfecha '2026-08-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Agrega carrito'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/despacho\nfecha '2026-08-05 10:00'\ncommit_archivo despacho.js 'const despacho = 2990;' 'Cálculo de despacho'\ngit switch -q main\nfecha '2026-08-06 10:00'\ngit rm -q --cached .env\nescribir .gitignore '.env'\ngit add .gitignore\ngit commit -q -m 'Deja de versionar .env'\nyo",
+     "cwd": "tienda",
+     "code": "git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty --tag-name-filter cat -- --branches --tags\ngit for-each-ref\ngit log --all --oneline -- .env\ngit update-ref -d refs/original/refs/heads/main\ngit update-ref -d refs/original/refs/heads/feature/despacho\ngit update-ref -d refs/original/refs/tags/v1.0\ngit log --all --oneline -- .env\ngit cat-file -t 00a04b789b914d5b26f8552b22c53e7bb35e6c21\ngit reflog expire --expire=now --all\ngit gc --prune=now\ngit cat-file -t 00a04b789b914d5b26f8552b22c53e7bb35e6c21\ngit log --oneline --graph --all\nls -a",
+     "caption": "Tarda unos 10 segundos por la espera del aviso. Sigue la salida paso a paso con la explicación de abajo."
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "`filter-branch` informa «Ref 'refs/heads/main' was rewritten» por cada rama y `v1.0 -> v1.0 (… -> …)` por la etiqueta. `--prune-empty` no eliminó nada aquí porque «Integra pasarela de pagos» también agregaba `pagos.js`.",
+      "`git for-each-ref` revela los **respaldos**: `refs/original/refs/heads/main`, `…/feature/despacho` y `…/tags/v1.0` apuntan a la historia vieja. Por eso `git log --all -- .env` todavía encuentra el archivo.",
+      "Con `git update-ref -d` borras cada respaldo (fuera de la plataforma puedes hacerlo de una vez con `git for-each-ref --format='%(refname)' refs/original/ | xargs -n 1 git update-ref -d`, tal como sugiere el manual). Ahora `git log --all -- .env` ya no muestra nada…",
+      "…pero `git cat-file -t` responde `blob`: el objeto sigue en `.git/objects`, retenido por el **reflog** (que recuerda los commits viejos de `main` y `HEAD`).",
+      "`git reflog expire --expire=now --all` vacía los reflogs y `git gc --prune=now` elimina de inmediato todo lo inalcanzable (sin `=now` respetaría el plazo de gracia de 2 semanas).",
+      "El último `git cat-file -t` falla con «could not get object info»: el secreto ya no existe en este repositorio. El `.env` de tu disco sigue ahí, porque estaba ignorado y sin seguimiento."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué mantiene vivo un objeto después de reescribir",
+     "mermaid": "flowchart LR\n  O[\"blob del .env\"]\n  RO[\"refs/original/*\"] --> O\n  RL[\"reflog de HEAD y de cada rama\"] --> O\n  RR[\"ramas remotas origin/*\"] --> O\n  ST[\"stash y otras refs\"] --> O\n  GC[\"git gc --prune=now\"] -. \"solo borra lo que nadie alcanza\" .-> O",
+     "caption": "`git gc` nunca borra un objeto alcanzable desde una ref o un reflog. Hay que soltar todas las cadenas antes."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Tres trampas de `filter-branch` que te vas a encontrar: (1) se niega a correr si tienes cambios sin confirmar («Cannot rewrite branches: You have unstaged changes.»); (2) si ya existe un respaldo en `refs/original/` se detiene con «Cannot create a new backup» (usa `-f` solo si sabes que puedes perder ese respaldo); (3) si el archivo que purgas **sigue versionado** en la rama actual, al terminar lo **borra también de tu disco**. Por eso el orden profesional es: primero `git rm --cached` + `.gitignore` + commit, y después la purga."
+    },
+    {
+     "type": "h",
+     "text": "Publicar la historia reescrita"
+    },
+    {
+     "type": "p",
+     "text": "Si el secreto ya estaba en el servidor, hay que reemplazar allí **todas** las ramas y etiquetas afectadas con `push --force`. Mientras tanto, nadie del equipo debe publicar nada (si alguien hace `git pull && git push` desde un clon viejo, vuelve a subir la historia contaminada). En esta demostración el `.env` llegó al servidor y tú trabajas en un clon:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare servidor/tienda.git\nnuevo_repo equipo\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\nfecha '2026-08-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Agrega carrito'\nfecha '2026-08-06 10:00'\ngit rm -q --cached .env\nescribir .gitignore '.env'\ngit add .gitignore\ngit commit -q -m 'Deja de versionar .env'\ngit remote add origin ~/servidor/tienda.git\ngit push -q origin main\ncd ~\nrm -rf equipo\nyo\ngit clone -q servidor/tienda.git tienda",
+     "cwd": "tienda",
+     "code": "git -C ~/servidor/tienda.git log --all --oneline -- .env\ngit filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty --tag-name-filter cat -- --branches --tags\ngit update-ref -d refs/original/refs/heads/main\ngit log --all --oneline -- .env\ngit push --force --all origin\ngit push --force --tags origin\ngit log --all --oneline -- .env\ngit reflog expire --expire=now --all\ngit gc --prune=now\ngit -C ~/servidor/tienda.git log --all --oneline -- .env\ngit -C ~/servidor/tienda.git cat-file -t 00a04b789b914d5b26f8552b22c53e7bb35e6c21\ngit -C ~/servidor/tienda.git gc --prune=now\ngit -C ~/servidor/tienda.git cat-file -t 00a04b789b914d5b26f8552b22c53e7bb35e6c21",
+     "caption": "El `gc` del servidor lo haces tú porque aquí el «servidor» es una carpeta; en GitHub o GitLab ese paso lo hace la plataforma."
+    },
+    {
+     "type": "p",
+     "text": "Observa el segundo `git log --all -- .env`: aunque borraste `refs/original`, **todavía** encuentra el archivo, porque `origin/main` (la rama remota de tu clon) sigue apuntando a la historia vieja. Después del `push --force`, Git actualiza `origin/main` y el log queda vacío; recién entonces el `gc` local puede eliminar el objeto. En el servidor pasa lo mismo: la rama ya apunta a la historia limpia, pero el objeto sigue en su base de datos hasta que alguien ejecute `gc` allí."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git push --force --all origin` fuerza todas las ramas locales y `git push --force --tags origin`, todas las etiquetas (son dos comandos: `--all` y `--tags` no se pueden combinar). Con `filter-repo` se usa `git push --force --mirror origin`, que publica todas las refs de una vez.",
+      "En GitHub, las referencias de los pull requests (`refs/pull/*`) no se pueden forzar y las vistas en caché siguen mostrando los commits viejos: hay que abrir un caso con **GitHub Support** indicando el repositorio y los «First Changed Commits». Si hay forks, sus dueños deben limpiarlos o eliminarlos.",
+      "Los **compañeros**: lo más seguro es borrar su clon y volver a clonar. Si tienen trabajo sin publicar, deben borrar sus etiquetas y hacer `git fetch --prune --tags`, **rebasear** (nunca fusionar) sus ramas sobre la historia nueva y luego ejecutar `git reflog expire --expire=now --all` y `git gc --prune=now`. No deben repetir tu `filter-repo`: generaría hashes distintos de los tuyos.",
+      "Las firmas GPG/SSH de los commits reescritos se pierden (el contenido firmado cambió) y cualquier herramienta que guarde hashes (tickets, CI, changelogs) quedará apuntando a commits que ya no existen."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Si el secreto nunca salió de tu computador"
+    },
+    {
+     "type": "p",
+     "text": "Cuando los commits con el secreto son pocos y solo existen en tu clon (todavía no hiciste push), no necesitas herramientas masivas: basta con lo que viste en s04 y s09. Si es el último commit, corrige el archivo y usa `git commit --amend`. Si está unos commits más atrás, usa un rebase interactivo con `edit` en ese commit:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git rebase -i HEAD~3            # en el editor, cambia pick por edit en el commit del secreto\ncode config.js                  # quita el secreto (por ejemplo, léelo de una variable de entorno)\ngit add config.js\ngit commit --amend --no-edit    # reescribe ese commit\ngit rebase --continue           # reaplica los commits siguientes\ngit reflog expire --expire=now --all && git gc --prune=now   # el commit viejo sigue en el reflog",
+     "caption": "Desde Git 2.50, en la lista de tareas del rebase interactivo el título de cada commit aparece precedido por `#` (por ejemplo `pick a1b2c3d # Configura cliente`); se edita igual."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Orden correcto de una purga local completa: reescribir (`filter-repo`/`filter-branch`) → quitar respaldos `refs/original` (solo `filter-branch`) → actualizar o borrar lo que apunte a lo viejo (ramas remotas, stash, etiquetas) → `git reflog expire --expire=now --all` → `git gc --prune=now` → verificar con `git log --all -- RUTA` y `git cat-file -t <hash>`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "refs/original",
+       "en": "refs/original",
+       "def": "Espacio de nombres donde `filter-branch` guarda un respaldo de cada ref que reescribió. Mantiene viva la historia vieja hasta que lo borras."
+      },
+      {
+       "term": "--index-filter",
+       "en": "index filter",
+       "def": "Filtro de `filter-branch` que modifica el índice de cada commit sin extraer archivos al disco. Rápido; ideal con `git rm --cached --ignore-unmatch`."
+      },
+      {
+       "term": "Plazo de gracia de gc",
+       "en": "gc.pruneExpire",
+       "def": "Por defecto `git gc` solo borra objetos inalcanzables con más de 2 semanas. `--prune=now` los borra de inmediato."
+      },
+      {
+       "term": "Recontaminar",
+       "en": "recontamination",
+       "def": "Volver a subir la historia vieja al servidor desde un clon sin limpiar, por ejemplo con `git pull` seguido de `git push`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l3",
+   "title": "git replace y git notes: cambiar lo que se ve sin reescribir",
+   "minutes": 25,
+   "goals": [
+    "Unir una historia antigua a la actual con git replace --graft sin cambiar ningún hash",
+    "Listar, desactivar y eliminar reemplazos con git replace -l, --no-replace-objects y git replace -d",
+    "Anotar commits publicados con git notes (add, append, show, list, --ref) y compartir las notas con el servidor",
+    "Configurar notes.rewriteRef para que las notas sobrevivan a un amend o un rebase"
+   ],
+   "takeaways": [
+    "`git replace` guarda en `refs/replace/<hash-original>` un objeto sustituto: casi todos los comandos lo usan en lugar del original, pero la historia real no cambia.",
+    "`--graft` crea un commit reemplazo con otros padres: es la forma estándar de «pegar» la historia vieja de un proyecto migrado.",
+    "Las notas son blobs en `refs/notes/commits` indexados por el hash del commit: agregan información sin cambiar el commit.",
+    "Ni los reemplazos ni las notas viajan con `push`/`fetch` normales: hay que publicarlos y traerlos con refspecs explícitos.",
+    "Una nota se queda en el commit viejo si reescribes (amend, rebase), a menos que configures `notes.rewriteRef`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora, cambiar cualquier cosa de un commit (mensaje, contenido, padres) significaba reescribirlo: hash nuevo, descendientes nuevos, `push --force`. Git tiene dos mecanismos para **agregar o sustituir información sin tocar los commits**: `git replace`, que hace que Git «vea» un objeto distinto en lugar de otro, y `git notes`, que cuelga comentarios de un commit desde fuera."
+    },
+    {
+     "type": "h",
+     "text": "git replace: un objeto que se hace pasar por otro"
+    },
+    {
+     "type": "p",
+     "text": "Un reemplazo es solo una ref: `refs/replace/<hash del objeto original>` apunta al objeto sustituto. Cuando cualquier comando va a leer el original, Git consulta esas refs y entrega el sustituto en su lugar. El original sigue existiendo, su hash no cambia y ningún descendiente se reescribe. El caso de uso estrella: un proyecto que se migró «sin historia» (se importó el código tal cual) y cuya historia vieja está en otro repositorio."
+    },
+    {
+     "type": "diagram",
+     "title": "Injertar la historia antigua con --graft",
+     "mermaid": "flowchart RL\n  B[\"cd61b48 Nueva pantalla de reservas\"] --> I[\"e08fd6f Importa el código (sin padre)\"]\n  I -. \"refs/replace/e08fd6f → ae685a8\" .-> I2[\"ae685a8 Importa el código (padre: 2507ce3)\"]\n  I2 --> V3[\"2507ce3 Corrige cálculo de multas\"]\n  V3 --> V2[\"30492e1 Agrega multas por atraso\"]\n  V2 --> V1[\"a48adfc Versión inicial\"]",
+     "caption": "El commit de importación no cambia. Git lee en su lugar una copia idéntica que tiene como padre la última versión del sistema antiguo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo antiguo\nautor 'Rosa Díaz' 'rosa@ejemplo.cl'\nfecha '2019-03-01 10:00'\ncommit_archivo prestamos.php '<?php // préstamos v1' 'Versión inicial del sistema de préstamos'\nfecha '2020-06-01 10:00'\ncommit_archivo prestamos.php '<?php // préstamos v2 con multas' 'Agrega multas por atraso'\nfecha '2021-01-10 10:00'\ncommit_archivo prestamos.php '<?php // préstamos v3' 'Corrige cálculo de multas'\ncd ~\nnuevo_repo biblioteca\nyo\nfecha '2026-01-05 10:00'\ncommit_archivo prestamos.php '<?php // préstamos v3' 'Importa el código del sistema antiguo'\nfecha '2026-02-01 10:00'\ncommit_archivo reservas.php '<?php // reservas' 'Nueva pantalla de reservas'\ngit remote add antiguo ~/antiguo\ngit fetch -q antiguo",
+     "cwd": "biblioteca",
+     "code": "git log --oneline\ngit log --oneline antiguo/main\ngit replace --graft main~1 antiguo/main\ngit log --oneline\ngit blame prestamos.php\ngit replace -l --format=long\ngit --no-replace-objects log --oneline\ngit log --oneline --graph --all\ngit replace -d main~1\ngit log --oneline",
+     "caption": "`git replace --graft <commit> [<padre>…]` crea el commit sustituto con los padres que indiques (sin padres, lo convierte en raíz)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Tras el injerto, `git log` muestra 5 commits (y marca el commit injertado con la decoración `replaced`) y `git blame` atribuye la línea a Rosa Díaz en 2021: la historia vieja ya es parte de la «vista» del proyecto.",
+      "`git replace -l --format=long` lista los reemplazos: `e08fd6f… (commit) -> ae685a8… (commit)`. `git --no-replace-objects` (o la variable `GIT_NO_REPLACE_OBJECTS=1`) desactiva los reemplazos para un comando y muestra la verdad: 2 commits.",
+      "En `git log --all` (y en el gráfico de la plataforma, que usa `--all`) aparece además el commit sustituto `ae685a8` colgando de la historia vieja: `refs/replace/*` es una ref más.",
+      "`git replace -d` elimina el reemplazo. Otras formas de crear uno: `git replace <original> <sustituto>` con un objeto que ya tengas (del mismo tipo, salvo con `-f`) o `git replace --edit <objeto>`, que abre el objeto en el editor para cambiarlo (por ejemplo, corregir un autor o un mensaje)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los reemplazos **no se publican ni se descargan** por defecto: tus compañeros no los verán hasta que hagas `git push origin 'refs/replace/*'` y ellos `git fetch origin 'refs/replace/*:refs/replace/*'`. Además, los comandos que recorren alcanzabilidad (`gc`/`prune`, transferencia de packs, `fsck`) ignoran los reemplazos, y su existencia desactiva el uso del commit-graph, lo que puede volver más lentos algunos comandos en repositorios enormes."
+    },
+    {
+     "type": "p",
+     "text": "¿Y si el equipo quiere que el injerto sea permanente para todos? Entonces sí hay que reescribir: `git filter-repo` (o `git filter-branch` sin filtros) convierte los reemplazos en historia real, con todas las consecuencias de una reescritura. Muchos proyectos prefieren dejar el reemplazo como algo opcional: quien quiera la historia completa trae `refs/replace/*`; el resto clona un repositorio liviano."
+    },
+    {
+     "type": "h",
+     "text": "git notes: comentarios pegados a un commit"
+    },
+    {
+     "type": "p",
+     "text": "Imagina que QA aprueba un commit que ya está publicado. No puedes cambiar su mensaje sin reescribirlo, pero sí puedes adjuntarle una **nota**. Por dentro, `refs/notes/commits` es una historia propia de commits cuyo árbol tiene un blob por cada objeto anotado, nombrado con el hash de ese objeto (cuando hay muchas notas, Git las reparte en subcarpetas). `git log` muestra las notas bajo la línea «Notes:»."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo app\nfecha '2026-09-01 10:00'\ncommit_archivo app.py 'print(\"Hola\")' 'Primer commit'\nfecha '2026-09-02 10:00'\ncommit_archivo pagos.py 'def pagar(): pass' 'Agrega módulo de pagos'\nfecha '2026-09-03 10:00'\ncommit_archivo README.md '# App' 'Añade README'",
+     "cwd": "app",
+     "code": "git notes add -m 'QA: aprobado por Diego' HEAD~1\ngit log -2\ngit notes append -m 'Desplegado en producción el 2026-09-10' HEAD~1\ngit notes show HEAD~1\ngit notes add -m 'Otra nota' HEAD~1\ngit notes list\ngit log --oneline --all\ngit cat-file -p refs/notes/commits^{tree}\ngit notes --ref=revision add -m 'Revisión de seguridad: OK' HEAD\ngit log -1\ngit log -1 --notes=revision",
+     "caption": "Los hashes de los commits no cambian en ningún momento: las notas viven aparte."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git notes add` falla si el commit ya tiene nota: «Cannot add notes. Found existing notes for object … Use '-f' to overwrite existing notes». Para sumar texto usa `git notes append`; para cambiarla, `git notes edit` (abre el editor) o `git notes add -f`.",
+      "`git notes list` muestra pares «blob-de-la-nota commit-anotado», y `git cat-file -p refs/notes/commits^{tree}` confirma que es un árbol normal cuyas entradas se llaman como el commit anotado.",
+      "`git log --all` muestra commits «Notes added by 'git notes add'»: son la historia de `refs/notes/commits`. Si los ves en el gráfico de la plataforma, ya sabes de dónde salen.",
+      "`--ref=revision` usa otro espacio de notas (`refs/notes/revision`). `git log` solo muestra por defecto `refs/notes/commits`; los demás, con `--notes=revision` o configurando `notes.displayRef`.",
+      "Otros subcomandos: `git notes remove` (borra), `git notes copy` (copia de un commit a otro), `git notes prune` (quita notas de objetos que ya no existen) y `git notes merge` (fusiona notas de dos refs, con estrategias `manual`, `ours`, `theirs`, `union` y `cat_sort_uniq`)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Cuidado con las etiquetas anotadas: `git notes add -m '…' v1.1` anota el **objeto etiqueta**, no el commit, y `git log` no mostrará la nota. Para anotar el commit de una etiqueta usa `v1.1^{commit}` (o el nombre de la rama)."
+    },
+    {
+     "type": "h",
+     "text": "Compartir notas y conservarlas al reescribir"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare servidor/app.git\nnuevo_repo app\nfecha '2026-09-01 10:00'\ncommit_archivo app.py 'print(\"Hola\")' 'Primer commit'\ngit remote add origin ~/servidor/app.git\ngit push -q -u origin main\nfecha '2026-09-02 10:00'\ncommit_archivo login.py 'def login(): pass' 'Agrega login'\ncd ~\ngit clone -q servidor/app.git companera",
+     "cwd": "app",
+     "code": "git notes add -m 'QA: aprobado por Diego' HEAD\ngit commit --amend -m 'Agrega inicio de sesión'\ngit log -1\ngit notes list\ngit config notes.rewriteRef refs/notes/commits\ngit notes add -m 'QA: aprobado por Diego' HEAD\ngit commit --amend -m 'Agrega inicio de sesión con clave'\ngit log -1\ngit push\ngit push origin refs/notes/commits\ngit ls-remote origin\ncd ~/companera\ngit pull\ngit log -1\ngit fetch origin 'refs/notes/*:refs/notes/*'\ngit log -1",
+     "caption": "El commit «Agrega login» todavía no estaba publicado, así que corregirlo con `--amend` es legítimo."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Primer amend: la nota se queda pegada al commit **viejo** (lo ves en `git notes list`) y el nuevo aparece sin nota. `notes.rewriteRef` no tiene valor por defecto: sin configurarlo, `amend` y `rebase` no copian notas.",
+      "Con `git config notes.rewriteRef refs/notes/commits`, el segundo amend copia la nota al commit nuevo (`notes.rewrite.amend` y `notes.rewrite.rebase` valen `true` por defecto; `notes.rewriteMode` decide qué hacer si el destino ya tenía nota: por defecto, `concatenate`).",
+      "`git push` publica main, pero `git ls-remote` muestra que las notas solo llegan con `git push origin refs/notes/commits`.",
+      "La compañera tampoco recibe notas con `git pull`: las trae con el refspec `'refs/notes/*:refs/notes/*'` (entre comillas, para que `*` llegue tal cual a Git). Para automatizarlo: `git config --add remote.origin.fetch '+refs/notes/*:refs/notes/*'`."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Usos profesionales de las notas: resultados de CI o de QA por commit, enlaces a tickets, datos de revisión de código (el plugin *reviewnotes* de Gerrit las guarda en `refs/notes/review`) o marcas de despliegue. Como no alteran los commits, puedes agregarlas a historia publicada sin riesgo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Diferencia clave: `git replace` **sustituye** un objeto (Git ve otro contenido o padres distintos) y `git notes` **agrega** información a un objeto. Ninguno de los dos cambia hashes ni viaja con un push o fetch normal."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Reemplazo",
+       "en": "replace ref",
+       "def": "Ref `refs/replace/<hash>` que hace que Git use otro objeto en lugar del indicado, sin reescribir la historia."
+      },
+      {
+       "term": "Injerto",
+       "en": "graft",
+       "def": "Reemplazo de un commit por una copia con otros padres (`git replace --graft`). Sirve para unir historias."
+      },
+      {
+       "term": "Nota",
+       "en": "note",
+       "def": "Texto asociado a un objeto (normalmente un commit) guardado en `refs/notes/*`. Se muestra en `git log` sin cambiar el commit."
+      },
+      {
+       "term": "notes.rewriteRef",
+       "en": "notes.rewriteRef",
+       "def": "Configuración que indica qué notas copiar a los commits reescritos por `amend` o `rebase`. Sin ella, no se copian."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l4",
+   "title": "rerere: que Git recuerde cómo resolviste un conflicto",
+   "minutes": 20,
+   "goals": [
+    "Activar rerere y reconocer en la salida de Git cuándo registra y cuándo reutiliza una resolución",
+    "Revisar una resolución automática con git rerere status, diff y remaining antes de confirmar",
+    "Corregir una resolución mal registrada con git rerere forget y git checkout -m"
+   ],
+   "takeaways": [
+    "rerere (*reuse recorded resolution*) guarda cada conflicto (preimagen) y tu resolución (postimagen) en `.git/rr-cache`; si el mismo conflicto reaparece, aplica la resolución solo.",
+    "Se activa con `git config rerere.enabled true` (mejor `--global`). Debe estar activo **antes** del conflicto para poder registrarlo.",
+    "rerere resuelve el archivo pero no lo marca como resuelto: revisas y haces `git add` tú (salvo con `rerere.autoUpdate`).",
+    "Funciona igual en merge, rebase y cherry-pick: ideal para ramas de larga vida, merges de prueba y rebases repetidos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Tienes una rama de larga vida que integras «de prueba» con main cada semana para ver si todo sigue funcionando, y cada vez aparece el mismo conflicto. O rebaseas una rama, la descartas y la vuelves a rebasear. Resolver lo mismo una y otra vez es tedioso y propenso a errores. **rerere** (*reuse recorded resolution*) hace que Git se acuerde: la primera vez registra cómo lo resolviste y las siguientes lo aplica solo."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo trabaja rerere",
+     "mermaid": "sequenceDiagram\n  participant T as Tú\n  participant G as Git\n  participant C as .git/rr-cache\n  T->>G: git merge (conflicto)\n  G->>C: guarda la preimagen (el conflicto normalizado)\n  G-->>T: Recorded preimage for 'menu.txt'\n  T->>G: editas, git add y git commit\n  G->>C: guarda la postimagen (tu resolución)\n  G-->>T: Recorded resolution for 'menu.txt'.\n  Note over T,C: Días después, el mismo conflicto\n  T->>G: git merge o git rebase\n  G->>C: busca una preimagen igual\n  C-->>G: postimagen registrada\n  G-->>T: Resolved 'menu.txt' using previous resolution."
+    },
+    {
+     "type": "p",
+     "text": "La clave está en la **preimagen**: Git normaliza el conflicto (el trozo entre marcadores, sin los nombres de las ramas y ordenando los dos lados) y calcula un identificador. Por eso reconoce el mismo conflicto aunque venga de un merge o de un rebase (donde «ours» y «theirs» se invierten). Cada conflicto queda en una carpeta `.git/rr-cache/<id>/` con los archivos `preimage` y `postimage`."
+    },
+    {
+     "type": "h",
+     "text": "Registrar y reutilizar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo restaurante\nfecha '2026-09-01 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Pastel de choclo\nPostre: Mote con huesillo'\ngit add menu.txt\ngit commit -q -m 'Menú de septiembre'\ngit switch -q -c feature/menu-dieciochero\nfecha '2026-09-02 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Asado con pebre\nPostre: Mote con huesillo'\ngit commit -q -am 'Menú para Fiestas Patrias'\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Cazuela de vacuno\nPostre: Mote con huesillo'\ngit commit -q -am 'Cambia el plato de fondo'",
+     "cwd": "restaurante",
+     "code": "git config rerere.enabled true\ngit merge feature/menu-dieciochero\ngit rerere status\nprintf 'Entrada: Empanada de pino\\nFondo: Asado con pebre y cazuela\\nPostre: Mote con huesillo\\n' > menu.txt\ngit rerere diff\ngit add menu.txt\ngit commit --no-edit\nls .git/rr-cache\ngit reset --hard HEAD~1\ngit merge feature/menu-dieciochero\ncat menu.txt\ngit status --short\ngit add menu.txt\ngit commit --no-edit\ngit log --oneline --graph",
+     "caption": "En tu día a día resolverías con `code menu.txt`; aquí `printf` deja el archivo resuelto para que la demostración corra sola."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Al fusionar, además del conflicto aparece «Recorded preimage for 'menu.txt'»: rerere tomó nota.",
+      "`git rerere status` lista los archivos cuya resolución se va a registrar y `git rerere diff` muestra la diferencia entre el conflicto y tu resolución actual.",
+      "Al confirmar: «Recorded resolution for 'menu.txt'.» y aparece una carpeta en `.git/rr-cache`.",
+      "Después de deshacer el merge y repetirlo: «Resolved 'menu.txt' using previous resolution.». El archivo ya está resuelto, pero `git status --short` sigue mostrando `UU`: **tú** decides con `git add` después de revisar (compílalo, corre los tests…)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "En un rebase, y cómo corregir una resolución"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo restaurante\nfecha '2026-09-01 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Pastel de choclo\nPostre: Mote con huesillo'\ngit add menu.txt\ngit commit -q -m 'Menú de septiembre'\ngit switch -q -c feature/menu-dieciochero\nfecha '2026-09-02 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Asado con pebre\nPostre: Mote con huesillo'\ngit commit -q -am 'Menú para Fiestas Patrias'\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Cazuela de vacuno\nPostre: Mote con huesillo'\ngit commit -q -am 'Cambia el plato de fondo'\ngit config rerere.enabled true\ngit merge -q feature/menu-dieciochero >/dev/null 2>&1 || true\nescribir menu.txt 'Entrada: Empanada de pino\nFondo: Asado con pebre y cazuela\nPostre: Mote con huesillo'\ngit add menu.txt\ngit commit -q --no-edit\ngit reset -q --hard HEAD~1",
+     "cwd": "restaurante",
+     "code": "ls .git/rr-cache\ngit switch feature/menu-dieciochero\ngit rebase main\ncat menu.txt\ngit rerere forget menu.txt\ngit checkout -m menu.txt\ncat menu.txt\nprintf 'Entrada: Empanada de pino\\nFondo: Asado con pebre\\nPostre: Mote con huesillo y sopaipillas\\n' > menu.txt\ngit add menu.txt\ngit rebase --continue\ngit log --oneline --graph --all",
+     "caption": "El escenario ya trae registrada la resolución de un merge de prueba anterior (rerere activado)."
+    },
+    {
+     "type": "p",
+     "text": "El rebase choca con el mismo conflicto que el merge de prueba y rerere lo resuelve igual que aquella vez («Resolved 'menu.txt' using previous resolution.»). Pero ahora el equipo decidió otro menú: `git rerere forget menu.txt` olvida la resolución registrada («Forgot resolution for 'menu.txt'») y `git checkout -m menu.txt` vuelve a crear los marcadores de conflicto para resolverlo de nuevo. Al continuar, Git registra la resolución nueva («Recorded resolution for 'menu.txt'.»)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git config --global rerere.enabled true`",
+       "Activa rerere en todos tus repositorios. Si existe `.git/rr-cache`, rerere también se considera activo en ese repositorio."
+      ],
+      [
+       "`git config rerere.autoUpdate true`",
+       "Además de resolver, hace `git add` del archivo («Staged 'menu.txt' using previous resolution.»). Cómodo, pero te saltas la revisión."
+      ],
+      [
+       "`git rerere status`",
+       "Archivos en conflicto cuya resolución se registrará."
+      ],
+      [
+       "`git rerere diff`",
+       "Diferencia entre el conflicto registrado y el estado actual del archivo."
+      ],
+      [
+       "`git rerere remaining`",
+       "Archivos en conflicto que rerere **no** pudo resolver solo."
+      ],
+      [
+       "`git rerere forget <ruta>`",
+       "Olvida la resolución registrada para ese conflicto (úsalo durante el conflicto)."
+      ],
+      [
+       "`git rerere clear`",
+       "Descarta los datos del conflicto en curso (lo ejecutan solos `git rebase --abort` y `git am --abort`)."
+      ],
+      [
+       "`git rerere gc`",
+       "Borra registros antiguos: sin resolver tras 15 días (`gc.rerereUnresolved`) y resueltos tras 60 (`gc.rerereResolved`). `git gc` lo ejecuta automáticamente."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "rerere aplica resoluciones **textuales**: si el código de alrededor cambió de sentido, puede reaplicar una resolución que ya no es correcta aunque el conflicto se vea igual. Por eso Git no hace `git add` por ti (salvo con `autoUpdate`): compila y prueba antes de confirmar. Y si registraste una mala resolución, usa `git rerere forget` para que no se propague."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Flujo típico con rerere: haces merges de prueba de tu rama de larga vida sobre main (y los deshaces con `git reset --hard HEAD~1`) para ir resolviendo conflictos temprano; cuando llegue el merge o rebase definitivo, rerere ya se sabe todas las resoluciones. Pro Git lo describe así en «Git Tools - Rerere»."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "rerere no guarda nada si no estaba activo **cuando ocurrió** el conflicto. Si te preguntan por qué no se reutilizó una resolución, revisa: ¿estaba `rerere.enabled`? ¿el conflicto es exactamente el mismo trozo? ¿se hizo `git rerere forget` o `gc` borró el registro?"
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "rerere",
+       "en": "reuse recorded resolution",
+       "def": "Mecanismo de Git que registra resoluciones de conflictos y las reaplica cuando el mismo conflicto vuelve a aparecer."
+      },
+      {
+       "term": "Preimagen",
+       "en": "preimage",
+       "def": "El conflicto normalizado (con marcadores) tal como lo produjo Git; sirve para reconocerlo más adelante."
+      },
+      {
+       "term": "Postimagen",
+       "en": "postimage",
+       "def": "El contenido del archivo después de tu resolución; es lo que rerere reaplica."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l5",
+   "title": "Estrategias de fusión: ort, octopus, ours y las opciones -X",
+   "minutes": 20,
+   "goals": [
+    "Elegir la estrategia de fusión adecuada (ort, octopus, ours, subtree, resolve) según el caso",
+    "Fusionar varias ramas independientes en un solo commit con la estrategia octopus",
+    "Distinguir el resultado de git merge -s ours del de git merge -X ours comparando los árboles resultantes"
+   ],
+   "takeaways": [
+    "`ort` es la estrategia por defecto para fusionar una rama desde Git 2.34; desde Git 2.50, `recursive` es solo un sinónimo de `ort`.",
+    "`octopus` se usa sola al fusionar más de una rama a la vez y crea un único commit con varios padres; si necesita resolución manual, se niega.",
+    "`-s ours` descarta **todo** lo de la otra rama y solo registra la fusión; `-X ours` fusiona normalmente y solo en los trozos en conflicto prefiere tu versión.",
+    "No existe `-s theirs`; sí existe la opción `-X theirs`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s06 usaste `git merge` sin preguntarte **cómo** combina Git las ramas. Esa lógica es la *estrategia de fusión*, y se elige con `-s <estrategia>`. Cada estrategia puede recibir opciones con `-X <opción>`. Confundir ambas cosas (`-s ours` con `-X ours`) es uno de los errores clásicos de nivel experto."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Estrategia",
+      "Cuántas ramas",
+      "Para qué"
+     ],
+     "rows": [
+      [
+       "`ort`",
+       "Dos cabezas (la tuya y otra)",
+       "La de siempre: fusión de 3 vías, detecta renombres; si hay varias bases comunes, primero las fusiona entre sí. Por defecto desde Git 2.34."
+      ],
+      [
+       "`recursive`",
+       "Dos",
+       "La implementación antigua (por defecto hasta Git 2.33). Desde Git 2.50 es un sinónimo de `ort`."
+      ],
+      [
+       "`resolve`",
+       "Dos",
+       "3 vías clásica, sin detección de renombres. Casi no se usa."
+      ],
+      [
+       "`octopus`",
+       "Más de dos",
+       "Por defecto al fusionar varias ramas a la vez. Se niega si hace falta resolver conflictos a mano."
+      ],
+      [
+       "`ours`",
+       "Cualquier número",
+       "El resultado es **exactamente** tu árbol: ignora todo lo de las otras ramas y solo registra que se fusionaron."
+      ],
+      [
+       "`subtree`",
+       "Dos",
+       "Variante de `ort` que ajusta las rutas cuando una rama corresponde a una subcarpeta de la otra."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "octopus: varias ramas, un solo commit"
+    },
+    {
+     "type": "p",
+     "text": "Cuando varias ramas temáticas **independientes** están listas (tocan archivos distintos), puedes integrarlas de una sola vez: `git merge rama1 rama2 rama3`. El resultado es un commit con cuatro padres (tu rama más las tres). Queda una historia más compacta y se ve de un vistazo que esas ramas entraron juntas; la documentación dice que octopus está pensado justamente para «juntar las puntas de varias ramas temáticas»."
+    },
+    {
+     "type": "diagram",
+     "title": "Un merge octopus tiene más de dos padres",
+     "mermaid": "flowchart BT\n  P[\"Primer commit\"]\n  M1[\"Corrige el título (main)\"] --> P\n  I[\"Documenta la instalación\"] --> P\n  F[\"Agrega preguntas frecuentes\"] --> P\n  A[\"Documenta la API\"] --> P\n  O[\"Integra la documentación (4 padres)\"] --> M1\n  O --> I\n  O --> F\n  O --> A"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo manual\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Manual del usuario' 'Primer commit'\ngit switch -q -c docs/instalacion\nfecha '2026-09-02 10:00'\ncommit_archivo instalacion.md '# Instalación' 'Documenta la instalación'\ngit switch -q -c docs/faq main\nfecha '2026-09-02 11:00'\ncommit_archivo faq.md '# Preguntas frecuentes' 'Agrega preguntas frecuentes'\ngit switch -q -c docs/api main\nfecha '2026-09-02 12:00'\ncommit_archivo api.md '# Referencia de la API' 'Documenta la API'\ngit switch -q -c docs/portada main\nfecha '2026-09-02 13:00'\ncommit_archivo README.md '# Manual del usuario (2026)' 'Cambia la portada'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo README.md '# Manual de usuario' 'Corrige el título'",
+     "cwd": "manual",
+     "code": "git log --oneline --graph --all\ngit merge docs/portada docs/faq docs/api\ngit status\ngit merge docs/instalacion docs/faq docs/api -m 'Integra la documentación'\ngit log --oneline --graph\ngit cat-file -p HEAD",
+     "caption": "Primero un octopus que choca con un conflicto; después uno limpio."
+    },
+    {
+     "type": "list",
+     "items": [
+      "El primer intento incluye `docs/portada`, que cambia la misma línea de `README.md` que main. octopus intenta, falla y se retira: «Should not be doing an octopus.» y «Merge with strategy octopus failed.». Tu árbol queda limpio; fusiona esa rama aparte (con `ort`) y resuelve el conflicto como siempre.",
+      "El segundo intento imprime «Trying simple merge with …» por cada rama y «Merge made by the 'octopus' strategy.». `git cat-file -p HEAD` muestra **cuatro** líneas `parent`.",
+      "Matiz: si solo la **última** rama de la lista produce conflicto, Git sí deja el conflicto en tu árbol para que lo resuelvas. Aun así, lo sano es reservar octopus para ramas que no chocan.",
+      "Si tu rama no avanzó desde que se crearon las otras, octopus primero hace fast-forward a la primera («Fast-forwarding to: …») y el resultado tiene un padre menos; usa `--no-ff` si quieres conservar tu rama como primer padre."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "-s ours frente a -X ours"
+    },
+    {
+     "type": "diagram",
+     "title": "-s ours: fusión registrada, cambios descartados",
+     "mermaid": "gitGraph\n  commit id: \"Estilos base\"\n  branch experimento/tema-oscuro\n  commit id: \"Fondo oscuro\"\n  commit id: \"Interruptor oscuro\"\n  checkout main\n  commit id: \"Fondo gris claro\"\n  merge experimento/tema-oscuro id: \"Merge (árbol = main)\"",
+     "caption": "Con `-s ours` el commit de fusión tiene dos padres, pero su árbol es idéntico al de main: nada del experimento entra."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sitio\nfecha '2026-09-01 10:00'\nescribir estilos.css 'body { background: white; }\nh1 { color: navy; }'\ngit add estilos.css\ngit commit -q -m 'Estilos base'\ngit switch -q -c experimento/tema-oscuro\nfecha '2026-09-02 10:00'\nescribir estilos.css 'body { background: black; }\nh1 { color: navy; }'\ngit commit -q -am 'Fondo oscuro'\nfecha '2026-09-02 11:00'\ncommit_archivo oscuro.js 'document.body.classList.add(\"oscuro\");' 'Interruptor de tema oscuro'\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir estilos.css 'body { background: #fafafa; }\nh1 { color: navy; }'\ngit commit -q -am 'Fondo gris claro'",
+     "cwd": "sitio",
+     "code": "git switch -c prueba-X\ngit merge -X ours --no-edit experimento/tema-oscuro\nls\ncat estilos.css\ngit switch main\ngit merge -s ours --no-edit experimento/tema-oscuro\nls\ncat estilos.css\ngit diff --stat HEAD^1 HEAD\ngit branch --merged\ngit log --oneline --graph --all"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`-X ours` (opción de `ort`): fusiona de verdad. El conflicto en `estilos.css` se resuelve solo a favor de main (fondo `#fafafa`), pero `oscuro.js`, que no chocaba con nada, **sí entra**.",
+      "`-s ours` (estrategia): «Merge made by the 'ours' strategy.». Ni `oscuro.js` ni el fondo negro: `git diff --stat HEAD^1 HEAD` no muestra ninguna diferencia. Aun así, la rama queda como fusionada (`git branch --merged` la lista y se puede borrar con `-d`).",
+      "¿Para qué sirve `-s ours`? Para dar por cerrada una línea de desarrollo descartada o reemplazada (la documentación dice: *to supersede old development history of side branches*), de modo que nadie la vuelva a fusionar por error y las herramientas la consideren integrada.",
+      "`-X theirs` es lo opuesto a `-X ours`. En cambio, **no existe** una estrategia `-s theirs`: si quieres quedarte con el árbol de la otra rama, hay otras formas (por ejemplo, `-s ours` desde la otra rama y luego fast-forward)."
+     ]
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción `-X` (de ort)",
+      "Efecto"
+     ],
+     "rows": [
+      [
+       "`ours` / `theirs`",
+       "En los trozos en conflicto gana tu lado / el otro lado. Lo que no choca se fusiona normalmente."
+      ],
+      [
+       "`ignore-space-change`, `ignore-all-space`, `ignore-space-at-eol`, `ignore-cr-at-eol`",
+       "Trata como iguales las líneas que solo difieren en espacios (útil cuando alguien reindentó)."
+      ],
+      [
+       "`renormalize`",
+       "Normaliza los fines de línea de las tres versiones antes de fusionar (tras cambiar `.gitattributes`, s13)."
+      ],
+      [
+       "`find-renames[=n]` / `no-renames`",
+       "Ajusta el umbral de similitud para detectar renombres, o los desactiva."
+      ],
+      [
+       "`diff-algorithm=histogram|patience|minimal|myers`",
+       "Algoritmo de diff durante la fusión (ort usa `histogram` por defecto)."
+      ],
+      [
+       "`subtree[=ruta]`",
+       "Indica en qué subcarpeta encaja el árbol de la otra rama."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta trampa: «¿Qué comando fusiona la rama X pero, en caso de conflicto, se queda con la versión de X?». Respuesta: `git merge -X theirs X`. `git merge -s theirs X` no existe, y `git merge -s ours X` ni siquiera mira el contenido de X."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Estrategia de fusión",
+       "en": "merge strategy",
+       "def": "Algoritmo que usa `git merge` para combinar historias (`-s`): ort, octopus, ours, subtree, resolve."
+      },
+      {
+       "term": "Opción de estrategia",
+       "en": "strategy option",
+       "def": "Ajuste que recibe la estrategia con `-X`, como `ours`, `theirs` o `ignore-space-change`."
+      },
+      {
+       "term": "Merge octopus",
+       "en": "octopus merge",
+       "def": "Commit de fusión con más de dos padres, creado al fusionar varias ramas a la vez."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l6",
+   "title": "Mover y exportar repositorios: git bundle y git archive",
+   "minutes": 25,
+   "goals": [
+    "Empaquetar un repositorio completo o solo los commits nuevos en un archivo con git bundle create",
+    "Clonar, verificar y actualizar un repositorio a partir de un bundle, sin red",
+    "Exportar una versión del código a .zip o .tar.gz con git archive, usando --prefix y los atributos export-ignore y export-subst"
+   ],
+   "takeaways": [
+    "Un bundle es un packfile con una cabecera de refs: Git lo trata como un remoto de solo lectura (`clone`, `fetch`, `pull`, `ls-remote`).",
+    "Un bundle incremental (`v1.0..main`) solo trae lo nuevo, pero exige que el destino ya tenga los commits base (sus *prerequisites*); `git bundle verify` lo comprueba.",
+    "`git archive` exporta un árbol (de una etiqueta, commit o rama) **sin** carpeta `.git` ni historia: es lo que se entrega a un cliente o a un servidor de producción.",
+    "`export-ignore` deja fuera archivos del archivo exportado y `export-subst` expande marcadores como `$Format:%h$`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "A veces no hay red entre dos computadores: una faena minera aislada, un laboratorio sin internet, un servidor de producción al que solo se llega con un pendrive. `git bundle` empaqueta objetos y refs en **un solo archivo** que luego se usa como si fuera un remoto. Y cuando lo que necesitas no es el repositorio sino el código de una versión (para un cliente, un despliegue o una auditoría), `git archive` genera un `.zip` o `.tar.gz` limpio."
+    },
+    {
+     "type": "diagram",
+     "title": "Transporte sin red con un bundle",
+     "mermaid": "sequenceDiagram\n  participant A as Computador de desarrollo\n  participant P as Pendrive\n  participant B as Computador de la faena\n  A->>P: git bundle create sensor.bundle --all\n  P->>B: git clone sensor.bundle laboratorio\n  Note over A: nuevos commits en main\n  A->>P: git bundle create cambios.bundle v1.0..main\n  P->>B: git bundle verify cambios.bundle\n  P->>B: git pull cambios.bundle main"
+    },
+    {
+     "type": "h",
+     "text": "Bundle completo y clonado"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sensor\nfecha '2026-09-01 10:00'\ncommit_archivo lector.py 'print(\"temperatura\")' 'Lector de temperatura'\nfecha '2026-09-02 10:00'\ncommit_archivo README.md '# Sensor de faena' 'Añade README'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/humedad\nfecha '2026-09-03 10:00'\ncommit_archivo humedad.py 'print(\"humedad\")' 'Lector de humedad'\ngit switch -q main\nmkdir -p ~/pendrive",
+     "cwd": "sensor",
+     "code": "git log --oneline --all\ngit bundle create ~/pendrive/sensor.bundle --all\ngit bundle verify ~/pendrive/sensor.bundle\ngit bundle list-heads ~/pendrive/sensor.bundle\ncd ~\ngit clone pendrive/sensor.bundle laboratorio\ncd laboratorio\ngit branch -a\ngit remote -v\ngit tag"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git bundle create ARCHIVO <argumentos de rev-list>`: `--all` mete todas las refs (ramas, etiquetas y remotas); también puedes nombrar refs sueltas (`main v1.0`). Ojo: un bundle solo guarda refs con nombre; un hash suelto o `HEAD~3` no crea ninguna ref.",
+      "`git bundle verify` confirma que el archivo está sano y dice «The bundle records a complete history.». Necesita ejecutarse **dentro** de un repositorio (fuera de uno responde «need a repository to verify a bundle»).",
+      "`git clone` acepta la ruta del bundle como si fuera una URL: el clon queda con `origin` apuntando al archivo, las ramas como `origin/*` y las etiquetas incluidas.",
+      "Como respaldo completo de un repositorio, un bundle `--all` es un solo archivo fácil de copiar y verificar."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Bundle incremental"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sensor\nfecha '2026-09-01 10:00'\ncommit_archivo lector.py 'print(\"temperatura\")' 'Lector de temperatura'\nfecha '2026-09-02 10:00'\ncommit_archivo README.md '# Sensor de faena' 'Añade README'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/humedad\nfecha '2026-09-03 10:00'\ncommit_archivo humedad.py 'print(\"humedad\")' 'Lector de humedad'\ngit switch -q main\nmkdir -p ~/pendrive\ngit bundle create -q ~/pendrive/sensor.bundle --all\ncd ~\ngit clone -q pendrive/sensor.bundle laboratorio\ncd ~/sensor\nfecha '2026-09-10 10:00'\nanexar lector.py 'print(\"con alarma\")'\ngit commit -q -am 'Agrega alarma de temperatura'",
+     "cwd": "sensor",
+     "code": "git log --oneline -3\ngit bundle create ~/pendrive/cambios.bundle v1.0..main\nhead -n 3 ~/pendrive/cambios.bundle\ncd ~\ngit init -q vacio\ncd vacio\ngit bundle verify ~/pendrive/cambios.bundle\ncd ~/laboratorio\ngit bundle verify ~/pendrive/cambios.bundle\ngit pull ~/pendrive/cambios.bundle main\ngit log --oneline",
+     "caption": "El laboratorio se clonó del bundle completo antes del commit «Agrega alarma de temperatura»."
+    },
+    {
+     "type": "list",
+     "items": [
+      "La cabecera del bundle es texto: `# v2 git bundle`, una línea que empieza con `-` por cada **prerrequisito** (commit que el destino ya debe tener) y una línea por cada ref incluida. Después viene el packfile binario.",
+      "En un repositorio vacío, `verify` falla: «Repository lacks these prerequisite commits:». En el laboratorio, que ya tiene `v1.0`, dice «The bundle requires this ref:» y lo acepta.",
+      "`git pull ARCHIVO main` trae y fusiona (aquí, fast-forward). También sirve `git fetch ARCHIVO main:refs/remotes/usb/main` para revisar antes de integrar.",
+      "Otras formas de acotar: `--since=10.days main`, `-5 main` (los últimos 5 commits) o varias ramas a la vez. Si el rango no deja ningún commit, Git responde «Refusing to create empty bundle.»."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Truco de la documentación para sincronizar siempre desde el mismo punto: después de crear cada bundle, marca hasta dónde llegaste con una etiqueta (`git tag -f ultimoBundle main`) y la próxima vez crea `ultimoBundle..main`. Si en el destino clonaste desde un archivo con nombre fijo, basta con reemplazar ese archivo y hacer `git pull`."
+    },
+    {
+     "type": "h",
+     "text": "git archive: exportar el código de una versión"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\ncommit_archivo css/estilos.css 'body { margin: 0; }' 'Añade estilos'\ncommit_archivo tests/test_carrito.js 'test(\"suma\", () => {});' 'Añade tests'\nescribir .gitattributes 'tests/ export-ignore\n.gitattributes export-ignore\nVERSION export-subst'\nescribir VERSION 'Versión $Format:%h (%cs)$'\ngit add .gitattributes VERSION\ngit commit -q -m 'Configura la exportación'\ngit tag -a v1.0 -m 'Versión 1.0'\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1><p>En construcción</p>' 'Empieza rediseño'\nmkdir -p ~/entregas",
+     "cwd": "tienda",
+     "code": "cat .gitattributes\ncat VERSION\ngit archive --list\ngit archive --format=zip --prefix=tienda-1.0/ -o ~/entregas/tienda-1.0.zip v1.0\ngit archive -o ~/entregas/tienda-1.0.tar.gz --prefix=tienda-1.0/ v1.0\ngit archive -o ~/entregas/estilos.tar v1.0:css\nls -l ~/entregas",
+     "caption": "La terminal de práctica no tiene `unzip` ni `tar`; en tu computador puedes revisar el contenido con `unzip -l archivo.zip` o `tar -tzf archivo.tar.gz`."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Formatos: `tar`, `tgz`, `tar.gz` y `zip` (`git archive --list`). Con `-o` Git deduce el formato por la extensión; sin `-o` escribe en la salida estándar (en tu computador: `git archive --format=tar v1.0 | gzip > v1.0.tar.gz`).",
+      "`--prefix=tienda-1.0/` mete todo dentro de una carpeta (¡con la barra final!). Sin prefijo, al descomprimir se desparraman los archivos en la carpeta actual.",
+      "Se exporta el árbol de lo que indiques (`v1.0`, un commit, una rama), **no** tu directorio de trabajo: los cambios sin confirmar y los commits posteriores no entran. `v1.0:css` exporta solo esa subcarpeta como raíz; también puedes limitar con rutas al final (`git archive v1.0 css`).",
+      "Con los atributos de este repositorio, el zip contiene `VERSION`, `css/estilos.css` e `index.html`; **no** incluye `tests/` ni `.gitattributes` (`export-ignore`), y `VERSION` sale con el marcador expandido: «Versión 208833e (2026-09-01)» (`export-subst`).",
+      "Cuando archivas un commit o etiqueta, Git guarda el hash del commit en el archivo: como comentario en el zip y en una cabecera del tar (se lee con `git get-tar-commit-id`). Así siempre sabrás de qué versión salió."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`git bundle` conserva la **historia** (commits y refs) y se usa como remoto; `git archive` exporta solo los **archivos** de un árbol, sin historia ni `.git`. Para un respaldo, bundle; para entregar código, archive."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Bundle",
+       "en": "bundle",
+       "def": "Archivo con un packfile y una cabecera de refs que Git puede usar como remoto de solo lectura (clonar, traer, verificar)."
+      },
+      {
+       "term": "Prerrequisito",
+       "en": "prerequisite",
+       "def": "Commit que un bundle incremental no incluye y que el repositorio de destino ya debe tener."
+      },
+      {
+       "term": "export-ignore / export-subst",
+       "en": "export-ignore / export-subst",
+       "def": "Atributos de `.gitattributes` que `git archive` respeta: excluir rutas y expandir marcadores `$Format:…$`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s15-l7",
+   "title": "Mantenimiento e integridad: gc, maintenance, fsck y firmas",
+   "minutes": 30,
+   "goals": [
+    "Medir el estado del almacén de objetos con git count-objects -vH y compactarlo con git gc o git repack",
+    "Configurar el mantenimiento programado con git maintenance y elegir qué tareas ejecutar",
+    "Detectar objetos dañados o faltantes con git fsck e interpretar su salida",
+    "Verificar firmas de commits y etiquetas con git verify-commit, git verify-tag y el formato %G?"
+   ],
+   "takeaways": [
+    "`git gc` empaqueta objetos, empaqueta refs, expira reflogs (90 días; 30 para entradas inalcanzables) y borra objetos inalcanzables con más de 2 semanas. Git lo lanza solo (`gc --auto`) cuando hay demasiados objetos sueltos o packs.",
+    "`git maintenance` es el sucesor moderno: tareas separadas (commit-graph, prefetch, loose-objects, incremental-repack, pack-refs…) que pueden programarse con el planificador del sistema.",
+    "`git fsck` recalcula hashes y comprueba que todo lo que se referencia exista; es tu primera herramienta ante un disco dañado o una copia incompleta.",
+    "El nombre y el correo de un commit los escribe cualquiera; lo que prueba la autoría es una **firma** que verificas con `git verify-commit` / `%G?`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s12 viste que Git guarda cada objeto primero como archivo **suelto** (comprimido, en `.git/objects/xx/…`) y que de vez en cuando los junta en **packfiles** con deltas. Esta lección es el manual de mantenimiento: cuándo y cómo compactar, cómo se limpian los objetos que ya nadie usa, cómo se automatiza y cómo comprobar que el repositorio está sano y que sus commits son de quien dicen ser."
+    },
+    {
+     "type": "h",
+     "text": "git gc y sus piezas"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo bitacora\nfor d in 01 02 03 04 05 06 07 08 09 10 11 12; do\n  fecha \"2026-08-$d 10:00\"\n  commit_archivo \"dias/$d.md\" \"Registro del día $d de agosto\" \"Bitácora del $d de agosto\"\n  if [ \"$d\" = 04 ] || [ \"$d\" = 08 ]; then git repack -q -d; fi\ndone",
+     "cwd": "bitacora",
+     "code": "git count-objects -vH\nls .git/objects/pack\ngit gc\ngit count-objects -vH\nls .git/objects/pack\nls .git/objects/info\ncat .git/packed-refs",
+     "caption": "El escenario tiene 16 objetos sueltos y 2 packfiles creados de a poco."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`count` y `size` son los objetos sueltos; `in-pack`, `packs` y `size-pack` describen los packfiles; `-H` muestra tamaños legibles (KiB, MiB).",
+      "Después de `git gc`: 0 objetos sueltos, **un** packfile con los 48 objetos, las refs juntas en `.git/packed-refs` y un archivo `commit-graph` (acelera `log` y otras consultas sobre el grafo).",
+      "`git repack -a -d` hace solo la parte de empaquetar (todo en un pack y borra los packs y objetos sueltos redundantes); `git prune` solo borra objetos sueltos inalcanzables; `git pack-refs --all` solo junta las refs. `gc` los orquesta.",
+      "`git gc --aggressive` recalcula todos los deltas con más esfuerzo: tarda mucho y rara vez vale la pena (tiene sentido tras una importación grande)."
+     ]
+    },
+    {
+     "type": "table",
+     "head": [
+      "Configuración",
+      "Por defecto",
+      "Qué controla"
+     ],
+     "rows": [
+      [
+       "`gc.auto`",
+       "6700",
+       "Objetos sueltos que disparan un `git gc --auto` (lo ejecutan solos comandos como `commit`, `merge` o `fetch`). `0` lo desactiva."
+      ],
+      [
+       "`gc.autoPackLimit`",
+       "50",
+       "Cantidad de packfiles que también dispara el `gc` automático."
+      ],
+      [
+       "`gc.pruneExpire`",
+       "2 semanas",
+       "Edad mínima de un objeto inalcanzable para que `gc` lo borre (`--prune=now` ignora el plazo)."
+      ],
+      [
+       "`gc.reflogExpire`",
+       "90 días",
+       "Entradas del reflog que `gc` expira."
+      ],
+      [
+       "`gc.reflogExpireUnreachable`",
+       "30 días",
+       "Entradas del reflog cuyo commit ya no está en la rama (tras un amend, rebase o reset)."
+      ],
+      [
+       "`gc.cruftPacks`",
+       "true (desde Git 2.41)",
+       "Los objetos inalcanzables que aún están en plazo van a un *cruft pack* en vez de volver a quedar sueltos."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo bitacora\nfor d in 01 02 03 04 05 06 07 08 09 10 11 12; do\n  fecha \"2026-08-$d 10:00\"\n  commit_archivo \"dias/$d.md\" \"Registro del día $d de agosto\" \"Bitácora del $d de agosto\"\n  if [ \"$d\" = 04 ] || [ \"$d\" = 08 ]; then git repack -q -d; fi\ndone",
+     "cwd": "bitacora",
+     "code": "git reset --hard HEAD~2\ngit fsck --unreachable\ngit fsck --unreachable --no-reflogs\ngit gc\ngit fsck --unreachable --no-reflogs\ngit reflog expire --expire=now --all\ngit gc --prune=now\ngit fsck --unreachable --no-reflogs\ngit count-objects -v",
+     "caption": "Lo que pasa con dos commits descartados con reset --hard."
+    },
+    {
+     "type": "p",
+     "text": "Tras el `reset --hard`, los dos commits descartados no están en ninguna rama, pero el reflog todavía los recuerda (por eso `git fsck --unreachable` no muestra nada y sí lo hace con `--no-reflogs`). Un `git gc` normal **no** los borra: el reflog los protege y, aunque no lo hiciera, tienen menos de 2 semanas. Solo al expirar el reflog y usar `--prune=now` desaparecen (`in-pack` baja de 48 a 40). Esa red de seguridad es la que te permitió rescatar commits en s10, y la que tienes que desarmar a propósito cuando purgas un secreto."
+    },
+    {
+     "type": "h",
+     "text": "git maintenance: mantenimiento programado"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git maintenance run` ejecuta tareas ahora mismo. Sin opciones corre solo `gc`; con `--task=<tarea>` (repetible) eliges cuáles.",
+      "Tareas en Git 2.50: `gc`, `commit-graph`, `prefetch` (trae objetos de los remotos a `refs/prefetch/`, sin tocar tus ramas remotas), `loose-objects`, `incremental-repack`, `pack-refs` y, nuevas en 2.50, `reflog-expire`, `worktree-prune` y `rerere-gc`.",
+      "`git maintenance register` agrega el repositorio a `maintenance.repo` en tu `~/.gitconfig` y en el repositorio pone `maintenance.auto=false` y `maintenance.strategy=incremental` (commit-graph y prefetch cada hora; loose-objects e incremental-repack cada día). `git maintenance unregister` lo saca de esa lista (la configuración local queda).",
+      "`git maintenance start` hace lo mismo **y además** programa en el sistema la ejecución de `git maintenance run --scheduled` cada hora: `launchctl` en macOS, `systemd` (o `cron`) en Linux y el Programador de tareas (`schtasks`) en Windows. `git maintenance stop` lo detiene."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo bitacora\nfor d in 01 02 03 04 05 06 07 08 09 10 11 12; do\n  fecha \"2026-08-$d 10:00\"\n  commit_archivo \"dias/$d.md\" \"Registro del día $d de agosto\" \"Bitácora del $d de agosto\"\n  if [ \"$d\" = 04 ] || [ \"$d\" = 08 ]; then git repack -q -d; fi\ndone",
+     "cwd": "bitacora",
+     "code": "git maintenance run --task=commit-graph --task=loose-objects\ngit maintenance register\ngit config --get-regexp maintenance\ngit config --global --get-all maintenance.repo\ngit maintenance unregister\ngit config --get-regexp maintenance",
+     "caption": "En la terminal de práctica `register` solo modifica tu `~/.gitconfig` aislado. `start` no se ejecuta aquí porque tocaría el planificador de tu computador."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# En tu computador (programa tareas en el sistema operativo):\ngit maintenance start      # registra el repo y crea la tarea periódica\ngit maintenance stop       # la elimina",
+     "caption": "Scalar (s14) activa este mismo mantenimiento para los repositorios que administra."
+    },
+    {
+     "type": "h",
+     "text": "git fsck: ¿está sano el repositorio?"
+    },
+    {
+     "type": "p",
+     "text": "`git fsck` recorre la base de objetos: recalcula el hash de cada uno (si no coincide, el objeto está corrupto), comprueba que cada commit, árbol y etiqueta apunte a objetos que existen y reporta lo inalcanzable. En este escenario, un fallo del disco borró un objeto:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tesis\nfecha '2026-09-01 10:00'\ncommit_archivo capitulo1.md '# Capítulo 1: Introducción' 'Capítulo 1'\nfecha '2026-09-02 10:00'\ncommit_archivo capitulo2.md '# Capítulo 2: Marco teórico' 'Capítulo 2'\nfecha '2026-09-03 10:00'\ncommit_archivo capitulo3.md '# Capítulo 3: Metodología' 'Capítulo 3'\nobj=$(git rev-parse HEAD~1:capitulo2.md)\nrm -f .git/objects/$(echo $obj | cut -c1-2)/$(echo $obj | cut -c3-)",
+     "cwd": "tesis",
+     "code": "git status\ngit log --oneline\ngit fsck\ngit show HEAD~1\ngit fsck --connectivity-only"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git status` y `git log` funcionan: no necesitan leer el contenido de ese archivo. El problema aparece recién al usarlo: `git show HEAD~1` termina con «fatal: unable to read 06d2aa8…».",
+      "`git fsck` lo identifica con precisión: «missing blob 06d2aa8…» y termina con código de error. `--connectivity-only` hace una revisión más rápida (solo que no falte nada).",
+      "Opciones útiles: `--unreachable` y `--dangling` (objetos que nadie alcanza), `--no-reflogs` (no cuenta el reflog como raíz), `--lost-found` (copia los colgantes a `.git/lost-found/`), `--strict` (revisiones más estrictas).",
+      "Para que Git revise los objetos que recibe de otros: `git config --global transfer.fsckObjects true` (o por separado `fetch.fsckObjects` y `receive.fsckObjects`). Por defecto está desactivado.",
+      "¿Cómo se repara? Consiguiendo el objeto desde otra copia sana: otro clon, un respaldo, un bundle… Lo practicarás en los ejercicios."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Verificar firmas"
+    },
+    {
+     "type": "p",
+     "text": "En s13 configuraste la firma de commits con SSH o GPG. Del otro lado está la **verificación**: el autor de un commit es solo texto (`user.name`, `user.email`) y cualquiera puede escribir tu correo. En este escenario hay una llave SSH de prueba, un commit y una etiqueta firmados, y un commit posterior de un «Intruso» que usó tu correo:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/.ssh\nssh-keygen -q -t ed25519 -N '' -C 'alumno@cuaderno.local' -f ~/.ssh/id_ed25519\nprintf 'alumno@cuaderno.local namespaces=\"git\" %s\\n' \"$(cat ~/.ssh/id_ed25519.pub)\" > ~/.ssh/allowed_signers\ngit config --global gpg.format ssh\ngit config --global user.signingkey ~/.ssh/id_ed25519.pub\ngit config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers\nnuevo_repo banco\nfecha '2026-09-01 10:00'\ncommit_archivo saldo.txt '1000' 'Saldo inicial'\nfecha '2026-09-02 10:00'\nescribir saldo.txt '1500'\ngit commit -q -S -am 'Registra depósito'\ngit tag -s v1.0 -m 'Cierre de septiembre'\nautor 'Intruso' 'alumno@cuaderno.local'\nfecha '2026-09-03 10:00'\ncommit_archivo saldo.txt '999999' 'Ajuste menor'\nyo",
+     "cwd": "banco",
+     "code": "git log --format='%h %G? %an <%ae> %s'\ngit verify-commit HEAD~1\ngit verify-commit HEAD\ngit log --show-signature -2\ngit verify-tag v1.0\ncat ~/.ssh/allowed_signers",
+     "caption": "El escenario genera una llave `ed25519` y configura `gpg.format ssh`, `user.signingkey` y `gpg.ssh.allowedSignersFile`."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`%G?` resume el estado de la firma: `G` buena, `B` mala, `U` buena pero de confianza desconocida, `X` expirada, `Y` hecha con una llave expirada, `R` con una llave revocada, `E` no se puede comprobar (falta la llave) y `N` sin firma.",
+      "`git verify-commit HEAD~1` responde «Good \"git\" signature for alumno@cuaderno.local with ED25519 key SHA256:…». `git verify-commit HEAD` no imprime nada y termina con error: ese commit no está firmado, aunque diga tu correo.",
+      "Para verificar firmas SSH, Git necesita `gpg.ssh.allowedSignersFile`: un archivo con las llaves públicas en que confías, una por línea, precedidas del correo. Para GPG, las llaves públicas deben estar en tu anillo de llaves.",
+      "`git verify-tag` (o `git tag -v`) verifica etiquetas firmadas con `git tag -s`. En GitHub, la insignia «Verified» es esta misma verificación hecha por la plataforma, y una regla de protección puede exigir commits firmados."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Reescribir la historia (filter-repo, filter-branch, rebase, amend) **elimina las firmas** de los commits reescritos, porque el contenido firmado cambió. Si tu equipo exige commits firmados, quien reescribe debe volver a firmar (por ejemplo `git rebase --exec 'git commit --amend --no-edit -S'` o `git rebase -S`)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`gc --prune=now` borra de inmediato objetos inalcanzables, pero un objeto referenciado por el reflog **no es** inalcanzable para gc. Por eso la receta de purga siempre es `git reflog expire --expire=now --all` **y luego** `git gc --prune=now`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Objeto suelto",
+       "en": "loose object",
+       "def": "Objeto guardado como archivo individual en `.git/objects/xx/…`, sin deltas."
+      },
+      {
+       "term": "Cruft pack",
+       "en": "cruft pack",
+       "def": "Packfile donde `gc` guarda los objetos inalcanzables que todavía están dentro del plazo de gracia."
+      },
+      {
+       "term": "git fsck",
+       "en": "file system check",
+       "def": "Comando que verifica la integridad y la conectividad de la base de objetos."
+      },
+      {
+       "term": "Firma verificada",
+       "en": "verified signature",
+       "def": "Firma criptográfica de un commit o etiqueta que coincide con una llave pública en la que confías. Prueba quién lo creó y que no cambió."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s15-e1",
+   "title": "Nota de QA sin tocar la historia",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En la tienda en línea, Carla corrigió el cálculo del despacho y QA ya lo aprobó. Esos commits están publicados, así que el equipo registra las aprobaciones como **notas de Git** en vez de cambiar mensajes.",
+    "Agrega al commit «Corrige cálculo del despacho» (no al último) la nota exactamente así: `QA: aprobado por Diego (ticket #482)`. Ningún commit debe cambiar de hash y no debe quedar ninguna otra nota."
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Carla Rojas' 'carla@ejemplo.cl'\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-09-02 10:00'\ncommit_archivo despacho.js 'const costo = (km) => 2990 + km * 150;' 'Calcula costo de despacho'\nfecha '2026-09-03 10:00'\ncommit_archivo despacho.js 'const costo = (km) => (km <= 10 ? 2990 : 2990 + (km - 10) * 150);' 'Corrige cálculo del despacho'\nfecha '2026-09-04 10:00'\ncommit_archivo README.md '# Tienda Austral' 'Añade README'\nyo\ngit rev-parse main > .git/cuaderno-original",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "El commit «Corrige cálculo del despacho» tiene la nota",
+     "script": "c=$(git log --format=%H --grep='^Corrige cálculo del despacho$' main | head -n 1)\n[ -n \"$c\" ] || falla \"No encuentro el commit «Corrige cálculo del despacho» en main\"\nn=$(git notes show \"$c\" 2>/dev/null) || falla \"El commit «Corrige cálculo del despacho» todavía no tiene nota (¿se la pusiste a otro commit?)\"\n[ \"$n\" = 'QA: aprobado por Diego (ticket #482)' ] || falla \"La nota dice «${n}»; debe decir exactamente «QA: aprobado por Diego (ticket #482)»\""
+    },
+    {
+     "name": "Ningún commit cambió de hash",
+     "script": "[ \"$(git rev-parse main)\" = \"$(cat .git/cuaderno-original)\" ] || falla \"main ya no apunta al mismo commit: una nota no reescribe la historia (vuelve atrás con git reflog)\""
+    },
+    {
+     "name": "Hay exactamente una nota",
+     "script": "n=$(git notes list | wc -l | tr -d ' ')\n[ \"$n\" = 1 ] || falla \"Hay $n notas y debería haber 1 (revisa git notes list; borra las sobrantes con git notes remove)\""
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git notes add -m 'QA: aprobado por Diego (ticket #482)' HEAD~1",
+    "git log -2"
+   ],
+   "hints": [
+    "Las notas se manejan con `git notes` y se guardan aparte, en `refs/notes/commits`.",
+    "Con `git log --oneline` verás que el commit es `HEAD~1`. Usa `git notes add -m '…' HEAD~1`.",
+    "Si te equivocaste de commit: `git notes remove <commit>` y vuelve a agregarla donde corresponde."
+   ],
+   "explain": "`git notes add -m 'QA: aprobado por Diego (ticket #482)' HEAD~1` guarda un blob con el texto en `refs/notes/commits`, indexado por el hash del commit. El commit no cambia (su hash tampoco) y `git log` muestra la nota bajo «Notes:». Si el commit ya tuviera nota, `add` fallaría: usarías `git notes append` para sumar texto o `git notes add -f` para reemplazarla. Recuerda que para que el equipo la vea hay que publicarla aparte: `git push origin refs/notes/commits`."
+  },
+  {
+   "id": "s15-e2",
+   "title": "Zip de la versión 1.2 para el cliente",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "El cliente pide el código de la **versión 1.2** (la etiqueta `v1.2`) en un archivo zip. Ojo: main ya tiene un commit posterior y además tienes cambios sin confirmar en `index.html`; nada de eso debe ir en la entrega.",
+    "Crea `~/entregas/tienda-1.2.zip` con todos los archivos de `v1.2` dentro de una carpeta `tienda-1.2/` (al descomprimir debe aparecer `tienda-1.2/index.html`, `tienda-1.2/css/estilos.css`, etc.)."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-09-02 10:00'\ncommit_archivo css/estilos.css 'body { font-family: sans-serif; }' 'Añade estilos'\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1><p>Despacho a todo Chile</p>' 'Agrega mensaje de despacho'\ngit tag -a v1.2 -m 'Versión 1.2'\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1><p>Nueva portada en construcción</p>' 'Empieza rediseño'\nanexar index.html '<!-- TODO: terminar la portada -->'\nmkdir -p ~/entregas",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Existe un zip válido en ~/entregas",
+     "script": "[ -f ~/entregas/tienda-1.2.zip ] || falla \"No existe ~/entregas/tienda-1.2.zip\"\nunzip -tq ~/entregas/tienda-1.2.zip >/dev/null 2>&1 || falla \"~/entregas/tienda-1.2.zip no es un zip válido (usa --format=zip o la extensión .zip con -o)\""
+    },
+    {
+     "name": "Todo va dentro de la carpeta tienda-1.2/",
+     "script": "[ -f ~/entregas/tienda-1.2.zip ] || falla \"Primero crea ~/entregas/tienda-1.2.zip\"\nunzip -Z1 ~/entregas/tienda-1.2.zip | grep -qx 'tienda-1.2/css/estilos.css' || falla \"Falta tienda-1.2/css/estilos.css dentro del zip (¿usaste --prefix=tienda-1.2/ con la barra final?)\"\nunzip -Z1 ~/entregas/tienda-1.2.zip | grep -v '^tienda-1.2/' | grep -q . && falla \"Hay archivos fuera de la carpeta tienda-1.2/ (revisa --prefix)\"; true"
+    },
+    {
+     "name": "El contenido es el de v1.2",
+     "script": "[ -f ~/entregas/tienda-1.2.zip ] || falla \"Primero crea ~/entregas/tienda-1.2.zip\"\n[ \"$(unzip -p ~/entregas/tienda-1.2.zip tienda-1.2/index.html 2>/dev/null)\" = \"$(git show v1.2:index.html)\" ] || falla \"El index.html del zip no es el de v1.2 (¿archivaste HEAD o tu directorio de trabajo?)\""
+    }
+   ],
+   "solution": [
+    "git archive --format=zip --prefix=tienda-1.2/ -o ~/entregas/tienda-1.2.zip v1.2"
+   ],
+   "hints": [
+    "El comando que exporta un árbol a zip o tar sin la carpeta `.git` es `git archive`.",
+    "Indica el formato (`--format=zip` o deja que `-o` lo deduzca por la extensión), la carpeta con `--prefix=tienda-1.2/` y, al final, **la etiqueta** `v1.2`.",
+    "`git archive --format=zip --prefix=tienda-1.2/ -o ~/entregas/tienda-1.2.zip v1.2`"
+   ],
+   "explain": "`git archive` exporta el árbol del objeto que le indicas (aquí la etiqueta `v1.2`), no tu directorio de trabajo: ni el commit «Empieza rediseño» ni el cambio sin confirmar entran. `--prefix=tienda-1.2/` antepone la carpeta a cada ruta (la barra final es importante: sin ella los nombres quedarían como `tienda-1.2index.html`). Con `-o` el formato se deduce de la extensión, así que `--format=zip` es redundante pero explícito. Además, Git guarda el hash del commit como comentario del zip (`unzip -z` lo muestra). Alternativa para tar comprimido: `git archive --prefix=tienda-1.2/ -o ~/entregas/tienda-1.2.tar.gz v1.2`."
+  },
+  {
+   "id": "s15-e3",
+   "title": "Un repositorio en un pendrive",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Marta, de la bodega, no tiene internet en su computador y te pasó el repositorio del inventario en un pendrive: `~/pendrive/inventario.bundle`.",
+    "Clónalo en `~/inventario`, comprueba con `git bundle verify` que el bundle está completo y deja creada la rama local `feature/reportes` siguiendo a la del bundle (`origin/feature/reportes`) para revisar ese trabajo."
+   ],
+   "setup": "mkdir -p ~/pendrive\nnuevo_repo origen\nautor 'Marta Fuentes' 'marta@ejemplo.cl'\nfecha '2026-08-01 09:00'\ncommit_archivo productos.csv 'codigo,nombre,stock' 'Planilla de productos'\nfecha '2026-08-02 09:00'\nanexar productos.csv 'P001,Casco de seguridad,40'\ngit commit -q -am 'Agrega cascos'\ngit tag -a v1.0 -m 'Inventario inicial'\ngit switch -q -c feature/reportes\nfecha '2026-08-03 09:00'\ncommit_archivo reporte.py 'print(\"Productos con stock bajo\")' 'Reporte de stock bajo'\ngit switch -q main\nfecha '2026-08-04 09:00'\nanexar productos.csv 'P002,Guantes,120'\ngit commit -q -am 'Agrega guantes'\ngit bundle create -q ~/pendrive/inventario.bundle --all\ncd ~\nrm -rf origen",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "~/inventario es un clon del bundle",
+     "script": "git -C ~/inventario rev-parse --git-dir >/dev/null 2>&1 || falla \"No existe el repositorio ~/inventario\"\ngit -C ~/inventario remote get-url origin 2>/dev/null | grep -q 'pendrive/inventario.bundle$' || falla \"El remoto origin de ~/inventario debería ser ~/pendrive/inventario.bundle (clona desde el bundle)\""
+    },
+    {
+     "name": "main coincide con el del bundle",
+     "script": "git -C ~/inventario rev-parse --git-dir >/dev/null 2>&1 || falla \"Primero clona el bundle en ~/inventario\"\nesperado=$(git bundle list-heads ~/pendrive/inventario.bundle refs/heads/main | cut -d' ' -f1)\n[ \"$(git -C ~/inventario rev-parse main 2>/dev/null)\" = \"$esperado\" ] || falla \"main de ~/inventario no coincide con la del bundle\""
+    },
+    {
+     "name": "feature/reportes local sigue a origin/feature/reportes",
+     "script": "git -C ~/inventario rev-parse --git-dir >/dev/null 2>&1 || falla \"Primero clona el bundle en ~/inventario\"\ngit -C ~/inventario show-ref --verify -q refs/heads/feature/reportes || falla \"Falta la rama local feature/reportes en ~/inventario\"\n[ \"$(git -C ~/inventario rev-parse --abbrev-ref feature/reportes@{upstream} 2>/dev/null)\" = origin/feature/reportes ] || falla \"feature/reportes debería seguir a origin/feature/reportes (git switch feature/reportes la crea así)\""
+    }
+   ],
+   "solution": [
+    "git clone pendrive/inventario.bundle inventario",
+    "cd inventario",
+    "git bundle verify ~/pendrive/inventario.bundle",
+    "git branch -a",
+    "git switch feature/reportes"
+   ],
+   "hints": [
+    "Un bundle se usa como si fuera la URL de un remoto: `git clone` lo acepta directamente.",
+    "`git bundle verify` necesita estar dentro de un repositorio: clona primero y verifica desde `~/inventario`.",
+    "Para crear la rama local con seguimiento basta `git switch feature/reportes` (Git la crea a partir de `origin/feature/reportes`)."
+   ],
+   "explain": "`git clone pendrive/inventario.bundle inventario` trata el archivo como un remoto de solo lectura: `origin` apunta al bundle, las ramas llegan como `origin/*` y la etiqueta `v1.0` viene incluida. `git bundle verify` (dentro de un repositorio) confirma que el archivo está sano y que «records a complete history» (no tiene prerrequisitos). `git switch feature/reportes` crea la rama local con upstream `origin/feature/reportes`, igual que con un remoto normal (equivale a `git switch -c feature/reportes --track origin/feature/reportes`). Si Marta te manda más adelante un bundle nuevo con el mismo nombre, un simple `git pull` o `git fetch` en `~/inventario` lo leerá."
+  },
+  {
+   "id": "s15-e4",
+   "title": "Poner en forma el repositorio",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "El repositorio `bitacora` acumuló objetos sueltos y varios packfiles pequeños. Revisa su estado con `git count-objects -v`, déjalo compacto (**0 objetos sueltos y un solo packfile**) sin perder ningún commit y comprueba su integridad."
+   ],
+   "setup": "nuevo_repo bitacora\nfor d in 01 02 03 04 05 06 07 08 09 10 11 12; do\n  fecha \"2026-08-$d 10:00\"\n  commit_archivo \"dias/$d.md\" \"Registro del día $d de agosto\" \"Bitácora del $d de agosto\"\n  if [ \"$d\" = 04 ] || [ \"$d\" = 08 ]; then git repack -q -d; fi\ndone",
+   "cwd": "bitacora",
+   "checks": [
+    {
+     "name": "Sin objetos sueltos",
+     "script": "n=$(git count-objects -v | sed -n 's/^count: //p')\n[ \"$n\" = 0 ] || falla \"Todavía hay $n objetos sueltos (mira count: en git count-objects -v)\""
+    },
+    {
+     "name": "Un solo packfile",
+     "script": "n=$(git count-objects -v | sed -n 's/^packs: //p')\n[ \"$n\" = 1 ] || falla \"Hay $n packfiles; deberían quedar juntos en 1\""
+    },
+    {
+     "name": "No se perdió nada y fsck está conforme",
+     "script": "[ \"$(num_commits main)\" = 12 ] || falla \"main debería seguir teniendo 12 commits\"\ngit fsck --no-dangling >/dev/null 2>&1 || falla \"git fsck encuentra problemas\""
+    }
+   ],
+   "solution": [
+    "git count-objects -vH",
+    "git gc",
+    "git count-objects -vH",
+    "git fsck"
+   ],
+   "hints": [
+    "Hay un comando que hace toda la limpieza de una vez: empaqueta objetos, junta packs y refs, expira lo viejo…",
+    "`git gc` y después vuelve a mirar `git count-objects -v`; termina con `git fsck`."
+   ],
+   "explain": "`git gc` reempaqueta todos los objetos en un único packfile, borra los objetos sueltos ya empaquetados, junta las refs en `packed-refs` y escribe el commit-graph. Alternativas equivalentes para este objetivo: `git repack -a -d` (solo la parte de empaquetar) o `git maintenance run` (que por defecto ejecuta la tarea `gc`). `git fsck` sin salida y con código 0 indica que todos los objetos están íntegros y conectados. En un repositorio real no hace falta hacerlo a mano: `gc --auto` se dispara solo al superar `gc.auto` (6700 objetos sueltos) o `gc.autoPackLimit` (50 packs)."
+  },
+  {
+   "id": "s15-e5",
+   "title": "Enséñale a Git a recordar un conflicto",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "La rama `feature/ofertas` (de marketing) va a vivir varias semanas y cada viernes harás un merge de prueba con main, que siempre choca en `precios.txt`. Quieres resolver ese conflicto **una sola vez**.",
+    "Activa rerere en este repositorio, fusiona `feature/ofertas` en main y resuelve el conflicto dejando `precios.txt` exactamente así (lo acordado con marketing):",
+    "```\nPolera: 8990 (oferta)\nJockey: 5990\nCalcetines: 2990\n```",
+    "Confirma el merge y verifica que rerere guardó la resolución en `.git/rr-cache`."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir precios.txt 'Polera: 9990\nJockey: 5990\nCalcetines: 2990'\ngit add precios.txt\ngit commit -q -m 'Lista de precios inicial'\nautor 'Carla Rojas' 'carla@ejemplo.cl'\ngit switch -q -c feature/ofertas\nfecha '2026-09-02 10:00'\nescribir precios.txt 'Polera: 7990 (oferta)\nJockey: 5990\nCalcetines: 2990'\ngit commit -q -am 'Rebaja la polera'\nyo\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir precios.txt 'Polera: 10990\nJockey: 5990\nCalcetines: 2990'\ngit commit -q -am 'Actualiza precio de la polera'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "rerere está activado",
+     "script": "[ \"$(git config --bool rerere.enabled)\" = true ] || falla \"rerere no está activado (git config rerere.enabled true)\""
+    },
+    {
+     "name": "main tiene el merge de feature/ofertas",
+     "script": "en_rama main\nes_merge HEAD || falla \"HEAD todavía no es un commit de fusión: fusiona feature/ofertas en main\"\nancestro feature/ofertas HEAD || falla \"El merge no incluye feature/ofertas\""
+    },
+    {
+     "name": "precios.txt tiene la resolución acordada",
+     "script": "esperado=$(printf 'Polera: 8990 (oferta)\\nJockey: 5990\\nCalcetines: 2990')\n[ \"$(git show HEAD:precios.txt 2>/dev/null)\" = \"$esperado\" ] || falla \"precios.txt del merge no es el acordado: Polera: 8990 (oferta) y las otras dos líneas iguales, sin marcadores\""
+    },
+    {
+     "name": "rerere registró la resolución",
+     "script": "ls .git/rr-cache/*/postimage >/dev/null 2>&1 || falla \"rerere no registró ninguna resolución: debe estar activo ANTES del conflicto (deshaz con git reset --hard HEAD~1, actívalo y repite el merge)\""
+    },
+    {
+     "name": "Sin operaciones a medias y todo confirmado",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git config rerere.enabled true",
+    "git merge feature/ofertas",
+    "git rerere status",
+    "printf 'Polera: 8990 (oferta)\\nJockey: 5990\\nCalcetines: 2990\\n' > precios.txt",
+    "git rerere diff",
+    "git add precios.txt",
+    "git commit --no-edit",
+    "ls .git/rr-cache"
+   ],
+   "hints": [
+    "rerere solo registra conflictos que ocurren **mientras está activo**: configúralo antes de fusionar.",
+    "`git config rerere.enabled true`, luego `git merge feature/ofertas`: fíjate en el mensaje «Recorded preimage for 'precios.txt'».",
+    "Deja el archivo como se pide (con `code precios.txt`), `git add precios.txt` y `git commit --no-edit`: aparecerá «Recorded resolution for 'precios.txt'.»."
+   ],
+   "explain": "Con `rerere.enabled`, al producirse el conflicto Git guarda la preimagen (el conflicto normalizado) en `.git/rr-cache/<id>/preimage`; al confirmar, guarda tu resolución como `postimage`. El próximo viernes, al repetir el merge de prueba (o al rebasear la rama), verás «Resolved 'precios.txt' using previous resolution.». En la práctica conviene activarlo para siempre con `git config --global rerere.enabled true`. Si luego registras una resolución equivocada, `git rerere forget precios.txt` (durante el conflicto) la olvida."
+  },
+  {
+   "id": "s15-e6",
+   "title": "rerere al rescate en un rebase",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "El viernes pasado hiciste un merge de prueba de `feature/ofertas` en main, resolviste el conflicto de `precios.txt` con rerere activado y después lo deshiciste. Desde entonces main recibió otro commit.",
+    "Hoy el equipo decidió integrar con **historia lineal**: rebasea `feature/ofertas` sobre main. Deja que rerere reaplique la resolución, revísala y termina el rebase. main no debe cambiar y `feature/ofertas` debe quedar con un único commit, «Rebaja la polera», encima de main."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir precios.txt 'Polera: 9990\nJockey: 5990\nCalcetines: 2990'\ngit add precios.txt\ngit commit -q -m 'Lista de precios inicial'\nautor 'Carla Rojas' 'carla@ejemplo.cl'\ngit switch -q -c feature/ofertas\nfecha '2026-09-02 10:00'\nescribir precios.txt 'Polera: 7990 (oferta)\nJockey: 5990\nCalcetines: 2990'\ngit commit -q -am 'Rebaja la polera'\nyo\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir precios.txt 'Polera: 10990\nJockey: 5990\nCalcetines: 2990'\ngit commit -q -am 'Actualiza precio de la polera'\ngit config rerere.enabled true\nfecha '2026-09-04 18:00'\ngit merge -q feature/ofertas >/dev/null 2>&1 || true\nescribir precios.txt 'Polera: 8990 (oferta)\nJockey: 5990\nCalcetines: 2990'\ngit add precios.txt\ngit commit -q --no-edit\ngit reset -q --hard HEAD~1\nfecha '2026-09-07 10:00'\ncommit_archivo README.md '# Tienda Austral' 'Añade README'\ngit rev-parse main > .git/cuaderno-main",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "feature/ofertas está sobre la punta de main",
+     "script": "ancestro main feature/ofertas || falla \"feature/ofertas todavía no parte de la punta de main (desde feature/ofertas: git rebase main)\"\nes_merge feature/ofertas && falla \"feature/ofertas debe quedar lineal, sin commits de fusión\"\n[ \"$(git rev-list --count main..feature/ofertas)\" = 1 ] || falla \"feature/ofertas debería tener exactamente 1 commit propio encima de main\"\nmensaje_es feature/ofertas 'Rebaja la polera'"
+    },
+    {
+     "name": "La resolución es la registrada",
+     "script": "esperado=$(printf 'Polera: 8990 (oferta)\\nJockey: 5990\\nCalcetines: 2990')\n[ \"$(git show feature/ofertas:precios.txt 2>/dev/null)\" = \"$esperado\" ] || falla \"precios.txt en feature/ofertas no coincide con la resolución que rerere tenía registrada\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(git rev-parse main)\" = \"$(cat .git/cuaderno-main)\" ] || falla \"main cambió: aquí solo se rebasea feature/ofertas, no se fusiona en main\""
+    },
+    {
+     "name": "Rebase terminado y sin cambios pendientes",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "ls .git/rr-cache",
+    "git switch feature/ofertas",
+    "git rebase main",
+    "cat precios.txt",
+    "git add precios.txt",
+    "git rebase --continue",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Cámbiate a `feature/ofertas` y ejecuta `git rebase main`. Lee con atención la salida del conflicto.",
+    "Verás «Resolved 'precios.txt' using previous resolution.»: el archivo ya está resuelto, pero Git espera que tú lo marques con `git add`.",
+    "Revisa con `cat precios.txt` (o `git diff`), luego `git add precios.txt` y `git rebase --continue` (guarda el mensaje tal cual en el editor)."
+   ],
+   "explain": "rerere identifica el conflicto por su contenido normalizado (sin nombres de rama y con los dos lados ordenados), así que reconoce en el rebase el mismo conflicto que resolviste en el merge de prueba, aunque ahora «ours» y «theirs» estén invertidos. Aplica la postimagen al archivo, pero lo deja sin marcar para que revises. Si hubieras activado `rerere.autoUpdate`, además lo habría preparado solo («Staged 'precios.txt' using previous resolution.»). Si la resolución ya no sirviera, `git rerere forget precios.txt` y `git checkout -m precios.txt` te devuelven el conflicto original para resolverlo de nuevo."
+  },
+  {
+   "id": "s15-e7",
+   "title": "Tres funcionalidades, un solo merge",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Para el lanzamiento del sitio, tres compañeros terminaron páginas independientes en `feature/contacto`, `feature/galeria` y `feature/blog`. Mientras tanto main recibió un ajuste.",
+    "Intégralas en main con **un único commit de fusión** (octopus) cuyo mensaje sea `Integra contacto, galería y blog`. El commit debe tener como padres el main anterior y las tres ramas."
+   ],
+   "setup": "nuevo_repo web\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Web</h1>' 'Primer commit'\nautor 'Ana Pérez' 'ana@ejemplo.cl'\ngit switch -q -c feature/contacto\nfecha '2026-09-02 10:00'\ncommit_archivo contacto.html '<h1>Contacto</h1>' 'Añade página de contacto'\nautor 'Pedro Soto' 'pedro@ejemplo.cl'\ngit switch -q -c feature/galeria main\nfecha '2026-09-02 11:00'\ncommit_archivo galeria.html '<h1>Galería</h1>' 'Añade galería de fotos'\nautor 'Carla Rojas' 'carla@ejemplo.cl'\ngit switch -q -c feature/blog main\nfecha '2026-09-02 12:00'\ncommit_archivo blog.html '<h1>Blog</h1>' 'Añade blog'\nyo\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Mi web</h1>' 'Ajusta título'",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "HEAD es un merge con 4 padres",
+     "script": "en_rama main\nn=$(( $(git rev-list --parents -n 1 HEAD | wc -w) - 1 ))\n[ \"$n\" = 4 ] || falla \"HEAD tiene $n padre(s); un octopus de main + 3 ramas tiene 4 (fusiónalas en un solo git merge)\""
+    },
+    {
+     "name": "Las tres ramas están integradas",
+     "script": "for b in feature/contacto feature/galeria feature/blog; do ancestro $b HEAD || falla \"$b no está integrada en main\"; done; true"
+    },
+    {
+     "name": "El primer padre es el main anterior",
+     "script": "mensaje_es HEAD^1 'Ajusta título' \"El primer padre del merge debería ser «Ajusta título» (el main anterior)\""
+    },
+    {
+     "name": "Mensaje del merge",
+     "script": "mensaje_es HEAD 'Integra contacto, galería y blog'"
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git merge feature/contacto feature/galeria feature/blog -m 'Integra contacto, galería y blog'",
+    "git log --oneline --graph"
+   ],
+   "hints": [
+    "`git merge` acepta varias ramas a la vez; con más de una usa la estrategia octopus.",
+    "`git merge feature/contacto feature/galeria feature/blog -m 'Integra contacto, galería y blog'`"
+   ],
+   "explain": "Al pasar varias ramas, `git merge` elige `octopus`: intenta una fusión simple con cada rama («Trying simple merge with …») y crea un solo commit con 4 padres; `git cat-file -p HEAD` muestra cuatro líneas `parent`. Funciona porque las ramas tocan archivos distintos: si alguna chocara, octopus se retiraría con «Should not be doing an octopus.» y tendrías que fusionarla aparte. Hacer tres merges seguidos también integraría el trabajo, pero dejaría tres commits de fusión en vez de uno."
+  },
+  {
+   "id": "s15-e8",
+   "title": "Da por fusionado un experimento descartado",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "El experimento con Redis (`experimento/redis`) se descartó: el equipo se quedó con Memcached. Aun así, quieren que la historia de main registre que esa rama quedó cerrada (para que `git branch --merged` la reconozca y nadie la fusione por error), **sin que entre ninguno de sus cambios**, ni siquiera `redis.conf`.",
+    "Fusiónala en main con el mensaje `Descarta experimento con Redis` de forma que el árbol de main no cambie en absoluto, y después borra la rama con `git branch -d`."
+   ],
+   "setup": "nuevo_repo app\nfecha '2026-09-01 10:00'\nescribir config.txt 'cache=memoria\ntimeout=30'\ngit add config.txt\ngit commit -q -m 'Configuración inicial'\nautor 'Pedro Soto' 'pedro@ejemplo.cl'\ngit switch -q -c experimento/redis\nfecha '2026-09-02 10:00'\nescribir config.txt 'cache=redis\ntimeout=30'\ngit commit -q -am 'Prueba caché con Redis'\nfecha '2026-09-02 11:00'\ncommit_archivo redis.conf 'maxmemory 256mb' 'Añade configuración de Redis'\nyo\ngit switch -q main\nfecha '2026-09-03 10:00'\nescribir config.txt 'cache=memcached\ntimeout=30'\ngit commit -q -am 'Usa Memcached'\ngit rev-parse experimento/redis > .git/cuaderno-exp",
+   "cwd": "app",
+   "checks": [
+    {
+     "name": "main tiene un merge con el experimento",
+     "script": "en_rama main\nes_merge HEAD || falla \"HEAD no es un commit de fusión\"\n[ \"$(git rev-parse HEAD^2 2>/dev/null)\" = \"$(cat .git/cuaderno-exp)\" ] || falla \"El segundo padre del merge debería ser la punta de experimento/redis\"\nmensaje_es HEAD 'Descarta experimento con Redis'"
+    },
+    {
+     "name": "El árbol de main no cambió",
+     "script": "es_merge HEAD || falla \"Todavía no hay un commit de fusión en main\"\n[ \"$(git rev-parse HEAD^{tree})\" = \"$(git rev-parse HEAD^1^{tree})\" ] || falla \"El merge cambió archivos de main (¿usaste -X ours? esa opción sí trae redis.conf); con la estrategia correcta el árbol queda idéntico\""
+    },
+    {
+     "name": "La rama experimento/redis se borró",
+     "script": "rama_no_existe experimento/redis \"Borra la rama experimento/redis con git branch -d (ya está fusionada)\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git merge -s ours experimento/redis -m 'Descarta experimento con Redis'",
+    "git diff --stat HEAD^1 HEAD",
+    "git branch --merged",
+    "git branch -d experimento/redis"
+   ],
+   "hints": [
+    "No es una opción `-X`: necesitas una **estrategia** (`-s`) que ignore por completo el contenido de la otra rama.",
+    "`git merge -s ours experimento/redis -m '…'` y comprueba con `git diff --stat HEAD^1 HEAD` que no cambió nada.",
+    "Como la rama ya quedó fusionada, `git branch -d experimento/redis` la borra sin quejarse."
+   ],
+   "explain": "`-s ours` crea un commit de fusión con dos padres cuyo árbol es exactamente el de tu rama: registra la integración sin mirar lo que trae la otra. Es la herramienta para «superar» una línea de desarrollo descartada. `-X ours`, en cambio, fusiona de verdad: en `config.txt` habría ganado Memcached, pero `redis.conf` (que no choca con nada) habría entrado en main. Como `experimento/redis` queda alcanzable desde main, `git branch -d` la borra sin necesidad de `-D`."
+  },
+  {
+   "id": "s15-e9",
+   "title": "Une la historia del sistema antiguo",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Cuando se migró el sistema de la municipalidad, el código se importó sin historia en el commit «Importa código desde el sistema antiguo». La historia vieja (de Rosa, 2019–2021) está en el remoto `legado`, rama `legado/main`, y termina con exactamente el mismo código que se importó.",
+    "Sin reescribir ningún commit de main, haz que `git log` y `git blame` muestren la historia completa: el commit de importación debe verse con `legado/main` como padre."
+   ],
+   "setup": "nuevo_repo legado\nautor 'Rosa Díaz' 'rosa@ejemplo.cl'\nfecha '2019-03-01 10:00'\ncommit_archivo app.php '<?php echo \"v1\"; ?>' 'Versión inicial'\nfecha '2020-06-01 10:00'\ncommit_archivo app.php '<?php echo \"v2\"; ?>' 'Agrega reportes'\nfecha '2021-01-10 10:00'\ncommit_archivo app.php '<?php echo \"v3\"; ?>' 'Corrige cálculo de IVA'\ncd ~\nnuevo_repo sistema\nyo\nfecha '2026-01-05 10:00'\ncommit_archivo app.php '<?php echo \"v3\"; ?>' 'Importa código desde el sistema antiguo'\nfecha '2026-02-01 10:00'\ncommit_archivo app.php '<?php echo \"v4\"; ?>' 'Nueva pantalla de login'\nfecha '2026-03-01 10:00'\ncommit_archivo README.md '# Sistema municipal' 'Añade README'\ngit remote add legado ~/legado\ngit fetch -q legado\ngit rev-parse main > .git/cuaderno-main",
+   "cwd": "sistema",
+   "checks": [
+    {
+     "name": "Existe un reemplazo del commit de importación",
+     "script": "raiz=$(git --no-replace-objects rev-list --max-parents=0 main)\ngit show-ref --verify -q \"refs/replace/$raiz\" || falla \"No hay un reemplazo para el commit de importación ($(git rev-parse --short $raiz)); usa git replace --graft\""
+    },
+    {
+     "name": "El commit de importación tiene como padre a legado/main",
+     "script": "raiz=$(git --no-replace-objects rev-list --max-parents=0 main)\n[ \"$(git rev-parse \"$raiz^\" 2>/dev/null)\" = \"$(git rev-parse legado/main)\" ] || falla \"Con el reemplazo, el padre del commit de importación debería ser legado/main\"\n[ \"$(git rev-list --count main)\" = 6 ] || falla \"git log de main debería mostrar 6 commits (3 nuevos + 3 del sistema antiguo)\""
+    },
+    {
+     "name": "main no fue reescrito",
+     "script": "[ \"$(git rev-parse main)\" = \"$(cat .git/cuaderno-main)\" ] || falla \"main cambió de hash: el injerto debe hacerse con git replace, sin reescribir\"\n[ \"$(git --no-replace-objects rev-list --count main)\" = 3 ] || falla \"Sin reemplazos, main debería seguir teniendo sus 3 commits originales\""
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git log --oneline legado/main",
+    "git replace --graft main~2 legado/main",
+    "git log --oneline",
+    "git blame app.php"
+   ],
+   "hints": [
+    "El comando que hace que Git «vea» otros padres para un commit sin reescribirlo es `git replace` con la opción `--graft`.",
+    "El commit de importación es la raíz de main: con `git log --oneline` verás que es `main~2`.",
+    "`git replace --graft main~2 legado/main`, y comprueba con `git log --oneline` y `git replace -l`."
+   ],
+   "explain": "`git replace --graft main~2 legado/main` crea una copia del commit de importación con `legado/main` como padre y la registra en `refs/replace/<hash-original>`. Todos los comandos que leen historia (`log`, `blame`, `show`) usan esa copia, así que ves 6 commits, pero main conserva su hash y `git --no-replace-objects log` sigue mostrando 3. Para compartirlo: `git push origin 'refs/replace/*'` (y los demás lo traen con `git fetch origin 'refs/replace/*:refs/replace/*'`). Si algún día quieren hacerlo permanente, habría que reescribir la historia (por ejemplo con filter-repo), con todas sus consecuencias."
+  },
+  {
+   "id": "s15-e10",
+   "title": "Purga el .env de toda la historia",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "En la tienda, `.env` (con la clave de pagos y la contraseña de la base de datos) se versionó desde el commit «Integra pasarela de pagos» y sigue versionado hoy, también en la rama `feature/cupones`. Las credenciales **ya se rotaron**: tu `.env` local tiene las nuevas (sin confirmar) y no debe perderse ni llegar nunca a Git. El repositorio todavía no se ha publicado en ningún servidor.",
+    "Deja el repositorio así: `.env` ignorado (en un `.gitignore` confirmado), **ningún commit de ninguna rama** con `.env`, sin respaldos de `filter-branch`, y los objetos con las claves antiguas eliminados de verdad de la base de objetos. El resto del trabajo (`pagos.js`, `cupones.js`…) debe conservarse."
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2\nDB_PASSWORD=Austral.2026'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\ngit switch -q -c feature/cupones\nfecha '2026-08-03 10:00'\ncommit_archivo cupones.js 'const descuento = 0.1;' 'Agrega cupones de descuento'\ngit switch -q main\nfecha '2026-08-04 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2\nDB_PASSWORD=Austral.2026\nDEBUG=false'\ngit commit -q -am 'Desactiva modo debug'\nyo\nescribir .env 'PAGOS_API_KEY=pk_demo_NUEVA_8b3d2e\nDB_PASSWORD=Austral.2026.rotada\nDEBUG=false'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Tu .env con las claves nuevas sigue en el disco",
+     "script": "grep -q 'pk_demo_NUEVA_8b3d2e' .env 2>/dev/null || falla \"Tu .env local (con la clave nueva) desapareció o cambió. Pista: filter-branch borra del disco los archivos que purga si siguen versionados\""
+    },
+    {
+     "name": ".env está ignorado y el .gitignore confirmado",
+     "script": "git check-ignore -q .env || falla \".env no está ignorado (agrégalo a .gitignore)\"\ngit cat-file -e HEAD:.gitignore 2>/dev/null || falla \"El .gitignore no está confirmado en main\""
+    },
+    {
+     "name": "Ningún commit de ninguna rama contiene .env",
+     "script": "for c in $(git rev-list --all); do git cat-file -e \"$c:.env\" 2>/dev/null && falla \"Todavía hay commits con .env (revisa git log --all --oneline -- .env), por ejemplo «$(git log -1 --format=%s $c)»\"; done; true"
+    },
+    {
+     "name": "Sin respaldos en refs/original",
+     "script": "[ -z \"$(git for-each-ref refs/original)\" ] || falla \"Quedan respaldos de filter-branch en refs/original/ (bórralos con git update-ref -d)\""
+    },
+    {
+     "name": "Las claves antiguas ya no existen como objetos",
+     "script": "for h in c3edf393a29bee0f8510e05f3b5698590b1b8c6c 95d76915a11138465dbef361720f9dbe8a4c1b77; do git cat-file -e $h 2>/dev/null && falla \"Un blob con las claves antiguas sigue en .git/objects: expira el reflog (git reflog expire --expire=now --all) y ejecuta git gc --prune=now\"; done; true"
+    },
+    {
+     "name": "El resto del trabajo se conserva y todo está confirmado",
+     "script": "git cat-file -e main:pagos.js 2>/dev/null || falla \"Falta pagos.js en main\"\n[ \"$(git show feature/cupones:cupones.js 2>/dev/null)\" = 'const descuento = 0.1;' ] || falla \"feature/cupones perdió cupones.js\"\nsin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --all --oneline -- .env",
+    "git rm --cached .env",
+    "echo .env >> .gitignore",
+    "git add .gitignore",
+    "git commit -m 'Deja de versionar .env'",
+    "git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty -- --all",
+    "git update-ref -d refs/original/refs/heads/main",
+    "git update-ref -d refs/original/refs/heads/feature/cupones",
+    "git reflog expire --expire=now --all",
+    "git gc --prune=now",
+    "git log --all --oneline -- .env",
+    "ls -a"
+   ],
+   "hints": [
+    "Si ejecutas `filter-branch` ahora, se negará («You have unstaged changes») y, aunque no lo hiciera, borraría tu `.env` del disco porque sigue versionado. Primero deja de versionarlo: `git rm --cached .env`, agrégalo a `.gitignore` y confirma.",
+    "Después purga todas las ramas: `git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty -- --all` (espera los 10 segundos del aviso).",
+    "`git for-each-ref` te mostrará los respaldos en `refs/original/`: bórralos uno por uno con `git update-ref -d`.",
+    "Para que los blobs desaparezcan: `git reflog expire --expire=now --all` y `git gc --prune=now`. Comprueba con `git log --all --oneline -- .env` (vacío)."
+   ],
+   "explain": "El orden importa. (1) `git rm --cached .env` + `.gitignore` + commit: el archivo deja de estar versionado, tu copia local queda intacta e ignorada y el árbol de trabajo queda limpio, que es requisito de `filter-branch`. (2) `filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' -- --all` reescribe todos los commits de todas las ramas sin `.env` (`--ignore-unmatch` evita errores en los commits sin el archivo; `--prune-empty` descartaría commits que queden vacíos). (3) Los respaldos `refs/original/refs/heads/*` mantienen viva la historia vieja: se borran con `git update-ref -d` (o `rm -r .git/refs/original`, como hace Pro Git). (4) El reflog también la retiene: `git reflog expire --expire=now --all` y `git gc --prune=now` eliminan los blobs. Con `git filter-repo` todo esto sería `git filter-repo --invert-paths --path .env` en un clon nuevo (él mismo expira el reflog y hace `gc`). Y recuerda: como aún no se había publicado, bastaba con esto; si hubiera estado en un servidor, faltaría forzar la publicación y limpiar los clones."
+  },
+  {
+   "id": "s15-e11",
+   "title": "Un token en un commit que aún no subiste",
+   "level": "dificil",
+   "minutes": 18,
+   "prompt": [
+    "Antes de hacer push te das cuenta de que en el commit «Configura cliente de la API» pegaste un token en `config.js`. Ese commit y el siguiente («Añade módulo de pedidos») solo existen en tu computador: `origin/main` está en «Primer commit». El token ya fue revocado.",
+    "Reescribe esos commits para que, **en «Configura cliente de la API»**, `config.js` lea el token de una variable de entorno con la línea `  token: process.env.API_TOKEN` (en lugar del token), conservando los mensajes y sin agregar commits. Luego elimina de verdad el objeto con el token de tu repositorio y publica main en origin."
+   ],
+   "setup": "git init -q --bare servidor/api.git\nnuevo_repo api\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Cliente de la API' 'Primer commit'\ngit remote add origin ~/servidor/api.git\ngit push -q -u origin main\nfecha '2026-09-02 10:00'\nescribir config.js 'module.exports = {\n  url: \"https://api.ejemplo.cl\",\n  token: \"tok_demo_7Qm2Xv9Lp4\"\n};'\ngit add config.js\ngit commit -q -m 'Configura cliente de la API'\nfecha '2026-09-03 10:00'\ncommit_archivo pedidos.js 'const cfg = require(\"./config\");' 'Añade módulo de pedidos'",
+   "cwd": "api",
+   "checks": [
+    {
+     "name": "«Configura cliente de la API» lee el token del entorno",
+     "script": "mensaje_es main~1 'Configura cliente de la API' \"main~1 debería seguir siendo «Configura cliente de la API»\"\ngit show main~1:config.js 2>/dev/null | grep -q 'process.env.API_TOKEN' || falla \"En «Configura cliente de la API», config.js debería usar process.env.API_TOKEN\""
+    },
+    {
+     "name": "Ningún commit contiene el token",
+     "script": "for c in $(git rev-list --all); do git grep -q -F tok_demo_7Qm2Xv9Lp4 $c -- 2>/dev/null && falla \"El commit «$(git log -1 --format=%s $c)» todavía contiene el token\"; done; true"
+    },
+    {
+     "name": "La historia conserva sus 3 commits",
+     "script": "[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener 3 commits (no agregues commits nuevos: reescribe el que tiene el token)\"\nmensaje_es main 'Añade módulo de pedidos'\ngit cat-file -e main:pedidos.js 2>/dev/null || falla \"Falta pedidos.js en main\""
+    },
+    {
+     "name": "El objeto con el token ya no existe",
+     "script": "git cat-file -e 10fd2c62892cea9fb944c57d3ba8cc6fd14cc823 2>/dev/null && falla \"El blob del config.js con el token sigue en .git/objects (el reflog lo retiene: expíralo y ejecuta git gc --prune=now)\"; true"
+    },
+    {
+     "name": "main está publicado en origin",
+     "script": "[ \"$(git -C ~/servidor/api.git rev-parse main 2>/dev/null)\" = \"$(git rev-parse main)\" ] || falla \"origin no tiene tu main reescrito (git push)\""
+    },
+    {
+     "name": "Sin rebase a medias ni cambios pendientes",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i HEAD~2",
+     "edit": "edit {{SHA:HEAD~1}} Configura cliente de la API\npick {{SHA:HEAD}} Añade módulo de pedidos\n"
+    },
+    "printf 'module.exports = {\\n  url: \"https://api.ejemplo.cl\",\\n  token: process.env.API_TOKEN\\n};\\n' > config.js",
+    "git add config.js",
+    "git commit --amend --no-edit",
+    "git rebase --continue",
+    "git reflog expire --expire=now --all",
+    "git gc --prune=now",
+    "git push"
+   ],
+   "hints": [
+    "Como los commits no están publicados, basta un rebase interactivo: `git rebase -i HEAD~2` y marca con `edit` el commit del token.",
+    "Cuando el rebase se detenga, corrige `config.js` (con `code config.js`), `git add config.js`, `git commit --amend --no-edit` y `git rebase --continue`.",
+    "El commit viejo sigue en el reflog: `git reflog expire --expire=now --all` y `git gc --prune=now`. Al final, `git push` (no hace falta forzar: origin nunca vio esos commits)."
+   ],
+   "explain": "Para pocos commits locales, filter-branch o filter-repo son desproporcionados: el rebase interactivo con `edit` detiene la reescritura justo en el commit del token, `git commit --amend` lo reemplaza y `git rebase --continue` reaplica «Añade módulo de pedidos» sobre la versión corregida (no hay conflicto porque no toca `config.js`). Aun así, el commit original sigue en el reflog y en `ORIG_HEAD`; `git reflog expire --expire=now --all` + `git gc --prune=now` lo eliminan (ORIG_HEAD no protege objetos). Como origin solo tenía «Primer commit», el `push` es un fast-forward normal: no hace falta `--force`. Si el token hubiera estado en el último commit, bastaba `git commit --amend`."
+  },
+  {
+   "id": "s15-e12",
+   "title": "Rescate de una tesis con el disco dañado",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "El disco de Valentina tuvo errores. Su tesis parece estar bien (`git status` y `git log` funcionan), pero `git show HEAD~1` falla. Además, está escribiendo la sección 2.3 en `capitulo2.md` (cambios sin confirmar) y **no puede perderlos**.",
+    "Diagnostica con `git fsck` qué falta y repáralo usando su respaldo semanal `~/respaldo/tesis-2026-08-27.bundle` (anterior al capítulo 3). No debe moverse ninguna rama, el capítulo 3 no puede perderse y `git fsck` debe terminar sin errores."
+   ],
+   "setup": "nuevo_repo tesis\nautor 'Valentina Torres' 'valentina@ejemplo.cl'\nfecha '2026-08-20 10:00'\ncommit_archivo capitulo1.md '# Capítulo 1: Introducción' 'Capítulo 1'\nfecha '2026-08-27 10:00'\ncommit_archivo capitulo2.md '# Capítulo 2: Marco teórico' 'Capítulo 2'\nmkdir -p ~/respaldo\ngit bundle create -q ~/respaldo/tesis-2026-08-27.bundle --all\nfecha '2026-09-03 10:00'\ncommit_archivo capitulo3.md '# Capítulo 3: Metodología' 'Capítulo 3'\nyo\ngit rev-parse main > .git/cuaderno-main\nanexar capitulo2.md '## 2.3 Borrador de la sección 2.3'\nobj=$(git rev-parse main~1:capitulo2.md)\nrm -f .git/objects/$(echo $obj | cut -c1-2)/$(echo $obj | cut -c3-)",
+   "cwd": "tesis",
+   "checks": [
+    {
+     "name": "git fsck no encuentra problemas",
+     "script": "git fsck --full >/dev/null 2>&1 || falla \"git fsck todavía reporta problemas (ejecútalo para ver qué objeto falta)\""
+    },
+    {
+     "name": "El capítulo 2 confirmado se puede leer",
+     "script": "git show main~1:capitulo2.md >/dev/null 2>&1 || falla \"Todavía no se puede leer capitulo2.md del commit «Capítulo 2»\""
+    },
+    {
+     "name": "No se movió ninguna rama",
+     "script": "[ \"$(git rev-parse main)\" = \"$(cat .git/cuaderno-main)\" ] || falla \"main ya no apunta a «Capítulo 3»: la reparación no debe mover ramas\""
+    },
+    {
+     "name": "Los cambios sin confirmar siguen ahí",
+     "script": "grep -q 'Borrador de la sección 2.3' capitulo2.md || falla \"Se perdieron los cambios sin confirmar de capitulo2.md (la sección 2.3)\"\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git fsck",
+    "git bundle verify ~/respaldo/tesis-2026-08-27.bundle",
+    "git bundle unbundle ~/respaldo/tesis-2026-08-27.bundle",
+    "git fsck",
+    "git show HEAD~1 --stat",
+    "git status"
+   ],
+   "hints": [
+    "`git fsck` te dirá qué tipo de objeto falta y su hash. ¿Qué commit lo usa? (`git show HEAD~1` falla al leerlo).",
+    "Ojo: `git fetch` desde el bundle no sirve, porque Git ve que ya tiene esos commits y no transfiere nada. Necesitas que Git lea **todos** los objetos del bundle.",
+    "`git bundle unbundle ARCHIVO` guarda en tu base todos los objetos del bundle sin tocar ninguna rama. Después, vuelve a ejecutar `git fsck`."
+   ],
+   "explain": "`git fsck` informa «missing blob …»: el contenido de `capitulo2.md` confirmado en «Capítulo 2» desapareció, aunque los commits y árboles siguen ahí (por eso `status` y `log` funcionan). `git bundle unbundle` pasa el packfile del bundle a `git index-pack`, que lo guarda completo en `.git/objects/pack`, y solo imprime las refs que contiene: no mueve ninguna rama, así que el capítulo 3 y tus cambios sin confirmar quedan intactos. `git fetch` desde el bundle no repara nada porque la negociación concluye que ya tienes esos commits. Cuando tienes una copia idéntica del archivo confirmado, otra vía es recrear el blob con `git hash-object -w archivo`; aquí no sirve, porque `capitulo2.md` ya tiene cambios nuevos y su hash no coincidiría. Moraleja: un bundle `--all` es un respaldo verificable de un solo archivo."
+  },
+  {
+   "id": "s15-e13",
+   "title": "Proyecto: incidente de seguridad en el servidor",
+   "level": "proyecto",
+   "minutes": 40,
+   "prompt": [
+    "Diego publicó `.env` con la clave de la pasarela de pagos en el servidor `~/servidor/tienda.git`: está en la historia de `main`, de `feature/despacho` y en la etiqueta anotada `v1.0`. Más tarde alguien dejó de versionarlo, pero la clave sigue en la historia. **La clave ya se revocó y se rotó** (paso 0). Tu clon es `~/tienda` (ya tiene las ramas locales `main` y `feature/despacho`); Ana tiene un clon en `~/ana` con una rama sin publicar, `feature/boleta`. Nadie más publicará hasta que termines.",
+    "1. En tu clon, purga `.env` de todas las ramas y etiquetas (con `git filter-branch`; la etiqueta debe seguir siendo anotada) y borra los respaldos de `refs/original`.",
+    "2. Publica la historia nueva en el servidor: todas las ramas y la etiqueta.",
+    "3. Limpia tu clon para que el objeto con la clave ya no exista, y simula el trabajo del soporte de la plataforma ejecutando la recolección de basura en el servidor: `git -C ~/servidor/tienda.git gc --prune=now`.",
+    "4. Limpia el clon de Ana **sin perder su trabajo**: su `main` y su etiqueta `v1.0` deben quedar iguales a las nuevas del servidor, `feature/boleta` debe quedar con su único commit encima del `main` nuevo, y en su clon tampoco debe quedar rastro de la clave.",
+    "Verifica en los tres repositorios con `git log --all --oneline -- .env`."
+   ],
+   "setup": "git init -q --bare servidor/tienda.git\nnuevo_repo equipo\nautor 'Diego Muñoz' 'diego@ejemplo.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-08-02 10:00'\nescribir .env 'PAGOS_API_KEY=pk_demo_4f9a1c77e2'\nescribir pagos.js 'const key = process.env.PAGOS_API_KEY;'\ngit add .env pagos.js\ngit commit -q -m 'Integra pasarela de pagos'\nfecha '2026-08-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Agrega carrito'\ngit tag -a v1.0 -m 'Versión 1.0'\ngit switch -q -c feature/despacho\nfecha '2026-08-05 10:00'\ncommit_archivo despacho.js 'const despacho = 2990;' 'Cálculo de despacho'\ngit switch -q main\nfecha '2026-08-06 10:00'\ngit rm -q --cached .env\nescribir .gitignore '.env'\ngit add .gitignore\ngit commit -q -m 'Deja de versionar .env'\ngit remote add origin ~/servidor/tienda.git\ngit push -q origin main feature/despacho v1.0\ncd ~\nrm -rf equipo\nautor 'Ana Pérez' 'ana@ejemplo.cl'\ngit clone -q servidor/tienda.git ana\ncd ~/ana\ngit switch -q -c feature/boleta\nfecha '2026-08-07 10:00'\ncommit_archivo boleta.js 'const iva = 0.19;' 'Calcula IVA de la boleta'\ngit switch -q main\ncd ~\nyo\ngit clone -q servidor/tienda.git tienda\ncd ~/tienda\ngit switch -q feature/despacho\ngit switch -q main",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Tu clon: ningún commit contiene .env",
+     "script": "for c in $(git rev-list --all); do git cat-file -e \"$c:.env\" 2>/dev/null && falla \"Tu clon todavía tiene commits con .env (git log --all --oneline -- .env), por ejemplo «$(git log -1 --format=%s $c)»\"; done; true"
+    },
+    {
+     "name": "Tu clon: sin respaldos y sin el objeto de la clave",
+     "script": "[ -z \"$(git for-each-ref refs/original)\" ] || falla \"Quedan respaldos en refs/original/ (git update-ref -d …)\"\ngit cat-file -e 00a04b789b914d5b26f8552b22c53e7bb35e6c21 2>/dev/null && falla \"El blob del .env sigue en tu clon: después del push, git reflog expire --expire=now --all y git gc --prune=now\"; true"
+    },
+    {
+     "name": "Servidor: ramas y etiqueta reescritas",
+     "script": "S=~/servidor/tienda.git\nfor r in refs/heads/main refs/heads/feature/despacho refs/tags/v1.0; do [ \"$(git -C $S rev-parse $r 2>/dev/null)\" = \"$(git rev-parse $r 2>/dev/null)\" ] || falla \"En el servidor, $r no coincide con tu versión reescrita (git push --force …)\"; done\n[ \"$(git -C $S cat-file -t refs/tags/v1.0)\" = tag ] || falla \"v1.0 debería seguir siendo una etiqueta anotada (usa --tag-name-filter cat)\"\nfor c in $(git -C $S rev-list --all); do git -C $S cat-file -e \"$c:.env\" 2>/dev/null && falla \"El servidor todavía tiene commits con .env\"; done; true"
+    },
+    {
+     "name": "Servidor: el objeto de la clave ya no existe",
+     "script": "git -C ~/servidor/tienda.git cat-file -e 00a04b789b914d5b26f8552b22c53e7bb35e6c21 2>/dev/null && falla \"El servidor aún guarda el blob del .env (git -C ~/servidor/tienda.git gc --prune=now)\"; true"
+    },
+    {
+     "name": "Ana: feature/boleta sobre el main nuevo",
+     "script": "A=~/ana\ngit -C $A show-ref --verify -q refs/heads/feature/boleta || falla \"Ana perdió su rama feature/boleta\"\ngit -C $A merge-base --is-ancestor \"$(git rev-parse main)\" feature/boleta 2>/dev/null || falla \"feature/boleta de Ana no parte del main nuevo (rebaséala: git rebase --onto origin/main main feature/boleta)\"\n[ \"$(git -C $A rev-list --count \"$(git rev-parse main)\"..feature/boleta)\" = 1 ] || falla \"feature/boleta debería tener solo el commit de Ana encima del main nuevo\"\ngit -C $A cat-file -e feature/boleta:boleta.js 2>/dev/null || falla \"feature/boleta perdió boleta.js\""
+    },
+    {
+     "name": "Ana: main y v1.0 actualizados, sin rastro de la clave",
+     "script": "A=~/ana\n[ \"$(git -C $A rev-parse main)\" = \"$(git rev-parse main)\" ] || falla \"El main de Ana sigue en la historia vieja (git reset --hard origin/main estando en main)\"\n[ \"$(git -C $A rev-parse refs/tags/v1.0 2>/dev/null)\" = \"$(git rev-parse refs/tags/v1.0)\" ] || falla \"La etiqueta v1.0 de Ana es la vieja: bórrala (git tag -d v1.0) y tráela de nuevo (git fetch --tags)\"\nfor c in $(git -C $A rev-list --all); do git -C $A cat-file -e \"$c:.env\" 2>/dev/null && falla \"El clon de Ana todavía tiene commits con .env (¿reflog? ¿alguna ref vieja?)\"; done\ngit -C $A cat-file -e 00a04b789b914d5b26f8552b22c53e7bb35e6c21 2>/dev/null && falla \"El blob del .env sigue en el clon de Ana (reflog expire + gc --prune=now allí)\"; true"
+    },
+    {
+     "name": "Todo limpio en ambos clones",
+     "script": "limpio \"Tu clon tiene cambios sin confirmar\"\n[ -z \"$(git -C ~/ana status --porcelain)\" ] || falla \"El clon de Ana tiene cambios sin confirmar\"\nsin_operacion_en_curso\ncd ~/ana && sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --all --oneline -- .env",
+    "git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty --tag-name-filter cat -- --branches --tags",
+    "git update-ref -d refs/original/refs/heads/main",
+    "git update-ref -d refs/original/refs/heads/feature/despacho",
+    "git update-ref -d refs/original/refs/tags/v1.0",
+    "git push --force --all origin",
+    "git push --force --tags origin",
+    "git reflog expire --expire=now --all",
+    "git gc --prune=now",
+    "git -C ~/servidor/tienda.git gc --prune=now",
+    "git log --all --oneline -- .env",
+    "cd ~/ana",
+    "git fetch",
+    "git rebase --onto origin/main main feature/boleta",
+    "git switch main",
+    "git reset --hard origin/main",
+    "git tag -d v1.0",
+    "git fetch --tags",
+    "git reflog expire --expire=now --all",
+    "git gc --prune=now",
+    "git log --all --oneline -- .env",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Tu clon: `git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --prune-empty --tag-name-filter cat -- --branches --tags` y luego borra cada `refs/original/…` con `git update-ref -d`.",
+    "Publicar: `git push --force --all origin` y `git push --force --tags origin`. Fíjate que antes del push `git log --all -- .env` aún encuentra el archivo: lo retienen tus ramas `origin/*`.",
+    "Solo después del push: `git reflog expire --expire=now --all`, `git gc --prune=now` y el `gc` del servidor con `git -C`.",
+    "Ana: `cd ~/ana`, `git fetch` y rebasea solo su commit con `git rebase --onto origin/main main feature/boleta` (su `main` todavía es el viejo, así que marca dónde empezaba su trabajo). Luego pon su main en `origin/main`.",
+    "`git fetch` no reemplaza una etiqueta que ya existe: bórrala con `git tag -d v1.0` y tráela con `git fetch --tags`. Termina con reflog expire + gc también en su clon."
+   ],
+   "explain": "Es el protocolo completo de una filtración publicada. En tu clon, `--tag-name-filter cat` reescribe la etiqueta anotada (recrea el objeto etiqueta) y `-- --branches --tags` limita la reescritura a ramas y etiquetas locales, sin tocar `origin/*`. Tras borrar `refs/original`, el secreto sigue alcanzable desde `origin/main` y `origin/feature/despacho` hasta que `push --force` actualiza el servidor y, con él, tus ramas remotas; recién entonces `reflog expire` + `gc --prune=now` pueden borrar el blob. El servidor también guarda los objetos viejos hasta su propio `gc` (en GitHub, ese paso se le pide al soporte). Con Ana no se repite el filtro (daría hashes distintos): se trae la historia nueva y se **rebasea** su trabajo con `git rebase --onto origin/main main feature/boleta`, que toma los commits de `main..feature/boleta` y los reaplica sobre el main nuevo; un merge habría vuelto a mezclar la historia contaminada. Las etiquetas no se sobrescriben con `fetch`, por eso `git tag -d` + `git fetch --tags`. Con filter-repo, tu parte sería `git filter-repo --sensitive-data-removal --invert-paths --path .env` en un clon nuevo seguido de `git push --force --mirror origin`, y la de Ana, exactamente la misma."
+  },
+  {
+   "id": "s15-e14",
+   "title": "Proyecto: actualización sin red para la faena",
+   "level": "proyecto",
+   "minutes": 30,
+   "prompt": [
+    "El sistema de control de una faena minera corre en un computador sin internet. Allí hay un clon, `~/faena/control`, que se hizo desde un bundle cuando se instaló la versión `v1.0`. En tu repositorio `~/control` ya están listas dos ramas: `feature/alarmas` (Pedro) y `feature/turnos` (Carla), y main tiene un commit nuevo. Prepara y aplica la actualización:",
+    "1. En `~/control`, fusiona `feature/alarmas` y `feature/turnos` en main con **un solo merge** con el mensaje `Integra alarmas y turnos`.",
+    "2. Etiqueta ese commit como `v1.1` (etiqueta anotada, mensaje `Versión 1.1`).",
+    "3. Agrega al **commit** de fusión (no a la etiqueta) la nota `Aprobado por Prevención de Riesgos`.",
+    "4. Crea `~/pendrive/control-v1.1.bundle` **incremental**: solo lo nuevo desde `v1.0`, con main, la etiqueta `v1.1` y las notas (`refs/notes/commits`).",
+    "5. En `~/faena/control`: verifica el bundle y actualiza desde él `main`, la etiqueta `v1.1` y las notas, de modo que `git log` muestre la nota en el commit de fusión."
+   ],
+   "setup": "nuevo_repo control\nfecha '2026-06-01 09:00'\ncommit_archivo sensores.py 'SENSORES = [\"gas\", \"polvo\"]' 'Lectura de sensores'\nfecha '2026-06-10 09:00'\ncommit_archivo panel.py 'print(\"Panel de control\")' 'Panel de control'\ngit tag -a v1.0 -m 'Versión 1.0 instalada en faena'\nmkdir -p ~/pendrive\ngit bundle create -q ~/pendrive/control-v1.0.bundle main v1.0\ncd ~\ngit clone -q pendrive/control-v1.0.bundle faena/control\ncd ~/control\nautor 'Pedro Soto' 'pedro@ejemplo.cl'\ngit switch -q -c feature/alarmas\nfecha '2026-08-03 09:00'\ncommit_archivo alarmas.py 'UMBRAL_GAS = 50' 'Alarma por gas'\nfecha '2026-08-04 09:00'\nanexar alarmas.py 'UMBRAL_POLVO = 80'\ngit commit -q -am 'Alarma por polvo en suspensión'\nautor 'Carla Rojas' 'carla@ejemplo.cl'\ngit switch -q -c feature/turnos main\nfecha '2026-08-05 09:00'\ncommit_archivo turnos.py 'TURNOS = [\"A\", \"B\", \"C\"]' 'Registro de turnos'\nyo\ngit switch -q main\nfecha '2026-08-06 09:00'\ncommit_archivo LEEME.md '# Control de faena' 'Añade LEEME'",
+   "cwd": "control",
+   "checks": [
+    {
+     "name": "main tiene un único merge de las dos ramas",
+     "script": "en_rama main\nn=$(( $(git rev-list --parents -n 1 main | wc -w) - 1 ))\n[ \"$n\" = 3 ] || falla \"El último commit de main tiene $n padre(s); un solo merge de main + 2 ramas tiene 3\"\nancestro feature/alarmas main && ancestro feature/turnos main || falla \"Faltan ramas por integrar\"\nmensaje_es main 'Integra alarmas y turnos'"
+    },
+    {
+     "name": "v1.1 es una etiqueta anotada sobre el merge",
+     "script": "[ \"$(git cat-file -t v1.1 2>/dev/null)\" = tag ] || falla \"v1.1 no existe o no es anotada (git tag -a)\"\n[ \"$(git rev-parse v1.1^{commit})\" = \"$(git rev-parse main)\" ] || falla \"v1.1 debería apuntar al commit de fusión\""
+    },
+    {
+     "name": "La nota está en el commit de fusión",
+     "script": "[ \"$(git notes show main 2>/dev/null)\" = 'Aprobado por Prevención de Riesgos' ] || falla \"El commit de fusión no tiene la nota «Aprobado por Prevención de Riesgos» (¿la pusiste en la etiqueta? usa main o v1.1^{commit})\""
+    },
+    {
+     "name": "El bundle es incremental y trae main, v1.1 y las notas",
+     "script": "B=~/pendrive/control-v1.1.bundle\n[ -f $B ] || falla \"No existe ~/pendrive/control-v1.1.bundle\"\ngit bundle verify $B >/dev/null 2>&1 || falla \"git bundle verify rechaza el bundle\"\ngit bundle verify $B 2>&1 | grep -q 'requires' || falla \"El bundle no es incremental (debería requerir v1.0: usa el rango v1.0..main)\"\nheads=$(git bundle list-heads $B)\nfor r in refs/heads/main refs/tags/v1.1 refs/notes/commits; do echo \"$heads\" | grep -q \" $r$\" || falla \"El bundle no incluye $r\"; done\n[ \"$(git bundle list-heads $B refs/heads/main | cut -d' ' -f1)\" = \"$(git rev-parse main)\" ] || falla \"El main del bundle no es tu main actual\""
+    },
+    {
+     "name": "La faena tiene main y v1.1 actualizados",
+     "script": "F=~/faena/control\n[ \"$(git -C $F rev-parse main 2>/dev/null)\" = \"$(git rev-parse main)\" ] || falla \"El main de ~/faena/control no está actualizado (git pull ARCHIVO main)\"\n[ \"$(git -C $F rev-parse v1.1 2>/dev/null)\" = \"$(git rev-parse v1.1)\" ] || falla \"~/faena/control no tiene la etiqueta v1.1\"\n[ -z \"$(git -C $F status --porcelain)\" ] || falla \"~/faena/control tiene cambios sin confirmar\""
+    },
+    {
+     "name": "La faena ve la nota",
+     "script": "[ \"$(git -C ~/faena/control notes show main 2>/dev/null)\" = 'Aprobado por Prevención de Riesgos' ] || falla \"En ~/faena/control no se ve la nota: trae refs/notes/commits desde el bundle\""
+    }
+   ],
+   "solution": [
+    "git merge feature/alarmas feature/turnos -m 'Integra alarmas y turnos'",
+    "git tag -a v1.1 -m 'Versión 1.1'",
+    "git notes add -m 'Aprobado por Prevención de Riesgos' main",
+    "git bundle create ~/pendrive/control-v1.1.bundle v1.0..main v1.1 refs/notes/commits",
+    "git bundle verify ~/pendrive/control-v1.1.bundle",
+    "cd ~/faena/control",
+    "git bundle verify ~/pendrive/control-v1.1.bundle",
+    "git pull ~/pendrive/control-v1.1.bundle main",
+    "git fetch ~/pendrive/control-v1.1.bundle refs/tags/v1.1:refs/tags/v1.1 refs/notes/commits:refs/notes/commits",
+    "git log -1"
+   ],
+   "hints": [
+    "Paso 1: `git merge feature/alarmas feature/turnos -m '…'` (octopus). Paso 2: `git tag -a v1.1 -m 'Versión 1.1'`.",
+    "Paso 3: `git notes add -m '…' main`. Si usas `v1.1`, la nota queda en el objeto etiqueta y `git log` no la mostrará.",
+    "Paso 4: el rango `v1.0..main` excluye lo que la faena ya tiene; agrega también `v1.1` y `refs/notes/commits` como refs del bundle.",
+    "Paso 5: en `~/faena/control`, `git pull ARCHIVO main` actualiza main; la etiqueta y las notas se traen con `git fetch ARCHIVO refs/tags/v1.1:refs/tags/v1.1 refs/notes/commits:refs/notes/commits`."
+   ],
+   "explain": "El merge de dos ramas a la vez usa octopus y deja un commit con 3 padres. La nota va en el commit (`main` o `v1.1^{commit}`); `git notes add v1.1` anotaría el objeto etiqueta. `git bundle create ARCHIVO v1.0..main v1.1 refs/notes/commits` empaqueta los commits nuevos de main (excluyendo lo alcanzable desde `v1.0`, que pasa a ser prerrequisito: «The bundle requires this ref»), la etiqueta y la historia de notas; `git bundle list-heads` muestra las tres refs. En la faena, `git bundle verify` confirma que el clon tiene los prerrequisitos; `git pull ARCHIVO main` hace fast-forward, pero un `pull` de una sola rama desde una ruta no trae etiquetas ni notas: se piden explícitamente con refspecs `origen:destino`. Un atajo como `git fetch ARCHIVO 'refs/*:refs/*'` no sirve: Git se niega a sobrescribir así la rama que tienes activa («refusing to fetch into branch 'refs/heads/main' checked out at …»)."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Por qué `git rm --cached .env` + commit no elimina un secreto ya confirmado?",
+   "back": "Solo crea un commit nuevo sin el archivo. Los commits anteriores (y las etiquetas, ramas y clones que los contienen) siguen apuntando al blob con el secreto: `git show <commit>:.env` lo muestra."
+  },
+  {
+   "front": "Primer paso ante una credencial filtrada en Git",
+   "back": "**Revocarla y rotarla** en el proveedor. Purgar la historia viene después y no deshace que alguien ya la haya copiado."
+  },
+  {
+   "front": "¿Por qué purgar un archivo cambia los hashes de muchos commits?",
+   "back": "El commit que lo contenía pasa a tener otro árbol (otro hash); como cada hijo guarda el hash de su padre, cambian todos los descendientes hasta la punta de cada rama y etiqueta."
+  },
+  {
+   "front": "Comando de git filter-repo para eliminar `.env` de toda la historia",
+   "back": "`git filter-repo --sensitive-data-removal --invert-paths --path .env` en un clon recién hecho. `--invert-paths` hace que se conserve todo **menos** la ruta indicada."
+  },
+  {
+   "front": "Formato del archivo de `git filter-repo --replace-text`",
+   "back": "Una expresión por línea: `texto` (se reemplaza por `***REMOVED***`), `texto==>reemplazo`, y prefijos `regex:` o `glob:`."
+  },
+  {
+   "front": "¿Qué es `refs/original/`?",
+   "back": "El espacio donde `git filter-branch` guarda un respaldo de cada ref reescrita. Mantiene viva la historia vieja hasta que lo borras (`git update-ref -d`)."
+  },
+  {
+   "front": "`--index-filter` frente a `--tree-filter` en filter-branch",
+   "back": "`--index-filter` modifica el índice de cada commit sin extraer archivos (rápido; ideal con `git rm --cached --ignore-unmatch`). `--tree-filter` extrae cada commit al disco y ejecuta el comando allí (lento)."
+  },
+  {
+   "front": "Receta para que un objeto purgado desaparezca de verdad de tu clon",
+   "back": "Soltar todas las refs que lo alcanzan (`refs/original`, ramas remotas, stash, etiquetas) → `git reflog expire --expire=now --all` → `git gc --prune=now`."
+  },
+  {
+   "front": "¿Cómo compruebas que un blob secreto ya no existe en un repositorio?",
+   "back": "Calcula su hash con `echo 'contenido' | git hash-object --stdin` y ejecuta `git cat-file -t <hash>`: debe fallar («could not get object info»). Además, `git log --all -- ruta` debe salir vacío."
+  },
+  {
+   "front": "Cómo publicar una historia reescrita",
+   "back": "Con filter-branch: `git push --force --all origin` y `git push --force --tags origin`. Con filter-repo: `git push --force --mirror origin`. En GitHub, además, pedir al soporte que limpie cachés y refs de pull requests."
+  },
+  {
+   "front": "¿Qué hacen los compañeros tras una purga?",
+   "back": "Lo ideal: borrar su clon y volver a clonar. Si tienen trabajo: borrar etiquetas y `git fetch --prune --tags`, **rebasear** (nunca fusionar) sus ramas sobre la historia nueva, `git reflog expire --expire=now --all` y `git gc --prune=now`."
+  },
+  {
+   "front": "¿Qué es un reemplazo (`git replace`)?",
+   "back": "Una ref `refs/replace/<hash-original>` que apunta a otro objeto. Casi todos los comandos usan el sustituto en lugar del original, sin reescribir nada."
+  },
+  {
+   "front": "`git replace --graft <commit> <padre>`",
+   "back": "Crea una copia de `<commit>` con los padres indicados y la registra como reemplazo. Sirve para unir la historia antigua de un proyecto migrado."
+  },
+  {
+   "front": "¿Cómo ves la historia real, sin reemplazos?",
+   "back": "`git --no-replace-objects log` o la variable `GIT_NO_REPLACE_OBJECTS=1`."
+  },
+  {
+   "front": "¿Dónde viven las notas de Git?",
+   "back": "En `refs/notes/commits` (por defecto): una historia propia cuyo árbol tiene un blob por objeto anotado, nombrado con el hash de ese objeto."
+  },
+  {
+   "front": "Cómo compartir notas",
+   "back": "`git push origin refs/notes/commits` y, del otro lado, `git fetch origin 'refs/notes/*:refs/notes/*'`. Un push o fetch normal no las incluye."
+  },
+  {
+   "front": "Tras `git commit --amend` la nota desapareció de `git log`. ¿Por qué?",
+   "back": "La nota quedó en el commit viejo: `amend` y `rebase` solo copian notas si configuras `notes.rewriteRef` (por ejemplo `refs/notes/commits`), que no tiene valor por defecto."
+  },
+  {
+   "front": "¿Qué es rerere y cómo se activa?",
+   "back": "*Reuse recorded resolution*: registra conflictos y tus resoluciones en `.git/rr-cache` y las reaplica si el mismo conflicto vuelve. Se activa con `git config --global rerere.enabled true`."
+  },
+  {
+   "front": "rerere resolvió un archivo con una resolución que ya no sirve. ¿Qué haces?",
+   "back": "`git rerere forget <archivo>` (olvida la resolución) y `git checkout -m <archivo>` (recrea el conflicto); resuelves de nuevo y al confirmar se registra la nueva."
+  },
+  {
+   "front": "`git merge -s ours` frente a `git merge -X ours`",
+   "back": "`-s ours` (estrategia) ignora todo lo de la otra rama: el árbol queda igual al tuyo. `-X ours` (opción de ort) fusiona normalmente y solo en los trozos en conflicto elige tu versión."
+  },
+  {
+   "front": "Merge octopus",
+   "back": "Fusión de más de dos ramas a la vez (`git merge a b c`): un solo commit con varios padres. Se niega («Should not be doing an octopus.») si hace falta resolver conflictos a mano."
+  },
+  {
+   "front": "Estrategia de fusión por defecto en Git 2.50",
+   "back": "`ort` (por defecto desde Git 2.34). Desde Git 2.50, `recursive` es solo un sinónimo de `ort`."
+  },
+  {
+   "front": "Bundle incremental y prerrequisitos",
+   "back": "`git bundle create x.bundle v1.0..main` incluye solo lo nuevo; los commits base son prerrequisitos (líneas con `-` en la cabecera). `git bundle verify` comprueba que el destino los tenga."
+  },
+  {
+   "front": "Restaurar objetos perdidos desde un bundle",
+   "back": "`git bundle unbundle archivo.bundle` guarda todos sus objetos sin mover refs. `git fetch` no sirve si ya tienes esos commits: la negociación no transfiere nada."
+  },
+  {
+   "front": "`git archive --prefix=app-1.0/ -o app-1.0.zip v1.0`",
+   "back": "Exporta el árbol de `v1.0` (sin `.git` ni historia ni cambios sin confirmar) dentro de la carpeta `app-1.0/`. Respeta `export-ignore` y `export-subst` de `.gitattributes`."
+  },
+  {
+   "front": "Plazos por defecto de `git gc`",
+   "back": "Borra objetos inalcanzables con más de 2 semanas (`gc.pruneExpire`), expira entradas del reflog de más de 90 días (30 si ya no están en la rama). Se dispara solo con 6700 objetos sueltos (`gc.auto`) o 50 packs."
+  },
+  {
+   "front": "`git maintenance register` frente a `git maintenance start`",
+   "back": "`register` agrega el repositorio a `maintenance.repo` y configura la estrategia; `start` además programa `git maintenance run --scheduled` cada hora en el sistema (launchctl, systemd/cron o schtasks)."
+  },
+  {
+   "front": "`git fsck` dice «missing blob <hash>». ¿Qué significa?",
+   "back": "Algún árbol referencia un blob que no está en la base de objetos (disco dañado, copia incompleta). Se repara consiguiendo ese objeto desde otra copia sana (otro clon, un bundle, `git hash-object -w` con el contenido exacto)."
+  },
+  {
+   "front": "Códigos de `%G?`",
+   "back": "`G` buena, `B` mala, `U` buena con confianza desconocida, `X` expirada, `Y` llave expirada, `R` llave revocada, `E` no se puede comprobar, `N` sin firma."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s15-q1",
+   "type": "single",
+   "q": "Diego confirmó `.env` con una clave hace cinco commits y ya hizo push. Hoy ejecuta `git rm --cached .env`, agrega `.env` al `.gitignore` y confirma. ¿Qué afirmación es correcta?",
+   "options": [
+    "La clave ya no es accesible, porque el último commit no tiene el archivo",
+    "Cualquiera con un clon puede leerla, por ejemplo con `git show <commit-antiguo>:.env`",
+    "`git gc` la borrará automáticamente en dos semanas",
+    "Solo queda en el reflog de Diego"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los commits anteriores siguen apuntando al blob con la clave y viajan en cada clon. `gc` jamás borra objetos alcanzables desde una rama o etiqueta. Hay que rotar la clave y, si corresponde, reescribir la historia."
+  },
+  {
+   "id": "s15-q2",
+   "type": "single",
+   "q": "Detectas que una clave de API real quedó en un repositorio público. ¿Qué haces **primero**?",
+   "options": [
+    "`git filter-repo --invert-paths --path .env`",
+    "Revocar la clave y generar una nueva en el proveedor",
+    "`git push --force` con un commit que borre el archivo",
+    "Hacer el repositorio privado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La clave pudo copiarse en minutos. Rotarla es lo único que neutraliza la filtración; la purga y el resto vienen después."
+  },
+  {
+   "id": "s15-q3",
+   "type": "multi",
+   "q": "Reescribiste tu clon con `git filter-branch` y borraste `.env` de todos los commits, pero todavía no haces push. ¿Dónde puede seguir alcanzable el blob del secreto? (Selecciona TODAS las correctas.)",
+   "options": [
+    "En `refs/original/*`",
+    "En el reflog de tu clon",
+    "En tus ramas remotas `origin/*`",
+    "En los clones de tus compañeros",
+    "En `.git/config`"
+   ],
+   "answer": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "explain": "filter-branch deja respaldos en `refs/original`, el reflog recuerda los commits viejos, `origin/*` sigue apuntando a la historia del servidor y cada clon ajeno tiene su propia copia. `.git/config` no guarda objetos."
+  },
+  {
+   "id": "s15-q4",
+   "type": "single",
+   "q": "¿Qué comando de git filter-repo elimina `credenciales.json` de toda la historia y conserva todo lo demás?",
+   "options": [
+    "`git filter-repo --path credenciales.json`",
+    "`git filter-repo --invert-paths --path credenciales.json`",
+    "`git filter-repo --remove credenciales.json`",
+    "`git filter-branch --path credenciales.json`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--path` **selecciona** rutas para conservar; sin `--invert-paths` te quedarías solo con ese archivo. `--remove` no existe y `filter-branch` no tiene `--path`."
+  },
+  {
+   "id": "s15-q5",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `git filter-repo` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "Viene incluido en la instalación estándar de Git 2.50.",
+     "answer": false
+    },
+    {
+     "text": "Se niega a reescribir un repositorio que no parece un clon recién hecho, salvo con `--force`.",
+     "answer": true
+    },
+    {
+     "text": "Sin `--sensitive-data-removal`, elimina el remoto `origin` como medida de seguridad.",
+     "answer": true
+    },
+    {
+     "text": "Al terminar, expira el reflog y ejecuta la recolección de basura por su cuenta.",
+     "answer": true
+    },
+    {
+     "text": "Conserva las firmas GPG/SSH de los commits reescritos.",
+     "answer": false
+    }
+   ],
+   "explain": "filter-repo se instala aparte (brew, pipx, apt, scoop…). Protege contra errores exigiendo un clon nuevo y quitando `origin` (con `--sdr` lo conserva porque el siguiente paso es el push). Limpia reflog y objetos viejos él solo. Las firmas se pierden: el contenido firmado cambió."
+  },
+  {
+   "id": "s15-q6",
+   "type": "single",
+   "q": "¿Para qué sirve `--ignore-unmatch` en `git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env'`?",
+   "options": [
+    "Para no borrar `.env` del disco",
+    "Para que `git rm` no falle en los commits donde `.env` no existe",
+    "Para ignorar los archivos del `.gitignore`",
+    "Para no reescribir las etiquetas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin esa opción, `git rm` devuelve error en el primer commit que no tenga `.env` y el filtro se detiene."
+  },
+  {
+   "id": "s15-q7",
+   "type": "single",
+   "q": "Tras `filter-branch` borraste los respaldos con `git update-ref -d refs/original/...` y `git log --all -- .env` ya no muestra nada, pero `git cat-file -t <hash-del-blob>` responde `blob`. ¿Qué falta?",
+   "options": [
+    "Nada: `cat-file` usa una caché",
+    "`git reflog expire --expire=now --all` y `git gc --prune=now`",
+    "`git fsck --lost-found`",
+    "`git push --force`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El reflog todavía referencia los commits viejos y `gc` respeta además un plazo de 2 semanas. Hay que expirar el reflog y podar con `--prune=now`."
+  },
+  {
+   "id": "s15-q8",
+   "type": "single",
+   "q": "Quieres purgar `.env` de todas tus ramas locales **y** etiquetas con filter-branch, manteniendo el nombre de cada etiqueta. ¿Qué comando usas?",
+   "options": [
+    "`git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' HEAD`",
+    "`git filter-branch --index-filter 'git rm --cached --ignore-unmatch .env' --tag-name-filter cat -- --branches --tags`",
+    "`git filter-branch --tree-filter 'rm .env' --tags`",
+    "`git filter-branch --index-filter 'git rm .env' -- --all --no-tags`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--tag-name-filter cat` reescribe las etiquetas que apuntan a commits reescritos conservando su nombre, y `-- --branches --tags` indica qué refs recorrer. Con `HEAD` solo se reescribiría la rama actual."
+  },
+  {
+   "id": "s15-q9",
+   "type": "single",
+   "q": "`git filter-branch` responde «Cannot rewrite branches: You have unstaged changes.». ¿Qué significa?",
+   "options": [
+    "Que hay archivos sin seguimiento en la carpeta",
+    "Que hay cambios sin confirmar en archivos versionados y filter-branch exige un árbol de trabajo limpio",
+    "Que ya existe un respaldo en `refs/original`",
+    "Que falta el `--`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "filter-branch se niega a correr con cambios sin confirmar en archivos versionados. Confírmalos (o, si el cambiado es justo el archivo a purgar, primero deja de versionarlo). El mensaje de un respaldo existente es otro: «Cannot create a new backup»."
+  },
+  {
+   "id": "s15-q10",
+   "type": "single",
+   "q": "Purgaste `.env` con filter-branch en `main`, `develop` y la etiqueta `v2.0`. ¿Cómo actualizas el servidor?",
+   "options": [
+    "`git push`",
+    "`git push --force --all origin` y luego `git push --force --tags origin`",
+    "`git push --force origin main`",
+    "`git push --tags`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Hay que reemplazar **todas** las ramas y etiquetas afectadas, y forzar porque la historia nueva no desciende de la vieja. `--all` y `--tags` no se combinan en un mismo push."
+  },
+  {
+   "id": "s15-q11",
+   "type": "single",
+   "q": "Tras la purga, Ana tiene un clon antiguo con una rama `feature/x` sin publicar. ¿Qué debe hacer?",
+   "options": [
+    "`git pull` en `main` y luego `git merge main` en `feature/x`",
+    "Ejecutar el mismo `filter-repo` que tú en su clon",
+    "Traer la historia nueva y **rebasear** `feature/x` sobre ella (por ejemplo con `git rebase --onto`), borrar y volver a traer las etiquetas, expirar el reflog y hacer `gc`",
+    "Hacer `git push --force` de su clon"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un merge reintroduce la historia contaminada; repetir el filtro puede dar hashes distintos; un push forzado desde su clon recontaminaría el servidor. Lo correcto es rebasear su trabajo y limpiar."
+  },
+  {
+   "id": "s15-q12",
+   "type": "single",
+   "q": "Pegaste una contraseña en el **último** commit, que aún no subiste. ¿Cuál es la corrección más simple?",
+   "options": [
+    "`git filter-repo --replace-text`",
+    "Corregir el archivo, `git add` y `git commit --amend`; luego `git reflog expire --expire=now --all` y `git gc --prune=now`",
+    "`git revert HEAD`",
+    "`git reset --soft HEAD~1` y nada más"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Si el commit es local, `--amend` lo reemplaza. El commit viejo queda en el reflog hasta que lo expires. `revert` agregaría un commit nuevo pero dejaría la contraseña en la historia."
+  },
+  {
+   "id": "s15-q13",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `git replace` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "Cambia el hash del commit reemplazado.",
+     "answer": false
+    },
+    {
+     "text": "Los reemplazos viajan con un `git push` normal.",
+     "answer": false
+    },
+    {
+     "text": "`git --no-replace-objects log` muestra la historia sin reemplazos.",
+     "answer": true
+    },
+    {
+     "text": "`git replace --graft A B` hace que Git vea al commit A con B como padre.",
+     "answer": true
+    },
+    {
+     "text": "Se guardan en `refs/replace/<hash-del-objeto-original>`.",
+     "answer": true
+    }
+   ],
+   "explain": "Un reemplazo es una ref más: no reescribe nada y hay que publicarla explícitamente (`git push origin 'refs/replace/*'`)."
+  },
+  {
+   "id": "s15-q14",
+   "type": "single",
+   "q": "Migraron un proyecto importando el código sin historia en el commit raíz `r`. La historia vieja está en `antiguo/main`. ¿Cómo haces que `git log` y `git blame` la muestren sin reescribir main?",
+   "options": [
+    "`git rebase --onto antiguo/main r`",
+    "`git replace --graft r antiguo/main`",
+    "`git merge --allow-unrelated-histories antiguo/main`",
+    "`git notes add -m antiguo/main r`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El injerto crea un sustituto de `r` con `antiguo/main` como padre. El rebase reescribiría main y el merge agregaría un commit que mezcla dos historias."
+  },
+  {
+   "id": "s15-q15",
+   "type": "single",
+   "q": "Agregaste una nota a un commit publicado y tu compañera no la ve después de `git pull`. ¿Por qué?",
+   "options": [
+    "Las notas solo se ven con `git show`",
+    "Las notas no se publican ni se traen por defecto: hay que hacer `git push origin refs/notes/commits` y ella `git fetch origin 'refs/notes/*:refs/notes/*'`",
+    "Las notas solo existen en el reflog",
+    "Ella debe hacer `git pull --rebase`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Igual que los reemplazos, las notas viven en su propio espacio de refs y requieren refspecs explícitos."
+  },
+  {
+   "id": "s15-q16",
+   "type": "single",
+   "q": "`git notes add -m 'Probado' HEAD` responde «Cannot add notes. Found existing notes for object …». ¿Qué puedes hacer?",
+   "options": [
+    "`git notes append -m 'Probado' HEAD` para sumar texto, o `git notes add -f` para reemplazar la nota",
+    "`git commit --amend`",
+    "Nada: un commit solo admite una nota en toda su vida",
+    "`git notes add --ref=commits`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`append` agrega a la nota existente (o la crea); `-f` la sobrescribe; `git notes edit` abre el editor."
+  },
+  {
+   "id": "s15-q17",
+   "type": "single",
+   "q": "Hiciste `git commit --amend` en un commit con nota y ahora `git log` no la muestra. ¿Qué configuración lo habría evitado?",
+   "options": [
+    "`notes.displayRef`",
+    "`notes.rewriteRef=refs/notes/commits`",
+    "`core.notesRef`",
+    "`rerere.enabled`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`notes.rewriteRef` indica qué notas copiar a los commits reescritos por `amend` y `rebase`; no tiene valor por defecto. La nota original sigue pegada al commit viejo."
+  },
+  {
+   "id": "s15-q18",
+   "type": "single",
+   "q": "Ejecutas `git notes add -m 'Aprobado' v2.0` (v2.0 es una etiqueta anotada) y `git log v2.0` no muestra la nota. ¿Por qué?",
+   "options": [
+    "Las etiquetas no admiten notas",
+    "La nota quedó en el objeto etiqueta, no en el commit; para anotar el commit usa `v2.0^{commit}`",
+    "Falta `git push --tags`",
+    "Hay que ejecutar `git notes merge`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una etiqueta anotada es un objeto propio. `git log` muestra notas de commits; `v2.0^{commit}` resuelve al commit etiquetado."
+  },
+  {
+   "id": "s15-q19",
+   "type": "single",
+   "q": "Resolviste un conflicto, confirmaste y **después** activaste `rerere.enabled`. ¿Se reutilizará esa resolución si el conflicto reaparece?",
+   "options": [
+    "Sí, rerere lee la historia de merges",
+    "No: rerere solo registra conflictos que ocurren mientras está activo",
+    "Solo si ejecutas `git rerere gc`",
+    "Solo en rebases"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "rerere guarda la preimagen al producirse el conflicto y la postimagen al confirmar. Si no estaba activo en ese momento, no hay nada que reutilizar (puedes repetir el merge para registrarlo)."
+  },
+  {
+   "id": "s15-q20",
+   "type": "single",
+   "q": "Durante un rebase ves «Resolved 'precios.txt' using previous resolution.». ¿En qué estado queda el archivo?",
+   "options": [
+    "Resuelto y ya preparado (`git add` hecho)",
+    "Con el contenido resuelto, pero todavía marcado como en conflicto: lo revisas y haces `git add`",
+    "Con marcadores de conflicto",
+    "El rebase continuó solo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "rerere escribe la resolución en el árbol de trabajo pero deja el índice como estaba (`UU` en `git status`) para que revises. Solo con `rerere.autoUpdate=true` también lo prepara."
+  },
+  {
+   "id": "s15-q21",
+   "type": "multi",
+   "q": "rerere aplicó una resolución que ya no es válida. ¿Qué dos comandos te permiten volver al conflicto y registrar una nueva? (Selecciona DOS.)",
+   "options": [
+    "`git rerere forget archivo`",
+    "`git checkout -m archivo`",
+    "`git rerere gc`",
+    "`git rerere status`",
+    "`git rerere diff`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`forget` borra la resolución registrada para ese conflicto y `checkout -m` recrea los marcadores. `gc` solo poda registros antiguos; `status` y `diff` solo informan."
+  },
+  {
+   "id": "s15-q22",
+   "type": "single",
+   "q": "Quieres fusionar `feature` en main: que entre todo lo de `feature`, pero que **solo en los trozos en conflicto** gane la versión de main. ¿Qué usas?",
+   "options": [
+    "`git merge -s ours feature`",
+    "`git merge -X ours feature`",
+    "`git merge -X theirs feature`",
+    "`git merge --squash feature`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-X ours` es una opción de ort que resuelve los conflictos a favor de tu lado y fusiona el resto. `-s ours` descartaría todo lo de `feature`."
+  },
+  {
+   "id": "s15-q23",
+   "type": "single",
+   "q": "¿Cuál de estos comandos **no existe**?",
+   "options": [
+    "`git merge -s ours rama`",
+    "`git merge -X theirs rama`",
+    "`git merge -s theirs rama`",
+    "`git merge -s octopus a b c`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "No hay estrategia `theirs`; la documentación lo señala al describir `-X theirs`. Las demás son válidas."
+  },
+  {
+   "id": "s15-q24",
+   "type": "single",
+   "q": "Ejecutas `git merge a b c`. La rama `b` modifica la misma línea que main. ¿Qué ocurre?",
+   "options": [
+    "Se crea el merge octopus y `b` queda con marcadores de conflicto",
+    "octopus se retira con «Should not be doing an octopus.» y el árbol queda limpio: fusiona `b` por separado",
+    "Git fusiona `a` y `c` y omite `b`",
+    "Git cambia solo a la estrategia ours"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "octopus no hace fusiones que requieran resolución manual: aborta y deja todo como estaba. (Solo si el conflicto aparece en la **última** rama de la lista deja el conflicto para resolverlo.)"
+  },
+  {
+   "id": "s15-q25",
+   "type": "single",
+   "q": "En Git 2.50, ¿qué estrategia usa `git merge feature` por defecto?",
+   "options": [
+    "`recursive`, la implementación clásica",
+    "`ort` (y `recursive` es desde 2.50 un sinónimo de `ort`)",
+    "`resolve`",
+    "`octopus`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "ort es la estrategia por defecto para una rama desde Git 2.34, y en 2.50 se eliminó la implementación antigua de recursive, que ahora apunta a ort."
+  },
+  {
+   "id": "s15-q26",
+   "type": "single",
+   "q": "Después de `git merge -s ours experimento`, ¿qué muestra `git diff --stat HEAD^1 HEAD`?",
+   "options": [
+    "Todos los cambios de `experimento`",
+    "Solo los archivos nuevos de `experimento`",
+    "Nada: el árbol del merge es idéntico al del primer padre",
+    "Un error, porque HEAD no tiene dos padres"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La estrategia ours registra la fusión (dos padres) pero conserva exactamente tu árbol."
+  },
+  {
+   "id": "s15-q27",
+   "type": "single",
+   "q": "La faena sin red tiene un clon en `v1.0`. ¿Qué bundle le lleva solo los commits nuevos de main?",
+   "options": [
+    "`git bundle create cambios.bundle main`",
+    "`git bundle create cambios.bundle v1.0..main`",
+    "`git bundle create cambios.bundle HEAD~3`",
+    "`git archive -o cambios.zip v1.0..main`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El rango excluye lo alcanzable desde `v1.0`, que pasa a ser prerrequisito. `main` sola sería un bundle completo, y un hash o expresión sin nombre de ref no crea ninguna ref en el bundle."
+  },
+  {
+   "id": "s15-q28",
+   "type": "single",
+   "q": "En un repositorio vacío, `git bundle verify cambios.bundle` responde «Repository lacks these prerequisite commits:». ¿Qué significa?",
+   "options": [
+    "El bundle está corrupto",
+    "Es un bundle incremental y este repositorio no tiene los commits base que necesita",
+    "Falta ejecutar `git bundle unbundle`",
+    "El bundle es de otra versión de Git"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un bundle incremental solo sirve donde ya existen sus prerrequisitos. Para un repositorio vacío necesitas un bundle completo (o clonar primero uno completo)."
+  },
+  {
+   "id": "s15-q29",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre `git bundle` y `git archive` es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`git archive` incluye la carpeta `.git` del repositorio.",
+     "answer": false
+    },
+    {
+     "text": "`git archive HEAD` incluye los cambios sin confirmar.",
+     "answer": false
+    },
+    {
+     "text": "Un archivo con el atributo `export-ignore` no aparece en el resultado de `git archive`.",
+     "answer": true
+    },
+    {
+     "text": "Se puede clonar un repositorio directamente desde un bundle con `git clone archivo.bundle`.",
+     "answer": true
+    },
+    {
+     "text": "`git bundle verify` funciona fuera de cualquier repositorio.",
+     "answer": false
+    }
+   ],
+   "explain": "archive exporta solo el árbol confirmado indicado, sin `.git`. Un bundle actúa como remoto de solo lectura; `verify` necesita un repositorio para comprobar los prerrequisitos («need a repository to verify a bundle»)."
+  },
+  {
+   "id": "s15-q30",
+   "type": "single",
+   "q": "`git fsck` informa «missing blob 3f2a…» y tienes un respaldo `respaldo.bundle` con esa versión. ¿Qué comando restaura el objeto sin mover ninguna rama?",
+   "options": [
+    "`git fetch respaldo.bundle`",
+    "`git bundle unbundle respaldo.bundle`",
+    "`git clone respaldo.bundle`",
+    "`git reset --hard`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`unbundle` guarda todos los objetos del packfile en tu base y solo imprime las refs. `fetch` no transfiere nada si ya tienes esos commits; `clone` crea otro repositorio."
+  },
+  {
+   "id": "s15-q31",
+   "type": "single",
+   "q": "Un commit descartado hace 3 días ya no está en ninguna rama **ni** en el reflog. ¿Qué hace con él `git gc` sin opciones?",
+   "options": [
+    "Lo borra de inmediato",
+    "No lo borra todavía: está dentro del plazo de gracia de 2 semanas (queda en un cruft pack)",
+    "Lo mueve a `.git/lost-found`",
+    "Lo vuelve a conectar a main"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`gc.pruneExpire` es de 2 semanas por defecto. Desde Git 2.41 esos objetos se guardan en un cruft pack. Para borrarlos ya: `git gc --prune=now`."
+  },
+  {
+   "id": "s15-q32",
+   "type": "single",
+   "q": "¿Qué diferencia hay entre `git maintenance register` y `git maintenance start`?",
+   "options": [
+    "Ninguna",
+    "`start` además programa en el sistema operativo la ejecución periódica (`launchctl`, `systemd`/`cron`, `schtasks`)",
+    "`register` ejecuta todas las tareas una vez",
+    "`start` solo funciona en repositorios bare"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`register` configura el repositorio (`maintenance.repo`, estrategia incremental); `start` hace lo mismo y crea la tarea programada que ejecuta `git maintenance run --scheduled`."
+  },
+  {
+   "id": "s15-q33",
+   "type": "single",
+   "q": "`git log --format='%h %G? %an %s'` muestra `9c1d2e3 N Alumno Ajuste menor`, con tu nombre y correo. ¿Qué concluyes?",
+   "options": [
+    "Que lo hiciste tú, porque figura tu correo",
+    "Que el commit no está firmado: el nombre y el correo los puede escribir cualquiera",
+    "Que la firma es mala",
+    "Que falta la llave pública"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`N` significa sin firma. El autor es texto libre; solo una firma válida (`G`) prueba quién creó el commit. `E` indicaría que no se pudo comprobar por falta de llave."
+  },
+  {
+   "id": "s15-q34",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre firmas es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "Un rebase conserva las firmas de los commits que reaplica.",
+     "answer": false
+    },
+    {
+     "text": "Para verificar firmas SSH, Git necesita `gpg.ssh.allowedSignersFile`.",
+     "answer": true
+    },
+    {
+     "text": "`git verify-tag` verifica etiquetas creadas con `git tag -s`.",
+     "answer": true
+    },
+    {
+     "text": "En `%G?`, la `U` significa firma buena con confianza desconocida.",
+     "answer": true
+    }
+   ],
+   "explain": "Reescribir crea commits nuevos, sin la firma original (hay que volver a firmar, por ejemplo con `git rebase -S`). Las firmas SSH se verifican contra el archivo de firmantes permitidos."
+  },
+  {
+   "id": "s15-q35",
+   "type": "multi",
+   "q": "¿Qué comprobaciones demuestran que `.env` fue purgado por completo de tu clon? (Selecciona DOS.)",
+   "options": [
+    "`git log --all --oneline -- .env` no muestra nada",
+    "`git cat-file -t <hash-del-blob>` termina con error",
+    "`git status` dice «nothing to commit»",
+    "`ls -a` no muestra `.env`",
+    "`git log --oneline` tiene menos commits"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "La primera confirma que ninguna ref alcanza un commit con `.env`; la segunda, que el objeto ya no está en la base. El árbol de trabajo o el número de commits no dicen nada sobre la historia ni los objetos."
+  }
+ ],
+ "sources": [
+  {
+   "title": "GitHub Docs — Removing sensitive data from a repository",
+   "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository"
+  },
+  {
+   "title": "GitHub Docs — About push protection",
+   "url": "https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection"
+  },
+  {
+   "title": "git-filter-repo (repositorio y README)",
+   "url": "https://github.com/newren/git-filter-repo"
+  },
+  {
+   "title": "git-filter-repo — manual (Sensitive Data Removal)",
+   "url": "https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt"
+  },
+  {
+   "title": "git-filter-repo — INSTALL.md",
+   "url": "https://github.com/newren/git-filter-repo/blob/main/INSTALL.md"
+  },
+  {
+   "title": "BFG Repo-Cleaner",
+   "url": "https://rtyley.github.io/bfg-repo-cleaner/"
+  },
+  {
+   "title": "git-filter-branch (WARNING, SAFETY, CHECKLIST FOR SHRINKING A REPOSITORY)",
+   "url": "https://git-scm.com/docs/git-filter-branch"
+  },
+  {
+   "title": "git-replace",
+   "url": "https://git-scm.com/docs/git-replace"
+  },
+  {
+   "title": "git-notes",
+   "url": "https://git-scm.com/docs/git-notes"
+  },
+  {
+   "title": "git-rerere",
+   "url": "https://git-scm.com/docs/git-rerere"
+  },
+  {
+   "title": "Merge strategies (git-merge)",
+   "url": "https://git-scm.com/docs/merge-strategies"
+  },
+  {
+   "title": "git-bundle",
+   "url": "https://git-scm.com/docs/git-bundle"
+  },
+  {
+   "title": "git-archive",
+   "url": "https://git-scm.com/docs/git-archive"
+  },
+  {
+   "title": "gitattributes (export-ignore, export-subst)",
+   "url": "https://git-scm.com/docs/gitattributes"
+  },
+  {
+   "title": "git-gc",
+   "url": "https://git-scm.com/docs/git-gc"
+  },
+  {
+   "title": "git-repack",
+   "url": "https://git-scm.com/docs/git-repack"
+  },
+  {
+   "title": "git-prune",
+   "url": "https://git-scm.com/docs/git-prune"
+  },
+  {
+   "title": "git-reflog",
+   "url": "https://git-scm.com/docs/git-reflog"
+  },
+  {
+   "title": "git-maintenance (2.50.0)",
+   "url": "https://git-scm.com/docs/git-maintenance/2.50.0"
+  },
+  {
+   "title": "git-fsck",
+   "url": "https://git-scm.com/docs/git-fsck"
+  },
+  {
+   "title": "git-verify-commit",
+   "url": "https://git-scm.com/docs/git-verify-commit"
+  },
+  {
+   "title": "git-config (rerere.*, notes.*, gc.*, transfer.fsckObjects, gpg.ssh.*)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Rewriting History",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Rerere",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Rerere"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Replace",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Replace"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Bundling",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Bundling"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Advanced Merging",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Git Tools: Signing Your Work",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Signing-Your-Work"
+  },
+  {
+   "title": "Pro Git 2ª ed. (es) — Mantenimiento y recuperación de datos",
+   "url": "https://git-scm.com/book/es/v2/Los-entresijos-internos-de-Git-Mantenimiento-y-recuperaci%C3%B3n-de-datos"
+  },
+  {
+   "title": "Notas de versión de Git 2.24 (filter-branch desaconsejado)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.24.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.34 (ort por defecto)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.34.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.41 (cruft packs por defecto)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.41.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.50",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.50.0.adoc"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.50",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-50/"
+  }
+ ]
+}

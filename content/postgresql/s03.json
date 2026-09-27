@@ -1,0 +1,2863 @@
+{
+  "id": "s03",
+  "order": 3,
+  "title": "Tipos de datos y conversiones",
+  "domain": "fundamentos",
+  "summary": "Cada valor en PostgreSQL tiene un tipo que decide qué valores caben, cuánto ocupan y cómo se suman, comparan y ordenan. Recorrerás los números (enteros, numeric exacto y coma flotante), el texto, las fechas y horas con zonas horarias —la gran trampa, con los cambios de horario de Chile—, tipos especiales como uuid, jsonb o inet, y cómo convertir entre tipos sin sorpresas.",
+  "goal": "Elegir el tipo correcto para cada columna y convertir datos entre tipos prediciendo el resultado exacto, incluidos redondeos, desbordamientos y zonas horarias.",
+  "objectives": [
+    "Elegir entre smallint, integer, bigint, numeric y double precision según el rango y la exactitud necesarios, y guardar montos en pesos sin errores de redondeo.",
+    "Predecir cuándo PostgreSQL rechaza un valor (desbordamiento, largo excesivo, formato inválido) e interpretar el mensaje y el SQLSTATE del error.",
+    "Distinguir text, varchar(n) y char(n) y explicar el efecto de la colación en el orden del texto.",
+    "Guardar instantes con timestamptz y convertirlos entre zonas horarias con SET timezone y AT TIME ZONE, considerando los cambios de horario de Chile.",
+    "Calcular con date, timestamp e interval sabiendo qué tipo devuelve cada operación.",
+    "Usar boolean, uuid (gen_random_uuid y uuidv7), enum, arrays, jsonb, bytea e inet en casos simples.",
+    "Convertir entre tipos con CAST, :: y to_char/to_date/to_number, y validar entradas con pg_typeof y pg_input_is_valid."
+  ],
+  "lessons": [
+    {
+      "id": "s03-l1",
+      "title": "Números: enteros, numeric exacto y coma flotante",
+      "minutes": 22,
+      "goals": [
+        "Elegir el tipo entero más pequeño que cubra el rango de valores de una columna.",
+        "Predecir cuándo una operación provoca integer out of range y evitarlo convirtiendo a bigint.",
+        "Explicar con un ejemplo por qué 0.1 + 0.2 no es 0.3 en double precision y sí en numeric.",
+        "Declarar numeric(p, s) para montos y anticipar cómo redondea al guardar."
+      ],
+      "takeaways": [
+        "Cada valor tiene un tipo y `pg_typeof(x)` te dice cuál: un entero sin punto es integer (o bigint si no cabe); un número con punto es numeric.",
+        "Los enteros tienen un rango fijo (smallint ±32 mil, integer ±2.147 millones, bigint ±9,2 trillones); pasarse no da un número raro: da un error.",
+        "real y double precision son aproximados (binarios): sirven para mediciones, nunca para dinero ni para comparar con `=`.",
+        "numeric(p, s) es exacto, redondea al guardar (los empates se alejan del cero) y da `numeric field overflow` si la parte entera no cabe.",
+        "Pesos chilenos: integer (o bigint para totales); UF, dólares y tasas: numeric con la escala necesaria. El tipo money no se recomienda."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "PostgreSQL es **fuertemente tipado**: cada columna, cada literal y cada resultado de una expresión tiene un tipo. El tipo es un contrato que define qué valores se aceptan, cuántos bytes ocupa cada uno, cómo se comparan y qué operaciones existen. Por eso PostgreSQL prefiere **rechazar** un dato que no cumple el contrato antes que guardarlo mal: un error hoy es mucho más barato que un dato corrupto descubierto en seis meses."
+        },
+        {
+          "type": "p",
+          "text": "Piensa en las cajas de la bodega de una tienda: una caja chica (`smallint`) es barata y liviana, pero si intentas meter algo grande no cierra; una caja grande (`bigint`) acepta casi todo, pero ocupa más espacio, y ese espacio se multiplica por cada una de tus millones de filas. Elegir el tipo es elegir la caja."
+        },
+        {
+          "type": "h",
+          "text": "Enteros: smallint, integer y bigint"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Tipo",
+            "Alias",
+            "Bytes",
+            "Rango",
+            "Úsalo para"
+          ],
+          "rows": [
+            [
+              "`smallint`",
+              "`int2`",
+              "2",
+              "−32.768 a 32.767",
+              "Valores chicos y acotados: nivel de un curso, horas semanales, año de publicación de un libro"
+            ],
+            [
+              "`integer`",
+              "`int`, `int4`",
+              "4",
+              "−2.147.483.648 a 2.147.483.647",
+              "La opción por defecto: ids, stock, cantidades, precios en pesos"
+            ],
+            [
+              "`bigint`",
+              "`int8`",
+              "8",
+              "−9.223.372.036.854.775.808 a 9.223.372.036.854.775.807",
+              "Tablas enormes (validaciones del metro), presupuestos, sumas grandes"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Un literal entero sin punto decimal es `integer`; si no cabe en integer, PostgreSQL lo toma como `bigint`, y si tampoco cabe, como `numeric`. Un literal con punto (`12.5`) o con exponente (`1.5e3`) es `numeric`. La función `pg_typeof` muestra el tipo de cualquier expresión:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT pg_typeof(42) AS entero, pg_typeof(3000000000) AS grande, pg_typeof(12.5) AS con_punto;\nSELECT 32767::smallint AS max_smallint, 2147483647 AS max_integer, 9223372036854775807 AS max_bigint;"
+        },
+        {
+          "type": "p",
+          "text": "El operador `::` convierte un valor a otro tipo (lo verás en detalle en la lección 5). **El tipo del resultado depende de los tipos de los operandos**: integer + integer da integer. Si el resultado no cabe, PostgreSQL no «da la vuelta» a un número negativo como hacen otros lenguajes: lanza un error y la sentencia completa se cancela."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 2147483647 + 1;\nSELECT 2147483647::bigint + 1 AS con_bigint;\nSELECT 40000::smallint;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El desbordamiento aparece donde menos lo esperas: `sum(columna_integer)` devuelve `bigint` (con margen de sobra), pero una multiplicación **fila a fila** como `precio * cantidad` sigue siendo integer × integer = integer y puede superar los 2.147 millones antes de sumar. Si los montos pueden ser grandes, convierte antes: `precio::bigint * cantidad`."
+        },
+        {
+          "type": "p",
+          "text": "Mira qué tipos devuelven los agregados sobre los precios de la tienda (columna `integer`): la suma sube a `bigint` y el promedio pasa a `numeric`, porque un promedio de enteros casi nunca es entero."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT pg_typeof(sum(precio)) AS tipo_suma, sum(precio) AS suma,\n       pg_typeof(avg(precio)) AS tipo_promedio, avg(precio) AS promedio\nFROM productos;"
+        },
+        {
+          "type": "h",
+          "text": "numeric: exacto, para dinero y cuentas"
+        },
+        {
+          "type": "p",
+          "text": "`numeric(p, s)` guarda números **decimales exactos**: `p` (precisión) es el total de dígitos significativos y `s` (escala) cuántos van después del punto. `numeric(10,2)` admite hasta 99.999.999,99. Sin `(p, s)`, `numeric` acepta cualquier valor hasta el límite de la implementación (131.072 dígitos antes del punto y 16.383 después). `decimal` es un sinónimo exacto."
+        },
+        {
+          "type": "p",
+          "text": "Al guardar en un `numeric(p, s)`, el valor se **redondea** a `s` decimales (los empates se alejan del cero: 2,5 → 3). Si después de redondear la parte entera no cabe, el error es `numeric field overflow`, con un `DETAIL` que te dice el máximo permitido:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 12.345::numeric(5,2) AS redondea_arriba, 12.344::numeric(5,2) AS redondea_abajo, 2.5::numeric(2,0) AS empate;\nSELECT 1234.5::numeric(5,2);",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Desde PostgreSQL 15 la escala puede ser negativa o mayor que la precisión: `numeric(5,-3)` redondea a miles (123456 → 123000). Es poco común, pero sirve para montos que solo se informan en miles."
+        },
+        {
+          "type": "p",
+          "text": "Para crear una tabla basta con escribir cada columna con su tipo (en la sección 5 verás restricciones, valores por defecto y mucho más). Observa cómo el tipo **redondea** el monto en UF al guardarlo y **rechaza** una cantidad fuera de rango:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE cotizacion (item text, cantidad smallint, precio_clp integer, monto_uf numeric(10,2), peso_kg double precision);\nINSERT INTO cotizacion VALUES ('Notebook', 2, 549990, 14.456, 1.35);\nSELECT * FROM cotizacion;\nINSERT INTO cotizacion VALUES ('Parlante', 40000, 34990, 0.9, 0.8);\n\\d cotizacion",
+          "errors": true
+        },
+        {
+          "type": "h",
+          "text": "Coma flotante: real y double precision"
+        },
+        {
+          "type": "p",
+          "text": "`real` (4 bytes, unos 6 dígitos de precisión) y `double precision` (8 bytes, unos 15 dígitos; alias `float8`) siguen el estándar IEEE 754: guardan el número en **binario**. El problema es que muchas fracciones decimales no tienen representación binaria exacta, igual que 1/3 no tiene representación decimal exacta (0,3333…). El valor 0,1 se guarda como el binario más cercano, y los pequeños errores se acumulan:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 0.1 + 0.2 AS con_numeric, 0.1::float8 + 0.2::float8 AS con_double;\nSELECT 0.1::float8 + 0.2::float8 = 0.3 AS son_iguales;\nSELECT sum(0.1) AS numeric_diez_veces, sum(0.1::float8) AS double_diez_veces FROM generate_series(1, 10);\nSELECT 16777216::real + 1::real AS real_pierde_el_uno, 16777216::float8 + 1 AS double_lo_conserva;"
+        },
+        {
+          "type": "p",
+          "text": "`generate_series(1, 10)` genera diez filas (una por número) y `sum` suma 0,1 en cada una: con `numeric` el resultado es exactamente 1,0; con `double precision`, 0,9999999999999999. El último ejemplo muestra el límite de `real`: con solo 24 bits de mantisa, 16.777.217 no se puede representar y el «+1» se pierde."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "`numeric(p, s)`",
+            "`double precision`",
+            "`real`"
+          ],
+          "rows": [
+            [
+              "Exactitud",
+              "Exacto en decimal",
+              "Aproximado (~15 dígitos)",
+              "Aproximado (~6 dígitos)"
+            ],
+            [
+              "Tamaño",
+              "Variable (8 bytes para 1; 14 para 123456789.123)",
+              "8 bytes",
+              "4 bytes"
+            ],
+            [
+              "Velocidad",
+              "Más lento (aritmética por software)",
+              "Muy rápido (hardware)",
+              "Muy rápido"
+            ],
+            [
+              "Empates al redondear",
+              "Se alejan del cero: `round(2.5)` = 3",
+              "Al par más cercano: `round(2.5::float8)` = 2",
+              "Al par más cercano"
+            ],
+            [
+              "Úsalo para",
+              "Dinero, notas, cantidades que se suman y comparan",
+              "Mediciones físicas, coordenadas, estadística, ciencia",
+              "Casi nunca: solo si el espacio es crítico"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT round(2.5) AS numeric_2_5, round(3.5) AS numeric_3_5,\n       round(2.5::float8) AS double_2_5, round(3.5::float8) AS double_3_5;"
+        },
+        {
+          "type": "h",
+          "text": "Dinero en pesos chilenos"
+        },
+        {
+          "type": "p",
+          "text": "El peso chileno no tiene centavos, así que un precio cabe perfecto en `integer` (hasta $2.147.483.647). Para totales acumulados, sueldos anuales de toda una empresa o presupuestos usa `bigint` (en el conjunto rrhh, `proyectos.presupuesto` es bigint). Para montos con decimales —UF, dólares, tasas de interés— usa `numeric` con la escala que corresponda: `numeric(12,2)` para dólares, `numeric(6,4)` para una tasa como 0,0125. **Nunca** `real` ni `double precision` para dinero."
+        },
+        {
+          "type": "p",
+          "text": "¿Y el tipo `money`? Existe, pero la propia comunidad lo desaconseja: su símbolo, su formato y su cantidad de decimales dependen del parámetro `lc_monetary` (en la simulación es C, así que un precio en pesos aparece como `$12,990.00`, con centavos que no existen), y un respaldo restaurado en un servidor con otra configuración regional puede leerse mal. Además, al dividir por un entero **trunca** el resultado:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 12990::money AS precio_money, 34990::money / 6 AS dividido_money, round(34990::numeric / 6, 2) AS dividido_numeric;"
+        },
+        {
+          "type": "diagram",
+          "title": "¿Qué tipo numérico uso?",
+          "mermaid": "flowchart TD\n  A[\"¿El valor puede tener decimales?\"] -->|\"No\"| B[\"¿Puede superar 2.147 millones?\"]\n  B -->|\"No\"| C[\"integer (smallint si el rango es chico y conocido)\"]\n  B -->|\"Sí\"| D[\"bigint\"]\n  A -->|\"Sí\"| E[\"¿Debe ser exacto: dinero, notas, cantidades que se suman?\"]\n  E -->|\"Sí\"| F[\"numeric(p, s)\"]\n  E -->|\"No: es una medición aproximada\"| G[\"double precision\"]",
+          "caption": "Primero decide si hay decimales; luego, si el valor debe ser exacto. money y real casi nunca son la respuesta."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta clásica de entrevista: «¿por qué no usar float para dinero?». Respuesta: porque es binario y aproximado; 0.1 + 0.2 da 0.30000000000000004, las sumas acumulan error, los empates se redondean al par y las comparaciones con `=` fallan. Usa `numeric` o enteros en la unidad mínima (pesos)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`smallserial`, `serial` y `bigserial` no son tipos de verdad: son atajos que crean una columna entera con una secuencia. En la sección 5 verás la forma moderna y recomendada: `GENERATED ALWAYS AS IDENTITY`."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Tipado fuerte",
+              "en": "Strong typing",
+              "def": "Cada valor tiene un tipo y PostgreSQL rechaza operaciones o valores que no calzan con él, en vez de convertirlos «como pueda»."
+            },
+            {
+              "term": "Desbordamiento",
+              "en": "Overflow",
+              "def": "El resultado no cabe en el tipo: PostgreSQL responde con un error (`integer out of range`, `smallint out of range`) y cancela la sentencia."
+            },
+            {
+              "term": "Precisión y escala",
+              "en": "Precision and scale",
+              "def": "En `numeric(p, s)`, `p` es el total de dígitos y `s` los decimales. `numeric(10,2)` guarda hasta 99.999.999,99."
+            },
+            {
+              "term": "Coma flotante",
+              "en": "Floating point (IEEE 754)",
+              "def": "Representación binaria aproximada de `real` y `double precision`: rápida y compacta, pero sin exactitud decimal."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s03-l2",
+      "title": "Texto: text, varchar(n) y char(n)",
+      "minutes": 18,
+      "goals": [
+        "Elegir entre text, varchar(n) y char(n) y justificar la elección.",
+        "Predecir qué pasa al guardar o convertir un texto más largo que el límite de varchar(n).",
+        "Medir un texto en caracteres y en bytes con length y octet_length.",
+        "Explicar por qué ORDER BY deja Ñuñoa después de Vitacura con la colación C."
+      ],
+      "takeaways": [
+        "En PostgreSQL, `text` y `varchar(n)` se guardan igual y rinden igual: usa `text` salvo que el largo máximo sea una regla del negocio.",
+        "`varchar(n)` rechaza al guardar un texto más largo (`value too long…`), pero un cast explícito `::varchar(n)` **trunca en silencio**.",
+        "`char(n)` rellena con espacios y los ignora al comparar; en PostgreSQL es el más lento de los tres y casi nunca conviene.",
+        "`length` cuenta caracteres y `octet_length` bytes: en UTF-8 la ñ y las letras con tilde ocupan 2 bytes.",
+        "El orden del texto lo decide la colación; con la colación C (la de la simulación) las mayúsculas van antes que las minúsculas y las letras con tilde o ñ después de la z."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Un texto en PostgreSQL se guarda como una secuencia de bytes en la **codificación** de la base (casi siempre UTF-8) precedida por un pequeño encabezado con su largo. Da lo mismo que la columna sea `text` o `varchar(80)`: por dentro es el mismo formato. Lo único que cambia es **qué validación** se hace al guardar."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Tipo",
+            "Qué guarda",
+            "Si el valor es más largo",
+            "Espacios al final",
+            "Cuándo usarlo"
+          ],
+          "rows": [
+            [
+              "`text`",
+              "Cualquier largo (hasta ~1 GB)",
+              "No aplica",
+              "Se conservan y cuentan",
+              "La opción por defecto"
+            ],
+            [
+              "`varchar(n)` o `character varying(n)`",
+              "Hasta n caracteres (n ≤ 10.485.760)",
+              "Error al guardar; se trunca con un cast explícito",
+              "Se conservan y cuentan",
+              "Cuando el largo máximo es una regla real (p. ej., un código de 10 caracteres)"
+            ],
+            [
+              "`varchar` sin n",
+              "Igual que `text`",
+              "No aplica",
+              "Se conservan",
+              "Equivale a text"
+            ],
+            [
+              "`char(n)` o `character(n)`",
+              "Exactamente n caracteres: rellena con espacios",
+              "Error (salvo que lo que sobra sean espacios)",
+              "No cuentan al comparar",
+              "Casi nunca; datos heredados de otros sistemas"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Veamos las tres reglas de `varchar(n)` en acción con una tabla de sucursales de la tienda: el texto que cabe se guarda; el que no cabe da error; y si lo que sobra son **solo espacios**, se recorta sin reclamar."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE sucursales (nombre varchar(10), codigo char(5), comuna text);\nINSERT INTO sucursales VALUES ('Ñuñoa', 'SCL', 'Ñuñoa');\nINSERT INTO sucursales VALUES ('San Pedro de la Paz', 'CCP', 'San Pedro de la Paz');\nINSERT INTO sucursales VALUES ('Maipú       ', 'SCL2', 'Maipú');\nSELECT '<' || nombre || '>' AS nombre_visible, length(nombre) AS largo, codigo FROM sucursales;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "El tercer `INSERT` traía `'Maipú'` más 7 espacios (12 caracteres): como lo que sobraba eran solo espacios, PostgreSQL lo recortó a 10 y lo guardó. Ahora la trampa: si conviertes **explícitamente** con `::varchar(n)`, el estándar SQL dice que se trunca **sin error**:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 'San Pedro de la Paz'::varchar(10) AS truncado_en_silencio;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Un `::varchar(n)` en una consulta de carga de datos puede cortar nombres, direcciones o correos sin avisar. Si el largo importa, deja que la columna lo valide al guardar (y en la sección 5 verás cómo expresar reglas de largo con `CHECK (length(col) <= n)`)."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué pasa con un texto demasiado largo para varchar(10)",
+          "mermaid": "flowchart LR\n  V[\"'San Pedro de la Paz' (19 caracteres)\"] --> Q{\"¿Cómo llega a varchar(10)?\"}\n  Q -->|\"INSERT o UPDATE\"| E{\"¿Lo que sobra son solo espacios?\"}\n  E -->|\"Sí\"| T1[\"Se recorta sin error\"]\n  E -->|\"No\"| X[\"ERROR: value too long for type character varying(10)\"]\n  Q -->|\"Cast explícito ::varchar(10)\"| T2[\"Se trunca a 'San Pedro ' sin avisar\"]",
+          "caption": "Guardar valida; convertir explícitamente trunca."
+        },
+        {
+          "type": "h",
+          "text": "char(n): relleno con espacios"
+        },
+        {
+          "type": "p",
+          "text": "`char(n)` siempre ocupa n caracteres: si guardas `'SCL'` en un `char(5)`, se guarda `'SCL  '`. Los espacios de relleno **no cuentan** al comparar ni al medir con `length`, y desaparecen al concatenar o convertir a otro tipo de texto. En `varchar` y `text`, en cambio, los espacios finales son parte del dato."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 'SCL'::char(5) = 'SCL  '::char(5) AS char_los_ignora, 'SCL'::varchar(5) = 'SCL  '::varchar(5) AS varchar_los_cuenta;\nSELECT 'SCL'::char(5) || '|' AS concatenado, length('SCL'::char(5)) AS largo, octet_length('SCL'::char(5)) AS bytes_guardados;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "La documentación oficial lo dice sin rodeos: no hay diferencia de rendimiento entre los tres tipos, salvo el espacio extra de `char(n)` y unos ciclos para revisar el largo en `varchar(n)`. `char(n)` suele ser **el más lento** por el relleno. Usa `text` o `varchar`."
+        },
+        {
+          "type": "h",
+          "text": "Caracteres y bytes: UTF-8"
+        },
+        {
+          "type": "p",
+          "text": "UTF-8 usa 1 byte para las letras sin tilde (ASCII), 2 bytes para la ñ, las vocales con tilde y la ü, 3 para muchos símbolos y 4 para los emojis. `length` (o `char_length`) cuenta **caracteres**; `octet_length` cuenta **bytes**. El límite n de `varchar(n)` se mide en caracteres, no en bytes."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT length('Ñuñoa') AS caracteres, octet_length('Ñuñoa') AS bytes, length('Providencia') AS caracteres_2, octet_length('Providencia') AS bytes_2;\nSHOW server_encoding;"
+        },
+        {
+          "type": "h",
+          "text": "Comillas simples para textos, dobles para nombres"
+        },
+        {
+          "type": "p",
+          "text": "Un texto va entre **comillas simples**. Si el texto contiene una comilla simple, se duplica (`'O''Higgins'`) o se usa la notación con dólares (`$$O'Higgins$$`). Las **comillas dobles** no son para textos: encierran **identificadores** (nombres de tablas y columnas). Confundirlas es uno de los errores más comunes de quien viene de otros lenguajes:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 'O''Higgins' AS comilla_duplicada, $$O'Higgins$$ AS con_dolares;\nSELECT \"Ñuñoa\";",
+          "errors": true
+        },
+        {
+          "type": "h",
+          "text": "Colaciones: quién decide el orden"
+        },
+        {
+          "type": "p",
+          "text": "¿`'a'` va antes o después de `'B'`? ¿Y `'Ñuñoa'` antes o después de `'Vitacura'`? Lo decide la **colación** (*collation*): las reglas de comparación y orden del texto. Cada base tiene una colación por defecto, y puedes cambiarla en una columna o en una expresión con `COLLATE`."
+        },
+        {
+          "type": "p",
+          "text": "En la simulación del curso la base usa la colación **C**, que ordena por el código numérico de cada carácter: primero las mayúsculas (A–Z), luego las minúsculas (a–z) y después las letras con tilde y la ñ. Mira dónde queda Ñuñoa entre las comunas de los clientes:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT datcollate, datctype FROM pg_database WHERE datname = current_database();\nSELECT DISTINCT comuna FROM clientes ORDER BY comuna;\nSELECT 'a' < 'B' AS a_antes_que_b;"
+        },
+        {
+          "type": "p",
+          "text": "Con la colación C, Ñuñoa quedó **después de Vitacura** (y el NULL al final). En un servidor instalado con una configuración regional chilena (por ejemplo `es_CL.UTF-8`) o con una colación ICU, el orden sería el lingüístico: Ñuñoa iría entre Maipú y Peñalolén. Fíjate también en la columna `datctype`: la base separa el **orden** (`datcollate`, aquí C) de la **clasificación de caracteres** que usan `upper` y `lower` (`datctype`, aquí C.UTF-8, que conoce la ñ y las tildes). Si fuerzas `COLLATE \"C\"` en una expresión, ambas cosas pasan a C y solo se convierten las letras ASCII:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT upper('ñandú') AS con_la_base, upper('ñandú' COLLATE \"C\") AS con_colacion_c;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "La colación C es la más rápida y su orden nunca cambia entre versiones del sistema operativo, por eso se usa mucho para códigos e identificadores. PostgreSQL 17 agregó el proveedor `builtin` con la colación `pg_c_utf8`: ordena como C pero convierte mayúsculas y minúsculas según Unicode. En la simulación no están instaladas las configuraciones regionales lingüísticas (como `es_CL`), así que siempre verás el orden por códigos."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿text o varchar(255)?» En PostgreSQL no hay diferencia de rendimiento: `text` es lo idiomático. `varchar(n)` tiene sentido solo si el límite es una regla del negocio. El «255» es una costumbre heredada de otros motores sin ningún beneficio aquí."
+        }
+      ]
+    },
+    {
+      "id": "s03-l3",
+      "title": "Fechas, horas y zonas horarias",
+      "minutes": 25,
+      "goals": [
+        "Elegir entre date, timestamp y timestamptz según lo que representa el dato.",
+        "Convertir un instante entre zonas horarias con SET timezone y AT TIME ZONE, prediciendo el tipo del resultado.",
+        "Calcular con fechas e intervalos considerando los cambios de horario de Chile (-03 y -04).",
+        "Distinguir now() de clock_timestamp() dentro de una transacción."
+      ],
+      "takeaways": [
+        "`timestamptz` no guarda una zona: guarda un **instante** (en UTC por dentro) y lo muestra en la zona de tu sesión (`TimeZone`). `timestamp` guarda una lectura de reloj sin contexto.",
+        "Para eventos reales (pedidos, validaciones, registros de auditoría) usa `timestamptz`; para días sin hora (cumpleaños, fecha límite) usa `date`.",
+        "`AT TIME ZONE` convierte en ambos sentidos: `timestamptz` → hora de reloj (`timestamp`) en esa zona; `timestamp` → instante (`timestamptz`) interpretado en esa zona.",
+        "Chile continental cambia la hora dos veces al año: sumar `interval '1 day'` respeta la hora del reloj; sumar `interval '24 hours'` suma tiempo real.",
+        "`now()` es la hora de inicio de la transacción y no cambia dentro de ella; `clock_timestamp()` avanza en cada llamada."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Antes de ver tipos, separa dos ideas que en la vida diaria confundimos. Un **instante** es un momento único en la historia del universo: el segundo exacto en que se validó una tarjeta bip!, igual para todo el planeta. Una **hora de reloj** es lo que marca un reloj de pared en algún lugar: «el turno parte a las 08:00». La misma hora de reloj ocurre en instantes distintos en Santiago, en Punta Arenas y en Isla de Pascua; y un mismo instante se lee distinto en cada reloj."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Tipo",
+            "Qué representa",
+            "Bytes",
+            "Rango",
+            "Resolución",
+            "Ejemplo en los datos del curso"
+          ],
+          "rows": [
+            [
+              "`date`",
+              "Un día del calendario",
+              "4",
+              "4713 a. C. a 5874897 d. C.",
+              "1 día",
+              "`alumnos.fecha_nacimiento`, `prestamos.fecha_limite`"
+            ],
+            [
+              "`time`",
+              "Una hora del día, sin fecha",
+              "8",
+              "00:00:00 a 24:00:00",
+              "1 µs",
+              "Horario de apertura de una sucursal"
+            ],
+            [
+              "`time with time zone`",
+              "Hora con desfase",
+              "12",
+              "—",
+              "1 µs",
+              "No recomendado por la documentación"
+            ],
+            [
+              "`timestamp` (without time zone)",
+              "Fecha y hora de reloj, sin zona",
+              "8",
+              "4713 a. C. a 294276 d. C.",
+              "1 µs",
+              "Una hora de reloj «suelta»"
+            ],
+            [
+              "`timestamptz` (with time zone)",
+              "Un instante absoluto (UTC por dentro)",
+              "8",
+              "4713 a. C. a 294276 d. C.",
+              "1 µs",
+              "`pedidos.fecha`, `validaciones.ts`"
+            ],
+            [
+              "`interval`",
+              "Una duración (meses, días y microsegundos)",
+              "16",
+              "±178.000.000 años",
+              "1 µs",
+              "El plazo de un préstamo, la duración de un turno"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "timestamptz: un instante que se muestra en tu zona"
+        },
+        {
+          "type": "p",
+          "text": "El nombre engaña: `timestamp with time zone` **no guarda ninguna zona horaria**. Al recibir un valor, PostgreSQL lo convierte a UTC (usando el desfase que venga en el texto o, si no trae, la zona de la sesión) y guarda ese instante en 8 bytes. Al mostrarlo, lo convierte de UTC a la zona de la sesión, que está en el parámetro `TimeZone`. En la simulación es `America/Santiago`: en enero (horario de verano) verás `-03` y en julio (horario de invierno) `-04`."
+        },
+        {
+          "type": "diagram",
+          "title": "El viaje de un timestamptz",
+          "mermaid": "flowchart LR\n  E[\"Entrada: '2026-01-15 10:00' (sin desfase)\"] -->|\"se interpreta en la zona de la sesión: Santiago, -03 en enero\"| U[\"Se guarda el instante: 2026-01-15 13:00 UTC\"]\n  U -->|\"sesión en America/Santiago\"| S1[\"2026-01-15 10:00:00-03\"]\n  U -->|\"sesión en UTC\"| S2[\"2026-01-15 13:00:00+00\"]\n  U -->|\"sesión en Pacific/Easter\"| S3[\"2026-01-15 08:00:00-05\"]",
+          "caption": "El desfase (-03, +00, -05) no es parte del dato: es la forma de mostrarlo en la zona de quien pregunta."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SHOW timezone;\nSELECT timestamptz '2026-01-15 10:00' AS enero, timestamptz '2026-07-15 10:00' AS julio;\nSET timezone = 'UTC';\nSELECT timestamptz '2026-01-15 10:00-03' AS mismo_instante_en_utc;\nSET timezone = 'Pacific/Easter';\nSELECT timestamptz '2026-01-15 10:00-03' AS mismo_instante_en_isla_de_pascua;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate: con `SET timezone` no cambió nada en el disco; cambió la «ventana» por la que miras el instante. Esto es justo lo que quieres en una aplicación con usuarios en varias zonas: guardas instantes y cada sesión los ve en su hora local."
+        },
+        {
+          "type": "h",
+          "text": "timestamp: una hora de reloj sin contexto"
+        },
+        {
+          "type": "p",
+          "text": "`timestamp` (sin zona) guarda los números del reloj tal como vienen y **ignora en silencio** cualquier desfase que traiga el texto. Tampoco sabe nada de cambios de horario: para él, todos los días duran 24 horas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamp '2026-01-15 10:00:00+09' AS ignora_el_desfase;\nSELECT timestamp '2026-04-05 12:00' - timestamp '2026-04-04 12:00' AS sin_zona,\n       timestamptz '2026-04-05 12:00' - timestamptz '2026-04-04 12:00' AS con_zona;"
+        },
+        {
+          "type": "p",
+          "text": "Entre el mediodía del 4 y el del 5 de abril de 2026 pasaron **25 horas reales**, porque esa noche Chile atrasó los relojes una hora. `timestamptz` lo sabe (`1 day 01:00:00`); `timestamp` no (`1 day`)."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Si guardas eventos en `timestamp` y tu aplicación corre en servidores con otra zona (los servidores en la nube suelen usar UTC), mezclarás horas de reloj de distintos lugares sin forma de saber cuál era cuál. Regla práctica: **para instantes, siempre `timestamptz`**. Los conjuntos de datos del curso lo aplican: `pedidos.fecha` y `validaciones.ts` son `timestamp with time zone`."
+        },
+        {
+          "type": "h",
+          "text": "AT TIME ZONE: la conversión en dos sentidos"
+        },
+        {
+          "type": "p",
+          "text": "`AT TIME ZONE` es el puente entre los dos mundos, y su resultado **cambia de tipo** según lo que le entregues:"
+        },
+        {
+          "type": "diagram",
+          "title": "Los dos sentidos de AT TIME ZONE",
+          "mermaid": "flowchart LR\n  A[\"timestamptz: un instante\"] -->|\"AT TIME ZONE 'Asia/Tokyo'\"| B[\"timestamp: lo que marcaba el reloj en Tokio\"]\n  C[\"timestamp: una hora de reloj\"] -->|\"AT TIME ZONE 'Asia/Tokyo'\"| D[\"timestamptz: el instante en que el reloj de Tokio marcó esa hora\"]",
+          "caption": "Instante → hora de reloj en una zona; hora de reloj en una zona → instante."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamptz '2026-07-20 15:00' AT TIME ZONE 'Asia/Tokyo' AS reloj_en_tokio;\nSELECT timestamp '2026-07-20 15:00' AT TIME ZONE 'Asia/Tokyo' AS instante_de_las_15_en_tokio;\nSELECT pg_typeof(timestamptz '2026-07-20 15:00' AT TIME ZONE 'UTC') AS tipo_1,\n       pg_typeof(timestamp '2026-07-20 15:00' AT TIME ZONE 'UTC') AS tipo_2;"
+        },
+        {
+          "type": "p",
+          "text": "Con datos reales: el pedido 154 se hizo el 17 de septiembre de 2025 a las 21:59 en Chile, pero para un servidor que trabaja en UTC ya era el 18. Si un reporte agrupa las ventas «por día» en UTC, ese pedido cae en Fiestas Patrias:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, fecha, fecha AT TIME ZONE 'UTC' AS en_utc,\n       fecha::date AS dia_en_chile, (fecha AT TIME ZONE 'UTC')::date AS dia_en_utc\nFROM pedidos\nWHERE id IN (153, 154);"
+        },
+        {
+          "type": "p",
+          "text": "Usa siempre nombres de zona de la base tz (`America/Santiago`, `Europe/Madrid`, `UTC`). Los desfases escritos al estilo POSIX, como `'UTC-4'`, tienen el **signo al revés**: en POSIX, positivo significa al oeste de Greenwich. Desde PostgreSQL 17 también existe `AT LOCAL`, que convierte a la zona de la sesión."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamptz '2026-07-20 15:00' AT TIME ZONE 'America/Santiago' AS por_nombre,\n       timestamptz '2026-07-20 15:00' AT TIME ZONE 'UTC-4' AS trampa_posix,\n       timestamptz '2026-07-20 15:00' AT LOCAL AS at_local;"
+        },
+        {
+          "type": "h",
+          "text": "Los cambios de horario de Chile"
+        },
+        {
+          "type": "p",
+          "text": "Las reglas de cada zona vienen de la base de datos de zonas horarias de IANA (tzdata), que PostgreSQL trae incluida y actualiza en sus versiones menores (algunas instalaciones usan en cambio la del sistema operativo). En Chile continental (`America/Santiago`) el horario de verano (-03) termina el primer domingo de abril y vuelve el primer domingo de septiembre. En 2026:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "**Sábado 4 de abril**: a la medianoche los relojes volvieron a las 23:00 (de -03 a -04). La hora entre las 23:00 y las 23:59 de ese sábado **ocurrió dos veces**.",
+            "**Domingo 6 de septiembre**: a las 00:00 los relojes saltaron a la 01:00 (de -04 a -03). La hora entre las 00:00 y las 00:59 **no existió**.",
+            "**Magallanes** (`America/Punta_Arenas`) está en -03 todo el año desde fines de 2016 (en 2017 ya no atrasó sus relojes), y **Aysén** (`America/Coyhaique`) también, desde 2025. **Isla de Pascua** (`Pacific/Easter`) va dos horas detrás del continente: -05 en verano y -06 en invierno."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "diagram",
+          "title": "Chile continental en 2026 (America/Santiago)",
+          "mermaid": "flowchart LR\n  A[\"1 de enero a 4 de abril: verano, UTC-3\"] --> B[\"Sábado 4 de abril, 24:00 pasa a 23:00: esa hora se repite\"]\n  B --> C[\"5 de abril a 5 de septiembre: invierno, UTC-4\"]\n  C --> D[\"Domingo 6 de septiembre, 00:00 pasa a 01:00: esa hora no existe\"]\n  D --> E[\"Desde el 6 de septiembre: verano, UTC-3\"]",
+          "caption": "Dos transiciones al año: una hora repetida en abril y una hora inexistente en septiembre."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamptz '2026-04-04 22:30' AS antes, timestamptz '2026-04-04 23:30' AS hora_repetida, timestamptz '2026-04-05 00:30' AS despues;\nSELECT timestamptz '2026-09-06 00:30' AS hora_inexistente;\nSELECT timestamptz '2026-04-04 12:00' + interval '1 day' AS mas_1_day,\n       timestamptz '2026-04-04 12:00' + interval '24 hours' AS mas_24_hours;"
+        },
+        {
+          "type": "p",
+          "text": "Tres reglas que acabas de ver, todas documentadas: una hora **repetida** se interpreta con el desfase que rige **después** del cambio (23:30 se tomó como `-04`); una hora **inexistente** recibe el desfase que regía **antes** del cambio (00:30 con `-04` es la 01:30 con `-03`); y al sumar un `interval` a un `timestamptz`, los **días** avanzan el calendario conservando la hora del reloj, mientras que las **horas** suman tiempo real. Por eso `interval` guarda por separado meses, días y microsegundos: un mes no siempre tiene 30 días, y un día puede durar 23 o 25 horas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamptz '2026-07-15 12:00' AT TIME ZONE 'America/Santiago' AS santiago,\n       timestamptz '2026-07-15 12:00' AT TIME ZONE 'America/Punta_Arenas' AS punta_arenas,\n       timestamptz '2026-07-15 12:00' AT TIME ZONE 'America/Coyhaique' AS coyhaique,\n       timestamptz '2026-07-15 12:00' AT TIME ZONE 'Pacific/Easter' AS isla_de_pascua;\nSELECT timestamptz '2022-09-05 12:00' AS plebiscito_2022, timestamptz '2022-09-12 12:00' AS una_semana_despues;"
+        },
+        {
+          "type": "p",
+          "text": "La última consulta muestra por qué las reglas viven en una base de datos que se actualiza: en 2022 el Gobierno postergó una semana el inicio del horario de verano por el plebiscito del 4 de septiembre, y la tzdata lo registró. El 5 de septiembre de 2022 todavía era `-04`."
+        },
+        {
+          "type": "h",
+          "text": "Aritmética: qué tipo devuelve cada operación"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Operación",
+            "Resultado",
+            "Ejemplo",
+            "Devuelve"
+          ],
+          "rows": [
+            [
+              "`date + integer`",
+              "`date`",
+              "`date '2026-09-18' + 1`",
+              "2026-09-19"
+            ],
+            [
+              "`date - date`",
+              "`integer` (días)",
+              "`date '2026-12-25' - date '2026-09-18'`",
+              "98"
+            ],
+            [
+              "`date + interval`",
+              "`timestamp`",
+              "`date '2026-01-31' + interval '1 month'`",
+              "2026-02-28 00:00:00"
+            ],
+            [
+              "`date + time`",
+              "`timestamp`",
+              "`date '2026-09-18' + time '20:30'`",
+              "2026-09-18 20:30:00"
+            ],
+            [
+              "`timestamp - timestamp`",
+              "`interval`",
+              "`timestamp '2026-09-18 20:30' - timestamp '2026-09-17 08:15'`",
+              "1 day 12:15:00"
+            ],
+            [
+              "`timestamptz + interval`",
+              "`timestamptz`",
+              "`timestamptz '2026-04-04 12:00' + interval '1 day'`",
+              "2026-04-05 12:00:00-04"
+            ],
+            [
+              "`timestamptz - timestamptz`",
+              "`interval`",
+              "`timestamptz '2026-04-05 12:00' - timestamptz '2026-04-04 12:00'`",
+              "1 day 01:00:00"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "SELECT id, fecha_prestamo, fecha_limite, fecha_limite - fecha_prestamo AS plazo_dias,\n       pg_typeof(fecha_limite - fecha_prestamo) AS tipo\nFROM prestamos\nORDER BY id\nLIMIT 3;\nSELECT interval '1 year 2 months 3 days 04:05:06' AS intervalo, interval 'P1Y2M3DT4H5M6S' AS formato_iso,\n       interval '36 hours' AS horas, justify_hours(interval '36 hours') AS justificado;\nSELECT date '2026-01-31' + interval '1 month' AS fin_de_mes, date '2026-12-25' - date '2026-09-18' AS dias_a_navidad;"
+        },
+        {
+          "type": "p",
+          "text": "Nota los detalles: restar dos `date` da un **entero** (días), no un intervalo; `interval '36 hours'` se queda como 36 horas hasta que lo «justificas»; y sumar un mes al 31 de enero da el **último día de febrero**, no el 3 de marzo. En la sección 4 verás más funciones de fecha (`date_trunc`, `extract`, `age`)."
+        },
+        {
+          "type": "h",
+          "text": "now(), clock_timestamp() y compañía"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Tipo",
+            "Qué devuelve"
+          ],
+          "rows": [
+            [
+              "`now()`, `current_timestamp`, `transaction_timestamp()`",
+              "`timestamptz`",
+              "El inicio de la transacción actual: no cambia dentro de ella"
+            ],
+            [
+              "`statement_timestamp()`",
+              "`timestamptz`",
+              "El inicio de la sentencia actual"
+            ],
+            [
+              "`clock_timestamp()`",
+              "`timestamptz`",
+              "La hora real, distinta en cada llamada"
+            ],
+            [
+              "`current_date`",
+              "`date`",
+              "La fecha de hoy en la zona de la sesión"
+            ],
+            [
+              "`localtimestamp`",
+              "`timestamp`",
+              "La hora de reloj actual en la zona de la sesión, sin desfase"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "BEGIN;\nSELECT now() AS inicio_transaccion, clock_timestamp() AS reloj_real;\nSELECT pg_sleep(0.5);\nSELECT now() AS sigue_igual, clock_timestamp() AS avanzo;\nCOMMIT;\nSELECT current_date AS hoy, localtimestamp AS reloj_local_sin_zona;"
+        },
+        {
+          "type": "p",
+          "text": "Que `now()` sea constante dentro de una transacción es una ventaja: todas las filas que insertes en la misma transacción quedan con la misma marca de tiempo, coherentes entre sí. Usa `clock_timestamp()` solo cuando quieras medir tiempo real transcurrido."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Los textos especiales `'now'`, `'today'` y `'tomorrow'` se convierten en un valor fijo **en el momento en que se leen**. En una consulta interactiva no hay problema, pero guardados en una vista, una función o un valor por defecto pueden quedar congelados en el pasado. La documentación lo advierte: `current_date + 1` es más seguro que `'tomorrow'::date`, y `now()` es mejor que `'now'`."
+        },
+        {
+          "type": "h",
+          "text": "Literales: escribe las fechas en ISO 8601"
+        },
+        {
+          "type": "p",
+          "text": "El formato ISO `AAAA-MM-DD` (y `AAAA-MM-DD HH:MI:SS`) nunca es ambiguo. Los formatos con barras dependen del parámetro `DateStyle`, que en la simulación es `ISO, MDY` (mes/día/año, al estilo de Estados Unidos). Un «03/04/2026» escrito por un chileno (3 de abril) se lee como **4 de marzo**, y un «18/09/2026» directamente falla:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SHOW DateStyle;\nSELECT date '2026-09-18' AS iso, '20260918'::date AS compacta, '03/04/2026'::date AS ambigua;\nSELECT '18/09/2026'::date;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Para leer fechas en formato chileno no cambies `DateStyle` a ciegas: usa `to_date('18/09/2026', 'DD/MM/YYYY')`, que declara el formato de forma explícita (lección 5)."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿Qué guarda un `timestamptz`?» Un instante en UTC, sin zona. La zona solo se usa para **interpretar** la entrada y para **mostrar** la salida según `TimeZone`. Y «¿qué devuelve `timestamptz AT TIME ZONE 'X'`?» Un `timestamp` sin zona: la hora del reloj en X."
+        }
+      ]
+    },
+    {
+      "id": "s03-l4",
+      "title": "Otros tipos: boolean, uuid, enum, arrays, jsonb, bytea e inet",
+      "minutes": 18,
+      "goals": [
+        "Escribir literales válidos de boolean, uuid, arrays, jsonb, bytea e inet.",
+        "Generar identificadores con gen_random_uuid() y uuidv7() y extraer su versión y su marca de tiempo.",
+        "Elegir entre un enum, un array o jsonb para un dato con estructura propia."
+      ],
+      "takeaways": [
+        "`boolean` acepta `TRUE`/`FALSE`, `'t'`/`'f'`, `'yes'`/`'no'`, `'on'`/`'off'` y `'1'`/`'0'` (en inglés: `'si'` falla) y tiene un tercer estado: NULL.",
+        "`uuid` ocupa 16 bytes: `gen_random_uuid()` (versión 4) es aleatorio y `uuidv7()` (nuevo en 18) empieza con la hora, así que los valores nuevos quedan ordenados en el tiempo.",
+        "Un `enum` es una lista cerrada de valores que se ordena según su declaración, no alfabéticamente.",
+        "Los arrays parten en el índice 1; `jsonb` guarda JSON validado y normalizado (sin claves duplicadas ni espacios de más).",
+        "`bytea` guarda bytes (se muestra en hexadecimal `\\x…`) e `inet`/`cidr` guardan direcciones IP y redes con operadores propios."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Además de números, texto y fechas, PostgreSQL trae un catálogo de tipos especializados. Usar el tipo preciso no es lujo: te da validación gratis (una IP inválida no entra), operadores propios (¿esta IP pertenece a esta red?) y un almacenamiento más compacto que guardar todo como texto."
+        },
+        {
+          "type": "diagram",
+          "title": "Las familias de tipos de PostgreSQL",
+          "mermaid": "mindmap\n  root((Tipos))\n    Numéricos\n      smallint integer bigint\n      numeric\n      real double precision\n    Texto\n      text\n      varchar\n      char\n    Fecha y hora\n      date\n      timestamptz\n      interval\n    Lógicos e identificadores\n      boolean\n      uuid\n    Estructurados\n      enum\n      arrays\n      jsonb\n    Binarios y de red\n      bytea\n      inet cidr macaddr\n    Más adelante en el curso\n      rangos\n      tsvector\n      vector",
+          "caption": "En esta lección, un recorrido por los lógicos, identificadores, estructurados, binarios y de red."
+        },
+        {
+          "type": "h",
+          "text": "boolean: verdadero, falso… y NULL"
+        },
+        {
+          "type": "p",
+          "text": "`boolean` ocupa 1 byte. Como literal acepta `TRUE` y `FALSE` (sin comillas) y varios textos en inglés: `'t'`/`'f'`, `'true'`/`'false'`, `'yes'`/`'no'`, `'on'`/`'off'`, `'1'`/`'0'` (sin importar mayúsculas ni espacios alrededor). psql lo muestra como `t` o `f`. Recuerda la lógica de tres valores de la sección 2: `TRUE AND NULL` es NULL, pero `FALSE AND NULL` es `FALSE`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 'yes'::boolean AS yes, 'on'::boolean AS encendido, '1'::boolean AS uno, 'f'::boolean AS f;\nSELECT TRUE AND NULL AS verdadero_y_nulo, FALSE AND NULL AS falso_y_nulo;\nSELECT 'si'::boolean;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Toda comparación devuelve un `boolean`, y una columna booleana se puede usar directamente en el `WHERE` (`WHERE NOT activo`). En la tienda, `activo` es boolean:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre, activo, stock, stock > 0 AS hay_stock, pg_typeof(stock > 0) AS tipo\nFROM productos\nWHERE NOT activo OR stock = 0\nORDER BY sku;"
+        },
+        {
+          "type": "h",
+          "text": "uuid: identificadores únicos en todo el mundo"
+        },
+        {
+          "type": "p",
+          "text": "Un `uuid` es un número de 128 bits (16 bytes) que se escribe como 32 dígitos hexadecimales con guiones. Se puede generar en cualquier parte —la base, la aplicación, un celular sin conexión— con una probabilidad de repetición despreciable, sin coordinar con nadie. PostgreSQL trae dos generadores:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "`gen_random_uuid()` (o `uuidv4()`, alias nuevo en PostgreSQL 18): versión 4, 122 bits aleatorios. Los valores no tienen ningún orden.",
+            "`uuidv7()`, **nuevo en PostgreSQL 18**: versión 7. Los primeros 48 bits son la hora en milisegundos desde 1970 (más una fracción de milisegundo y bits aleatorios). Como empiezan con la hora, un uuid generado en un milisegundo posterior siempre es mayor: los valores quedan **ordenados en el tiempo**, y al insertarlos en un índice B-tree van siempre al final (lo aprovecharás en la sección 14).",
+            "`uuid_extract_version(u)` y `uuid_extract_timestamp(u)` (desde PostgreSQL 17) sacan la versión y, en los v1 y v7, la hora de creación."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT gen_random_uuid() AS v4_aleatorio, uuidv7() AS v7_ordenado;\nSELECT uuid_extract_version(uuidv7()) AS version, uuid_extract_timestamp(uuidv7()) AS creado_en,\n       uuid_extract_timestamp(gen_random_uuid()) AS v4_no_tiene_hora;\nSELECT uuidv7() AS id FROM generate_series(1, 4);\nSELECT pg_column_size(uuidv7()) AS bytes_uuid, pg_column_size(uuidv7()::text) AS bytes_como_texto;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en los cuatro `uuidv7()` seguidos: comparten el comienzo (la misma hora) y crecen. Y guardarlos como `uuid` ocupa 16 bytes, contra 40 del mismo valor como texto (según `pg_column_size`). El tipo también valida el formato: acepta mayúsculas, sin guiones o entre llaves, pero no cualquier texto."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'::uuid AS en_mayusculas, 'a0eebc999c0b4ef8bb6d6bb9bd380a11'::uuid AS sin_guiones;\nSELECT 'hola-mundo'::uuid;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Una columna puede generar su propio valor con `DEFAULT`: si el `INSERT` no la menciona, PostgreSQL evalúa la expresión. Así se ve una tabla de accesos con identificadores v7 (los valores por defecto se estudian en la sección 5):"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE accesos (id uuid DEFAULT uuidv7(), usuario text, ocurrido_en timestamptz DEFAULT now());\nINSERT INTO accesos (usuario) VALUES ('ana');\nINSERT INTO accesos (usuario) VALUES ('benjamin');\nSELECT id, usuario, uuid_extract_timestamp(id) AS hora_en_el_id, ocurrido_en FROM accesos;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "¿uuid o entero con identidad como clave primaria? Un entero ocupa la mitad y es más legible; un uuid sirve cuando los ids se generan fuera de la base, se mezclan datos de varios sistemas o no quieres que un id revele cuántos clientes tienes. Si eliges uuid, prefiere `uuidv7()`. Lo discutirás a fondo en la sección 11."
+        },
+        {
+          "type": "h",
+          "text": "enum, arrays y jsonb (un adelanto)"
+        },
+        {
+          "type": "p",
+          "text": "Un **enum** es un tipo que tú defines con una lista cerrada de valores. Ocupa 4 bytes, rechaza cualquier valor fuera de la lista y se **ordena según el orden de declaración**, no alfabéticamente. Es útil para listas estables (tallas, estados); agregar valores es posible, quitarlos no tanto (sección 12)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TYPE talla AS ENUM ('S', 'M', 'L', 'XL');\nSELECT 'S'::talla < 'M'::talla AS enum_s_antes_que_m, 'S'::text < 'M'::text AS texto_s_antes_que_m;\nSELECT enum_range(NULL::talla) AS valores;\nSELECT 'XXL'::talla;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Un **array** guarda una lista de valores del mismo tipo en una sola columna (`text[]`, `integer[]`). Se escribe con `ARRAY[…]` o con el literal `'{…}'`, y **el primer elemento es el 1**, no el 0 (pedir el 0 devuelve NULL). **jsonb** guarda documentos JSON en un formato binario: valida la sintaxis, elimina los espacios sobrantes, no conserva el orden original de las claves y, si una clave se repite, se queda con la última. El tipo `json` (sin b) guarda el texto tal cual. Los dos se profundizan en la sección 18."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT ARRAY['Maipú', 'Ñuñoa', 'Providencia'] AS comunas, (ARRAY['Maipú', 'Ñuñoa', 'Providencia'])[1] AS primera,\n       (ARRAY['Maipú', 'Ñuñoa', 'Providencia'])[0] AS indice_cero, '{10,20,30}'::integer[] AS numeros;\nSELECT '{\"talla\": \"M\", \"colores\": [\"rojo\", \"azul\"], \"stock\": 12}'::jsonb AS producto;\nSELECT '{\"b\": 1, \"a\": 2, \"a\": 3}'::json AS json_tal_cual, '{\"b\": 1, \"a\": 2, \"a\": 3}'::jsonb AS jsonb_normalizado;\nSELECT '{\"talla\": \"M\", \"stock\": 12}'::jsonb ->> 'talla' AS talla;"
+        },
+        {
+          "type": "h",
+          "text": "bytea e inet"
+        },
+        {
+          "type": "p",
+          "text": "`bytea` guarda **bytes crudos**: un hash, una firma, una imagen pequeña. Se muestra en hexadecimal con el prefijo `\\x`. Es la forma de ver cómo se guarda un texto en UTF-8: la ñ son los bytes `c3 b1`. `inet` guarda una dirección IPv4 o IPv6 (opcionalmente con su máscara) y `cidr` una red; traen funciones y operadores como `<<` («está contenida en»)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT convert_to('Ñuñoa', 'UTF8') AS bytes_utf8, decode('SG9sYQ==', 'base64') AS desde_base64,\n       convert_from(decode('SG9sYQ==', 'base64'), 'UTF8') AS como_texto;\nSELECT '192.168.1.10/24'::inet AS ip, host('192.168.1.10/24'::inet) AS host, masklen('192.168.1.10/24'::inet) AS mascara,\n       '192.168.1.10'::inet << '192.168.1.0/24'::cidr AS pertenece_a_la_red;\nSELECT '192.168.1.300'::inet;",
+          "errors": true
+        },
+        {
+          "type": "table",
+          "head": [
+            "Tipo",
+            "Bytes",
+            "Literal de ejemplo",
+            "Para qué"
+          ],
+          "rows": [
+            [
+              "`boolean`",
+              "1",
+              "`TRUE`, `'yes'`, `'f'`",
+              "Banderas: activo, pagado, exitoso"
+            ],
+            [
+              "`uuid`",
+              "16",
+              "`'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'`",
+              "Identificadores globales"
+            ],
+            [
+              "enum",
+              "4",
+              "`'M'::talla`",
+              "Listas cerradas y estables"
+            ],
+            [
+              "`integer[]`, `text[]`",
+              "Variable",
+              "`'{1,2,3}'`, `ARRAY['a', 'b']`",
+              "Listas cortas sin identidad propia (etiquetas)"
+            ],
+            [
+              "`jsonb`",
+              "Variable",
+              "`'{\"talla\": \"M\"}'`",
+              "Atributos flexibles que varían por fila"
+            ],
+            [
+              "`bytea`",
+              "Variable",
+              "`'\\xdeadbeef'`",
+              "Hashes, firmas, archivos pequeños"
+            ],
+            [
+              "`inet` / `cidr`",
+              "7 (IPv4) o 19 (IPv6)",
+              "`'192.168.1.10/24'`",
+              "Direcciones IP y redes"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Que exista un tipo flexible no significa que convenga usarlo para todo. Un array o un jsonb que crece sin control, o un enum con valores que cambian cada mes, suelen indicar que faltaba una tabla. Lo verás al estudiar modelado en la sección 11."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿Qué ventaja tiene `uuidv7()` sobre `gen_random_uuid()`?» Que los valores nuevos son crecientes en el tiempo: los índices B-tree se llenan por el final (menos páginas divididas, mejor uso de la caché) y el id trae su propia fecha de creación (`uuid_extract_timestamp`). Es **nuevo en PostgreSQL 18**."
+        }
+      ]
+    },
+    {
+      "id": "s03-l5",
+      "title": "Conversiones: CAST, ::, to_char y validación",
+      "minutes": 22,
+      "goals": [
+        "Convertir valores con CAST, :: y la sintaxis tipo 'literal', eligiendo la adecuada en cada caso.",
+        "Formatear números y fechas con to_char y leer textos con to_date, to_timestamp y to_number.",
+        "Diagnosticar los errores de conversión más comunes a partir del mensaje de PostgreSQL.",
+        "Validar textos antes de convertirlos con pg_input_is_valid."
+      ],
+      "takeaways": [
+        "`CAST(x AS tipo)` (estándar SQL) y `x::tipo` (propio de PostgreSQL) hacen lo mismo; `tipo 'texto'` solo sirve para literales.",
+        "Un literal entre comillas empieza siendo de tipo `unknown` y toma el tipo que exige el contexto; un valor que ya es `text` no se convierte solo a número.",
+        "Hay casts implícitos (integer → bigint o numeric), de asignación (numeric → integer al guardar, redondeando) y explícitos (integer → boolean).",
+        "`to_char` da formato a números y fechas; `to_date`, `to_timestamp` y `to_number` leen textos según un patrón.",
+        "`pg_input_is_valid(texto, tipo)` (desde PostgreSQL 16) dice si una conversión funcionaría, sin provocar un error."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Convertir (*cast*) es pedirle a PostgreSQL que interprete un valor como otro tipo: el texto `'2026-09-18'` como una fecha, el numeric 3.7 como un entero. Hay tres formas de escribirlo, y las tres dan lo mismo:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT CAST('2026-09-18' AS date) AS estandar, '2026-09-18'::date AS postgres, date '2026-09-18' AS literal_con_tipo;\nSELECT pg_typeof('hola') AS literal_sin_tipo, pg_typeof('hola'::text) AS con_tipo;\nSELECT '5' + 3 AS el_literal_se_adapta;"
+        },
+        {
+          "type": "p",
+          "text": "Aquí está la clave de muchas confusiones: un literal entre comillas como `'5'` **todavía no tiene tipo** (es `unknown`); PostgreSQL decide su tipo según el contexto. En `'5' + 3` lo interpreta como integer porque existe `integer + integer`. Pero un valor que **ya es** `text` (una columna text, o `'5'::text`) no se convierte solo a número:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT '5'::text + 3;\nSELECT length(12345);\nSELECT length(12345::text) AS largo, 'Pedido N° ' || 42 AS concatenado;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Lee el `HINT`: *You might need to add explicit type casts*. No existe un operador `text + integer` ni una función `length(integer)`, y PostgreSQL no adivina: te pide que conviertas tú. (El operador `||` sí acepta un número a su lado: lo convierte a texto automáticamente)."
+        },
+        {
+          "type": "h",
+          "text": "Implícitos, de asignación y explícitos"
+        },
+        {
+          "type": "p",
+          "text": "Cada conversión registrada en el catálogo `pg_cast` tiene una **clase** que dice cuándo se puede aplicar sola:"
+        },
+        {
+          "type": "diagram",
+          "title": "Cuándo se aplica un cast",
+          "mermaid": "flowchart TD\n  A[\"Hay que convertir un valor de tipo X al tipo T\"] --> B{\"¿Existe un cast de X a T?\"}\n  B -->|\"No\"| E[\"ERROR: operator does not exist o function does not exist\"]\n  B -->|\"Sí\"| C{\"¿De qué clase es?\"}\n  C -->|\"implícito (i)\"| D1[\"Se aplica solo en cualquier expresión: integer a bigint, numeric o double precision\"]\n  C -->|\"de asignación (a)\"| D2[\"Se aplica solo al guardar en una columna: numeric a integer, integer a smallint\"]\n  C -->|\"explícito (e)\"| D3[\"Solo si lo pides con CAST o con dos puntos dobles: integer a boolean\"]",
+          "caption": "Las conversiones «seguras» son implícitas; las que pueden perder información solo ocurren al guardar o si las pides."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT casttarget::regtype AS destino, castcontext AS clase\nFROM pg_cast\nWHERE castsource = 'integer'::regtype AND casttarget::regtype::text NOT LIKE 'reg%'\nORDER BY castcontext, casttarget::regtype::text;"
+        },
+        {
+          "type": "p",
+          "text": "Además de lo que está en `pg_cast`, cualquier tipo se puede convertir **a** texto y **desde** texto usando sus funciones de entrada y salida: hacia texto la conversión se aplica sola al guardar; desde texto, solo si la pides. Mira el efecto de la conversión de asignación al insertar:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE pruebas (n integer, s varchar(3));\nINSERT INTO pruebas (n) VALUES (3.7);\nINSERT INTO pruebas (s) VALUES (12);\nSELECT * FROM pruebas;\nINSERT INTO pruebas (n) VALUES ('3.7');",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "El `3.7` numérico se redondeó a 4 al guardarlo (cast de asignación numeric → integer). El `12` entró como texto `'12'`. Pero `'3.7'` entre comillas es un literal `unknown` que se lee **directamente** como integer, y «3.7» no es un entero válido: `invalid input syntax for type integer`."
+        },
+        {
+          "type": "h",
+          "text": "Redondeos y truncados al convertir"
+        },
+        {
+          "type": "p",
+          "text": "Convertir un `numeric` a entero **redondea** (empates lejos del cero); convertir un `double precision` a entero redondea al par. Si quieres truncar, dilo con `trunc`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 3.7::integer AS a, (-3.7)::integer AS b, 2.5::integer AS c, 2.5::float8::integer AS d;\nSELECT '3.7'::numeric::integer AS en_dos_pasos, trunc(3.7)::integer AS truncado;"
+        },
+        {
+          "type": "p",
+          "text": "Ojo con la precedencia: `::` se aplica **antes** que el signo menos. Casi nunca se nota, salvo en los bordes: `-2147483648::integer` primero convierte 2147483648 (que no cabe en integer) y recién después le cambiaría el signo. Con paréntesis, el negativo se convierte completo:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT (-2147483648)::integer AS con_parentesis;\nSELECT -2147483648::integer AS sin_parentesis;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Convertir entre tipos de fecha también tiene sus reglas: pasar un `timestamptz` a `date` usa la zona de la sesión, así que **el mismo instante puede ser dos días distintos**:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT timestamptz '2026-03-01 01:30+00' AS instante, (timestamptz '2026-03-01 01:30+00')::date AS fecha_en_chile;\nSET timezone = 'UTC';\nSELECT (timestamptz '2026-03-01 01:30+00')::date AS fecha_en_utc;"
+        },
+        {
+          "type": "h",
+          "text": "to_char: dar formato"
+        },
+        {
+          "type": "p",
+          "text": "`to_char(valor, patrón)` convierte un número o una fecha a texto con el formato que indiques. Los patrones más usados:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Patrón",
+            "Significa",
+            "Ejemplo",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`9`",
+              "Dígito (espacio si no hay)",
+              "`to_char(7, '999')`",
+              "`'   7'`"
+            ],
+            [
+              "`0`",
+              "Dígito, con ceros a la izquierda",
+              "`to_char(7, '000')`",
+              "`' 007'`"
+            ],
+            [
+              "`FM`",
+              "Quita los espacios de relleno",
+              "`to_char(7, 'FM999')`",
+              "`'7'`"
+            ],
+            [
+              "`G` y `D`",
+              "Separador de miles y decimal según `lc_numeric`",
+              "`to_char(1234.5, 'FM9G999D0')`",
+              "`'1,234.5'` en la simulación (C)"
+            ],
+            [
+              "`\"texto\"`",
+              "Texto literal",
+              "`to_char(12990, 'FM\"$\"99G999')`",
+              "`'$12,990'`"
+            ],
+            [
+              "`YYYY`, `MM`, `DD`",
+              "Año, mes, día",
+              "`to_char(date '2026-09-18', 'DD/MM/YYYY')`",
+              "`'18/09/2026'`"
+            ],
+            [
+              "`HH24`, `MI`, `SS`",
+              "Hora (0–23), minuto, segundo",
+              "`to_char(fecha, 'HH24:MI')`",
+              "`'20:30'`"
+            ],
+            [
+              "`Day`, `Month`, `TMDay`",
+              "Nombre del día o mes (TM: traducido según `lc_time`)",
+              "`to_char(date '2026-09-18', 'FMDay')`",
+              "`'Friday'` en la simulación"
+            ],
+            [
+              "`OF`, `TZ`",
+              "Desfase y abreviatura de la zona",
+              "`to_char(fecha, 'OF')`",
+              "`'-03'`"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "`G` y `D` usan los separadores del parámetro `lc_numeric`. En la simulación es `C` (estilo inglés: coma para miles y punto decimal). En un servidor configurado con `es_CL.UTF-8`, `G` sería punto y `D` coma. Para mostrar pesos chilenos de forma que funcione en cualquier servidor, puedes reemplazar las comas por puntos:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, precio, to_char(precio, 'FM999G999G999') AS con_g,\n       replace(to_char(precio, 'FM\"$\"999G999G999'), ',', '.') AS precio_chileno\nFROM productos\nWHERE precio > 100000\nORDER BY precio DESC;"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, fecha, to_char(fecha, 'DD/MM/YYYY HH24:MI') AS chileno,\n       to_char(fecha, 'FMDay DD \"de\" FMMonth') AS largo, to_char(fecha, 'OF') AS desfase\nFROM pedidos\nWHERE id IN (334, 335)\nORDER BY id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Si el número no cabe en el patrón, `to_char` no da error: rellena con `#`. `to_char(123456, '999')` devuelve `' ###'`. Revisa siempre que el patrón tenga dígitos suficientes."
+        },
+        {
+          "type": "h",
+          "text": "to_date, to_timestamp y to_number: leer textos"
+        },
+        {
+          "type": "p",
+          "text": "La dirección contraria: leer un texto con un formato conocido. `to_date` devuelve `date`, `to_timestamp` devuelve `timestamptz` (interpretado en la zona de la sesión) y `to_number` devuelve `numeric`. Son la forma correcta de leer fechas chilenas sin depender de `DateStyle`:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT to_date('18/09/2026', 'DD/MM/YYYY') AS fecha, to_timestamp('18/09/2026 20:30', 'DD/MM/YYYY HH24:MI') AS instante;\nSELECT to_number('12,990', '99G999') AS con_coma, to_number('12.990', '99G999') AS con_punto;\nSELECT '1,5'::numeric;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Mira el `to_number('12.990', '99G999')`: con `lc_numeric = C` el punto no es separador de miles, y el resultado es **1299, sin ningún error**. `to_number` es tolerante y no valida el formato como lo hace un cast. Con datos chilenos (miles con punto, decimales con coma) es más seguro limpiar el texto con `replace` y convertir con `::`, que sí reclama si algo no calza, como con `'1,5'::numeric`."
+        },
+        {
+          "type": "h",
+          "text": "Validar antes de convertir: pg_input_is_valid"
+        },
+        {
+          "type": "p",
+          "text": "Un error de conversión cancela la sentencia completa: si una fila entre un millón trae basura, el `INSERT … SELECT` entero falla. Desde PostgreSQL 16, `pg_input_is_valid(texto, tipo)` responde `true` o `false` sin provocar error, y `pg_input_error_info(texto, tipo)` te dice cuál sería el error (mensaje y SQLSTATE):"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT pg_input_is_valid('42', 'integer') AS a, pg_input_is_valid('12abc', 'integer') AS b,\n       pg_input_is_valid('2026-02-30', 'date') AS c, pg_input_is_valid('40000', 'smallint') AS d;\nSELECT * FROM pg_input_error_info('2026-02-30', 'date');"
+        },
+        {
+          "type": "p",
+          "text": "Con eso puedes separar las filas buenas de las malas en una carga de datos. Esta tabla `carga` trae todo como texto, con algunos valores inválidos:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "setup": "CREATE TABLE carga (linea integer, precio text, fecha text);\nINSERT INTO carga VALUES (1, '12990', '2026-09-18'), (2, '12.990', '2026-09-19'), (3, '8490', '2026-02-30'), (4, 'gratis', '2026-10-01'), (5, '3990', '2026-10-02');",
+          "code": "SELECT linea, precio, fecha, pg_input_is_valid(precio, 'integer') AS precio_ok, pg_input_is_valid(fecha, 'date') AS fecha_ok\nFROM carga\nORDER BY linea;\nSELECT linea, precio::integer AS precio, fecha::date AS fecha\nFROM carga\nWHERE pg_input_is_valid(precio, 'integer') AND pg_input_is_valid(fecha, 'date')\nORDER BY linea;"
+        },
+        {
+          "type": "p",
+          "text": "Ojo con la línea 2: `'12.990'` no es un entero válido y se descartó, aunque para un chileno son doce mil novecientos noventa pesos. Validar no reemplaza a limpiar: primero normaliza el formato (quitar `$`, puntos y espacios) y después valida. Lo harás en el ejercicio de importación."
+        },
+        {
+          "type": "h",
+          "text": "Los errores de conversión más comunes"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Mensaje",
+            "SQLSTATE",
+            "Causa típica",
+            "Qué hacer"
+          ],
+          "rows": [
+            [
+              "`invalid input syntax for type integer: \"3.7\"`",
+              "22P02",
+              "El texto no tiene el formato del tipo",
+              "Limpiar el texto o convertir en dos pasos (`'3.7'::numeric::integer`)"
+            ],
+            [
+              "`integer out of range` / `value \"40000\" is out of range for type smallint`",
+              "22003",
+              "El número no cabe en el tipo",
+              "Usar un tipo más grande o convertir antes de operar"
+            ],
+            [
+              "`numeric field overflow`",
+              "22003",
+              "La parte entera no cabe en `numeric(p, s)`",
+              "Aumentar la precisión"
+            ],
+            [
+              "`value too long for type character varying(10)`",
+              "22001",
+              "Texto más largo que el límite",
+              "Validar o ampliar el límite"
+            ],
+            [
+              "`date/time field value out of range: \"18/09/2026\"`",
+              "22008",
+              "Fecha inexistente o `DateStyle` distinto",
+              "Usar ISO 8601 o `to_date` con el patrón"
+            ],
+            [
+              "`operator does not exist: text + integer`",
+              "42883",
+              "No hay operador para esos tipos",
+              "Convertir explícitamente uno de los lados"
+            ],
+            [
+              "`function round(double precision, integer) does not exist`",
+              "42883",
+              "La función no existe con esos tipos",
+              "Convertir el argumento (`::numeric`)"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT round(10::float8 / 3, 2);\nSELECT round((10::float8 / 3)::numeric, 2) AS arreglado, round(10 / 3.0, 2) AS mejor_desde_el_inicio;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "En entrevistas preguntan: «¿qué diferencia hay entre `CAST(x AS int)` y `x::int`?». Ninguna en el resultado: `CAST` es el estándar SQL (portable a otros motores) y `::` es la sintaxis histórica de PostgreSQL, más corta. Y «¿cómo sabes el tipo de una expresión?»: con `pg_typeof(expresión)`."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Cast",
+              "en": "Type cast",
+              "def": "Conversión de un valor a otro tipo: `CAST(x AS tipo)`, `x::tipo` o `tipo 'literal'`."
+            },
+            {
+              "term": "unknown",
+              "def": "Tipo provisorio de un literal entre comillas mientras PostgreSQL decide, según el contexto, qué tipo debe tener."
+            },
+            {
+              "term": "Cast de asignación",
+              "en": "Assignment cast",
+              "def": "Conversión que PostgreSQL aplica sola solo al guardar en una columna (por ejemplo numeric → integer, redondeando)."
+            },
+            {
+              "term": "SQLSTATE",
+              "def": "Código de 5 caracteres que identifica el error: 22P02 (sintaxis inválida), 22003 (fuera de rango), 22001 (texto muy largo), 42883 (función u operador inexistente)."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s03-e1",
+      "title": "¿Cuánto duraron los proyectos?",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Gerencia quiere saber cuánto duraron los proyectos que ya terminaron (los que tienen `fin`).",
+        "Muestra `nombre`, `dias` (días entre `inicio` y `fin`) y `semanas` (la duración en semanas, **con 1 decimal**). Usa exactamente esos nombres de columna y ordena del proyecto más largo al más corto."
+      ],
+      "starter": "-- Proyectos terminados: nombre, dias, semanas\nSELECT nombre\nFROM proyectos;",
+      "solution": "SELECT nombre, fin - inicio AS dias, round((fin - inicio) / 7.0, 1) AS semanas\nFROM proyectos\nWHERE fin IS NOT NULL\nORDER BY dias DESC;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Restar dos columnas `date` devuelve un `integer`: la cantidad de días.",
+        "Si divides ese entero por `7`, PostgreSQL hace división entera (473 / 7 = 67). Divide por `7.0` (un numeric) y redondea con `round(…, 1)`."
+      ],
+      "explain": "`fin - inicio` entre dos `date` da un **integer** con los días (no un `interval`). Para las semanas, el divisor `7.0` es `numeric`, así que la división es exacta y `round(x, 1)` deja un decimal: 473 días son 67.6 semanas. La trampa es `round((fin - inicio) / 7, 1)`: integer / integer es división entera y daría 67.0. Alternativas equivalentes: `(fin - inicio)::numeric / 7` o `CAST(fin - inicio AS numeric) / 7`. El `WHERE fin IS NOT NULL` es necesario: con `fin` NULL, la resta también sería NULL."
+    },
+    {
+      "id": "s03-e2",
+      "title": "Precio neto e IVA de los productos de audio",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "En Chile los precios al público incluyen el IVA del 19 %. Para los productos de la categoría Audio (`categoria_id = 3`) muestra: `sku`, `precio`, `neto` (el precio sin IVA, es decir `precio / 1.19`, **redondeado a pesos enteros**) e `iva` (la diferencia entre `precio` y `neto`).",
+        "Usa exactamente esos nombres de columna y ordena por `sku`."
+      ],
+      "starter": "-- sku, precio, neto, iva de la categoría 3\nSELECT sku, precio\nFROM productos\nWHERE categoria_id = 3;",
+      "solution": "SELECT sku, precio, round(precio / 1.19)::integer AS neto,\n       precio - round(precio / 1.19)::integer AS iva\nFROM productos\nWHERE categoria_id = 3\nORDER BY sku;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "`precio` es integer y `1.19` es numeric: la división ya es decimal y exacta.",
+        "`round(x)` sin segundo argumento redondea a entero. Para el IVA, resta el neto redondeado al precio."
+      ],
+      "explain": "Como `1.19` es un literal `numeric`, `precio / 1.19` se calcula en numeric (sin errores de coma flotante) y `round` redondea al peso más cercano; el `::integer` final deja el tipo limpio. El IVA se calcula como `precio - neto` y no como `precio * 0.19`, porque 19 % del precio con IVA no es el IVA (el IVA es 19 % del **neto**). Si hubieras usado `precio / 119 * 100`, la división entera perdería los decimales antes de multiplicar."
+    },
+    {
+      "id": "s03-e3",
+      "title": "La libreta de notas al estilo chileno",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "El apoderado del alumno con `id = 1` quiere ver sus notas de Matemática (`asignatura_id = 2`) como en la libreta: con **coma decimal** y la fecha en formato día/mes/año.",
+        "Muestra `semestre`, `evaluacion`, `nota` (como texto con coma, por ejemplo `5,5`) y `fecha` (como texto `DD/MM/YYYY`, por ejemplo `10/04/2026`). Ordena por semestre y evaluación."
+      ],
+      "starter": "SELECT semestre, evaluacion, nota, fecha\nFROM notas\nWHERE alumno_id = 1 AND asignatura_id = 2;",
+      "solution": "SELECT semestre, evaluacion, replace(nota::text, '.', ',') AS nota, to_char(fecha, 'DD/MM/YYYY') AS fecha\nFROM notas\nWHERE alumno_id = 1 AND asignatura_id = 2\nORDER BY semestre, evaluacion;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bto_char\\s*\\(",
+          "msg": "Formatea la fecha con to_char",
+          "name": "Usa to_char"
+        }
+      ],
+      "hints": [
+        "`nota` es `numeric(2,1)`: conviértela a texto con `::text` y cambia el punto por una coma con `replace(texto, '.', ',')`.",
+        "Para la fecha: `to_char(fecha, 'DD/MM/YYYY')`."
+      ],
+      "explain": "`nota::text` produce `'5.5'` (numeric siempre usa punto decimal al convertirse a texto) y `replace` lo deja como `'5,5'`. Otra opción es `to_char(nota, 'FM9D0')`, pero `D` depende de `lc_numeric`: en la simulación (C) sigue siendo punto, así que igual necesitarías `replace`. Para la fecha, `to_char(fecha, 'DD/MM/YYYY')` es independiente de `DateStyle`. Ojo: el resultado de ambas columnas es **texto**; si luego quisieras promediar, hazlo con la columna original."
+    },
+    {
+      "id": "s03-e4",
+      "title": "Tabla de ventas de una feria",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "script",
+      "prompt": [
+        "Una feria libre de Temuco quiere registrar sus ventas. Crea la tabla `ventas_feria` con estas columnas, eligiendo el tipo **más adecuado** para cada una:",
+        "`id`: identificador de la venta; se esperan miles de millones de ventas a lo largo de los años. `producto`: nombre libre, sin largo máximo. `cantidad`: unidades vendidas en una venta (nunca más de 1.000; usa el entero más chico que sirva). `precio`: precio unitario en pesos chilenos. `peso_kg`: peso en kilos con precisión de gramos (3 decimales), hasta 999,999 kg. `vendida_en`: el instante exacto de la venta. `pagada`: si ya se pagó o no."
+      ],
+      "starter": "-- Crea la tabla ventas_feria\nCREATE TABLE ventas_feria (\n  id ,\n  producto \n);",
+      "solution": "CREATE TABLE ventas_feria (\n  id bigint,\n  producto text,\n  cantidad smallint,\n  precio integer,\n  peso_kg numeric(6,3),\n  vendida_en timestamptz,\n  pagada boolean\n);",
+      "checks": [
+        {
+          "name": "Existe la tabla ventas_feria",
+          "sql": "SELECT existe_tabla('ventas_feria')",
+          "fail": "Crea la tabla con CREATE TABLE ventas_feria (…)."
+        },
+        {
+          "name": "id y cantidad usan el entero justo",
+          "sql": "SELECT tipo_columna('ventas_feria', 'id') = 'bigint' AND tipo_columna('ventas_feria', 'cantidad') = 'smallint', 'id es ' || coalesce(tipo_columna('ventas_feria', 'id'), '(no existe)') || ' y cantidad es ' || coalesce(tipo_columna('ventas_feria', 'cantidad'), '(no existe)')",
+          "fail": "Revisa los rangos: miles de millones no caben en integer; hasta 1.000 cabe en el entero más chico."
+        },
+        {
+          "name": "producto es texto sin límite y precio es entero",
+          "fail": "producto no tiene largo máximo y el precio en pesos no tiene decimales.",
+          "sql": "SELECT tipo_columna('ventas_feria', 'producto') = 'text' AND tipo_columna('ventas_feria', 'precio') = 'integer', 'producto es ' || coalesce(tipo_columna('ventas_feria', 'producto'), '(no existe)') || ' y precio es ' || coalesce(tipo_columna('ventas_feria', 'precio'), '(no existe)')"
+        },
+        {
+          "name": "peso_kg es exacto con 3 decimales",
+          "sql": "SELECT tipo_columna('ventas_feria', 'peso_kg') = 'numeric(6,3)', 'peso_kg es ' || coalesce(tipo_columna('ventas_feria', 'peso_kg'), '(no existe)')",
+          "fail": "Hasta 999,999 son 6 dígitos en total, 3 de ellos decimales."
+        },
+        {
+          "name": "vendida_en guarda instantes y pagada es booleana",
+          "fail": "Un instante exacto necesita zona horaria; sí/no es booleano.",
+          "sql": "SELECT tipo_columna('ventas_feria', 'vendida_en') = 'timestamp with time zone' AND tipo_columna('ventas_feria', 'pagada') = 'boolean', 'vendida_en es ' || coalesce(tipo_columna('ventas_feria', 'vendida_en'), '(no existe)') || ' y pagada es ' || coalesce(tipo_columna('ventas_feria', 'pagada'), '(no existe)')"
+        },
+        {
+          "name": "Rechaza una cantidad de 40.000",
+          "sql": "SELECT falla($$INSERT INTO ventas_feria (cantidad) VALUES (40000)$$, '22003')",
+          "fail": "Una cantidad de 40.000 debería desbordar la columna cantidad."
+        },
+        {
+          "name": "Guarda el peso redondeado a gramos",
+          "sql": "SELECT CASE WHEN existe_columna('ventas_feria', 'peso_kg') THEN valor($$WITH v AS (INSERT INTO ventas_feria (peso_kg) VALUES (1.23456) RETURNING peso_kg) SELECT peso_kg FROM v$$) = '1.235' ELSE false END",
+          "fail": "Al guardar 1.23456 en peso_kg debería quedar 1.235."
+        }
+      ],
+      "hints": [
+        "Rangos: smallint hasta 32.767, integer hasta 2.147.483.647, bigint mucho más.",
+        "Para kilos con gramos: `numeric(6,3)`. Para el instante: `timestamptz`. Para sí/no: `boolean`."
+      ],
+      "explain": "Cada tipo responde a una pregunta: ¿cabe? ¿debe ser exacto? ¿qué representa? `id` necesita `bigint` porque miles de millones superan los 2.147 millones de integer; `cantidad` cabe en `smallint`; `precio` en pesos (sin decimales) va en `integer`; `peso_kg` debe ser exacto: `numeric(6,3)` (6 dígitos en total, 3 decimales) redondea 1,23456 a 1,235; `vendida_en` es un instante, así que `timestamptz`, y `pagada` un `boolean`. Errores típicos: usar `double precision` para el peso (aproximado), `timestamp` sin zona para el instante, o `varchar(255)` para el producto (no hay ninguna regla de largo)."
+    },
+    {
+      "id": "s03-e5",
+      "title": "Multas de la biblioteca al cierre de junio",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "Al 30 de junio de 2026 la biblioteca cobra $150 por cada día de atraso en los préstamos **no devueltos** (`fecha_devolucion` NULL) cuya `fecha_limite` ya pasó (es anterior al 30/06/2026).",
+        "Muestra `id`, `socio_id`, `fecha_limite`, `dias_vencido` (días entre la fecha límite y el 30/06/2026) y `multa` como texto en formato chileno, por ejemplo `$77.250`. Ordena por `dias_vencido` de mayor a menor y, si empatan, por `id`."
+      ],
+      "starter": "SELECT id, socio_id, fecha_limite\nFROM prestamos\nWHERE fecha_devolucion IS NULL;",
+      "solution": "SELECT id, socio_id, fecha_limite,\n       date '2026-06-30' - fecha_limite AS dias_vencido,\n       replace(to_char((date '2026-06-30' - fecha_limite) * 150, 'FM\"$\"999G999G999'), ',', '.') AS multa\nFROM prestamos\nWHERE fecha_devolucion IS NULL AND fecha_limite < date '2026-06-30'\nORDER BY dias_vencido DESC, id;",
+      "ordered": true,
+      "columns": false,
+      "hints": [
+        "`date '2026-06-30' - fecha_limite` da un integer con los días.",
+        "Para el formato: `to_char(monto, 'FM\"$\"999G999G999')` produce `$77,250` en la simulación; cambia la coma por punto con `replace`.",
+        "No olvides excluir los préstamos cuya fecha límite todavía no llega."
+      ],
+      "explain": "Restar dos `date` devuelve días enteros, y multiplicar por 150 sigue siendo integer. `to_char` con `FM` quita el relleno, el `\"$\"` es un literal y `G` pone el separador de miles de `lc_numeric` (coma en la simulación); `replace` lo deja al estilo chileno. Una alternativa equivalente al literal `date '2026-06-30'` es `'2026-06-30'::date` o `CAST('2026-06-30' AS date)`. Trampa: sin `fecha_limite < date '2026-06-30'`, aparecerían préstamos con días negativos (aún no vencidos)."
+    },
+    {
+      "id": "s03-e6",
+      "title": "¿Qué día era en UTC?",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El servidor de reportes de la tienda trabaja en UTC y algunos pedidos nocturnos le aparecen al día siguiente. Encuentra los pedidos de **septiembre de 2025 (hora de Chile)** cuya fecha en UTC cae en un día distinto que en Chile.",
+        "Muestra `id`, `fecha` (tal cual), `fecha_utc` (la hora de reloj en UTC), `dia_chile` y `dia_utc` (ambos de tipo date). Ordena por `fecha`."
+      ],
+      "starter": "SELECT id, fecha\nFROM pedidos\nWHERE fecha >= '2025-09-01' AND fecha < '2025-10-01';",
+      "solution": "SELECT id, fecha, fecha AT TIME ZONE 'UTC' AS fecha_utc,\n       fecha::date AS dia_chile, (fecha AT TIME ZONE 'UTC')::date AS dia_utc\nFROM pedidos\nWHERE fecha >= '2025-09-01' AND fecha < '2025-10-01'\n  AND fecha::date <> (fecha AT TIME ZONE 'UTC')::date\nORDER BY fecha;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "at\\s+time\\s+zone",
+          "msg": "Usa AT TIME ZONE para obtener la hora en UTC",
+          "name": "Convierte con AT TIME ZONE"
+        }
+      ],
+      "hints": [
+        "`fecha AT TIME ZONE 'UTC'` devuelve un timestamp (sin zona) con la hora del reloj en UTC.",
+        "`fecha::date` usa la zona de la sesión (Santiago); `(fecha AT TIME ZONE 'UTC')::date` usa la de UTC. Compáralos con `<>`."
+      ],
+      "explain": "Los límites `'2025-09-01'` y `'2025-10-01'` se interpretan en la zona de la sesión, así que el filtro es «septiembre en hora de Chile». Luego comparas el día local (`fecha::date`) con el día en UTC (`(fecha AT TIME ZONE 'UTC')::date`). Fíjate en el pedido 147: se hizo a las 20:42 del 5 de septiembre, en horario de invierno (-04), y en UTC ya eran las 00:42 del 6. Un filtro ingenuo como «pedidos después de las 21:00» lo habría perdido: el corte depende del desfase vigente (-03 o -04) en cada fecha."
+    },
+    {
+      "id": "s03-e7",
+      "title": "El entero justo para cada columna",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "script",
+      "prompt": [
+        "Un club de montaña registra estadísticas de cerros. Crea la tabla `cerros` con las columnas `nombre` (text) y tres contadores, eligiendo para cada uno **el tipo entero más chico que sirva**:",
+        "`altura_m`: altura en metros (el cerro más alto de Chile, el Ojos del Salado, mide 6.893 m). `ascensos_anuales`: personas que suben en un año (hasta unas 800.000). `pasos_acumulados`: pasos contados por los sensores desde su instalación (ya van más de 12.000 millones)."
+      ],
+      "starter": "-- Crea la tabla cerros\n",
+      "solution": "CREATE TABLE cerros (\n  nombre text,\n  altura_m smallint,\n  ascensos_anuales integer,\n  pasos_acumulados bigint\n);",
+      "checks": [
+        {
+          "name": "Existe la tabla cerros",
+          "sql": "SELECT existe_tabla('cerros')",
+          "fail": "Crea la tabla con CREATE TABLE cerros (…)."
+        },
+        {
+          "name": "altura_m es smallint",
+          "sql": "SELECT tipo_columna('cerros', 'altura_m') = 'smallint', 'altura_m es ' || coalesce(tipo_columna('cerros', 'altura_m'), '(no existe)')",
+          "fail": "6.893 cabe en el entero de 2 bytes."
+        },
+        {
+          "name": "ascensos_anuales es integer",
+          "sql": "SELECT tipo_columna('cerros', 'ascensos_anuales') = 'integer', 'ascensos_anuales es ' || coalesce(tipo_columna('cerros', 'ascensos_anuales'), '(no existe)')",
+          "fail": "800.000 no cabe en smallint (máximo 32.767)."
+        },
+        {
+          "name": "pasos_acumulados es bigint",
+          "sql": "SELECT tipo_columna('cerros', 'pasos_acumulados') = 'bigint', 'pasos_acumulados es ' || coalesce(tipo_columna('cerros', 'pasos_acumulados'), '(no existe)')",
+          "fail": "12.000 millones supera el máximo de integer (2.147.483.647)."
+        },
+        {
+          "name": "Acepta 12.000 millones de pasos",
+          "sql": "SELECT funciona($$INSERT INTO cerros (nombre, pasos_acumulados) VALUES ('Prueba', 12000000000)$$)",
+          "fail": "12.000.000.000 debería caber en pasos_acumulados."
+        },
+        {
+          "name": "Rechaza una altura de 40.000 m",
+          "sql": "SELECT falla($$INSERT INTO cerros (nombre, altura_m) VALUES ('Imposible', 40000)$$, '22003')",
+          "fail": "Con el entero más chico que sirve, 40.000 debería quedar fuera de rango."
+        }
+      ],
+      "hints": [
+        "smallint: hasta 32.767. integer: hasta 2.147.483.647. bigint: hasta 9,2 trillones.",
+        "Compara cada máximo del enunciado con esos límites y elige el primero que alcance."
+      ],
+      "explain": "6.893 cabe holgado en `smallint` (2 bytes); 800.000 no cabe en smallint pero sí en `integer` (4 bytes); 12.000 millones supera los 2.147 millones de integer y necesita `bigint` (8 bytes). En una tabla chica la diferencia de espacio no importa, pero en tablas de cientos de millones de filas (como las validaciones del metro) sí: cada byte por fila es espacio en disco, en caché y en los índices. Aun así, ante la duda entre smallint e integer, muchos equipos prefieren integer para no quedarse cortos: un `smallint out of range` en producción es peor que 2 bytes de más."
+    },
+    {
+      "id": "s03-e8",
+      "title": "Cotizaciones en pesos y en UF",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "script",
+      "prompt": [
+        "Una corredora de propiedades guarda cotizaciones. Crea la tabla `cotizaciones` con: `id` (integer), `cliente` (text), `monto_clp` (pesos; algunos montos superan los $2.147 millones), `monto_uf` (UF con **2 decimales**, hasta 99.999.999,99) y `tasa_mensual` (tasa con **4 decimales**, siempre menor que 10, por ejemplo 0,0125).",
+        "Luego inserta estas tres cotizaciones: (1, 'Constructora Andes', 450000000, 12.345, 0.0125), (2, 'Ferretería Sur', 12990, 0.1, 0.02) y (3, 'Café Valdivia', 25000, 0.2, 0.0099)."
+      ],
+      "starter": "-- 1) CREATE TABLE cotizaciones (...)\n-- 2) INSERT INTO cotizaciones VALUES (...)\n",
+      "solution": "CREATE TABLE cotizaciones (\n  id integer,\n  cliente text,\n  monto_clp bigint,\n  monto_uf numeric(10,2),\n  tasa_mensual numeric(5,4)\n);\nINSERT INTO cotizaciones VALUES\n  (1, 'Constructora Andes', 450000000, 12.345, 0.0125),\n  (2, 'Ferretería Sur', 12990, 0.1, 0.02),\n  (3, 'Café Valdivia', 25000, 0.2, 0.0099);",
+      "checks": [
+        {
+          "name": "monto_clp admite más de $2.147 millones",
+          "fail": "Más de 2.147 millones no cabe en integer.",
+          "sql": "SELECT tipo_columna('cotizaciones', 'monto_clp') = 'bigint', 'monto_clp es ' || coalesce(tipo_columna('cotizaciones', 'monto_clp'), '(no existe)')"
+        },
+        {
+          "name": "monto_uf es exacto con 2 decimales",
+          "sql": "SELECT tipo_columna('cotizaciones', 'monto_uf') = 'numeric(10,2)', 'monto_uf es ' || coalesce(tipo_columna('cotizaciones', 'monto_uf'), '(no existe)')",
+          "fail": "Hasta 99.999.999,99 son 10 dígitos, 2 de ellos decimales."
+        },
+        {
+          "name": "tasa_mensual es exacta con 4 decimales",
+          "sql": "SELECT tipo_columna('cotizaciones', 'tasa_mensual') = 'numeric(5,4)', 'tasa_mensual es ' || coalesce(tipo_columna('cotizaciones', 'tasa_mensual'), '(no existe)')",
+          "fail": "Menor que 10 con 4 decimales: 1 dígito entero + 4 decimales."
+        },
+        {
+          "name": "Las tres cotizaciones están cargadas",
+          "sql": "SELECT CASE WHEN existe_tabla('cotizaciones') THEN filas('cotizaciones') = 3 ELSE false END",
+          "fail": "Inserta las tres filas del enunciado."
+        },
+        {
+          "name": "El monto en UF de la cotización 1 quedó redondeado",
+          "sql": "SELECT CASE WHEN existe_columna('cotizaciones', 'monto_uf') THEN valor($$SELECT monto_uf FROM cotizaciones WHERE id = 1$$) IS NOT DISTINCT FROM '12.35' ELSE false END",
+          "fail": "12.345 guardado con 2 decimales debería quedar 12.35."
+        },
+        {
+          "name": "0,1 + 0,2 UF suma exactamente 0,30",
+          "sql": "SELECT CASE WHEN existe_columna('cotizaciones', 'monto_uf') THEN valor($$SELECT sum(monto_uf) FROM cotizaciones WHERE id IN (2, 3)$$) IS NOT DISTINCT FROM '0.30' ELSE false END",
+          "fail": "La suma de 0.1 y 0.2 debe ser exacta: usa un tipo decimal exacto."
+        },
+        {
+          "name": "Rechaza una tasa de 12,5",
+          "sql": "SELECT falla($$INSERT INTO cotizaciones (id, tasa_mensual) VALUES (9, 12.5)$$, '22003')",
+          "fail": "Una tasa de 12,5 no debería caber: la tasa siempre es menor que 10."
+        }
+      ],
+      "hints": [
+        "Pesos que superan 2.147 millones: `bigint`. Montos con decimales exactos: `numeric(p, s)`.",
+        "`numeric(10,2)`: 10 dígitos en total, 2 decimales. Para la tasa, `numeric(5,4)`."
+      ],
+      "explain": "El monto en pesos no tiene decimales, pero $450 millones con proyección a montos mayores pide `bigint`. Los montos en UF y las tasas deben ser **exactos**: `numeric(10,2)` guarda 12,345 como 12,35 (redondeo al guardar) y la suma 0,10 + 0,20 da exactamente 0,30; con `double precision` obtendrías 0.30000000000000004. `numeric(5,4)` admite hasta 9,9999, por eso 12,5 provoca `numeric field overflow` (22003). Alternativa válida para las tasas: guardar puntos base en un integer (125 = 1,25 %), pero entonces cada consulta debe recordar dividir por 10.000."
+    },
+    {
+      "id": "s03-e9",
+      "title": "Registro de accesos con uuidv7",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "prompt": [
+        "Crea la tabla `accesos` para registrar inicios de sesión, con estas columnas: `id` (un uuid que se genere solo con `uuidv7()`, nuevo en PostgreSQL 18), `usuario` (text), `ip` (una dirección IP, con el tipo específico de PostgreSQL), `exitoso` (sí/no) y `ocurrido_en` (el instante del acceso, que por defecto sea `now()`).",
+        "Para que una columna se complete sola usa `DEFAULT expresión`, como en el ejemplo de la lección 4."
+      ],
+      "starter": "CREATE TABLE accesos (\n  id uuid,\n  usuario text\n);",
+      "solution": "CREATE TABLE accesos (\n  id uuid DEFAULT uuidv7(),\n  usuario text,\n  ip inet,\n  exitoso boolean,\n  ocurrido_en timestamptz DEFAULT now()\n);",
+      "checks": [
+        {
+          "name": "id es uuid y se genera con uuidv7()",
+          "fail": "Declara id uuid DEFAULT uuidv7().",
+          "sql": "SELECT tipo_columna('accesos', 'id') = 'uuid' AND coalesce(default_columna('accesos', 'id'), '') LIKE 'uuidv7(%', 'id es ' || coalesce(tipo_columna('accesos', 'id'), '(no existe)') || ' con valor por defecto ' || coalesce(default_columna('accesos', 'id'), '(ninguno)')"
+        },
+        {
+          "name": "ip usa el tipo de direcciones IP y exitoso es booleano",
+          "fail": "PostgreSQL tiene un tipo específico para direcciones IP.",
+          "sql": "SELECT tipo_columna('accesos', 'ip') = 'inet' AND tipo_columna('accesos', 'exitoso') = 'boolean', 'ip es ' || coalesce(tipo_columna('accesos', 'ip'), '(no existe)') || ' y exitoso es ' || coalesce(tipo_columna('accesos', 'exitoso'), '(no existe)')"
+        },
+        {
+          "name": "ocurrido_en es un instante que por defecto es now()",
+          "fail": "Declara ocurrido_en timestamptz DEFAULT now().",
+          "sql": "SELECT tipo_columna('accesos', 'ocurrido_en') = 'timestamp with time zone' AND default_columna('accesos', 'ocurrido_en') = 'now()', 'ocurrido_en es ' || coalesce(tipo_columna('accesos', 'ocurrido_en'), '(no existe)') || ' con valor por defecto ' || coalesce(default_columna('accesos', 'ocurrido_en'), '(ninguno)')"
+        },
+        {
+          "name": "Un acceso nuevo recibe un uuid versión 7",
+          "sql": "SELECT CASE WHEN existe_columna('accesos', 'ip') AND existe_columna('accesos', 'exitoso') THEN valor($$WITH a AS (INSERT INTO accesos (usuario, ip, exitoso) VALUES ('ana', '200.27.1.5', TRUE) RETURNING id) SELECT uuid_extract_version(id) FROM a$$) IS NOT DISTINCT FROM '7' ELSE false END",
+          "fail": "Al insertar sin id, debería generarse un uuid de versión 7."
+        },
+        {
+          "name": "Rechaza una IP inválida",
+          "sql": "SELECT falla($$INSERT INTO accesos (usuario, ip, exitoso) VALUES ('ana', '300.1.1.1', TRUE)$$, '22P02')",
+          "fail": "La dirección 300.1.1.1 no existe: usa el tipo que valida direcciones IP."
+        },
+        {
+          "name": "Rechaza 'si' como booleano",
+          "sql": "SELECT falla($$INSERT INTO accesos (usuario, ip, exitoso) VALUES ('ana', '10.0.0.1', 'si')$$, '22P02')",
+          "fail": "exitoso debería rechazar 'si': usa un tipo booleano."
+        }
+      ],
+      "hints": [
+        "El tipo para direcciones IP es `inet`; para sí/no, `boolean`.",
+        "`id uuid DEFAULT uuidv7()` y `ocurrido_en timestamptz DEFAULT now()`."
+      ],
+      "explain": "`DEFAULT uuidv7()` hace que cada fila nueva reciba un uuid versión 7, ordenado en el tiempo (`uuid_extract_version` devuelve 7). `inet` valida la dirección (300.1.1.1 no existe) y permite operadores de red; `boolean` rechaza `'si'` porque solo entiende los literales en inglés (`'yes'`, `'true'`, `'t'`, `'1'`…). `DEFAULT now()` guarda el inicio de la transacción que inserta. Alternativas: `gen_random_uuid()` también sirve, pero sus valores no tienen orden; guardar la IP como `text` aceptaría cualquier basura."
+    },
+    {
+      "id": "s03-e10",
+      "title": "Soporte en Madrid y los cambios de hora",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El equipo de soporte de la tienda trabaja desde Madrid. Para los pedidos hechos entre el **20 de marzo y el 9 de abril de 2026 (ambos días incluidos, hora de Chile)** muestra: `id`, `hora_chile` (texto `DD/MM HH24:MI` en hora de Chile), `hora_madrid` (el mismo instante como texto `DD/MM HH24:MI` en hora de Madrid, zona `Europe/Madrid`) y `diferencia` (cuánto adelanta el reloj de Madrid respecto del de Chile, como `interval`, por ejemplo `04:00:00`).",
+        "Ordena por `fecha`. Observa cómo cambia la diferencia: en ese período cambian la hora **tanto Europa como Chile**."
+      ],
+      "starter": "SELECT id, fecha\nFROM pedidos\nWHERE fecha >= '2026-03-20';",
+      "solution": "SELECT id,\n       to_char(fecha, 'DD/MM HH24:MI') AS hora_chile,\n       to_char(fecha AT TIME ZONE 'Europe/Madrid', 'DD/MM HH24:MI') AS hora_madrid,\n       (fecha AT TIME ZONE 'Europe/Madrid') - (fecha AT TIME ZONE 'America/Santiago') AS diferencia\nFROM pedidos\nWHERE fecha >= '2026-03-20' AND fecha < '2026-04-10'\nORDER BY fecha;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "europe/madrid",
+          "msg": "Usa la zona 'Europe/Madrid'",
+          "name": "Convierte a Europe/Madrid"
+        }
+      ],
+      "hints": [
+        "Para incluir el 9 de abril completo, filtra `fecha < '2026-04-10'`.",
+        "`fecha AT TIME ZONE 'Europe/Madrid'` es la hora del reloj en Madrid (un timestamp); `fecha AT TIME ZONE 'America/Santiago'` es la del reloj en Chile.",
+        "Restar dos `timestamp` da un `interval`: esa es la diferencia entre los relojes."
+      ],
+      "explain": "Un mismo instante (`fecha`) se lee en dos relojes con `AT TIME ZONE`, y restar esas dos horas de reloj da la diferencia horaria **vigente en ese instante**: 4 horas hasta el 28 de marzo (Madrid +01, Chile -03), 5 horas desde el 29 de marzo, cuando Europa adelantó sus relojes (+02), y 6 horas desde el 5 de abril, cuando Chile atrasó los suyos (-04). Por eso nunca se debe «sumar 4 horas» a mano: la diferencia entre dos zonas cambia durante el año. `to_char(fecha, …)` usa la zona de la sesión (Santiago), mientras que `to_char(fecha AT TIME ZONE 'Europe/Madrid', …)` formatea la hora de reloj de Madrid. Trampa: `fecha <= '2026-04-09'` dejaría fuera casi todo el 9 de abril, porque ese literal es la medianoche."
+    },
+    {
+      "id": "s03-e11",
+      "title": "Vuelos a Isla de Pascua",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "script",
+      "prompt": [
+        "Una aerolínea guarda sus vuelos en la tabla `vuelos` con las columnas `codigo` (text), `sale` y `llega`. Créala con el tipo correcto para que `llega - sale` sea siempre la **duración real** del vuelo, aunque origen y destino estén en zonas horarias distintas.",
+        "Inserta dos vuelos del 10 de febrero de 2026. **AA-101**: sale de Santiago a las 09:00 (hora de Santiago) y llega a Isla de Pascua a las 12:30 (hora de Isla de Pascua, zona `Pacific/Easter`). **AA-102**: sale de Isla de Pascua a las 14:00 (hora de Isla de Pascua) y llega a Santiago a las 21:45 (hora de Santiago)."
+      ],
+      "starter": "-- Crea la tabla vuelos e inserta los dos vuelos\n",
+      "solution": "CREATE TABLE vuelos (codigo text, sale timestamptz, llega timestamptz);\nINSERT INTO vuelos VALUES\n  ('AA-101', '2026-02-10 09:00', timestamp '2026-02-10 12:30' AT TIME ZONE 'Pacific/Easter'),\n  ('AA-102', timestamp '2026-02-10 14:00' AT TIME ZONE 'Pacific/Easter', '2026-02-10 21:45');",
+      "checks": [
+        {
+          "name": "sale y llega guardan instantes",
+          "sql": "SELECT tipo_columna('vuelos', 'sale') = 'timestamp with time zone' AND tipo_columna('vuelos', 'llega') = 'timestamp with time zone', 'sale es ' || coalesce(tipo_columna('vuelos', 'sale'), '(no existe)') || ' y llega es ' || coalesce(tipo_columna('vuelos', 'llega'), '(no existe)')",
+          "fail": "Para restar instantes de zonas distintas necesitas timestamptz."
+        },
+        {
+          "name": "Están los dos vuelos",
+          "sql": "SELECT CASE WHEN existe_tabla('vuelos') THEN filas('vuelos') = 2 ELSE false END",
+          "fail": "Inserta los dos vuelos del enunciado (AA-101 y AA-102)."
+        },
+        {
+          "name": "El AA-101 sale a las 09:00 de Santiago",
+          "sql": "SELECT CASE WHEN existe_columna('vuelos', 'sale') THEN valor($$SELECT (sale AT TIME ZONE 'America/Santiago')::text FROM vuelos WHERE codigo = 'AA-101'$$) IS NOT DISTINCT FROM '2026-02-10 09:00:00' ELSE false END",
+          "fail": "La salida del AA-101 debe ser las 09:00 en hora de Santiago."
+        },
+        {
+          "name": "El AA-101 llega a las 12:30 de Isla de Pascua",
+          "sql": "SELECT CASE WHEN existe_columna('vuelos', 'llega') THEN valor($$SELECT (llega AT TIME ZONE 'Pacific/Easter')::text FROM vuelos WHERE codigo = 'AA-101'$$) IS NOT DISTINCT FROM '2026-02-10 12:30:00' ELSE false END",
+          "fail": "La llegada del AA-101 debe ser las 12:30 en hora de Isla de Pascua: indica la zona al insertar."
+        },
+        {
+          "name": "El AA-101 dura 5 horas y media",
+          "sql": "SELECT CASE WHEN existe_columna('vuelos', 'llega') THEN coalesce(valor($$SELECT (llega - sale)::text FROM vuelos WHERE codigo = 'AA-101'$$), '') = '05:30:00' ELSE false END, 'El AA-101 dura ' || CASE WHEN existe_columna('vuelos', 'llega') THEN coalesce(valor($$SELECT (llega - sale)::text FROM vuelos WHERE codigo = 'AA-101'$$), '(no está)') ELSE '(no hay tabla)' END || '; debería durar 05:30:00'"
+        },
+        {
+          "name": "El AA-102 dura 5 horas y 45 minutos",
+          "sql": "SELECT CASE WHEN existe_columna('vuelos', 'llega') THEN coalesce(valor($$SELECT (llega - sale)::text FROM vuelos WHERE codigo = 'AA-102'$$), '') = '05:45:00' ELSE false END, 'El AA-102 dura ' || CASE WHEN existe_columna('vuelos', 'llega') THEN coalesce(valor($$SELECT (llega - sale)::text FROM vuelos WHERE codigo = 'AA-102'$$), '(no está)') ELSE '(no hay tabla)' END || '; debería durar 05:45:00'"
+        }
+      ],
+      "hints": [
+        "Con `timestamptz`, un texto sin desfase se interpreta en la zona de la sesión (Santiago). Para las horas de Isla de Pascua tienes que indicar la zona.",
+        "Dos formas: `timestamp '2026-02-10 12:30' AT TIME ZONE 'Pacific/Easter'` o el texto `'2026-02-10 12:30 Pacific/Easter'`."
+      ],
+      "explain": "Con `timestamptz` cada hora se convierte a un instante al insertarla, así que la resta da el tiempo real de vuelo. Las horas de Santiago pueden ir sin zona (la sesión está en `America/Santiago`), pero las de Isla de Pascua deben declarar su zona: `timestamp '2026-02-10 12:30' AT TIME ZONE 'Pacific/Easter'` interpreta esa hora de reloj en Pascua y devuelve el instante; también funciona el texto `'2026-02-10 12:30 Pacific/Easter'`. En febrero, Santiago está en -03 y Pascua en -05: el AA-101 sale a las 12:00 UTC y llega a las 17:30 UTC (5 h 30 min). Si hubieras escrito `'2026-02-10 12:30'` sin zona, PostgreSQL lo tomaría como hora de Santiago y el vuelo «duraría» 3 h 30 min. Y con `timestamp` sin zona, la resta mezclaría relojes de dos lugares."
+    },
+    {
+      "id": "s03-e12",
+      "title": "Importación de productos desde una planilla",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "setup": "CREATE TABLE carga_productos (linea integer, sku text, precio text, publicado text, activo text);\nINSERT INTO carga_productos VALUES\n  (1, 'TE-001', '$12.990', '2025-09-18', 'si'),\n  (2, 'TE-002', '$8.490', '2025-09-31', 'si'),\n  (3, 'TE-003', '15990', '2025-10-01', 'no'),\n  (4, 'TE-004', '$ 4.990', '2025-10-15', 'si'),\n  (5, 'TE-005', 'gratis', '2025-10-20', 'no'),\n  (6, 'TE-006', '$129.990', '2025-11-02', 'no');",
+      "prompt": [
+        "Una planilla se cargó tal cual en la tabla `carga_productos`: todas sus columnas son `text`. Los precios vienen con signo `$`, puntos de miles y a veces un espacio (`'$ 4.990'`); `publicado` viene en formato ISO, pero hay fechas imposibles; `activo` dice `'si'` o `'no'`.",
+        "Devuelve solo las filas **válidas** (precio convertible a entero una vez limpio y fecha válida) con las columnas `sku`, `precio` (integer), `publicado` (date) y `activo` (boolean, verdadero si decía `'si'`). Ordena por `linea`. Tu consulta no debe producir errores."
+      ],
+      "starter": "SELECT sku, precio, publicado, activo\nFROM carga_productos\nORDER BY linea;",
+      "solution": "SELECT sku,\n       replace(replace(replace(precio, '$', ''), '.', ''), ' ', '')::integer AS precio,\n       publicado::date AS publicado,\n       activo = 'si' AS activo\nFROM carga_productos\nWHERE pg_input_is_valid(replace(replace(replace(precio, '$', ''), '.', ''), ' ', ''), 'integer')\n  AND pg_input_is_valid(publicado, 'date')\nORDER BY linea;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "pg_input_is_valid",
+          "msg": "Filtra las filas inválidas con pg_input_is_valid",
+          "name": "Valida con pg_input_is_valid"
+        }
+      ],
+      "hints": [
+        "Limpia el precio quitando `$`, `.` y espacios con `replace` (puedes anidar tres `replace`).",
+        "`pg_input_is_valid(texto, 'integer')` y `pg_input_is_valid(texto, 'date')` devuelven true o false sin error.",
+        "`'si'::boolean` falla; en cambio, la comparación `activo = 'si'` ya es un boolean."
+      ],
+      "explain": "La clave es validar **antes** de convertir: si una sola fila trae `'gratis'` o `'2025-09-31'`, un `::integer` o `::date` directo cancelaría toda la consulta. `pg_input_is_valid` (PostgreSQL 16+) responde sin error, y el `WHERE` descarta las filas 2 (31 de septiembre no existe) y 5 (precio no numérico) antes de que el `SELECT` convierta. `activo = 'si'` es una comparación, así que ya es boolean: no hace falta (ni funciona) `'si'::boolean`. Alternativa para limpiar: `translate(precio, '$. ', '')` (sección 4). Trampa: usar `to_number(precio, 'L999G999')` puede leer mal los puntos sin avisar, como viste en la lección 5."
+    },
+    {
+      "id": "s03-e13",
+      "title": "Proyecto: bitácora de turnos de una clínica",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "script",
+      "prompt": [
+        "Una clínica de Concepción necesita registrar los turnos de su personal. Diseña e implementa: (1) un tipo enum `area_clinica` con los valores `'urgencia'`, `'pabellon'` y `'hospitalizacion'`, en ese orden; (2) la tabla `turnos` con las columnas `id` (uuid generado con `uuidv7()`), `rut` (texto de **máximo 10 caracteres**, como `15234567-4`), `profesional` (text), `area` (el enum), `inicio` y `fin` (instantes), `valor_hora` (pesos chilenos), `bono_uf` (UF con 2 decimales, hasta 9.999,99) e `ip_registro` (dirección IP del computador donde se registró).",
+        "(3) Carga estos tres turnos (horas de Chile continental): Carolina Muñoz, RUT 15234567-4, urgencia, del 04/04/2026 20:00 al 05/04/2026 08:00, $18.500 la hora, bono 1,25 UF, IP 10.20.0.15. Jorge Soto, RUT 9876543-3, pabellón, del 10/06/2026 08:00 al 10/06/2026 20:00, $22.000 la hora, bono 0,5 UF, IP 10.20.0.16. Carolina Muñoz, RUT 15234567-4, hospitalización, del 05/09/2026 20:00 al 06/09/2026 08:00, $18.500 la hora, bono 1,25 UF, IP 10.20.0.15.",
+        "Las comprobaciones revisarán los tipos, las validaciones y que la duración de cada turno sea la **real**: ojo con las noches de cambio de hora."
+      ],
+      "starter": "-- 1) CREATE TYPE area_clinica AS ENUM (...);\n-- 2) CREATE TABLE turnos (...);\n-- 3) INSERT INTO turnos (...) VALUES (...);\n",
+      "solution": "CREATE TYPE area_clinica AS ENUM ('urgencia', 'pabellon', 'hospitalizacion');\nCREATE TABLE turnos (\n  id uuid DEFAULT uuidv7(),\n  rut varchar(10),\n  profesional text,\n  area area_clinica,\n  inicio timestamptz,\n  fin timestamptz,\n  valor_hora integer,\n  bono_uf numeric(6,2),\n  ip_registro inet\n);\nINSERT INTO turnos (rut, profesional, area, inicio, fin, valor_hora, bono_uf, ip_registro) VALUES\n  ('15234567-4', 'Carolina Muñoz', 'urgencia', '2026-04-04 20:00', '2026-04-05 08:00', 18500, 1.25, '10.20.0.15'),\n  ('9876543-3', 'Jorge Soto', 'pabellon', '2026-06-10 08:00', '2026-06-10 20:00', 22000, 0.5, '10.20.0.16'),\n  ('15234567-4', 'Carolina Muñoz', 'hospitalizacion', '2026-09-05 20:00', '2026-09-06 08:00', 18500, 1.25, '10.20.0.15');",
+      "checks": [
+        {
+          "name": "El enum area_clinica tiene las 3 áreas en orden",
+          "sql": "SELECT coalesce((SELECT string_agg(enumlabel, ',' ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid = to_regtype('area_clinica')), '') = 'urgencia,pabellon,hospitalizacion'",
+          "fail": "Crea el tipo con CREATE TYPE area_clinica AS ENUM (…) con los tres valores en el orden pedido."
+        },
+        {
+          "name": "id es un uuid generado con uuidv7()",
+          "sql": "SELECT tipo_columna('turnos', 'id') = 'uuid' AND coalesce(default_columna('turnos', 'id'), '') LIKE 'uuidv7(%'",
+          "fail": "id debe ser uuid con DEFAULT uuidv7()."
+        },
+        {
+          "name": "rut, area e ip_registro tienen tipos específicos",
+          "sql": "SELECT tipo_columna('turnos', 'rut') = 'character varying(10)' AND tipo_columna('turnos', 'area') = 'area_clinica' AND tipo_columna('turnos', 'ip_registro') = 'inet', 'rut es ' || coalesce(tipo_columna('turnos', 'rut'), '(no existe)') || ', area es ' || coalesce(tipo_columna('turnos', 'area'), '(no existe)') || ' e ip_registro es ' || coalesce(tipo_columna('turnos', 'ip_registro'), '(no existe)')"
+        },
+        {
+          "name": "inicio y fin guardan instantes",
+          "sql": "SELECT tipo_columna('turnos', 'inicio') = 'timestamp with time zone' AND tipo_columna('turnos', 'fin') = 'timestamp with time zone', 'inicio es ' || coalesce(tipo_columna('turnos', 'inicio'), '(no existe)') || ' y fin es ' || coalesce(tipo_columna('turnos', 'fin'), '(no existe)')"
+        },
+        {
+          "name": "Los montos usan tipos exactos",
+          "sql": "SELECT tipo_columna('turnos', 'valor_hora') = 'integer' AND tipo_columna('turnos', 'bono_uf') = 'numeric(6,2)', 'valor_hora es ' || coalesce(tipo_columna('turnos', 'valor_hora'), '(no existe)') || ' y bono_uf es ' || coalesce(tipo_columna('turnos', 'bono_uf'), '(no existe)')"
+        },
+        {
+          "name": "Están los tres turnos y cada id es versión 7",
+          "sql": "SELECT CASE WHEN existe_columna('turnos', 'id') THEN valor($$SELECT count(*) FILTER (WHERE uuid_extract_version(id) = 7) || '/' || count(*) FROM turnos$$) = '3/3' ELSE false END, 'Turnos con uuid v7 / total: ' || CASE WHEN existe_columna('turnos', 'id') THEN coalesce(valor($$SELECT count(*) FILTER (WHERE uuid_extract_version(id) = 7) || '/' || count(*) FROM turnos$$), '?') ELSE '(no hay tabla)' END || ' (se esperaban 3/3)'"
+        },
+        {
+          "name": "El turno de la noche del 4 de abril dura 13 horas reales",
+          "sql": "SELECT CASE WHEN existe_columna('turnos', 'fin') AND existe_columna('turnos', 'area') THEN coalesce(valor($$SELECT (fin - inicio)::text FROM turnos WHERE area::text = 'urgencia'$$), '') = '13:00:00' ELSE false END",
+          "fail": "Esa noche Chile atrasó los relojes una hora: de 20:00 a 08:00 pasaron 13 horas reales."
+        },
+        {
+          "name": "El turno de la noche del 5 de septiembre dura 11 horas reales",
+          "sql": "SELECT CASE WHEN existe_columna('turnos', 'fin') AND existe_columna('turnos', 'area') THEN coalesce(valor($$SELECT (fin - inicio)::text FROM turnos WHERE area::text = 'hospitalizacion'$$), '') = '11:00:00' ELSE false END",
+          "fail": "Esa noche Chile adelantó los relojes una hora: de 20:00 a 08:00 pasaron 11 horas reales."
+        },
+        {
+          "name": "rut rechaza textos de más de 10 caracteres",
+          "sql": "SELECT falla($$INSERT INTO turnos (rut) VALUES ('15.234.567-4')$$, '22001')",
+          "fail": "Un RUT con puntos (12 caracteres) debería rechazarse: el máximo es 10."
+        },
+        {
+          "name": "area rechaza un área que no existe",
+          "sql": "SELECT falla($$INSERT INTO turnos (area) VALUES ('farmacia')$$, '22P02')",
+          "fail": "area debería aceptar solo los valores del enum area_clinica."
+        },
+        {
+          "name": "ip_registro rechaza una IP inválida",
+          "sql": "SELECT falla($$INSERT INTO turnos (ip_registro) VALUES ('10.20.0.300')$$, '22P02')",
+          "fail": "10.20.0.300 no es una IP válida: usa el tipo de direcciones IP."
+        }
+      ],
+      "hints": [
+        "Empieza por el tipo: `CREATE TYPE area_clinica AS ENUM ('urgencia', 'pabellon', 'hospitalizacion');`.",
+        "Tipos: `uuid DEFAULT uuidv7()`, `varchar(10)`, `timestamptz`, `integer`, `numeric(6,2)`, `inet`.",
+        "En el `INSERT` nombra las columnas y omite `id`; escribe las fechas en ISO (`'2026-04-04 20:00'`), que se interpretan en la hora de Chile de la sesión."
+      ],
+      "explain": "El proyecto junta todo lo de la sección: un enum para una lista cerrada (se valida solo), `uuidv7()` como id ordenado en el tiempo, `varchar(10)` porque el largo del RUT sí es una regla del negocio, `timestamptz` para los instantes, `integer` para pesos, `numeric(6,2)` para UF exactas e `inet` para la IP. Lo más fino son las duraciones: la noche del 4 al 5 de abril de 2026 Chile atrasó los relojes (de 20:00 a 08:00 pasaron **13** horas reales) y la del 5 al 6 de septiembre los adelantó (**11** horas). Con `timestamptz`, `fin - inicio` lo refleja automáticamente; con `timestamp` sin zona, los tres turnos «durarían» 12 horas y la clínica pagaría mal dos de ellos. Alternativa: guardar la duración en una columna aparte sería redundante y podría contradecir a `inicio` y `fin`."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "Rango y tamaño de `smallint`, `integer` y `bigint`",
+      "back": "smallint: 2 bytes, −32.768 a 32.767. integer: 4 bytes, ±2.147.483.647. bigint: 8 bytes, ±9.223.372.036.854.775.807."
+    },
+    {
+      "front": "¿Qué devuelve `SELECT 2147483647 + 1;`?",
+      "back": "`ERROR: integer out of range`. integer + integer da integer, y PostgreSQL no «da la vuelta»: falla. Solución: `2147483647::bigint + 1`."
+    },
+    {
+      "front": "¿Qué significan p y s en `numeric(p, s)`?",
+      "back": "p = precisión (total de dígitos), s = escala (decimales). `numeric(10,2)` guarda hasta 99.999.999,99. `decimal` es sinónimo."
+    },
+    {
+      "front": "¿Qué pasa al guardar 1234.5 en `numeric(5,2)`?",
+      "back": "`ERROR: numeric field overflow` (22003), con DETAIL: must round to an absolute value less than 10^3. Solo caben 3 dígitos enteros."
+    },
+    {
+      "front": "`0.1 + 0.2` en numeric vs en double precision",
+      "back": "numeric: 0.3 exacto. double precision: 0.30000000000000004 (binario aproximado). Por eso nunca se usa float para dinero."
+    },
+    {
+      "front": "¿Cómo redondean los empates `numeric` y `double precision`?",
+      "back": "numeric: lejos del cero (`round(2.5)` = 3). double precision: al par más cercano (`round(2.5::float8)` = 2)."
+    },
+    {
+      "front": "¿Qué tipo usar para precios en pesos chilenos?",
+      "back": "`integer` (el peso no tiene centavos); `bigint` para totales grandes o presupuestos. UF, dólares y tasas: `numeric(p, s)`. Nunca float; money se desaconseja."
+    },
+    {
+      "front": "¿Por qué se desaconseja el tipo `money`?",
+      "back": "Su formato y decimales dependen de `lc_monetary` (un respaldo en otro servidor puede leerse mal), tiene precisión fija y al dividir por un entero trunca."
+    },
+    {
+      "front": "¿text o varchar(n) en PostgreSQL?",
+      "back": "Mismo almacenamiento y rendimiento. Usa `text`; `varchar(n)` solo si el largo es una regla del negocio. `char(n)` casi nunca (es el más lento)."
+    },
+    {
+      "front": "Texto demasiado largo para `varchar(10)`: ¿al guardar y con `::varchar(10)`?",
+      "back": "Al guardar: `ERROR: value too long for type character varying(10)` (salvo que sobren solo espacios). Con cast explícito: se trunca en silencio."
+    },
+    {
+      "front": "`length('Ñuñoa')` y `octet_length('Ñuñoa')`",
+      "back": "5 caracteres y 7 bytes: en UTF-8 cada ñ ocupa 2 bytes."
+    },
+    {
+      "front": "¿Qué hace `char(n)` con los espacios?",
+      "back": "Rellena hasta n con espacios, los ignora al comparar (`'a'::char(3) = 'a  '::char(3)` es true) y los quita al concatenar o convertir."
+    },
+    {
+      "front": "Comillas simples vs dobles",
+      "back": "Simples: textos (`'Maipú'`; una comilla se duplica: `'O''Higgins'`). Dobles: identificadores (`\"Ñuñoa\"` es una columna, no un texto)."
+    },
+    {
+      "front": "Con la colación C, ¿dónde queda Ñuñoa al ordenar comunas?",
+      "back": "Al final, después de Vitacura: C ordena por código de carácter (A–Z, a–z y luego letras con tilde y ñ). Una colación es_CL o ICU la pondría entre la n y la o."
+    },
+    {
+      "front": "¿Qué guarda realmente un `timestamptz`?",
+      "back": "Un instante en UTC, sin zona. La zona solo sirve para interpretar la entrada y mostrar la salida según el parámetro `TimeZone`."
+    },
+    {
+      "front": "¿Qué hace `timestamp` con `'2026-01-15 10:00+09'`?",
+      "back": "Ignora el desfase en silencio: guarda 2026-01-15 10:00:00. timestamp es una hora de reloj sin contexto."
+    },
+    {
+      "front": "`timestamptz AT TIME ZONE 'X'` vs `timestamp AT TIME ZONE 'X'`",
+      "back": "timestamptz → timestamp: la hora del reloj en X. timestamp → timestamptz: el instante en que el reloj de X marcó esa hora."
+    },
+    {
+      "front": "`timestamptz '2026-04-04 12:00' + interval '1 day'` vs `+ interval '24 hours'` (Santiago)",
+      "back": "'1 day': 2026-04-05 12:00:00-04 (conserva la hora del reloj). '24 hours': 2026-04-05 11:00:00-04 (tiempo real; esa noche hubo 25 horas)."
+    },
+    {
+      "front": "Hora repetida y hora inexistente en un cambio de horario",
+      "back": "Repetida (fin del horario de verano): se usa el desfase vigente después del cambio. Inexistente (inicio): se usa el desfase vigente antes; `'2026-09-06 00:30'` se muestra 01:30:00-03."
+    },
+    {
+      "front": "Zonas horarias de Chile en la tzdata",
+      "back": "America/Santiago (continental, -03/-04), America/Punta_Arenas (Magallanes, -03 todo el año), America/Coyhaique (Aysén, -03 todo el año desde 2025), Pacific/Easter (Isla de Pascua, -05/-06)."
+    },
+    {
+      "front": "`now()` vs `clock_timestamp()`",
+      "back": "now() (= current_timestamp = transaction_timestamp()) es el inicio de la transacción y no cambia dentro de ella. clock_timestamp() es la hora real en cada llamada."
+    },
+    {
+      "front": "¿Qué tipo devuelve `date - date`? ¿Y `date + interval`?",
+      "back": "date − date: integer (días). date + interval: timestamp. timestamp − timestamp: interval."
+    },
+    {
+      "front": "¿Cómo guarda `interval` una duración?",
+      "back": "En tres campos separados: meses, días y microsegundos (16 bytes), porque un mes no siempre tiene 30 días y un día puede tener 23 o 25 horas."
+    },
+    {
+      "front": "`'03/04/2026'::date` con DateStyle ISO, MDY",
+      "back": "2026-03-04 (4 de marzo): se lee mes/día/año. `'18/09/2026'::date` falla. Escribe en ISO 8601 o usa `to_date(texto, 'DD/MM/YYYY')`."
+    },
+    {
+      "front": "`AT TIME ZONE 'UTC-4'`: ¿cuatro horas antes o después de UTC?",
+      "back": "Después (UTC+4): en la notación POSIX el signo está invertido. Usa nombres de zona como 'America/Santiago'."
+    },
+    {
+      "front": "Literales válidos para `boolean`",
+      "back": "TRUE/FALSE, 't'/'f', 'true'/'false', 'yes'/'no', 'on'/'off', '1'/'0'. `'si'::boolean` da invalid input syntax. Tiene un tercer estado: NULL."
+    },
+    {
+      "front": "`uuidv7()` (PostgreSQL 18)",
+      "back": "Genera uuid versión 7: los primeros 48 bits son la hora en milisegundos, así que los valores nuevos son crecientes. `uuid_extract_timestamp(id)` recupera esa hora; `uuidv4()` es alias de `gen_random_uuid()`."
+    },
+    {
+      "front": "¿Cómo se ordena un enum?",
+      "back": "Según el orden de declaración, no alfabéticamente: con ENUM ('S','M','L','XL'), 'S' < 'M' es true (como texto sería false)."
+    },
+    {
+      "front": "¿En qué índice parte un array? ¿Qué devuelve `(ARRAY['a','b'])[0]`?",
+      "back": "En 1. El índice 0 no existe y devuelve NULL (no error)."
+    },
+    {
+      "front": "json vs jsonb con `'{\"a\": 2, \"a\": 3}'`",
+      "back": "json guarda el texto tal cual (con la clave repetida). jsonb lo valida y normaliza: `{\"a\": 3}` (queda la última)."
+    },
+    {
+      "front": "Tres formas de convertir a date",
+      "back": "`CAST('2026-09-18' AS date)` (estándar), `'2026-09-18'::date` (PostgreSQL) y `date '2026-09-18'` (solo para literales)."
+    },
+    {
+      "front": "¿Por qué `'5' + 3` funciona y `'5'::text + 3` no?",
+      "back": "'5' es un literal unknown que toma el tipo del contexto (integer). Un valor text no se convierte solo: `operator does not exist: text + integer` (42883)."
+    },
+    {
+      "front": "Clases de cast en `pg_cast`",
+      "back": "i (implícito, en cualquier expresión: integer → bigint), a (de asignación, solo al guardar: numeric → integer), e (explícito, solo con CAST o ::, como integer → boolean)."
+    },
+    {
+      "front": "`pg_input_is_valid(texto, tipo)`",
+      "back": "Desde PostgreSQL 16: devuelve true/false sin provocar error. `pg_input_error_info(texto, tipo)` devuelve el mensaje y el SQLSTATE que daría."
+    },
+    {
+      "front": "¿Por qué falla `round(10::float8 / 3, 2)`?",
+      "back": "No existe `round(double precision, integer)`: el redondeo a n decimales es para numeric. Convierte: `round((10::float8 / 3)::numeric, 2)`."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s03-q1",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 2147483647 + 1;\n```",
+      "options": [
+        "2147483648",
+        "-2147483648",
+        "ERROR: integer out of range",
+        "NULL"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Los dos operandos son integer, así que el resultado también debe ser integer, y 2.147.483.648 no cabe. PostgreSQL no «da la vuelta» a un negativo como C o Java: lanza `integer out of range`. Con `2147483647::bigint + 1` obtienes 2147483648."
+    },
+    {
+      "id": "s03-q2",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT pg_typeof(3000000000);`?",
+      "options": [
+        "integer",
+        "bigint",
+        "numeric",
+        "double precision"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Un literal entero que no cabe en integer se toma como bigint (y si tampoco cabiera, como numeric). Un literal con punto decimal sería numeric."
+    },
+    {
+      "id": "s03-q3",
+      "type": "multi",
+      "q": "¿Cuáles de estos literales son de tipo `numeric`? (Selecciona TRES.)",
+      "options": [
+        "`1.5`",
+        "`1.5e3`",
+        "`9223372036854775808`",
+        "`42`",
+        "`'1.5'`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Todo literal con punto o exponente es numeric, y un entero que no cabe ni en bigint (9223372036854775808 es uno más que el máximo) también pasa a numeric. `42` es integer, y `'1.5'` entre comillas es un literal unknown hasta que el contexto le dé un tipo. Para obtener double precision hay que convertir: `1.5::float8`."
+    },
+    {
+      "id": "s03-q4",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 0.1::float8 + 0.2::float8 = 0.3 AS iguales;\n```",
+      "options": [
+        "t",
+        "f",
+        "NULL",
+        "ERROR: operator does not exist"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En double precision, 0.1 + 0.2 es 0.30000000000000004: 0,1 y 0,2 no tienen representación binaria exacta. Con numeric (`0.1 + 0.2 = 0.3`) el resultado sí es `t`."
+    },
+    {
+      "id": "s03-q5",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT 12.345::numeric(5,2);`?",
+      "options": [
+        "12.34",
+        "12.35",
+        "12.345",
+        "ERROR: numeric field overflow"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La escala 2 obliga a redondear a dos decimales al convertir; numeric redondea los empates alejándose del cero, así que 12,345 queda en 12,35. Hay espacio para 3 dígitos enteros, así que no hay desbordamiento."
+    },
+    {
+      "id": "s03-q6",
+      "type": "single",
+      "q": "¿Qué pasa con `SELECT 1234.5::numeric(5,2);`?",
+      "options": [
+        "Devuelve 1234.50",
+        "Devuelve 234.50",
+        "ERROR: numeric field overflow",
+        "Devuelve 1234.5 sin cambios"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`numeric(5,2)` tiene 5 dígitos, 2 decimales: solo quedan 3 dígitos para la parte entera (máximo 999,99). El DETAIL lo explica: *must round to an absolute value less than 10^3*."
+    },
+    {
+      "id": "s03-q7",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT round(2.5) AS a, round(2.5::float8) AS b;\n```",
+      "options": [
+        "a = 3, b = 3",
+        "a = 2, b = 2",
+        "a = 3, b = 2",
+        "a = 2, b = 3"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "numeric redondea los empates alejándose del cero (2,5 → 3); double precision los redondea al par más cercano (2,5 → 2), según IEEE 754. Es una razón más para que los cálculos de dinero y notas sean numeric."
+    },
+    {
+      "id": "s03-q8",
+      "type": "multi",
+      "q": "¿Qué tipos guardan los valores de forma **exacta**? (Selecciona TRES.)",
+      "options": [
+        "numeric",
+        "bigint",
+        "double precision",
+        "smallint",
+        "real"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "Los enteros (smallint, integer, bigint) y numeric son exactos. real y double precision son de coma flotante binaria: aproximados."
+    },
+    {
+      "id": "s03-q9",
+      "type": "single",
+      "q": "Una tienda chilena guarda el precio unitario de cada producto (hasta unos pocos millones de pesos). ¿Qué tipo es el más adecuado?",
+      "options": [
+        "double precision",
+        "money",
+        "integer",
+        "varchar(20)"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "El peso chileno no tiene centavos, y un precio unitario cabe de sobra en integer (hasta 2.147.483.647). double precision es aproximado, money depende de lc_monetary y un texto no permite sumar ni validar."
+    },
+    {
+      "id": "s03-q10",
+      "type": "yesno",
+      "q": "Indica si cada afirmación sobre `money` es correcta.",
+      "statements": [
+        {
+          "text": "Su formato y cantidad de decimales dependen de `lc_monetary`.",
+          "answer": true
+        },
+        {
+          "text": "Es la forma recomendada de guardar pesos chilenos.",
+          "answer": false
+        },
+        {
+          "text": "Al dividir un money por un entero, el resultado se trunca.",
+          "answer": true
+        },
+        {
+          "text": "Un respaldo con columnas money siempre se restaura igual en cualquier servidor.",
+          "answer": false
+        }
+      ],
+      "explain": "money es un número de precisión fija cuyo formato depende de `lc_monetary`; la documentación advierte que restaurar en un servidor con otra configuración puede fallar, y que dividir por un entero trunca. Para pesos usa integer o bigint; para montos con decimales, numeric."
+    },
+    {
+      "id": "s03-q11",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT sum(0.1::float8) FROM generate_series(1, 10);\n```",
+      "options": [
+        "1",
+        "1.0",
+        "0.9999999999999999",
+        "ERROR: function sum(double precision) does not exist"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Sumar diez veces el 0,1 binario acumula el error de representación: 0.9999999999999999. Con `sum(0.1)` (numeric) el resultado es exactamente 1.0."
+    },
+    {
+      "id": "s03-q12",
+      "type": "single",
+      "q": "La tabla tiene `nombre varchar(10)`. ¿Qué pasa con `INSERT INTO t (nombre) VALUES ('San Pedro de la Paz');`?",
+      "options": [
+        "Guarda 'San Pedro '",
+        "ERROR: value too long for type character varying(10)",
+        "Guarda el texto completo",
+        "Guarda NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Al guardar, varchar(n) valida el largo y rechaza el valor (salvo que lo que sobre sean solo espacios). El truncado silencioso solo ocurre con un cast explícito `::varchar(10)`."
+    },
+    {
+      "id": "s03-q13",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT 'San Pedro de la Paz'::varchar(10);`?",
+      "options": [
+        "ERROR: value too long",
+        "'San Pedro de la Paz'",
+        "'San Pedro ' (truncado a 10 caracteres)",
+        "NULL"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Con un cast explícito, el estándar SQL indica truncar sin error. Por eso un `::varchar(n)` en una carga de datos puede cortar valores sin avisar."
+    },
+    {
+      "id": "s03-q14",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT length('Ñuñoa'), octet_length('Ñuñoa');`?",
+      "options": [
+        "5 y 5",
+        "5 y 7",
+        "7 y 7",
+        "7 y 5"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "length cuenta caracteres (5); octet_length cuenta bytes: en UTF-8 cada ñ ocupa 2, así que son 7."
+    },
+    {
+      "id": "s03-q15",
+      "type": "yesno",
+      "q": "Sobre los espacios finales en `char(n)` y `varchar(n)`, indica si cada afirmación es correcta.",
+      "statements": [
+        {
+          "text": "`'a'::char(3) = 'a  '::char(3)` es verdadero.",
+          "answer": true
+        },
+        {
+          "text": "`'a'::varchar(3) = 'a  '::varchar(3)` es verdadero.",
+          "answer": false
+        },
+        {
+          "text": "`length('SCL'::char(5))` devuelve 5.",
+          "answer": false
+        },
+        {
+          "text": "`octet_length('SCL'::char(5))` devuelve 5.",
+          "answer": true
+        }
+      ],
+      "explain": "char(n) rellena con espacios, pero esos espacios no son significativos: se ignoran al comparar y `length` no los cuenta (devuelve 3). Sí ocupan espacio: `octet_length` muestra los 5 bytes guardados. En varchar y text los espacios finales son parte del dato, así que `'a' = 'a  '` es falso."
+    },
+    {
+      "id": "s03-q16",
+      "type": "yesno",
+      "q": "Sobre los tipos de texto en PostgreSQL, indica si cada afirmación es correcta.",
+      "statements": [
+        {
+          "text": "`text` es más lento que `varchar(255)`.",
+          "answer": false
+        },
+        {
+          "text": "`char(n)` suele ser el más lento de los tres por el relleno.",
+          "answer": true
+        },
+        {
+          "text": "El límite n de `varchar(n)` se cuenta en caracteres, no en bytes.",
+          "answer": true
+        },
+        {
+          "text": "`varchar` sin (n) acepta textos de cualquier largo, como `text`.",
+          "answer": true
+        }
+      ],
+      "explain": "La documentación es explícita: no hay diferencia de rendimiento entre text y varchar, salvo el chequeo de largo; char(n) suele ser el más lento. n cuenta caracteres, y varchar sin límite equivale a text."
+    },
+    {
+      "id": "s03-q17",
+      "type": "single",
+      "q": "Con la colación C (la de la simulación), ¿en qué orden devuelve `ORDER BY` estas comunas: Vitacura, Ñuñoa, Maipú, providencia?",
+      "options": [
+        "Maipú, Ñuñoa, providencia, Vitacura",
+        "Maipú, Vitacura, providencia, Ñuñoa",
+        "Ñuñoa, Maipú, providencia, Vitacura",
+        "Maipú, providencia, Vitacura, Ñuñoa"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "C ordena por el código de cada carácter: mayúsculas A–Z (Maipú, Vitacura), luego minúsculas a–z (providencia) y al final las letras fuera de ASCII, como la Ñ. Una colación lingüística daría Maipú, Ñuñoa, providencia, Vitacura."
+    },
+    {
+      "id": "s03-q18",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT \"Maipú\";`?",
+      "options": [
+        "El texto Maipú",
+        "ERROR: column \"Maipú\" does not exist",
+        "NULL",
+        "ERROR: syntax error"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las comillas dobles delimitan identificadores, no textos: PostgreSQL busca una columna llamada Maipú. Para un texto se usan comillas simples: `'Maipú'`."
+    },
+    {
+      "id": "s03-q19",
+      "type": "single",
+      "q": "¿Qué guarda internamente una columna `timestamp with time zone`?",
+      "options": [
+        "La fecha, la hora y el nombre de la zona horaria",
+        "La fecha, la hora y el desfase (por ejemplo -03)",
+        "Un instante en UTC, sin ninguna zona",
+        "El texto tal como se escribió"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Pese al nombre, no guarda zona: convierte la entrada a UTC y guarda el instante (8 bytes). Al mostrarlo lo convierte a la zona de la sesión (`TimeZone`). Por eso el mismo valor se ve -03, +00 o -05 según quién pregunte."
+    },
+    {
+      "id": "s03-q20",
+      "type": "single",
+      "q": "¿Qué devuelve la segunda sentencia?\n```sql\nSET timezone = 'UTC';\nSELECT timestamptz '2026-01-15 10:00-03';\n```",
+      "options": [
+        "2026-01-15 10:00:00-03",
+        "2026-01-15 13:00:00+00",
+        "2026-01-15 07:00:00+00",
+        "2026-01-15 10:00:00"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El literal trae su desfase (-03), así que el instante es las 13:00 UTC; como la sesión está en UTC, se muestra 13:00:00+00."
+    },
+    {
+      "id": "s03-q21",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT timestamp '2026-01-15 10:00:00+09';`?",
+      "options": [
+        "2026-01-15 10:00:00",
+        "2026-01-15 01:00:00",
+        "2026-01-14 22:00:00",
+        "ERROR: invalid input syntax"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Para `timestamp` sin zona, PostgreSQL ignora en silencio cualquier desfase del texto: guarda los números del reloj tal cual."
+    },
+    {
+      "id": "s03-q22",
+      "type": "multi",
+      "q": "¿Qué expresiones devuelven `timestamp with time zone`? (Selecciona TRES.)",
+      "options": [
+        "`now()`",
+        "`timestamp '2026-07-20 15:00' AT TIME ZONE 'UTC'`",
+        "`to_timestamp('18/09/2026', 'DD/MM/YYYY')`",
+        "`now() AT TIME ZONE 'UTC'`",
+        "`localtimestamp`",
+        "`date '2026-09-18' + time '20:30'`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "now() y to_timestamp devuelven timestamptz. AT TIME ZONE invierte el tipo: aplicado a un timestamp devuelve timestamptz (el instante), y aplicado a un timestamptz como now() devuelve timestamp (la hora del reloj en esa zona). localtimestamp y date + time son timestamp sin zona."
+    },
+    {
+      "id": "s03-q23",
+      "type": "single",
+      "q": "Con la sesión en `America/Santiago`, ¿qué devuelve esta consulta?\n```sql\nSELECT timestamptz '2026-04-04 12:00' + interval '1 day';\n```",
+      "options": [
+        "2026-04-05 12:00:00-04",
+        "2026-04-05 11:00:00-04",
+        "2026-04-05 13:00:00-04",
+        "2026-04-05 12:00:00-03"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El componente de días avanza el calendario conservando la hora del reloj: mediodía del 5 de abril, ya en horario de invierno (-04). Esa noche Chile atrasó los relojes, así que entre ambos instantes pasaron 25 horas reales."
+    },
+    {
+      "id": "s03-q24",
+      "type": "single",
+      "q": "Con la sesión en `America/Santiago`, ¿qué devuelve esta consulta?\n```sql\nSELECT timestamptz '2026-04-04 12:00' + interval '24 hours';\n```",
+      "options": [
+        "2026-04-05 12:00:00-04",
+        "2026-04-05 11:00:00-04",
+        "2026-04-05 13:00:00-03",
+        "2026-04-05 12:00:00-03"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las horas suman tiempo real: 24 horas después del mediodía del sábado, con una hora repetida esa noche, el reloj marca las 11:00 del domingo (-04)."
+    },
+    {
+      "id": "s03-q25",
+      "type": "single",
+      "q": "Con la sesión en `America/Santiago`, ¿qué devuelve esta resta?\n```sql\nSELECT timestamptz '2026-04-05 12:00' - timestamptz '2026-04-04 12:00';\n```",
+      "options": [
+        "1 day",
+        "24:00:00",
+        "1 day 01:00:00",
+        "23:00:00"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Restar dos timestamptz da el tiempo real transcurrido: 25 horas, que PostgreSQL muestra como `1 day 01:00:00`. Con timestamp sin zona, la misma resta daría `1 day`."
+    },
+    {
+      "id": "s03-q26",
+      "type": "single",
+      "q": "El domingo 6 de septiembre de 2026, a las 00:00, Chile continental adelantó los relojes a la 01:00. Con la sesión en `America/Santiago`, ¿qué devuelve `SELECT timestamptz '2026-09-06 00:30';`?",
+      "options": [
+        "ERROR: invalid timestamp",
+        "2026-09-06 00:30:00-03",
+        "2026-09-06 01:30:00-03",
+        "2026-09-05 23:30:00-04"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Esa hora no existió. PostgreSQL le asigna el desfase vigente justo antes del cambio (-04): 00:30-04 es el mismo instante que 01:30-03, y así se muestra. No da error."
+    },
+    {
+      "id": "s03-q27",
+      "type": "multi",
+      "q": "¿Qué afirmaciones sobre `now()` y `clock_timestamp()` son correctas? (Selecciona DOS.)",
+      "options": [
+        "now() devuelve el mismo valor durante toda la transacción",
+        "clock_timestamp() cambia en cada llamada, incluso dentro de una misma sentencia",
+        "now() devuelve un timestamp sin zona",
+        "clock_timestamp() es la hora de inicio de la sentencia"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "now() (igual que current_timestamp y transaction_timestamp()) es el inicio de la transacción, de tipo timestamptz. clock_timestamp() es la hora real en cada llamada. El inicio de la sentencia es statement_timestamp()."
+    },
+    {
+      "id": "s03-q28",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT date '2026-12-25' - date '2026-09-18';`?",
+      "options": [
+        "98",
+        "98 days",
+        "3 mons 7 days",
+        "ERROR: operator does not exist: date - date"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Restar dos date devuelve un integer con la cantidad de días, no un interval. (Restar dos timestamp sí devuelve interval)."
+    },
+    {
+      "id": "s03-q29",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT date '2026-01-31' + interval '1 month';`?",
+      "options": [
+        "2026-02-28",
+        "2026-02-28 00:00:00",
+        "2026-03-03 00:00:00",
+        "ERROR: date/time field value out of range"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "date + interval devuelve un timestamp (por eso aparece 00:00:00). Sumar un mes al 31 de enero lleva al último día de febrero, no al 3 de marzo."
+    },
+    {
+      "id": "s03-q30",
+      "type": "single",
+      "q": "Con `DateStyle = 'ISO, MDY'` (el de la simulación), ¿qué devuelve `SELECT '03/04/2026'::date;`?",
+      "options": [
+        "2026-04-03",
+        "2026-03-04",
+        "ERROR: date/time field value out of range",
+        "NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Con MDY se lee mes/día/año: 4 de marzo. Un chileno que quiso decir 3 de abril obtiene una fecha equivocada **sin error**. Por eso conviene escribir fechas en ISO 8601 o usar `to_date(texto, 'DD/MM/YYYY')`."
+    },
+    {
+      "id": "s03-q31",
+      "type": "single",
+      "q": "Con la sesión en Santiago, ¿qué hace `timestamptz '2026-07-20 15:00' AT TIME ZONE 'UTC-4'`?",
+      "options": [
+        "Devuelve 2026-07-20 15:00:00, la hora de Chile en julio",
+        "Devuelve 2026-07-20 23:00:00: en POSIX, UTC-4 significa cuatro horas al este de Greenwich",
+        "Da error porque 'UTC-4' no es una zona válida",
+        "Devuelve 2026-07-20 11:00:00"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En la notación POSIX el signo está invertido: positivo es al oeste de Greenwich. 'UTC-4' se interpreta como UTC+4 y el reloj marca las 23:00. Usa nombres de la base tz, como 'America/Santiago'."
+    },
+    {
+      "id": "s03-q32",
+      "type": "yesno",
+      "q": "Sobre las zonas horarias de Chile en la tzdata de PostgreSQL 18, indica si cada afirmación es correcta.",
+      "statements": [
+        {
+          "text": "`America/Punta_Arenas` está en -03 todo el año.",
+          "answer": true
+        },
+        {
+          "text": "`Pacific/Easter` usa el mismo desfase que Santiago.",
+          "answer": false
+        },
+        {
+          "text": "En 2022 el inicio del horario de verano se postergó una semana, y la tzdata lo registra.",
+          "answer": true
+        },
+        {
+          "text": "Guardar los pedidos en `timestamp` sin zona es la forma recomendada de manejar los cambios de horario.",
+          "answer": false
+        }
+      ],
+      "explain": "Magallanes quedó en -03 todo el año desde 2016; Isla de Pascua va dos horas detrás del continente (-05/-06). En 2022 el cambio se movió por el plebiscito del 4 de septiembre. Para instantes se usa timestamptz, no timestamp."
+    },
+    {
+      "id": "s03-q33",
+      "type": "yesno",
+      "q": "Indica si cada conversión a `boolean` devuelve verdadero (`t`).",
+      "statements": [
+        {
+          "text": "`'yes'::boolean`",
+          "answer": true
+        },
+        {
+          "text": "`'si'::boolean`",
+          "answer": false
+        },
+        {
+          "text": "`' TRUE '::boolean` (con espacios y en mayúsculas)",
+          "answer": true
+        },
+        {
+          "text": "`2::boolean`",
+          "answer": true
+        }
+      ],
+      "explain": "boolean acepta literales en inglés (yes/no, true/false, on/off, t/f, 1/0) sin importar mayúsculas ni espacios alrededor. `'si'::boolean` no devuelve nada: da `invalid input syntax for type boolean: \"si\"`. Desde un entero, cualquier valor distinto de 0 es verdadero. Para datos que traen 'si'/'no', usa la comparación `columna = 'si'`."
+    },
+    {
+      "id": "s03-q34",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT TRUE AND NULL AS a, FALSE AND NULL AS b;`?",
+      "options": [
+        "a = NULL, b = f",
+        "a = t, b = f",
+        "a = NULL, b = NULL",
+        "a = f, b = f"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Lógica de tres valores: TRUE AND desconocido es desconocido (NULL), pero FALSE AND cualquier cosa es FALSE."
+    },
+    {
+      "id": "s03-q35",
+      "type": "multi",
+      "q": "¿Qué afirmaciones sobre `uuidv7()` son correctas? (Selecciona TRES.)",
+      "options": [
+        "Es nuevo en PostgreSQL 18",
+        "Los valores generados después son mayores, así que quedan ordenados en el tiempo",
+        "`uuid_extract_timestamp` puede recuperar la hora en que se generó",
+        "Ocupa 36 bytes porque se guarda como texto",
+        "Es idéntico a gen_random_uuid()"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "uuidv7() llegó en PostgreSQL 18; sus primeros 48 bits son la hora en milisegundos, por eso es creciente y se puede extraer la hora. Como todo uuid ocupa 16 bytes. gen_random_uuid() (v4) es completamente aleatorio."
+    },
+    {
+      "id": "s03-q36",
+      "type": "single",
+      "q": "Con `CREATE TYPE talla AS ENUM ('S', 'M', 'L', 'XL');`, ¿qué devuelve `SELECT 'S'::talla < 'M'::talla;`?",
+      "options": [
+        "t, porque los enum se ordenan según su declaración",
+        "f, porque 'S' va después de 'M' en el alfabeto",
+        "NULL",
+        "ERROR: operator does not exist"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Un enum se ordena por la posición en que se declararon sus valores. Como texto, `'S' < 'M'` sería falso."
+    },
+    {
+      "id": "s03-q37",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT (ARRAY['Maipú', 'Ñuñoa', 'Providencia'])[0];`?",
+      "options": [
+        "Maipú",
+        "Ñuñoa",
+        "NULL",
+        "ERROR: array subscript out of range"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Los arrays de PostgreSQL empiezan en el índice 1. Un subíndice que no existe devuelve NULL, sin error."
+    },
+    {
+      "id": "s03-q38",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT '{\"b\": 1, \"a\": 2, \"a\": 3}'::jsonb;`?",
+      "options": [
+        "{\"b\": 1, \"a\": 2, \"a\": 3}",
+        "{\"a\": 3, \"b\": 1}",
+        "{\"a\": 2, \"b\": 1}",
+        "ERROR: duplicate key"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "jsonb normaliza: elimina claves repetidas (se queda con la última), quita espacios sobrantes y no conserva el orden original de las claves. El tipo json guardaría el texto tal cual."
+    },
+    {
+      "id": "s03-q39",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT '5' + 3;`?",
+      "options": [
+        "8",
+        "'53'",
+        "ERROR: operator does not exist: unknown + integer",
+        "ERROR: invalid input syntax"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "'5' es un literal de tipo unknown: PostgreSQL lo resuelve como integer para usar el operador integer + integer. Si fuera un valor text (`'5'::text + 3`), daría `operator does not exist: text + integer`."
+    },
+    {
+      "id": "s03-q40",
+      "type": "single",
+      "q": "La columna `n` es integer. ¿Qué pasa con estas dos sentencias?\n```sql\nINSERT INTO t (n) VALUES (3.7);\nINSERT INTO t (n) VALUES ('3.7');\n```",
+      "options": [
+        "Las dos guardan 3",
+        "Las dos guardan 4",
+        "La primera guarda 4; la segunda da ERROR: invalid input syntax for type integer",
+        "La primera da error; la segunda guarda 4"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "3.7 es numeric y al guardarlo se aplica el cast de asignación numeric → integer, que redondea a 4. '3.7' es un literal unknown que se lee directamente como integer, y «3.7» no es un entero válido."
+    },
+    {
+      "id": "s03-q41",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT round(10::float8 / 3, 2);`?",
+      "options": [
+        "3.33",
+        "3.3333333333333335",
+        "ERROR: function round(double precision, integer) does not exist",
+        "3"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "round con número de decimales existe para numeric, no para double precision. Convierte primero: `round((10::float8 / 3)::numeric, 2)` da 3.33, o mejor calcula en numeric desde el inicio: `round(10 / 3.0, 2)`."
+    },
+    {
+      "id": "s03-q42",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT 2.5::float8::integer AS a, 2.5::integer AS b;`?",
+      "options": [
+        "a = 3, b = 3",
+        "a = 2, b = 3",
+        "a = 2, b = 2",
+        "a = 3, b = 2"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Desde double precision, el redondeo va al par más cercano (2); desde numeric, los empates se alejan del cero (3)."
+    },
+    {
+      "id": "s03-q43",
+      "type": "single",
+      "q": "Con la sesión en `America/Santiago`, ¿qué devuelve esta consulta?\n```sql\nSELECT (timestamptz '2026-03-01 01:30+00')::date;\n```",
+      "options": [
+        "2026-03-01",
+        "2026-02-28",
+        "ERROR: cannot cast timestamptz to date",
+        "2026-03-01 01:30:00"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Convertir un timestamptz a date usa la zona de la sesión: 01:30 UTC del 1 de marzo es las 22:30 del 28 de febrero en Santiago (-03). En una sesión en UTC daría 2026-03-01."
+    },
+    {
+      "id": "s03-q44",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT pg_input_is_valid('2026-02-30', 'date');`?",
+      "options": [
+        "t",
+        "f",
+        "NULL",
+        "ERROR: date/time field value out of range"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El 30 de febrero no existe, pero pg_input_is_valid (PostgreSQL 16+) no lanza el error: responde false. Para ver el mensaje, usa `pg_input_error_info('2026-02-30', 'date')`."
+    },
+    {
+      "id": "s03-q45",
+      "type": "multi",
+      "q": "¿Cuáles de estas conversiones son **implícitas** (PostgreSQL las aplica solo en cualquier expresión)? (Selecciona TRES.)",
+      "options": [
+        "integer → bigint",
+        "integer → numeric",
+        "date → timestamp",
+        "numeric → integer",
+        "text → integer"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Las conversiones que no pierden información son implícitas. numeric → integer es de asignación (solo al guardar, redondeando) y text → integer solo ocurre si la pides explícitamente."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: tipos numéricos",
+      "url": "https://www.postgresql.org/docs/18/datatype-numeric.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipo money",
+      "url": "https://www.postgresql.org/docs/18/datatype-money.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos de caracteres",
+      "url": "https://www.postgresql.org/docs/18/datatype-character.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos de fecha y hora",
+      "url": "https://www.postgresql.org/docs/18/datatype-datetime.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: marcas de tiempo inválidas o ambiguas",
+      "url": "https://www.postgresql.org/docs/18/datetime-invalid-input.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones y operadores de fecha y hora",
+      "url": "https://www.postgresql.org/docs/18/functions-datetime.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipo boolean",
+      "url": "https://www.postgresql.org/docs/18/datatype-boolean.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipo uuid",
+      "url": "https://www.postgresql.org/docs/18/datatype-uuid.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones de uuid (uuidv7)",
+      "url": "https://www.postgresql.org/docs/18/functions-uuid.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos enumerados",
+      "url": "https://www.postgresql.org/docs/18/datatype-enum.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: arrays",
+      "url": "https://www.postgresql.org/docs/18/arrays.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos JSON",
+      "url": "https://www.postgresql.org/docs/18/datatype-json.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos binarios (bytea)",
+      "url": "https://www.postgresql.org/docs/18/datatype-binary.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: tipos de direcciones de red",
+      "url": "https://www.postgresql.org/docs/18/datatype-net-types.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones de formato (to_char, to_date, to_number)",
+      "url": "https://www.postgresql.org/docs/18/functions-formatting.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: conversiones de tipo (CAST y ::)",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html#SQL-SYNTAX-TYPE-CASTS"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: conversión de tipos (resolución de operadores y funciones)",
+      "url": "https://www.postgresql.org/docs/18/typeconv.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: CREATE CAST (casts implícitos, de asignación y explícitos)",
+      "url": "https://www.postgresql.org/docs/18/sql-createcast.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones de información del sistema (pg_typeof, pg_input_is_valid)",
+      "url": "https://www.postgresql.org/docs/18/functions-info.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: soporte de colaciones",
+      "url": "https://www.postgresql.org/docs/18/collation.html"
+    },
+    {
+      "title": "Wiki de PostgreSQL: Don't Do This (money, char(n), timestamp sin zona)",
+      "url": "https://wiki.postgresql.org/wiki/Don't_Do_This"
+    }
+  ]
+}

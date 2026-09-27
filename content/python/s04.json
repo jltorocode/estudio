@@ -1,0 +1,3377 @@
+{
+ "id": "s04",
+ "order": 4,
+ "title": "Colecciones: listas, tuplas, diccionarios y conjuntos",
+ "domain": "basico",
+ "summary": "Aprenderás a guardar y manipular muchos datos a la vez con las cuatro colecciones integradas de Python: listas, tuplas, diccionarios y conjuntos. Dominarás el rebanado, la ordenación, las comprensiones y el modelo de referencias que explica los errores de copia más frecuentes: la base de casi cualquier programa real y de un bloque que, junto con las cadenas, vale el 25 % del examen PCEP.",
+ "goal": "Elegir y usar la colección adecuada (lista, tupla, diccionario o conjunto) para resolver problemas de datos, evitando los errores de aliasing y razonando el coste de cada búsqueda.",
+ "objectives": [
+  "Manipular listas con índices, rebanadas y métodos, distinguiendo las operaciones que mutan de las que crean objetos nuevos.",
+  "Ordenar colecciones con `sort` y `sorted` usando `key` y `reverse`, aprovechando la estabilidad para varios criterios.",
+  "Empaquetar y desempaquetar tuplas, incluido el desempaquetado extendido con `*resto`, y usar `range` como secuencia.",
+  "Construir, consultar, recorrer, fusionar y modificar diccionarios con `get`, `setdefault`, `items` y `|`.",
+  "Aplicar operaciones de conjuntos para eliminar duplicados, comparar colecciones y comprobar pertenencia en O(1).",
+  "Escribir comprensiones de lista, diccionario y conjunto legibles, y combinarlas con `any`, `all`, `enumerate` y `zip`.",
+  "Distinguir alias, copia superficial y copia profunda, y evitar el error de la lista compartida.",
+  "Modelar datos con estructuras anidadas (matrices, listas de diccionarios) eligiendo la estructura por su coste."
+ ],
+ "lessons": [
+  {
+   "id": "s04-l1",
+   "title": "Listas: crear, indexar y rebanar",
+   "minutes": 22,
+   "goals": [
+    "Crear listas con literales, `list()` y `range()`, y acceder a sus elementos con índices positivos y negativos.",
+    "Extraer y sustituir fragmentos con rebanadas `[inicio:fin:paso]`, incluidos los pasos negativos.",
+    "Aplicar `len`, `min`, `max`, `sum`, `in`, `+` y `*` a cualquier secuencia."
+   ],
+   "takeaways": [
+    "Una lista es una secuencia **ordenada y mutable** de referencias a objetos; puede mezclar tipos, aunque lo habitual es que sus elementos sean del mismo tipo.",
+    "Los índices empiezan en 0 y `-1` es el último elemento. Un índice suelto fuera de rango lanza `IndexError`.",
+    "Una rebanada `s[i:j:k]` incluye `i`, excluye `j`, devuelve un objeto nuevo y **nunca** lanza `IndexError`.",
+    "`s[::-1]` invierte cualquier secuencia y `s[:]` hace una copia superficial de una lista.",
+    "`min` y `max` de una colección vacía lanzan `ValueError`, salvo que pases `default=`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora cada variable apuntaba a *un* dato. Los programas reales manejan muchos: las notas de una clase, los productos de un carrito, las filas de una hoja de cálculo. Para eso existen las **colecciones** (*containers*, contenedores): objetos que agrupan otros objetos. Python trae cuatro integradas que usarás a diario —`list`, `tuple`, `dict` y `set`— y en esta sección las recorrerás una a una, hasta llegar al modelo de referencias que explica todas sus sorpresas."
+    },
+    {
+     "type": "diagram",
+     "title": "Mapa de las colecciones integradas",
+     "mermaid": "flowchart TD\n  C[\"Colecciones integradas\"] --> S[\"Secuencias: orden por posición\"]\n  C --> M[\"Mapeos: clave → valor\"]\n  C --> J[\"Conjuntos: únicos y sin orden\"]\n  S --> L[\"list · mutable\"]\n  S --> T[\"tuple · inmutable\"]\n  S --> R[\"range · inmutable, calcula sus valores\"]\n  S --> STR[\"str · inmutable (s05)\"]\n  M --> D[\"dict · mutable\"]\n  J --> SET[\"set · mutable\"]\n  J --> FS[\"frozenset · inmutable\"]",
+     "caption": "Tres familias: las secuencias se indexan por posición (0, 1, 2…), los mapeos por clave y los conjuntos solo responden a «¿está o no está?»."
+    },
+    {
+     "type": "h",
+     "text": "Crear listas"
+    },
+    {
+     "type": "p",
+     "text": "Una lista se escribe entre corchetes, con los elementos separados por comas. También puedes construirla con `list(...)` a partir de cualquier **iterable** (algo que se puede recorrer con `for`): una cadena, un `range`, otra lista…"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "notas = [7.5, 9, 4.25, 6]\nvacia = []\nmezcla = [1, \"dos\", 3.0, True, None]   # posible, pero poco habitual\nletras = list(\"hola\")                  # a partir de cualquier iterable\npares = list(range(0, 10, 2))\nprint(notas, len(notas))\nprint(vacia, len(vacia))\nprint(letras)\nprint(pares)",
+     "caption": "Prueba a cambiar los valores y a crear listas a partir de otros iterables."
+    },
+    {
+     "type": "p",
+     "text": "**Modelo mental.** Una lista no guarda los objetos «dentro»: guarda **referencias** (flechas) a ellos, en orden. Recuerda de s02 que una variable es un nombre que apunta a un objeto; una lista es una fila numerada de esas flechas. Esta idea explica casi todo lo que verás en la sección: por qué una lista puede contener otra lista, por qué `*` puede repetir la *misma* sublista y por qué copiar no siempre es copiar."
+    },
+    {
+     "type": "diagram",
+     "title": "Una lista es una fila de referencias",
+     "mermaid": "flowchart LR\n  V[\"frutas\"] --> L[\"objeto list\"]\n  L --> I0[\"posición 0 · -3\"]\n  L --> I1[\"posición 1 · -2\"]\n  L --> I2[\"posición 2 · -1\"]\n  I0 --> A[\"'manzana'\"]\n  I1 --> B[\"'pera'\"]\n  I2 --> U[\"'uva'\"]",
+     "caption": "`frutas = ['manzana', 'pera', 'uva']`: cada posición tiene un índice positivo y otro negativo, y apunta a un objeto independiente."
+    },
+    {
+     "type": "h",
+     "text": "Índices positivos y negativos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Elemento",
+      "`'p'`",
+      "`'y'`",
+      "`'t'`",
+      "`'h'`",
+      "`'o'`",
+      "`'n'`"
+     ],
+     "rows": [
+      [
+       "Índice positivo",
+       "0",
+       "1",
+       "2",
+       "3",
+       "4",
+       "5"
+      ],
+      [
+       "Índice negativo",
+       "-6",
+       "-5",
+       "-4",
+       "-3",
+       "-2",
+       "-1"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Un índice negativo `-k` equivale a `len(s) - k`: cuenta desde el final. Así, `s[-1]` es siempre el último elemento, tenga la lista 3 o 3 millones de elementos."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "frutas = [\"manzana\", \"pera\", \"uva\", \"kiwi\"]\nprint(frutas[0])      # primer elemento\nprint(frutas[-1])     # último: equivale a frutas[len(frutas) - 1]\nprint(frutas[-2])     # penúltimo\nfrutas[1] = \"mango\"   # las listas son mutables: reasignamos una posición\nprint(frutas)"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Acceder a una posición que no existe (`frutas[4]` en una lista de 4 elementos) lanza `IndexError: list index out of range`. El último índice válido es `len(lista) - 1`, o simplemente `-1`. Es el error más frecuente con listas: revisa los límites de tus bucles (`range(len(lista))`, nunca `range(len(lista) + 1)`)."
+    },
+    {
+     "type": "h",
+     "text": "Rebanadas (*slicing*)"
+    },
+    {
+     "type": "p",
+     "text": "Una **rebanada** (*slice*) `s[inicio:fin:paso]` crea una secuencia **nueva** con los elementos desde `inicio` (incluido) hasta `fin` (excluido), avanzando de `paso` en `paso`. Cualquiera de los tres puede omitirse: `inicio` vale por defecto el principio, `fin` el final y `paso` 1. Truco mental: imagina los índices *entre* los elementos, como las marcas de una regla; `s[1:3]` corta entre la marca 1 y la 3, así que se lleva 2 elementos."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "s = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"]\nprint(s[1:4])     # ['b', 'c', 'd']  -> posiciones 1, 2 y 3\nprint(s[:3])      # los tres primeros\nprint(s[-2:])     # los dos últimos\nprint(s[::2])     # posiciones pares: ['a', 'c', 'e']\nprint(s[1::2])    # posiciones impares: ['b', 'd', 'f']\nprint(s[::-1])    # invertida\nprint(s[4:1:-1])  # paso negativo: de la 4 hacia atrás hasta la 2 -> ['e', 'd', 'c']\nprint(s[10:20])   # fuera de rango: lista vacía, sin error"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Expresión (con `s = [0, 1, 2, 3, 4, 5]`)",
+      "Resultado",
+      "Cómo leerla"
+     ],
+     "rows": [
+      [
+       "`s[2:]`",
+       "`[2, 3, 4, 5]`",
+       "desde la posición 2 hasta el final"
+      ],
+      [
+       "`s[:-1]`",
+       "`[0, 1, 2, 3, 4]`",
+       "todo menos el último"
+      ],
+      [
+       "`s[::3]`",
+       "`[0, 3]`",
+       "uno de cada tres, empezando por el primero"
+      ],
+      [
+       "`s[-3:-1]`",
+       "`[3, 4]`",
+       "del antepenúltimo al penúltimo"
+      ],
+      [
+       "`s[3:1]`",
+       "`[]`",
+       "con paso positivo, si inicio ≥ fin no hay nada"
+      ],
+      [
+       "`s[::-1]`",
+       "`[5, 4, 3, 2, 1, 0]`",
+       "todo, recorrido al revés"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Como las listas son mutables, una rebanada también puede estar **a la izquierda** de `=`: sustituye ese tramo por los elementos de otra secuencia (la lista puede crecer o encoger). Y `del` borra un elemento o una rebanada entera."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "numeros = [0, 1, 2, 3, 4, 5]\nnumeros[1:3] = [\"x\", \"y\", \"z\"]   # sustituye 2 elementos por 3: la lista crece\nprint(numeros)                   # [0, 'x', 'y', 'z', 3, 4, 5]\ndel numeros[:2]                  # borra una rebanada entera\nprint(numeros)                   # ['y', 'z', 3, 4, 5]\nnumeros[::2] = [10, 30, 50]      # rebanada con paso: MISMA longitud obligatoria\nprint(numeros)                   # [10, 'z', 30, 4, 50]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas del PCEP: `s[i:j]` tiene `j - i` elementos (si ambos están en rango e `i <= j`); las rebanadas no lanzan `IndexError` aunque te salgas del rango, pero los índices sueltos sí; y con un paso distinto de 1, asignar una secuencia de otra longitud lanza `ValueError: attempt to assign sequence of size 2 to extended slice of size 3`."
+    },
+    {
+     "type": "h",
+     "text": "Operaciones comunes a todas las secuencias"
+    },
+    {
+     "type": "p",
+     "text": "Listas, tuplas, cadenas y `range` comparten un repertorio de operaciones. Aprenderlas una vez te sirve para todas:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Operación",
+      "Ejemplo",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "`len(s)`",
+       "`len([3, 1, 2])`",
+       "`3`"
+      ],
+      [
+       "`min(s)` / `max(s)`",
+       "`max([3, 1, 2])`",
+       "`3`"
+      ],
+      [
+       "`sum(s)`",
+       "`sum([3, 1, 2])`",
+       "`6`"
+      ],
+      [
+       "`x in s` / `x not in s`",
+       "`2 in [3, 1, 2]`",
+       "`True`"
+      ],
+      [
+       "`s + t` (concatenar)",
+       "`[1, 2] + [3]`",
+       "`[1, 2, 3]` (lista nueva)"
+      ],
+      [
+       "`s * n` (repetir)",
+       "`[0] * 3`",
+       "`[0, 0, 0]`"
+      ],
+      [
+       "`s.index(x)`",
+       "`[3, 1, 2].index(1)`",
+       "`1` (o `ValueError` si no está)"
+      ],
+      [
+       "`s.count(x)`",
+       "`[1, 1, 2].count(1)`",
+       "`2`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "temperaturas = [18.5, 21.0, 19.2, 25.1, 23.4]\nprint(\"Días:\", len(temperaturas))\nprint(\"Mínima:\", min(temperaturas), \"Máxima:\", max(temperaturas))\nmedia = sum(temperaturas) / len(temperaturas)\nprint(\"Media:\", round(media, 2))\nprint(25.1 in temperaturas, 30 in temperaturas)\nprint(max([], default=None))   # sin default=, max([]) lanzaría ValueError"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Python 3.12, `sum()` usa un algoritmo de suma compensada (Neumaier) para los `float`, así que en la práctica `sum([0.1] * 10) == 1.0` es `True` (antes daba `0.9999999999999999`). Aun así, compara resultados decimales con `math.isclose`, como viste en s02. Y no uses `sum` para unir cadenas: la forma rápida es `''.join(...)`, que verás en s05."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Secuencia",
+       "en": "sequence",
+       "def": "Colección ordenada cuyos elementos se obtienen por posición entera (`s[0]`) y que tiene longitud (`len`). Ejemplos: `list`, `tuple`, `range`, `str`."
+      },
+      {
+       "term": "Índice",
+       "en": "index",
+       "def": "Posición de un elemento. Empieza en 0; los negativos cuentan desde el final (`-1` es el último)."
+      },
+      {
+       "term": "Rebanada",
+       "en": "slice",
+       "def": "Fragmento `s[inicio:fin:paso]`; incluye `inicio`, excluye `fin` y crea un objeto nuevo."
+      },
+      {
+       "term": "Mutable",
+       "en": "mutable",
+       "def": "Objeto cuyo contenido puede cambiar después de crearlo sin dejar de ser el mismo objeto (misma `id`). Las listas lo son; las tuplas no."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l2",
+   "title": "Listas en acción: métodos, ordenación y recorridos",
+   "minutes": 25,
+   "goals": [
+    "Modificar listas con `append`, `extend`, `insert`, `remove`, `pop`, `del` y `clear`, prediciendo qué devuelve cada operación.",
+    "Ordenar con `list.sort()` o `sorted()` usando `key` y `reverse`, y aprovechar la estabilidad para ordenar por varios criterios.",
+    "Recorrer colecciones con `enumerate`, `zip` y `reversed` en lugar de manejar índices a mano."
+   ],
+   "takeaways": [
+    "Los métodos que solo modifican la lista (`append`, `sort`, `reverse`…) devuelven `None`: nunca escribas `lista = lista.sort()`. (`pop` es la excepción: quita y devuelve.)",
+    "`sorted()` acepta cualquier iterable y devuelve una lista nueva; `list.sort()` ordena en el sitio. Ambos son **estables**.",
+    "`key` recibe una función de un argumento que calcula la clave de comparación: `key=len`, `key=str.lower` o una función tuya.",
+    "`enumerate` da pares `(índice, valor)`; `zip` empareja colecciones y se detiene en la más corta, salvo con `strict=True` (3.10+).",
+    "No añadas ni borres elementos de una lista mientras la recorres: construye una lista nueva o recorre una copia."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una lista es una estructura viva: crece, encoge y se reordena. Sus **métodos** (funciones que pertenecen al objeto y se llaman con un punto: `lista.append(x)`) se dividen en dos grupos que conviene no confundir: los que **modifican la lista en el sitio** y devuelven `None`, y los que **consultan** y devuelven un dato."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método",
+      "Qué hace",
+      "Devuelve",
+      "Error típico"
+     ],
+     "rows": [
+      [
+       "`append(x)`",
+       "añade `x` al final",
+       "`None`",
+       "—"
+      ],
+      [
+       "`extend(iterable)`",
+       "añade cada elemento del iterable al final",
+       "`None`",
+       "—"
+      ],
+      [
+       "`insert(i, x)`",
+       "inserta `x` antes de la posición `i`",
+       "`None`",
+       "—"
+      ],
+      [
+       "`remove(x)`",
+       "borra la primera aparición de `x`",
+       "`None`",
+       "`ValueError` si no está"
+      ],
+      [
+       "`pop()` / `pop(i)`",
+       "quita y devuelve el último / el de la posición `i`",
+       "el elemento",
+       "`IndexError` si está vacía o `i` no existe"
+      ],
+      [
+       "`clear()`",
+       "vacía la lista",
+       "`None`",
+       "—"
+      ],
+      [
+       "`index(x)`",
+       "posición de la primera aparición",
+       "`int`",
+       "`ValueError` si no está"
+      ],
+      [
+       "`count(x)`",
+       "cuántas veces aparece `x`",
+       "`int`",
+       "—"
+      ],
+      [
+       "`sort()`",
+       "ordena en el sitio",
+       "`None`",
+       "`TypeError` con tipos no comparables"
+      ],
+      [
+       "`reverse()`",
+       "invierte en el sitio",
+       "`None`",
+       "—"
+      ],
+      [
+       "`copy()`",
+       "copia superficial",
+       "lista nueva",
+       "—"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "tareas = [\"comprar pan\"]\ntareas.append(\"estudiar Python\")     # un elemento al final\ntareas.extend([\"correr\", \"leer\"])    # varios elementos al final\ntareas.insert(0, \"desayunar\")        # en la posición 0\nprint(tareas)\nhecha = tareas.pop(0)                # quita y DEVUELVE\nprint(\"Hecha:\", hecha)\ntareas.remove(\"correr\")              # quita por valor\ndel tareas[-1]                       # quita por posición, sin devolver nada\nprint(tareas, len(tareas))"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos confusiones clásicas. (1) `append` frente a `extend`: `lista.append([1, 2])` mete **un** elemento (la lista entera), mientras que `lista.extend([1, 2])` mete **dos**. (2) `lista = lista.sort()` deja `lista` valiendo `None`, porque `sort` modifica en el sitio y devuelve `None`. Es un principio de diseño de Python: los métodos que solo modifican una estructura (`insert`, `remove`, `sort`…) devuelven `None`, para que nunca confundas el original con una copia."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Con `append()` y `pop()` una lista funciona como **pila** (el último en entrar es el primero en salir) y ambas operaciones son rápidas. En cambio, `insert(0, x)` y `pop(0)` tienen que desplazar todos los elementos: son lentas en listas grandes. Para colas (el primero en entrar sale primero) la documentación recomienda `collections.deque`, que verás en s15."
+    },
+    {
+     "type": "h",
+     "text": "Ordenar: `sort()` frente a `sorted()`"
+    },
+    {
+     "type": "diagram",
+     "title": "¿`sort()` o `sorted()`?",
+     "mermaid": "flowchart TD\n  A[\"Quiero ordenar datos\"] --> B{\"¿Necesito conservar el orden original?\"}\n  B -->|\"Sí, o no es una lista\"| C[\"nueva = sorted(datos)\"]\n  B -->|\"No, y es una lista\"| D[\"datos.sort() — devuelve None\"]\n  C --> E{\"¿Otro criterio de orden?\"}\n  D --> E\n  E -->|\"Sí\"| K[\"añade key=funcion\"]\n  E -->|\"De mayor a menor\"| R[\"añade reverse=True\"]\n  E -->|\"No\"| OK[\"orden natural: números, texto por código Unicode\"]",
+     "caption": "`sorted()` funciona con cualquier iterable (tuplas, cadenas, diccionarios, conjuntos…); `sort()` solo existe en las listas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "numeros = [5, 2, 9, 1]\nordenada = sorted(numeros)          # lista nueva; numeros no cambia\nprint(ordenada, numeros)\nnumeros.sort(reverse=True)          # en el sitio, de mayor a menor\nprint(numeros)\n\npalabras = [\"pera\", \"Kiwi\", \"banana\", \"uva\"]\nprint(sorted(palabras))                  # mayúsculas antes: se compara el código Unicode\nprint(sorted(palabras, key=str.lower))   # sin distinguir mayúsculas\nprint(sorted(palabras, key=len))         # por longitud; empates en su orden original\nprint(sorted(\"python\"))                  # cualquier iterable -> lista"
+    },
+    {
+     "type": "p",
+     "text": "El argumento `key` recibe una **función** —sin paréntesis: la pasas, no la llamas— que Python aplica **una vez a cada elemento** para obtener su clave de comparación. Puedes usar funciones integradas (`len`, `abs`, `str.lower`) o definir la tuya con `def`. En s06 verás `lambda`, una forma abreviada de escribir funciones pequeñas que se usa mucho con `key`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "alumnos = [(\"Eva\", 8.5), (\"Luis\", 9.1), (\"Ana\", 8.5), (\"Iker\", 7.0)]\n\ndef por_nota(alumno):\n    return alumno[1]              # la clave es la nota\n\nprint(sorted(alumnos, key=por_nota, reverse=True))\n# Eva sigue delante de Ana: el orden es estable\n\ndef nota_desc_nombre_asc(alumno):\n    nombre, nota = alumno\n    return (-nota, nombre)        # las tuplas se comparan elemento a elemento\n\nprint(sorted(alumnos, key=nota_desc_nombre_asc))\n# ahora Ana va delante de Eva: el empate se deshace por nombre"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "La ordenación de Python es **estable**: los elementos con la misma clave conservan su orden relativo, también con `reverse=True`. Eso permite ordenar por varios criterios en varias pasadas: primero por el criterio *secundario* y después por el *principal*. El algoritmo (Timsort) además aprovecha los tramos ya ordenados, así que ordenar datos casi ordenados es muy rápido. Coste general: O(n log n)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Ordenar tipos que no se pueden comparar lanza `TypeError`: `sorted([3, 'a'])` produce `TypeError: '<' not supported between instances of 'str' and 'int'`. Python 3 no inventa un orden entre números y textos."
+    },
+    {
+     "type": "h",
+     "text": "Recorridos idiomáticos: `enumerate`, `zip` y `reversed`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "invitados = [\"Ana\", \"Luis\", \"Eva\"]\nfor i, nombre in enumerate(invitados, start=1):   # (posición, valor)\n    print(i, nombre)\n\nedades = [31, 27, 45]\nfor nombre, edad in zip(invitados, edades):       # recorre en paralelo\n    print(nombre, \"tiene\", edad, \"años\")\n\nfor nombre in reversed(invitados):                # al revés, sin modificar la lista\n    print(nombre, end=\" \")\nprint()\nprint(list(zip([1, 2, 3], [\"a\", \"b\"])))           # se detiene en la más corta"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si te ves escribiendo `for i in range(len(lista)):` solo para leer `lista[i]`, casi siempre quieres `for x in lista:` o `for i, x in enumerate(lista):`. Es más legible y elimina los errores de límites. Y cuando dos listas **deben** tener la misma longitud, usa `zip(a, b, strict=True)` (desde 3.10, PEP 618): lanza `ValueError` en lugar de truncar en silencio."
+    },
+    {
+     "type": "h",
+     "text": "No modifiques la lista que estás recorriendo"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "numeros = [1, 2, 2, 3, 4]\nfor n in numeros:\n    if n % 2 == 0:\n        numeros.remove(n)       # ¡mala idea!\nprint(numeros)                  # [1, 2, 3]: se saltó el segundo 2\n\nnumeros = [1, 2, 2, 3, 4]\nimpares = []\nfor n in numeros:               # mejor: construir una lista nueva\n    if n % 2 != 0:\n        impares.append(n)\nprint(impares)                  # [1, 3]"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "¿Por qué se salta elementos? El `for` avanza por posiciones (0, 1, 2…). Al borrar el `2` de la posición 1, todo se desplaza a la izquierda: el segundo `2` pasa a la posición 1, que el bucle ya visitó, y en la siguiente vuelta mira la posición 2 (el `3`). La documentación oficial lo resume: suele ser más simple y seguro crear una lista nueva. Si de verdad necesitas mutar, recorre una copia: `for n in numeros[:]:`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Método",
+       "en": "method",
+       "def": "Función asociada a un objeto que se invoca con punto: `lista.append(3)`."
+      },
+      {
+       "term": "En el sitio",
+       "en": "in place",
+       "def": "Operación que modifica el objeto existente en lugar de crear otro. Suele devolver `None`."
+      },
+      {
+       "term": "Orden estable",
+       "en": "stable sort",
+       "def": "Ordenación que conserva el orden relativo de los elementos con clave igual."
+      },
+      {
+       "term": "Función clave",
+       "en": "key function",
+       "def": "Función de un argumento que `sorted`, `sort`, `min` y `max` aplican a cada elemento para decidir el orden."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l3",
+   "title": "Tuplas, desempaquetado y `range`",
+   "minutes": 20,
+   "goals": [
+    "Crear tuplas (incluidas la vacía y la de un elemento) y justificar cuándo preferirlas a una lista.",
+    "Desempaquetar secuencias en variables, incluido el desempaquetado extendido con `*resto`.",
+    "Usar `range` como secuencia inmutable: indexarlo, rebanarlo, medirlo y comprobar pertenencia."
+   ],
+   "takeaways": [
+    "La coma crea la tupla, no los paréntesis: `(5)` es un `int`; `(5,)` es una tupla.",
+    "Una tupla es inmutable: no puedes reasignar sus posiciones, pero si contiene una lista, esa lista sí puede cambiar.",
+    "Las tuplas cuyos elementos son todos hashables (números, textos, otras tuplas…) son también *hashables*: pueden ser claves de diccionario o elementos de un conjunto.",
+    "En `a, *resto = secuencia`, `resto` es siempre una **lista**; solo puede haber un `*` por asignación.",
+    "`range` guarda solo `start`, `stop` y `step`: ocupa lo mismo sea cual sea su tamaño."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una **tupla** es una secuencia **inmutable**: una vez creada, no se pueden añadir, quitar ni sustituir sus elementos. La documentación oficial describe su uso típico: las tuplas suelen agrupar datos **heterogéneos** a los que se accede por posición o desempaquetando (un *registro*: nombre, edad, ciudad), mientras que las listas suelen contener datos **homogéneos** que se recorren (una colección de notas)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "punto = (3, 4)\npersona = (\"Ana\", 34, \"Madrid\")   # un registro: cada posición significa algo\nvacia = ()\nuno = (5,)                        # tupla de un elemento: la coma es obligatoria\nno_tupla = (5)                    # esto es solo el entero 5 entre paréntesis\nsin_parentesis = 1, 2, 3          # la coma basta para crear la tupla\nprint(type(uno), type(no_tupla), sin_parentesis)\nprint(persona[0], persona[-1], persona[1:])      # se indexan y rebanan igual\nprint(len(persona), persona.count(34), persona.index(\"Madrid\"))"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "punto = (3, 4)\npunto[0] = 10\n# TypeError: 'tuple' object does not support item assignment",
+     "caption": "Intentar modificar una tupla es un error en ejecución (por eso este ejemplo no es ejecutable)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Aspecto",
+      "`list`",
+      "`tuple`"
+     ],
+     "rows": [
+      [
+       "Mutable",
+       "Sí",
+       "No"
+      ],
+      [
+       "Sintaxis",
+       "`[1, 2]`",
+       "`(1, 2)` o `1, 2`; vacía `()`; un elemento `(1,)`"
+      ],
+      [
+       "Uso típico",
+       "colección homogénea que crece o cambia",
+       "registro de campos fijos; datos que no deben cambiar"
+      ],
+      [
+       "Métodos",
+       "muchos (`append`, `sort`…)",
+       "solo `count` e `index`"
+      ],
+      [
+       "¿Puede ser clave de `dict`?",
+       "No (no es hashable)",
+       "Sí, si todos sus elementos son hashables"
+      ],
+      [
+       "Coste",
+       "algo más de memoria",
+       "algo menos de memoria"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Empaquetado y desempaquetado"
+    },
+    {
+     "type": "p",
+     "text": "Escribir `t = 1, 2, 3` **empaqueta** tres valores en una tupla. La operación inversa, **desempaquetar**, reparte los elementos de cualquier iterable entre varias variables: `a, b, c = t`. El número de variables debe coincidir con el de elementos… salvo que uses una variable con asterisco, que recoge «lo que sobre» (desempaquetado extendido, PEP 3132)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "registro = (\"Luis\", 28, \"Sevilla\")\nnombre, edad, ciudad = registro          # desempaquetado\nprint(nombre, edad, ciudad)\n\nprimero, *resto = [10, 20, 30, 40]\nprint(primero, resto)                    # 10 [20, 30, 40]\n\ncabeza, *medio, cola = \"python\"          # funciona con cualquier iterable\nprint(cabeza, medio, cola)               # p ['y', 't', 'h', 'o'] n\n\nx, *_ = (1, 2, 3)                        # _ significa «no me interesa»\nprint(x)\n\nfor nombre, edad in [(\"Ana\", 30), (\"Eva\", 25)]:   # desempaquetar en el for\n    print(nombre, edad)"
+    },
+    {
+     "type": "diagram",
+     "title": "Desempaquetado extendido: `a, *b, c = [1, 2, 3, 4, 5]`",
+     "mermaid": "flowchart LR\n  S[\"[1, 2, 3, 4, 5]\"] --> A[\"a = 1 (primero)\"]\n  S --> B[\"b = [2, 3, 4] (lo que sobra, siempre lista)\"]\n  S --> Z[\"c = 5 (último)\"]",
+     "caption": "Python asigna primero las variables obligatorias desde los extremos y da el resto a la variable con asterisco (que puede quedar vacía: `[]`)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "a, b = [1, 2, 3]\n# ValueError: too many values to unpack (expected 2, got 3)\n\na, b, c = [1, 2]\n# ValueError: not enough values to unpack (expected 3, got 2)\n\na, *b, *c = [1, 2, 3]\n# SyntaxError: multiple starred expressions in assignment",
+     "caption": "Los tres errores de desempaquetado que verás en los tracebacks."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: ¿qué tipo tiene `resto` en `a, *resto = (1, 2, 3)`? Una **lista**, `[2, 3]`, aunque lo desempaquetado sea una tupla. Si no sobra nada, `resto` vale `[]`. Y `*a = [1, 2]` sola es un `SyntaxError`: la variable con asterisco debe ir dentro de una lista o tupla de destinos (`*a, = [1, 2]`)."
+    },
+    {
+     "type": "h",
+     "text": "Inmutable no significa «congelado del todo»"
+    },
+    {
+     "type": "p",
+     "text": "Una tupla guarda referencias fijas: no puede apuntar a *otro* objeto, pero si uno de sus elementos es mutable (una lista), ese objeto puede cambiar por dentro."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "t = (1, [2, 3])\nt[1].append(4)        # la tupla sigue apuntando a la MISMA lista, que sí cambia\nprint(t)              # (1, [2, 3, 4])\nprint((1, 2) < (1, 3), (1, 2) < (1, 2, 0))   # comparación lexicográfica"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa de la FAQ oficial: con `t = (['a'], 'b')`, la instrucción `t[0] += ['c']` lanza `TypeError: 'tuple' object does not support item assignment`… **y aun así** la lista queda como `['a', 'c']`. El `+=` hace dos cosas: primero amplía la lista en el sitio (funciona) y luego intenta reasignar `t[0]` (falla, porque la tupla es inmutable). Si quieres modificar la lista interna, usa `t[0].append('c')` o `t[0].extend(...)`."
+    },
+    {
+     "type": "p",
+     "text": "Como las tuplas se comparan **lexicográficamente** (elemento a elemento, como las palabras en un diccionario), son perfectas como clave de ordenación con varios criterios, que ya usaste en la lección anterior. Y como son hashables (si sus elementos lo son), podrás usarlas como claves de diccionario: por ejemplo, coordenadas `(fila, columna)`."
+    },
+    {
+     "type": "h",
+     "text": "`range`: una secuencia que no guarda sus elementos"
+    },
+    {
+     "type": "p",
+     "text": "En s03 usaste `range` en los bucles `for`. En realidad es un tipo de secuencia inmutable con todas las operaciones de consulta: `len`, índices, rebanadas e `in`. Su ventaja es que siempre ocupa la misma (poca) memoria, porque solo guarda `start`, `stop` y `step` y calcula cada valor cuando se le pide."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "r = range(0, 20, 3)\nprint(r, list(r))\nprint(len(r), r[2], r[-1])        # se indexa como una lista\nprint(r[1:3])                     # rebanar un range da otro range\nprint(12 in r, 13 in r)           # pertenencia calculada, no buscada\nprint(range(0, 3, 2) == range(0, 4, 2))   # se comparan como secuencias\nenorme = range(10**9)\nprint(len(enorme), 999_999_999 in enorme) # instantáneo y sin gastar memoria"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`x in range(...)` con un entero se resuelve con aritmética, en tiempo constante (desde Python 3.2), no recorriendo los valores. Y `range(0) == range(2, 1, 3)` es `True`: desde 3.3, dos rangos son iguales si representan la misma secuencia de valores. Los objetos que calculan sus valores bajo demanda son una idea que verás a fondo con los generadores (s12)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Tupla",
+       "en": "tuple",
+       "def": "Secuencia inmutable. Se crea con comas; los paréntesis solo agrupan (salvo en la tupla vacía `()`)."
+      },
+      {
+       "term": "Empaquetado",
+       "en": "packing",
+       "def": "Agrupar varios valores en una tupla: `t = 1, 2, 3`."
+      },
+      {
+       "term": "Desempaquetado",
+       "en": "unpacking",
+       "def": "Repartir los elementos de un iterable entre variables: `a, b = t`; con `*resto` recoge lo sobrante en una lista."
+      },
+      {
+       "term": "Hashable",
+       "en": "hashable",
+       "def": "Objeto con un valor hash que no cambia durante su vida. Solo los hashables pueden ser claves de `dict` o elementos de `set`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l4",
+   "title": "Diccionarios: datos con nombre",
+   "minutes": 28,
+   "goals": [
+    "Crear diccionarios con literales, `dict()`, `dict(zip(...))` y `dict.fromkeys`.",
+    "Consultar y modificar entradas con `[]`, `get`, `setdefault`, `pop` y `del`, eligiendo la opción segura para claves ausentes.",
+    "Recorrer diccionarios con `keys`, `values` e `items`, y fusionarlos con `update`, `|` y `|=`.",
+    "Aplicar los patrones de contar y agrupar con diccionarios."
+   ],
+   "takeaways": [
+    "Un diccionario asocia claves **únicas y hashables** con valores; buscar por clave es muy rápido (O(1) de media).",
+    "`d[k]` lanza `KeyError` si falta la clave; `d.get(k, defecto)` nunca lo hace.",
+    "Desde Python 3.7 el orden de inserción está garantizado; actualizar una clave no cambia su posición. Pero `==` ignora el orden.",
+    "`d1 | d2` (3.9+) crea un diccionario nuevo y, si hay claves repetidas, gana el valor de la derecha.",
+    "No añadas ni borres claves mientras recorres un diccionario: lanza `RuntimeError`. Recorre `list(d)` si lo necesitas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una lista responde a «¿qué hay en la posición 3?». Pero muchas veces la pregunta es otra: «¿cuál es el teléfono de Ana?», «¿cuántas unidades quedan de pan?». Para eso está el **diccionario** (`dict`), un **mapeo** (*mapping*) que asocia cada **clave** con un **valor**, igual que un diccionario de papel asocia cada palabra con su definición: buscas por la palabra, no por el número de página."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "telefonos = {\"Ana\": \"600111222\", \"Luis\": \"611333444\"}\nprint(telefonos[\"Ana\"])            # acceso por clave\ntelefonos[\"Eva\"] = \"622555666\"     # añadir una entrada\ntelefonos[\"Ana\"] = \"699000000\"     # actualizar (conserva su posición)\nprint(telefonos)\nprint(len(telefonos))\nprint(\"Luis\" in telefonos)         # in comprueba las CLAVES...\nprint(\"600111222\" in telefonos)    # ...no los valores"
+    },
+    {
+     "type": "p",
+     "text": "Otras formas de crear diccionarios:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "vacio = {}                                  # ¡{} es un dict vacío, no un conjunto!\nficha = dict(nombre=\"Ana\", edad=34)         # claves de texto con forma de identificador\nde_pares = dict([(\"x\", 1), (\"y\", 2)])       # desde una lista de pares\ndias = [\"lunes\", \"martes\", \"miercoles\"]\nhoras = [2, 3, 1]\nagenda = dict(zip(dias, horas))             # emparejar dos listas\ncontadores = dict.fromkeys([\"a\", \"b\", \"c\"], 0)\nprint(vacio, ficha, de_pares, agenda, contadores, sep=\"\\n\")"
+    },
+    {
+     "type": "h",
+     "text": "¿Por qué es tan rápido? Claves hashables"
+    },
+    {
+     "type": "p",
+     "text": "Por dentro, un diccionario es una **tabla hash**: Python calcula `hash(clave)`, un número entero derivado del valor de la clave, y lo usa para saltar casi directamente a la posición donde está guardada la entrada, sin recorrer las demás. Por eso buscar, insertar o borrar por clave cuesta O(1) de media, tenga el diccionario 10 o 10 millones de entradas."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué ocurre al evaluar `telefonos['Ana']`",
+     "mermaid": "flowchart TD\n  K[\"clave 'Ana'\"] --> H[\"hash('Ana') → un entero\"]\n  H --> P[\"posición inicial en la tabla interna\"]\n  P --> V{\"¿hueco vacío?\"}\n  V -->|\"Sí\"| E[\"KeyError: 'Ana'\"]\n  V -->|\"No\"| Q{\"¿la clave guardada == 'Ana'?\"}\n  Q -->|\"Sí\"| R[\"devuelve el valor asociado\"]\n  Q -->|\"No: colisión\"| N[\"prueba la siguiente posición candidata\"]\n  N --> V",
+     "caption": "Simplificación del algoritmo real. La idea clave: el hash de una clave no puede cambiar mientras está guardada, por eso las claves deben ser hashables (en los tipos integrados, los inmutables)."
+    },
+    {
+     "type": "p",
+     "text": "Por eso las claves deben ser **hashables**: `int`, `float`, `str`, `bool`, `None`, tuplas de hashables y `frozenset` sirven; `list`, `dict` y `set` no (son mutables: si cambiaran, su hash cambiaría y la entrada quedaría «perdida»). Los **valores**, en cambio, pueden ser cualquier cosa."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "precios = {[\"pan\", \"leche\"]: 3.5}\n# TypeError: cannot use 'list' as a dict key (unhashable type: 'list')\n\nprecios = {(\"pan\", \"leche\"): 3.5}   # con una tupla, sin problema",
+     "caption": "El mensaje «cannot use 'list' as a dict key» es una mejora de Python 3.14; en versiones anteriores verás solo `TypeError: unhashable type: 'list'`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`{1: 'a', True: 'b', 1.0: 'c'}` produce `{1: 'c'}`. Como `1 == True == 1.0` y los tres tienen el mismo hash, son **la misma clave**: se conserva la primera clave insertada (`1`) con el último valor asignado (`'c'`). En un literal con claves repetidas, siempre gana el último valor."
+    },
+    {
+     "type": "h",
+     "text": "Acceso seguro: `[]`, `get`, `setdefault` y `pop`"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Expresión",
+      "Si la clave existe",
+      "Si la clave NO existe",
+      "¿Modifica `d`?"
+     ],
+     "rows": [
+      [
+       "`d[k]`",
+       "devuelve el valor",
+       "`KeyError`",
+       "No"
+      ],
+      [
+       "`d.get(k)`",
+       "devuelve el valor",
+       "`None`",
+       "No"
+      ],
+      [
+       "`d.get(k, defecto)`",
+       "devuelve el valor",
+       "`defecto`",
+       "No"
+      ],
+      [
+       "`d.setdefault(k, defecto)`",
+       "devuelve el valor",
+       "inserta `k: defecto` y lo devuelve",
+       "Solo si falta"
+      ],
+      [
+       "`d.pop(k)`",
+       "quita la entrada y devuelve el valor",
+       "`KeyError`",
+       "Sí"
+      ],
+      [
+       "`d.pop(k, defecto)`",
+       "quita la entrada y devuelve el valor",
+       "`defecto`",
+       "Solo si existe"
+      ],
+      [
+       "`del d[k]`",
+       "quita la entrada",
+       "`KeyError`",
+       "Sí"
+      ],
+      [
+       "`k in d`",
+       "`True`",
+       "`False`",
+       "No"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "stock = {\"manzana\": 5, \"pera\": 0}\nprint(stock.get(\"kiwi\"))                      # None\nprint(stock.get(\"kiwi\", 0))                   # 0, el valor por defecto\nprint(stock.setdefault(\"kiwi\", 10), stock)    # faltaba: la inserta\nprint(stock.setdefault(\"manzana\", 99), stock) # ya existía: no cambia nada\nprint(stock.pop(\"pera\"), stock)               # quita y devuelve\nprint(stock.pop(\"uva\", \"no había uvas\"))      # con defecto, sin error\ndel stock[\"kiwi\"]\nprint(stock)\nprint(stock.popitem(), stock)                 # quita el ÚLTIMO par insertado"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`KeyError` es el `IndexError` de los diccionarios. Antes de acceder con `d[k]` pregúntate: ¿puede faltar esa clave? Si puede, usa `d.get(k, defecto)` o comprueba antes con `if k in d:`. En s08 verás la alternativa de capturar la excepción con `try/except`."
+    },
+    {
+     "type": "h",
+     "text": "Recorrer un diccionario"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "capitales = {\"España\": \"Madrid\", \"Francia\": \"París\", \"Italia\": \"Roma\"}\nfor pais in capitales:                     # recorrer un dict = recorrer sus CLAVES\n    print(pais, end=\" | \")\nprint()\nfor capital in capitales.values():\n    print(capital, end=\" | \")\nprint()\nfor pais, capital in capitales.items():   # pares (clave, valor) desempaquetados\n    print(f\"La capital de {pais} es {capital}\")\nprint(sorted(capitales))                   # lista de claves ordenadas\nvista = capitales.keys()\ncapitales[\"Portugal\"] = \"Lisboa\"\nprint(vista)                               # las vistas reflejan los cambios"
+    },
+    {
+     "type": "p",
+     "text": "`keys()`, `values()` e `items()` devuelven **vistas** (*views*): no son copias, sino ventanas dinámicas al diccionario. Si necesitas una lista independiente, conviértelas: `list(d.values())`. El orden de recorrido es el **de inserción**: garantizado por el lenguaje desde Python 3.7 (en CPython 3.6 ya ocurría, pero como detalle de implementación). Actualizar el valor de una clave existente no la mueve; borrarla y volver a insertarla la manda al final."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "precios = {\"pan\": 1.2, \"leche\": 0.9, \"caviar\": 90}\nfor producto in precios:\n    if precios[producto] > 50:\n        del precios[producto]\n# RuntimeError: dictionary changed size during iteration\n\nfor producto in list(precios):      # solución: recorrer una copia de las claves\n    if precios[producto] > 50:\n        del precios[producto]",
+     "caption": "Cambiar el tamaño de un diccionario mientras lo recorres está prohibido. Cambiar solo los valores (`precios[p] *= 1.1`) sí está permitido."
+    },
+    {
+     "type": "h",
+     "text": "Fusionar diccionarios: `update`, `|` y `|=`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "por_defecto = {\"tema\": \"claro\", \"idioma\": \"es\", \"letra\": 12}\nusuario = {\"tema\": \"oscuro\", \"letra\": 14}\nconfig = por_defecto | usuario     # dict NUEVO; en conflicto gana la derecha\nprint(config)\nprint(por_defecto)                 # intacto\npor_defecto |= {\"idioma\": \"en\"}    # en el sitio, como update()\nprint(por_defecto)\npor_defecto.update(letra=16)       # update también admite argumentos con nombre\nprint(por_defecto)"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los operadores `|` y `|=` para diccionarios llegaron en Python 3.9 (PEP 584). Antes se usaba `{**d1, **d2}` (PEP 448) o `d.copy()` seguido de `update()`, que no es una expresión. `|` exige un `dict` a cada lado; `|=`, como `update()`, acepta también una lista de pares."
+    },
+    {
+     "type": "h",
+     "text": "Los dos patrones que usarás siempre: contar y agrupar"
+    },
+    {
+     "type": "p",
+     "text": "Para trocear un texto en palabras adelantamos dos métodos de cadena que verás a fondo en s05: `texto.lower()` devuelve el texto en minúsculas y `texto.split()` lo corta por los espacios en blanco y devuelve una **lista** de palabras."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "texto = \"rojo azul Rojo verde rojo azul\"\nconteo = {}\nfor color in texto.lower().split():\n    conteo[color] = conteo.get(color, 0) + 1   # patrón CONTAR\nprint(conteo)\nprint(max(conteo, key=conteo.get))             # la clave con el valor más alto\n\npalabras = [\"sol\", \"mar\", \"casa\", \"luz\", \"pato\"]\npor_longitud = {}\nfor p in palabras:\n    por_longitud.setdefault(len(p), []).append(p)   # patrón AGRUPAR\nprint(por_longitud)"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`max(conteo, key=conteo.get)` recorre las claves y usa `conteo.get(clave)` como criterio: devuelve la clave con el valor más alto (y, en caso de empate, la primera encontrada). `collections.Counter` y `collections.defaultdict` automatizan contar y agrupar; los verás en s07 y a fondo en s15. Pero domina antes la versión manual: es lo que hay por debajo y lo que te pedirán en una entrevista."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Diccionario",
+       "en": "dict",
+       "def": "Mapeo mutable de claves únicas y hashables a valores, que conserva el orden de inserción."
+      },
+      {
+       "term": "Mapeo",
+       "en": "mapping",
+       "def": "Contenedor que permite buscar valores por claves arbitrarias en lugar de por posición."
+      },
+      {
+       "term": "Vista de diccionario",
+       "en": "dictionary view",
+       "def": "Objeto devuelto por `keys()`, `values()` e `items()`: refleja en vivo los cambios del diccionario."
+      },
+      {
+       "term": "Tabla hash",
+       "en": "hash table",
+       "def": "Estructura que usa el hash de la clave para localizar su entrada en tiempo O(1) de media."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l5",
+   "title": "Conjuntos y el coste de buscar",
+   "minutes": 22,
+   "goals": [
+    "Crear conjuntos y `frozenset`, y operar con unión, intersección, diferencia y diferencia simétrica.",
+    "Eliminar duplicados con `set`, o conservando el orden con `dict.fromkeys` o un conjunto de vistos.",
+    "Comparar el coste de buscar en una lista frente a un conjunto o diccionario y elegir la estructura adecuada."
+   ],
+   "takeaways": [
+    "Un `set` es una colección **sin orden** de elementos **únicos y hashables**; `frozenset` es su versión inmutable (y hashable).",
+    "`set()` crea un conjunto vacío; `{}` crea un diccionario vacío.",
+    "Los operadores `|`, `&`, `-` y `^` exigen conjuntos en ambos lados; los métodos (`union`, `intersection`…) aceptan cualquier iterable.",
+    "`x in lista` compara elemento a elemento (O(n)); `x in conjunto` salta directo gracias al hash (O(1) de media).",
+    "`list(dict.fromkeys(datos))` elimina duplicados conservando el orden de primera aparición."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un **conjunto** (`set`) es la versión en Python de los conjuntos de matemáticas: una colección de elementos **distintos**, **sin orden** y sin posiciones. Se usa para tres cosas: comprobar pertenencia muy rápido, eliminar duplicados y calcular uniones, intersecciones y diferencias. Por dentro funciona como un diccionario que solo tuviera claves: por eso sus elementos deben ser hashables."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "colores = {\"rojo\", \"verde\", \"rojo\", \"azul\"}\nprint(len(colores))                   # 3: los duplicados desaparecen\nvacio = set()                         # ¡no {}!\nprint(type(vacio), type({}))\nletras = set(\"mississippi\")\nprint(sorted(letras))                 # ordenamos solo para mostrarlo de forma estable\ncolores.add(\"negro\")\ncolores.discard(\"morado\")             # discard no falla si el elemento no está\ncolores.remove(\"rojo\")                # remove lanza KeyError si no está\nprint(sorted(colores))",
+     "caption": "Al imprimir un `set` directamente, el orden puede variar entre ejecuciones y versiones: no dependas de él."
+    },
+    {
+     "type": "h",
+     "text": "Operaciones de conjuntos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Operación",
+      "Operador",
+      "Método",
+      "Con `A = {1, 2, 3, 4}` y `B = {3, 4, 5}`"
+     ],
+     "rows": [
+      [
+       "Unión (en A o en B)",
+       "`A | B`",
+       "`A.union(B)`",
+       "`{1, 2, 3, 4, 5}`"
+      ],
+      [
+       "Intersección (en ambos)",
+       "`A & B`",
+       "`A.intersection(B)`",
+       "`{3, 4}`"
+      ],
+      [
+       "Diferencia (en A pero no en B)",
+       "`A - B`",
+       "`A.difference(B)`",
+       "`{1, 2}`"
+      ],
+      [
+       "Diferencia simétrica (en uno solo)",
+       "`A ^ B`",
+       "`A.symmetric_difference(B)`",
+       "`{1, 2, 5}`"
+      ],
+      [
+       "¿Subconjunto?",
+       "`A <= B`",
+       "`A.issubset(B)`",
+       "`False`"
+      ],
+      [
+       "¿Subconjunto propio?",
+       "`A < B`",
+       "—",
+       "`False`"
+      ],
+      [
+       "¿Sin elementos comunes?",
+       "—",
+       "`A.isdisjoint(B)`",
+       "`False`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "python = {\"Ana\", \"Luis\", \"Eva\", \"Iker\"}\njava = {\"Eva\", \"Iker\", \"Marta\"}\nprint(sorted(python | java))    # saben al menos uno de los dos\nprint(sorted(python & java))    # saben los dos\nprint(sorted(python - java))    # solo Python\nprint(sorted(python ^ java))    # exactamente uno\nprint({\"Eva\"} <= java, python.isdisjoint({\"Pau\"}))\nprint(sorted(python.union([\"Pau\", \"Ana\"])))   # los métodos aceptan cualquier iterable\npython |= {\"Pau\"}                             # versión en el sitio (como update)\nprint(len(python))"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Tres errores frecuentes: (1) `set('abc') & 'cbs'` lanza `TypeError`, porque los operadores exigen conjuntos en ambos lados (usa `set('abc').intersection('cbs')`); (2) `colores[0]` lanza `TypeError: 'set' object is not subscriptable`, porque un conjunto no tiene posiciones; (3) `{[1, 2]}` lanza `TypeError`, porque una lista no es hashable (en 3.14: `cannot use 'list' as a set element`)."
+    },
+    {
+     "type": "h",
+     "text": "`frozenset`: el conjunto inmutable"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "vocales = frozenset(\"aeiou\")\nprint(\"e\" in vocales, len(vocales))\nequipos = {frozenset({\"Ana\", \"Luis\"}): \"equipo 1\"}   # hashable: puede ser clave\nprint(equipos[frozenset({\"Luis\", \"Ana\"})])           # el orden de creación no importa\nmezcla = frozenset({1, 2}) | {3}                     # el resultado toma el tipo del primero\nprint(type(mezcla))"
+    },
+    {
+     "type": "h",
+     "text": "Eliminar duplicados"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "datos = [3, 1, 3, 2, 1, 5]\nprint(sorted(set(datos)))            # únicos y ordenados de menor a mayor\nprint(list(dict.fromkeys(datos)))    # únicos en orden de primera aparición\n\nvistos = set()\nunicos = []\nfor x in datos:                      # la versión «a mano», típica de entrevista\n    if x not in vistos:\n        vistos.add(x)\n        unicos.append(x)\nprint(unicos)"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`list(set(datos))` elimina duplicados pero **pierde el orden** original. Si el orden importa, usa `list(dict.fromkeys(datos))`: funciona porque los diccionarios conservan el orden de inserción y no admiten claves repetidas."
+    },
+    {
+     "type": "h",
+     "text": "¿Cuánto cuesta buscar? Complejidad intuitiva"
+    },
+    {
+     "type": "p",
+     "text": "La **notación O grande** describe cómo crece el trabajo cuando crecen los datos. **O(1)** (constante): cuesta lo mismo con 10 que con un millón de elementos. **O(n)** (lineal): si los datos se multiplican por mil, el trabajo también. Buscar en una lista desordenada es como buscar una carta en un montón revolviendo una a una (O(n)); buscar en un conjunto o diccionario es como ir directo al cajón con su etiqueta (O(1) de media)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Operación",
+      "`list`",
+      "`set` / `dict`"
+     ],
+     "rows": [
+      [
+       "¿Está `x`? (`x in c`)",
+       "O(n)",
+       "O(1) de media"
+      ],
+      [
+       "Añadir (`append` / `add` / `d[k] = v`)",
+       "O(1) amortizado, al final",
+       "O(1) de media"
+      ],
+      [
+       "Acceso por posición `c[i]`",
+       "O(1)",
+       "no aplica (en `dict`, por clave: O(1) de media)"
+      ],
+      [
+       "Insertar o borrar al principio",
+       "O(n)",
+       "no aplica"
+      ],
+      [
+       "Borrar un valor concreto",
+       "O(n)",
+       "O(1) de media"
+      ],
+      [
+       "Ordenar",
+       "O(n log n)",
+       "no tienen orden: `sorted()` crea una lista"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "import time\n\nn = 100_000\nlista = list(range(n))\nconjunto = set(lista)\nobjetivo = n - 1                  # el peor caso para la lista: está al final\n\ninicio = time.perf_counter()\nfor _ in range(100):\n    encontrado = objetivo in lista\nt_lista = time.perf_counter() - inicio\n\ninicio = time.perf_counter()\nfor _ in range(100):\n    encontrado = objetivo in conjunto\nt_set = time.perf_counter() - inicio\n\nprint(\"100 búsquedas en la lista:\", round(t_lista * 1000, 3), \"ms\")\nprint(\"100 búsquedas en el set:  \", round(t_set * 1000, 3), \"ms\")\nprint(\"¿Ganó el set?\", t_set < t_lista)",
+     "caption": "Cambia `n` a 1_000_000 y observa cómo crece solo el tiempo de la lista. (Medir bien se aprende en s15 con `timeit`.)"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla de experto: si vas a preguntar muchas veces «¿está x?», convierte primero la colección en `set` (O(n) una sola vez) y luego cada pregunta cuesta O(1). Un `if x in lista` dentro de un bucle que recorre otra lista es la causa más común de programas lentos en Python: O(n·m), que con listas grandes se vuelve eterno."
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué colección uso?",
+     "mermaid": "flowchart TD\n  A[\"¿Qué necesitas guardar?\"] --> B{\"¿Pares clave → valor?\"}\n  B -->|\"Sí\"| D[\"dict\"]\n  B -->|\"No\"| O{\"¿Importan el orden o los repetidos?\"}\n  O -->|\"No: solo únicos y buscar rápido\"| M1{\"¿Cambiará?\"}\n  M1 -->|\"Sí\"| S[\"set\"]\n  M1 -->|\"No, o será clave de un dict\"| F[\"frozenset\"]\n  O -->|\"Sí\"| M2{\"¿Cambiará?\"}\n  M2 -->|\"Sí\"| L[\"list\"]\n  M2 -->|\"No: registro fijo\"| T[\"tuple\"]",
+     "caption": "Una guía de partida. En programas reales es habitual combinarlas: un `dict` cuyos valores son listas, una lista de tuplas…"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En el examen: `{}` es un `dict` vacío y `set()` un conjunto vacío; `len({1, 1, 2})` es `2`; `{1, 2} < {1, 2, 3}` es `True` (subconjunto propio). Pero `<`, `>` y `==` entre conjuntos sin relación de inclusión dan `False` los tres: los conjuntos no tienen un orden total."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Conjunto",
+       "en": "set",
+       "def": "Colección mutable, sin orden, de elementos únicos y hashables."
+      },
+      {
+       "term": "Conjunto congelado",
+       "en": "frozenset",
+       "def": "Conjunto inmutable y hashable: puede ser clave de `dict` o elemento de otro conjunto."
+      },
+      {
+       "term": "Complejidad",
+       "en": "time complexity",
+       "def": "Cómo crece el coste de una operación con el tamaño de los datos: O(1) constante, O(n) lineal, O(n log n)…"
+      },
+      {
+       "term": "Amortizado",
+       "en": "amortized",
+       "def": "Coste medio por operación en una serie larga: `append` a veces tiene que reservar más memoria, pero de media es O(1)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l6",
+   "title": "Comprensiones de lista, diccionario y conjunto",
+   "minutes": 22,
+   "goals": [
+    "Transformar y filtrar colecciones con comprensiones de lista, diccionario y conjunto.",
+    "Traducir un bucle `for` con `append` a una comprensión equivalente, y viceversa.",
+    "Combinar comprensiones con `any`, `all`, `sum`, `min` y `max` para responder preguntas sobre los datos.",
+    "Decidir cuándo una comprensión perjudica la legibilidad y conviene un bucle."
+   ],
+   "takeaways": [
+    "`[expresion for x in iterable if condicion]` construye una lista nueva: la expresión transforma y el `if` final filtra.",
+    "Un `if ... else` dentro de la *expresión* elige entre dos valores; un `if` al *final* descarta elementos.",
+    "Las comprensiones de diccionario (`{k: v for ...}`) y de conjunto (`{x for ...}`) siguen la misma forma.",
+    "La variable de una comprensión no se escapa al exterior; desde 3.12 (PEP 709) además se ejecutan más rápido.",
+    "`all([])` es `True` y `any([])` es `False`; ambas paran en cuanto conocen la respuesta."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Has escrito muchas veces este patrón: crear una lista vacía, recorrer algo con `for`, quizá filtrar con `if`, y hacer `append` de un valor calculado. Es tan frecuente que Python tiene una sintaxis dedicada, la **comprensión de lista** (*list comprehension*), que lo expresa en una sola línea legible: «dame `expresión` para cada `x` de `iterable` que cumpla `condición`»."
+    },
+    {
+     "type": "diagram",
+     "title": "Anatomía de `[x ** 2 for x in range(10) if x % 2 == 0]`",
+     "mermaid": "flowchart LR\n  I[\"iterable: range(10)\"] --> F{\"filtro: x % 2 == 0\"}\n  F -->|\"cumple\"| E[\"expresión: x ** 2\"]\n  F -->|\"no cumple\"| D[\"se descarta\"]\n  E --> R[\"lista nueva: [0, 4, 16, 36, 64]\"]",
+     "caption": "Se lee en el mismo orden que el bucle equivalente: primero el `for`, luego el `if` y, para cada elemento que pasa, se evalúa la expresión."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "# Con bucle\ncuadrados = []\nfor x in range(10):\n    if x % 2 == 0:\n        cuadrados.append(x ** 2)\nprint(cuadrados)\n\n# Con comprensión: «x al cuadrado para cada x de range(10) si x es par»\ncuadrados = [x ** 2 for x in range(10) if x % 2 == 0]\nprint(cuadrados)"
+    },
+    {
+     "type": "p",
+     "text": "Hay tres usos básicos: **transformar** (sin `if`), **filtrar** (la expresión es el propio elemento) y **elegir** un valor con una expresión condicional (la ternaria de s03) en la parte de la expresión:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "precios = [12.0, 3.5, 150.0, 45.0]\ncon_iva = [round(p * 1.21, 2) for p in precios]              # transformar\nbaratos = [p for p in precios if p < 20]                     # filtrar\netiquetas = [\"caro\" if p > 100 else \"normal\" for p in precios] # elegir valor\nprint(con_iva)\nprint(baratos)\nprint(etiquetas)"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El lugar del `if` cambia su significado. Filtro al **final**: `[x for x in datos if x > 0]` (quita elementos). Expresión condicional al **principio**, y entonces el `else` es obligatorio: `[x if x > 0 else 0 for x in datos]` (no quita nada; sustituye). Mezclarlos produce `SyntaxError`: `[x if x > 0 for x in datos]` o `[x for x in datos if x > 0 else 0]`."
+    },
+    {
+     "type": "h",
+     "text": "Comprensiones de diccionario y de conjunto"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "nombres = [\"ana\", \"luis\", \"eva\"]\nlongitudes = {n: len(n) for n in nombres}            # dict: clave: valor\nprint(longitudes)\n\nprecios = {\"pan\": 1.2, \"caviar\": 90.0, \"leche\": 0.95}\nbaratos = {producto: precio for producto, precio in precios.items() if precio < 5}\nprint(baratos)\n\ninvertido = {valor: clave for clave, valor in {\"a\": 1, \"b\": 2}.items()}\nprint(invertido)\n\niniciales = {n[0] for n in [\"ana\", \"alba\", \"luis\"]}  # set: sin repetidos\nprint(sorted(iniciales))"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué tipo produce `{x for x in 'aab'}`? Un `set`: `{'a', 'b'}`. ¿Y `{x: 0 for x in 'aab'}`? Un `dict`: `{'a': 0, 'b': 0}`. La diferencia son los dos puntos. Ojo: `{}` a secas sigue siendo un diccionario vacío, y con corchetes `[...]` siempre obtienes una lista. (Con paréntesis no se obtiene una «comprensión de tupla», sino una expresión generadora, que verás en s12.)"
+    },
+    {
+     "type": "h",
+     "text": "`any`, `all` y compañía"
+    },
+    {
+     "type": "p",
+     "text": "`all(iterable)` devuelve `True` si **todos** los elementos son verdaderos (*truthy*); `any(iterable)` si **alguno** lo es. Ambas se detienen en cuanto conocen la respuesta (cortocircuito, como `and` y `or`). Combinadas con una comprensión que produce booleanos, responden preguntas sobre toda una colección. Igual ocurre con `sum`, `min` y `max`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "notas = [7, 5, 9, 6]\nprint(all([n >= 5 for n in notas]))       # ¿todos aprobados?\nprint(any([n == 10 for n in notas]))      # ¿alguna matrícula de honor?\nprint(sum([1 for n in notas if n >= 7]))  # ¿cuántos notables o más?\nprint(max([n for n in notas if n < 9]))   # la mayor nota por debajo de 9\nprint(all([]), any([]))                   # True False: ¡cuidado con lo vacío!\nprint(any([0, \"\", None, [1]]))            # usa truthiness: [1] es verdadero"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`all([])` es `True` por la «verdad vacía» de la lógica: no hay ningún elemento que incumpla la condición. Si «lista vacía» debe contar como fallo en tu programa, compruébalo aparte: `bool(notas) and all(...)`. Y un adelanto: verás mucho `any(n == 10 for n in notas)`, sin corchetes. Eso es una **expresión generadora** (s12): no construye la lista entera, así que `any` puede parar en el primer acierto sin haber calculado el resto. Con corchetes el resultado es el mismo; solo se trabaja algo más."
+    },
+    {
+     "type": "h",
+     "text": "Ámbito y legibilidad"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "x = \"valor original\"\ndobles = [x * 2 for x in range(3)]\nprint(dobles)   # [0, 2, 4]\nprint(x)        # valor original: la x de la comprensión no se escapó"
+    },
+    {
+     "type": "p",
+     "text": "La variable de control de una comprensión vive solo dentro de ella: no pisa otra variable con el mismo nombre ni sigue existiendo después. Desde Python 3.12 (PEP 709), las comprensiones de lista, diccionario y conjunto se integran («inlining») en el código que las contiene en lugar de crear una función oculta: son hasta dos veces más rápidas en pruebas aisladas, y ese aislamiento de la variable se mantiene."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Una comprensión debe leerse de un vistazo. Si necesitas varios `if` encadenados, efectos secundarios (imprimir, modificar otra estructura) o la lógica ocupa varias líneas, usa un bucle normal. Y nunca uses una comprensión solo por sus efectos: `[print(x) for x in datos]` construye una lista de `None` que nadie usa; escribe un `for`. Las comprensiones anidadas (con varios `for`) las verás en s12."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Comprensión",
+       "en": "comprehension",
+       "def": "Expresión que construye una lista, diccionario o conjunto a partir de un iterable, con filtro opcional."
+      },
+      {
+       "term": "Expresión condicional",
+       "en": "conditional expression",
+       "def": "`a if condicion else b`: vale `a` o `b`. Dentro de una comprensión va en la parte de la expresión."
+      },
+      {
+       "term": "Verdad vacía",
+       "en": "vacuous truth",
+       "def": "Una afirmación «para todo» sobre un conjunto vacío es verdadera: por eso `all([])` es `True`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l7",
+   "title": "Referencias, copias y estructuras anidadas",
+   "minutes": 28,
+   "goals": [
+    "Predecir el efecto del *aliasing* al modificar una colección a la que apuntan varios nombres.",
+    "Elegir entre copia superficial (`[:]`, `.copy()`, `copy.copy`) y copia profunda (`copy.deepcopy`) según la estructura.",
+    "Detectar y corregir el error de la lista compartida (`[[0] * n] * m`, `dict.fromkeys(claves, [])`).",
+    "Construir y recorrer estructuras anidadas: matrices, listas de diccionarios y diccionarios de listas."
+   ],
+   "takeaways": [
+    "Asignar (`b = a`) nunca copia: crea otro nombre para el mismo objeto.",
+    "Una copia superficial crea un contenedor nuevo con las **mismas** referencias dentro; una profunda copia también el contenido, recursivamente.",
+    "`[[0] * n] * m` repite m veces la misma fila; usa `[[0] * n for _ in range(m)]`.",
+    "`a += b` modifica la lista en el sitio (todos sus alias lo ven); `a = a + b` crea una lista nueva.",
+    "Una función que recibe una lista recibe el mismo objeto: si la muta, quien la llamó verá el cambio."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Todo lo que has visto en esta sección descansa sobre la idea de s02: **las variables son nombres que apuntan a objetos**. Con números y textos (inmutables) apenas se nota. Con colecciones mutables es crucial, porque dos nombres pueden apuntar a la *misma* lista y cualquier cambio hecho a través de uno se ve a través del otro. A eso se le llama *aliasing* (compartir referencias)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "a = [1, 2, 3]\nb = a              # b es OTRO NOMBRE para la misma lista\nb.append(4)\nprint(a)           # [1, 2, 3, 4]\nprint(a is b)      # True: mismo objeto (misma id)\n\nc = a[:]           # copia: lista nueva con los mismos elementos\nc.append(5)\nprint(a, c)\nprint(a is c, a == c[:4])   # distinto objeto; == compara contenido"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "a = [1, 2]\nalias = a\na += [3]          # para listas, += equivale a extend: modifica en el sitio\nprint(alias)      # [1, 2, 3]: el alias lo ve\n\na = a + [4]       # + crea una lista NUEVA y a pasa a apuntar a ella\nprint(alias, a)   # [1, 2, 3] [1, 2, 3, 4]",
+     "caption": "`+=` y `= ... +` parecen lo mismo, pero con listas no lo son."
+    },
+    {
+     "type": "p",
+     "text": "Lo mismo ocurre al pasar una lista a una función: el parámetro es un nombre más para el mismo objeto."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "def aplicar_iva(precios):\n    for i in range(len(precios)):\n        precios[i] = round(precios[i] * 1.21, 2)   # muta la lista recibida\n\nmis_precios = [10.0, 20.0]\naplicar_iva(mis_precios)\nprint(mis_precios)   # [12.1, 24.2]: la función cambió MI lista\n\ndef con_iva(precios):\n    return [round(p * 1.21, 2) for p in precios]   # devuelve una lista nueva\n\noriginales = [10.0, 20.0]\nnuevos = con_iva(originales)\nprint(originales, nuevos)"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Buena práctica: una función que *calcula* algo no debería modificar sus argumentos; mejor que devuelva una colección nueva y deje decidir a quien la llama. Si una función muta a propósito, que su nombre lo deje claro y que devuelva `None`, como hace `list.sort()`. Lo profundizarás en s06 (diseño de funciones)."
+    },
+    {
+     "type": "h",
+     "text": "Copia superficial frente a copia profunda"
+    },
+    {
+     "type": "p",
+     "text": "Según la documentación del módulo `copy`, una **copia superficial** (*shallow copy*) construye un objeto compuesto nuevo e inserta en él *referencias* a los objetos del original; una **copia profunda** (*deep copy*) construye uno nuevo e inserta, recursivamente, *copias* de los objetos del original. La diferencia solo importa cuando la colección contiene otras colecciones mutables."
+    },
+    {
+     "type": "diagram",
+     "title": "Superficial frente a profunda con `m = [[1, 2], [3, 4]]`",
+     "mermaid": "flowchart LR\n  subgraph SUP[\"copia superficial: copy.copy(m)\"]\n    M1[\"m\"] --> E1[\"lista externa 1\"]\n    C1[\"copia\"] --> E2[\"lista externa 2\"]\n    E1 --> F1[\"fila [1, 2]\"]\n    E2 --> F1\n  end\n  subgraph PRO[\"copia profunda: copy.deepcopy(m)\"]\n    M2[\"m\"] --> E3[\"lista externa 1\"]\n    C2[\"copia\"] --> E4[\"lista externa 2\"]\n    E3 --> F2[\"fila [1, 2]\"]\n    E4 --> F3[\"otra fila [1, 2]\"]\n  end",
+     "caption": "En la copia superficial las filas son compartidas (se dibuja solo la primera); en la profunda, cada copia tiene sus propias filas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "import copy\n\nmatriz = [[1, 2], [3, 4]]\nsuperficial = copy.copy(matriz)      # equivale a matriz[:] o matriz.copy()\nprofunda = copy.deepcopy(matriz)\n\nmatriz[0][0] = 99                     # cambio DENTRO de una fila compartida\nmatriz.append([5, 6])                 # cambio en la lista externa\n\nprint(superficial)   # [[99, 2], [3, 4]]: ve el cambio interno, no el append\nprint(profunda)      # [[1, 2], [3, 4]]: totalmente independiente\nprint(superficial[0] is matriz[0], profunda[0] is matriz[0])"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Qué obtienes",
+      "Para"
+     ],
+     "rows": [
+      [
+       "`b = a`",
+       "ninguna copia: un alias",
+       "cualquier objeto"
+      ],
+      [
+       "`a[:]`, `a.copy()`, `list(a)`",
+       "copia superficial",
+       "listas"
+      ],
+      [
+       "`d.copy()`, `dict(d)`",
+       "copia superficial",
+       "diccionarios"
+      ],
+      [
+       "`s.copy()`, `set(s)`",
+       "copia superficial",
+       "conjuntos"
+      ],
+      [
+       "`copy.copy(x)`",
+       "copia superficial",
+       "casi cualquier objeto (conserva el tipo)"
+      ],
+      [
+       "`copy.deepcopy(x)`",
+       "copia profunda",
+       "estructuras anidadas con mutables; maneja referencias circulares con un diccionario interno `memo`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "No copies «por si acaso». `copy.deepcopy` recorre toda la estructura: es más lento y puede copiar datos que querías compartir. Las tuplas y cadenas son inmutables, así que copiarlas no aporta nada (en CPython, `t[:]` devuelve la misma tupla). Y un apunte de versión: desde Python 3.13 existe `copy.replace()`, pensado para crear copias modificadas de objetos inmutables con campos; lo usarás con *dataclasses* en s11."
+    },
+    {
+     "type": "h",
+     "text": "El error de la lista compartida"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "tablero = [[0] * 3] * 3          # ¡trampa! 3 referencias a la MISMA fila\ntablero[0][0] = 1\nprint(tablero)                   # [[1, 0, 0], [1, 0, 0], [1, 0, 0]]\n\ntablero = [[0] * 3 for _ in range(3)]   # una fila NUEVA en cada vuelta\ntablero[0][0] = 1\nprint(tablero)                   # [[1, 0, 0], [0, 0, 0], [0, 0, 0]]\n\ngrupos = dict.fromkeys([\"a\", \"b\"], [])  # la misma trampa en un diccionario\ngrupos[\"a\"].append(\"Ana\")\nprint(grupos)                    # {'a': ['Ana'], 'b': ['Ana']}\ngrupos = {clave: [] for clave in [\"a\", \"b\"]}   # solución: una lista por clave\ngrupos[\"a\"].append(\"Ana\")\nprint(grupos)"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué construye `[[0] * 3] * 3`",
+     "mermaid": "flowchart LR\n  T[\"tablero\"] --> E[\"lista externa\"]\n  E -->|\"[0]\"| F[\"una única fila [0, 0, 0]\"]\n  E -->|\"[1]\"| F\n  E -->|\"[2]\"| F",
+     "caption": "La multiplicación repite **referencias**, no copia objetos. La documentación oficial lo advierte con el ejemplo `[[]] * 3`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`[0] * 3` es seguro porque los enteros son inmutables: «cambiar» un 0 consiste en hacer que esa posición apunte a otro objeto, sin afectar a las demás. El problema aparece cuando lo repetido es **mutable** (listas, diccionarios, conjuntos). En s06 verás una tercera variante de este error: una lista como valor por defecto de un parámetro."
+    },
+    {
+     "type": "h",
+     "text": "Estructuras anidadas: matrices y cubos"
+    },
+    {
+     "type": "p",
+     "text": "Una **matriz** es una lista de filas, cada una de ellas una lista. `m[i][j]` se lee de fuera hacia dentro: primero la fila `i`, luego la columna `j`. Un «cubo» (3D) es una lista de matrices: `cubo[capa][fila][columna]`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "matriz = [\n    [1, 2, 3],\n    [4, 5, 6],\n]\nfilas = len(matriz)\ncolumnas = len(matriz[0])\nprint(filas, \"x\", columnas, \"->\", matriz[1][2])   # fila 1, columna 2: 6\n\nfor fila in matriz:\n    print(sum(fila), end=\" \")    # suma de cada fila: 6 15\nprint()\n\nsuma_columnas = [0] * columnas\nfor fila in matriz:\n    for j in range(columnas):\n        suma_columnas[j] += fila[j]\nprint(suma_columnas)             # [5, 7, 9]\n\ncubo = []\nfor capa in range(2):\n    cubo.append([[0] * 2 for _ in range(2)])   # cada capa, una matriz 2x2 nueva\ncubo[1][0][1] = 7\nprint(cubo)"
+    },
+    {
+     "type": "h",
+     "text": "Listas de diccionarios y diccionarios de listas"
+    },
+    {
+     "type": "p",
+     "text": "Así llegan los datos reales (por ejemplo, de un JSON o una base de datos, s09): una **lista de registros**, cada uno un diccionario. Para navegarlos, recorre el «camino» de fuera a dentro diciendo el tipo en cada paso: `alumnos` (lista) → `[1]` (diccionario) → `['notas']` (lista) → `.append(10)`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "run": true,
+     "code": "alumnos = [\n    {\"nombre\": \"Ana\", \"notas\": [8, 9, 7]},\n    {\"nombre\": \"Luis\", \"notas\": [5, 6]},\n    {\"nombre\": \"Eva\", \"notas\": []},\n]\nfor alumno in alumnos:\n    notas = alumno[\"notas\"]\n    media = sum(notas) / len(notas) if notas else None   # evita dividir entre 0\n    print(alumno[\"nombre\"], media)\n\nalumnos[1][\"notas\"].append(10)                 # lista -> dict -> lista\nprint(alumnos[1])\n\naprobados = [a[\"nombre\"] for a in alumnos if a[\"notas\"] and min(a[\"notas\"]) >= 5]\nprint(aprobados)\n\nindice = {a[\"nombre\"]: a for a in alumnos}     # dict de registros: búsqueda O(1)\nprint(indice[\"Eva\"])"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "El último truco es de experto: si vas a buscar registros por un campo muchas veces, construye una vez un diccionario «índice» (`{a['nombre']: a for a in alumnos}`) y cada búsqueda pasa de O(n) a O(1). Ojo: los valores del índice son **los mismos** diccionarios, no copias. Para imprimir estructuras grandes de forma legible, usa `pprint.pprint(estructura)`, de la biblioteca estándar."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué imprime `a = [1, 2]; b = [a, a]; a.append(3); print(b)`? `[[1, 2, 3], [1, 2, 3]]`: `b` contiene dos referencias al mismo objeto. Si entiendes esta línea, entiendes el modelo de datos de Python; es de las preguntas favoritas en exámenes y entrevistas."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Alias",
+       "en": "alias",
+       "def": "Otro nombre que apunta al mismo objeto. Los cambios hechos a través de uno se ven a través del otro."
+      },
+      {
+       "term": "Copia superficial",
+       "en": "shallow copy",
+       "def": "Contenedor nuevo cuyos elementos son las mismas referencias que en el original."
+      },
+      {
+       "term": "Copia profunda",
+       "en": "deep copy",
+       "def": "Contenedor nuevo con copias recursivas de todos los objetos contenidos (`copy.deepcopy`)."
+      },
+      {
+       "term": "Identidad",
+       "en": "identity",
+       "def": "Qué objeto concreto es: se compara con `is` (misma `id()`); `==` compara el valor."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s04-e1",
+   "title": "Juego de rebanadas",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `rebanar(datos)`, que recibe una secuencia (lista, tupla, cadena o `range`) y devuelve una **tupla con 4 elementos**, en este orden:",
+    "1) los tres primeros elementos; 2) los tres últimos; 3) los elementos de las posiciones pares (0, 2, 4…); 4) la secuencia invertida.",
+    "Cada parte debe ser del mismo tipo que `datos` (si recibes una tupla, partes de tupla; si recibes una cadena, cadenas). La función no debe modificar `datos` ni fallar con secuencias cortas o vacías. No necesitas bucles."
+   ],
+   "examples": [
+    {
+     "call": "rebanar([1, 2, 3, 4, 5])",
+     "result": "([1, 2, 3], [3, 4, 5], [1, 3, 5], [5, 4, 3, 2, 1])"
+    },
+    {
+     "call": "rebanar(\"hola\")",
+     "result": "('hol', 'ola', 'hl', 'aloh')"
+    },
+    {
+     "call": "rebanar([7, 8])",
+     "result": "([7, 8], [7, 8], [7], [8, 7])"
+    }
+   ],
+   "starter": "def rebanar(datos):\n    # Devuelve (tres primeros, tres últimos, posiciones pares, invertida)\n    pass\n",
+   "solution": "def rebanar(datos):\n    primeros = datos[:3]\n    ultimos = datos[-3:]\n    pares = datos[::2]\n    invertida = datos[::-1]\n    return (primeros, ultimos, pares, invertida)\n",
+   "tests": [
+    {
+     "name": "Lista de 5 elementos",
+     "code": "r = rebanar([1, 2, 3, 4, 5])\nassert r == ([1, 2, 3], [3, 4, 5], [1, 3, 5], [5, 4, 3, 2, 1]), f\"rebanar([1, 2, 3, 4, 5]) devolvió {r!r}\""
+    },
+    {
+     "name": "Devuelve una tupla de 4 partes",
+     "code": "r = rebanar([10, 20, 30, 40])\nassert isinstance(r, tuple), f\"Debe devolver una tupla, pero devolvió {type(r).__name__}\"\nassert len(r) == 4, f\"La tupla debe tener 4 elementos y tiene {len(r)}\""
+    },
+    {
+     "name": "Funciona con cadenas",
+     "code": "r = rebanar(\"hola\")\nassert r == (\"hol\", \"ola\", \"hl\", \"aloh\"), f\"Con 'hola' se esperaba ('hol', 'ola', 'hl', 'aloh') y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Con una tupla, las partes son tuplas",
+     "code": "r = rebanar((1, 2, 3, 4, 5, 6))\nassert r == ((1, 2, 3), (4, 5, 6), (1, 3, 5), (6, 5, 4, 3, 2, 1)), f\"Con una tupla se obtuvo {r!r}; ¿conviertes a lista en algún paso?\""
+    },
+    {
+     "name": "Secuencia más corta que 3",
+     "code": "r = rebanar([7, 8])\nassert r == ([7, 8], [7, 8], [7], [8, 7]), f\"Con [7, 8] se esperaba ([7, 8], [7, 8], [7], [8, 7]) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Secuencia vacía",
+     "code": "r = rebanar([])\nassert r == ([], [], [], []), f\"Con una lista vacía deben salir cuatro listas vacías; se obtuvo {r!r}\""
+    },
+    {
+     "name": "No modifica el original",
+     "code": "original = [3, 1, 2]\nrebanar(original)\nassert original == [3, 1, 2], f\"La lista original cambió a {original}: invierte sin modificar (¿usaste reverse()?)\""
+    },
+    {
+     "name": "También con range",
+     "code": "r = rebanar(range(6))\npartes = [list(p) for p in r]\nassert partes == [[0, 1, 2], [3, 4, 5], [0, 2, 4], [5, 4, 3, 2, 1, 0]], f\"Con range(6) se obtuvieron {partes}\""
+    }
+   ],
+   "hints": [
+    "Las cuatro partes se consiguen con rebanadas `datos[inicio:fin:paso]`; ninguna necesita bucles ni conversiones.",
+    "Los tres últimos empiezan en el índice `-3`; para las posiciones pares usa paso `2`; para invertir, paso `-1`."
+   ],
+   "explain": "Las rebanadas crean un objeto **nuevo del mismo tipo** que la secuencia original (lista, tupla, cadena o incluso `range`) y nunca lanzan `IndexError`: si pides más de lo que hay, devuelven lo disponible. Por eso `[7, 8][:3]` es `[7, 8]` y la lista vacía no necesita ningún `if`.\n\n`datos[::-1]` es la forma idiomática de invertir sin tocar el original; en cambio, `list.reverse()` muta la lista (y solo existe en listas) y `reversed()` devuelve un iterador, no una secuencia del mismo tipo.\n\nCoste: cada rebanada es O(k), siendo k el tamaño del resultado. Versión compacta:\n```python\ndef rebanar(datos):\n    return datos[:3], datos[-3:], datos[::2], datos[::-1]\n```\n(la coma basta para crear la tupla)."
+  },
+  {
+   "id": "s04-e2",
+   "title": "Estadísticas de una lista",
+   "level": "facil",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `estadisticas(numeros)`, que recibe una lista o tupla de números y devuelve la tupla `(minimo, maximo, media, mediana)`.",
+    "La **media** es la suma dividida entre la cantidad de números. La **mediana** es el valor central de los datos *ordenados*; si la cantidad es par, es la media de los dos centrales. Redondea media y mediana a 2 decimales con `round(valor, 2)`.",
+    "Si la colección está vacía, devuelve `None`. **No modifiques** la colección recibida: quien te la pasa puede seguir necesitándola en su orden original."
+   ],
+   "examples": [
+    {
+     "call": "estadisticas([4, 1, 3, 2])",
+     "result": "(1, 4, 2.5, 2.5)"
+    },
+    {
+     "call": "estadisticas([10, 2, 38, 23, 38, 23, 21])",
+     "result": "(2, 38, 22.14, 23)"
+    },
+    {
+     "call": "estadisticas([])",
+     "result": "None"
+    }
+   ],
+   "starter": "def estadisticas(numeros):\n    # Devuelve (minimo, maximo, media, mediana) o None si está vacía\n    pass\n",
+   "solution": "def estadisticas(numeros):\n    if not numeros:\n        return None\n    ordenados = sorted(numeros)          # lista NUEVA: el original no cambia\n    n = len(ordenados)\n    media = sum(ordenados) / n\n    mitad = n // 2\n    if n % 2 == 1:\n        mediana = ordenados[mitad]\n    else:\n        mediana = (ordenados[mitad - 1] + ordenados[mitad]) / 2\n    return (ordenados[0], ordenados[-1], round(media, 2), round(mediana, 2))\n",
+   "tests": [
+    {
+     "name": "Cantidad par",
+     "code": "r = estadisticas([4, 1, 3, 2])\nassert r == (1, 4, 2.5, 2.5), f\"estadisticas([4, 1, 3, 2]) devolvió {r!r}; se esperaba (1, 4, 2.5, 2.5)\""
+    },
+    {
+     "name": "Cantidad impar con repetidos",
+     "code": "r = estadisticas([10, 2, 38, 23, 38, 23, 21])\nassert r == (2, 38, 22.14, 23), f\"Se esperaba (2, 38, 22.14, 23) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Negativos y decimales",
+     "code": "r = estadisticas([-5, 0.5, 3, -1.5])\nassert r == (-5, 3, -0.75, -0.5), f\"Con [-5, 0.5, 3, -1.5] se esperaba (-5, 3, -0.75, -0.5) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Un solo elemento",
+     "code": "r = estadisticas([7])\nassert r == (7, 7, 7.0, 7), f\"Con [7] todo debe valer 7; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Colección vacía",
+     "code": "r = estadisticas([])\nassert r is None, f\"Con una lista vacía debe devolver None, no {r!r}\""
+    },
+    {
+     "name": "Redondea a 2 decimales",
+     "code": "r = estadisticas([1, 2, 2])\nassert r == (1, 2, 1.67, 2), f\"La media de [1, 2, 2] es 1.666..., redondeada 1.67; se obtuvo {r!r}\""
+    },
+    {
+     "name": "No modifica la lista recibida",
+     "code": "datos = [3, 1, 2]\nestadisticas(datos)\nassert datos == [3, 1, 2], f\"La lista del llamador cambió a {datos}: ordena una copia en vez de la original\""
+    },
+    {
+     "name": "Acepta tuplas",
+     "code": "r = estadisticas((5, 1, 3))\nassert r == (1, 5, 3.0, 3), f\"Con la tupla (5, 1, 3) se esperaba (1, 5, 3.0, 3) y se obtuvo {r!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por el caso especial: si `numeros` está vacía (`if not numeros:`), devuelve `None`.",
+    "Para la mediana necesitas los datos ordenados, pero sin tocar el original: `sorted()` devuelve una lista nueva, mientras que `.sort()` cambiaría la lista de quien te llama (y ni siquiera existe en las tuplas).",
+    "Con `n` elementos ordenados y `mitad = n // 2`: si `n` es impar, la mediana es `ordenados[mitad]`; si es par, la media de `ordenados[mitad - 1]` y `ordenados[mitad]`."
+   ],
+   "explain": "La clave del ejercicio es `sorted()` frente a `.sort()`: `sorted` acepta cualquier iterable y devuelve una lista **nueva**, así que no hay efectos secundarios sobre los datos del llamador. Una vez ordenados, el mínimo y el máximo están en los extremos (`[0]` y `[-1]`).\n\nCoste: O(n log n) por la ordenación. Si solo quisieras mínimo, máximo y media, `min()`, `max()` y `sum()` son O(n) cada una y no hace falta ordenar.\n\nEn s07 conocerás el módulo `statistics`, que ya trae `statistics.mean()` y `statistics.median()`; en producción conviene usarlo, pero implementarlo a mano te obliga a entender índices, división entera y el caso par/impar."
+  },
+  {
+   "id": "s04-e3",
+   "title": "Únicos en orden de aparición",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `sin_duplicados(elementos)`, que recibe un iterable de elementos hashables (lista, tupla, cadena…) y devuelve una **lista nueva** sin repeticiones, conservando el **orden de primera aparición**.",
+    "No modifiques la colección recibida. Intenta que tu solución sea O(n): comprobar `x in lista` dentro del bucle funciona, pero es lento con muchos datos."
+   ],
+   "examples": [
+    {
+     "call": "sin_duplicados([3, 1, 3, 2, 1])",
+     "result": "[3, 1, 2]"
+    },
+    {
+     "call": "sin_duplicados(\"banana\")",
+     "result": "['b', 'a', 'n']"
+    },
+    {
+     "call": "sin_duplicados([])",
+     "result": "[]"
+    }
+   ],
+   "starter": "def sin_duplicados(elementos):\n    # Devuelve una lista nueva con los elementos únicos en orden de aparición\n    pass\n",
+   "solution": "def sin_duplicados(elementos):\n    vistos = set()\n    resultado = []\n    for x in elementos:\n        if x not in vistos:        # O(1) de media en un set\n            vistos.add(x)\n            resultado.append(x)\n    return resultado\n",
+   "tests": [
+    {
+     "name": "Números con repetidos",
+     "code": "r = sin_duplicados([3, 1, 3, 2, 1])\nassert r == [3, 1, 2], f\"Se esperaba [3, 1, 2] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Conserva el orden de primera aparición",
+     "code": "r = sin_duplicados([5, 4, 5, 3, 4])\nassert r == [5, 4, 3], f\"Se esperaba [5, 4, 3] (orden de aparición, no ordenado) y se obtuvo {r!r}; ojo: convertir a set pierde el orden\""
+    },
+    {
+     "name": "Una cadena",
+     "code": "r = sin_duplicados(\"banana\")\nassert r == [\"b\", \"a\", \"n\"], f\"Con 'banana' se esperaba ['b', 'a', 'n'] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Colección vacía",
+     "code": "r = sin_duplicados([])\nassert r == [], f\"Con una lista vacía debe devolver [], no {r!r}\""
+    },
+    {
+     "name": "Devuelve una lista nueva",
+     "code": "datos = [1, 2, 3]\nr = sin_duplicados(datos)\nassert isinstance(r, list), f\"Debe devolver una lista, no {type(r).__name__}\"\nassert r == [1, 2, 3], f\"Sin repetidos la lista debe quedar igual; se obtuvo {r!r}\"\nassert r is not datos, \"Debe devolver una lista NUEVA, no la misma que recibió\""
+    },
+    {
+     "name": "No modifica la entrada",
+     "code": "datos = [2, 2, 1, 2]\nsin_duplicados(datos)\nassert datos == [2, 2, 1, 2], f\"La lista recibida cambió a {datos}\""
+    },
+    {
+     "name": "Elementos hashables variados",
+     "code": "r = sin_duplicados([\"a\", (1, 2), \"a\", (1, 2), (2, 1), None, None])\nassert r == [\"a\", (1, 2), (2, 1), None], f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "Acepta una tupla y muchos datos",
+     "code": "datos = tuple(range(3000)) * 2\nr = sin_duplicados(datos)\nassert r == list(range(3000)), \"Con 0..2999 repetido dos veces debe devolver [0, 1, ..., 2999]\""
+    }
+   ],
+   "hints": [
+    "Recorre `elementos` con un `for` y ve construyendo una lista `resultado`: añade cada elemento solo la primera vez que lo ves.",
+    "¿Cómo saber si ya lo viste? Guarda los vistos en un `set`: `x in vistos` es O(1) de media, mientras que `x in resultado` recorre la lista entera (O(n))."
+   ],
+   "explain": "El conjunto `vistos` responde en O(1) de media a «¿ya salió?», y la lista `resultado` conserva el orden. Total: O(n) en tiempo y O(n) de memoria extra.\n\nSi usaras `if x not in resultado`, cada comprobación recorrería la lista: O(n²) en total. Con 3000 elementos apenas se nota, pero con un millón pasarías de décimas de segundo a horas.\n\n`list(set(elementos))` es más corto pero **pierde el orden**. La versión «pro» de una línea aprovecha que los diccionarios conservan el orden de inserción (garantizado desde 3.7) y no admiten claves repetidas:\n```python\ndef sin_duplicados(elementos):\n    return list(dict.fromkeys(elementos))\n```"
+  },
+  {
+   "id": "s04-e4",
+   "title": "Gustos en común",
+   "level": "facil",
+   "minutes": 12,
+   "prompt": [
+    "Dos amigos anotan sus aficiones en listas que pueden tener repeticiones. Escribe `comparar_gustos(a, b)`, que devuelve un **diccionario** con estas cuatro claves:",
+    "`\"comunes\"`: aficiones que están en ambas listas; `\"solo_a\"`: las que solo están en `a`; `\"solo_b\"`: las que solo están en `b`; `\"total_distintos\"`: cuántas aficiones distintas hay entre los dos (un entero).",
+    "Las tres primeras deben ser **listas ordenadas alfabéticamente y sin repeticiones**. No modifiques las listas recibidas."
+   ],
+   "examples": [
+    {
+     "call": "comparar_gustos([\"cine\", \"futbol\", \"cine\", \"leer\"], [\"leer\", \"cocinar\", \"futbol\"])",
+     "result": "{'comunes': ['futbol', 'leer'], 'solo_a': ['cine'], 'solo_b': ['cocinar'], 'total_distintos': 4}"
+    }
+   ],
+   "starter": "def comparar_gustos(a, b):\n    # Devuelve {\"comunes\": [...], \"solo_a\": [...], \"solo_b\": [...], \"total_distintos\": n}\n    pass\n",
+   "solution": "def comparar_gustos(a, b):\n    gustos_a = set(a)\n    gustos_b = set(b)\n    return {\n        \"comunes\": sorted(gustos_a & gustos_b),\n        \"solo_a\": sorted(gustos_a - gustos_b),\n        \"solo_b\": sorted(gustos_b - gustos_a),\n        \"total_distintos\": len(gustos_a | gustos_b),\n    }\n",
+   "tests": [
+    {
+     "name": "Ejemplo del enunciado",
+     "code": "r = comparar_gustos([\"cine\", \"futbol\", \"cine\", \"leer\"], [\"leer\", \"cocinar\", \"futbol\"])\nesperado = {\"comunes\": [\"futbol\", \"leer\"], \"solo_a\": [\"cine\"], \"solo_b\": [\"cocinar\"], \"total_distintos\": 4}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Claves exactas",
+     "code": "r = comparar_gustos([\"x\"], [\"y\"])\nassert isinstance(r, dict), f\"Debe devolver un diccionario, no {type(r).__name__}\"\nassert set(r) == {\"comunes\", \"solo_a\", \"solo_b\", \"total_distintos\"}, f\"Las claves deben ser comunes, solo_a, solo_b y total_distintos; hay {sorted(r)}\""
+    },
+    {
+     "name": "Listas ordenadas, no conjuntos",
+     "code": "r = comparar_gustos([\"zumba\", \"ajedrez\", \"musica\"], [\"musica\", \"zumba\"])\nassert isinstance(r[\"comunes\"], list), f\"comunes debe ser una lista, no {type(r['comunes']).__name__}\"\nassert r[\"comunes\"] == [\"musica\", \"zumba\"], f\"comunes debe estar ordenada alfabéticamente: {r['comunes']}\""
+    },
+    {
+     "name": "Nada en común",
+     "code": "r = comparar_gustos([\"surf\", \"yoga\"], [\"tenis\"])\nassert r == {\"comunes\": [], \"solo_a\": [\"surf\", \"yoga\"], \"solo_b\": [\"tenis\"], \"total_distintos\": 3}, f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "Una lista vacía",
+     "code": "r = comparar_gustos([], [\"pintar\", \"cantar\", \"pintar\"])\nassert r == {\"comunes\": [], \"solo_a\": [], \"solo_b\": [\"cantar\", \"pintar\"], \"total_distintos\": 2}, f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "Ambas vacías",
+     "code": "r = comparar_gustos([], [])\nassert r == {\"comunes\": [], \"solo_a\": [], \"solo_b\": [], \"total_distintos\": 0}, f\"Con dos listas vacías se obtuvo {r!r}\""
+    },
+    {
+     "name": "Mismos gustos con repeticiones",
+     "code": "r = comparar_gustos([\"a\", \"a\", \"b\"], [\"b\", \"a\"])\nassert r == {\"comunes\": [\"a\", \"b\"], \"solo_a\": [], \"solo_b\": [], \"total_distintos\": 2}, f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "No modifica las listas",
+     "code": "a = [\"leer\", \"cine\", \"leer\"]\nb = [\"cine\"]\ncomparar_gustos(a, b)\nassert a == [\"leer\", \"cine\", \"leer\"] and b == [\"cine\"], f\"Las listas cambiaron: a={a}, b={b}\""
+    }
+   ],
+   "hints": [
+    "Convierte cada lista en un `set`: los repetidos desaparecen solos.",
+    "Intersección `&`, diferencia `-` y unión `|`. `sorted(conjunto)` devuelve una lista ordenada."
+   ],
+   "explain": "Con conjuntos, cada pregunta es una operación: `&` (en ambos), `-` (en uno pero no en el otro) y `|` (en cualquiera). Construir los conjuntos es O(len(a) + len(b)) y cada operación también es lineal de media.\n\nComo los conjuntos no tienen orden, `sorted()` convierte el resultado en una lista con un orden predecible (imprescindible para mostrarlo o compararlo en un test).\n\nAlternativa con métodos, que aceptan cualquier iterable sin convertir antes: `set(a).intersection(b)`. Y `len(set(a) | set(b))` también podría calcularse como `len(comunes) + len(solo_a) + len(solo_b)`."
+  },
+  {
+   "id": "s04-e5",
+   "title": "Chequeos rápidos con any, all y zip",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `analizar(numeros)`, que recibe una lista de números y devuelve un diccionario con cuatro claves:",
+    "`\"todos_positivos\"`: `True` si todos son mayores que 0; `\"hay_cero\"`: `True` si alguno vale 0; `\"ordenada\"`: `True` si cada elemento es menor o igual que el siguiente; `\"maximo_salto\"`: la mayor diferencia, en valor absoluto, entre dos elementos consecutivos (0 si hay menos de dos elementos).",
+    "Piensa bien el caso de la lista vacía: ¿todos sus elementos son positivos? Para la lógica, sí (no hay ninguno que no lo sea)."
+   ],
+   "examples": [
+    {
+     "call": "analizar([1, 3, 3, 8])",
+     "result": "{'todos_positivos': True, 'hay_cero': False, 'ordenada': True, 'maximo_salto': 5}"
+    },
+    {
+     "call": "analizar([5, 0, 7, -2])",
+     "result": "{'todos_positivos': False, 'hay_cero': True, 'ordenada': False, 'maximo_salto': 9}"
+    },
+    {
+     "call": "analizar([])",
+     "result": "{'todos_positivos': True, 'hay_cero': False, 'ordenada': True, 'maximo_salto': 0}"
+    }
+   ],
+   "starter": "def analizar(numeros):\n    # Devuelve {\"todos_positivos\": ..., \"hay_cero\": ..., \"ordenada\": ..., \"maximo_salto\": ...}\n    pass\n",
+   "solution": "def analizar(numeros):\n    pares = list(zip(numeros, numeros[1:]))      # (anterior, siguiente)\n    saltos = [abs(b - a) for a, b in pares]\n    return {\n        \"todos_positivos\": all([n > 0 for n in numeros]),\n        \"hay_cero\": any([n == 0 for n in numeros]),\n        \"ordenada\": all([a <= b for a, b in pares]),\n        \"maximo_salto\": max(saltos, default=0),\n    }\n",
+   "tests": [
+    {
+     "name": "Lista ordenada de positivos",
+     "code": "r = analizar([1, 3, 3, 8])\nesperado = {\"todos_positivos\": True, \"hay_cero\": False, \"ordenada\": True, \"maximo_salto\": 5}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Desordenada, con cero y negativos",
+     "code": "r = analizar([5, 0, 7, -2])\nesperado = {\"todos_positivos\": False, \"hay_cero\": True, \"ordenada\": False, \"maximo_salto\": 9}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Lista vacía (verdad vacía)",
+     "code": "r = analizar([])\nesperado = {\"todos_positivos\": True, \"hay_cero\": False, \"ordenada\": True, \"maximo_salto\": 0}\nassert r == esperado, f\"Con [] se esperaba {esperado} y se obtuvo {r!r}; recuerda qué devuelven all([]) y any([])\""
+    },
+    {
+     "name": "Un solo elemento",
+     "code": "r = analizar([4])\nesperado = {\"todos_positivos\": True, \"hay_cero\": False, \"ordenada\": True, \"maximo_salto\": 0}\nassert r == esperado, f\"Con [4] se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Iguales cuentan como ordenada",
+     "code": "r = analizar([2, 2, 2])\nassert r[\"ordenada\"] is True, \"[2, 2, 2] está ordenada (cada uno es menor O IGUAL que el siguiente)\"\nassert r[\"maximo_salto\"] == 0, f\"Sin cambios el salto máximo es 0, no {r['maximo_salto']}\""
+    },
+    {
+     "name": "Negativos ordenados",
+     "code": "r = analizar([-3, -1])\nesperado = {\"todos_positivos\": False, \"hay_cero\": False, \"ordenada\": True, \"maximo_salto\": 2}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Valores booleanos de verdad",
+     "code": "r = analizar([1, 2])\nfor clave in (\"todos_positivos\", \"hay_cero\", \"ordenada\"):\n    assert isinstance(r[clave], bool), f\"{clave} debe ser True o False, no {r[clave]!r}\""
+    },
+    {
+     "name": "No modifica la lista",
+     "code": "datos = [9, 1, 5]\nanalizar(datos)\nassert datos == [9, 1, 5], f\"La lista cambió a {datos}\""
+    }
+   ],
+   "hints": [
+    "`all([...])` es `True` si todos los valores de la lista son verdaderos (también si está vacía); `any([...])` si al menos uno lo es. Dentro de los corchetes, usa una comprensión que produzca booleanos.",
+    "Para comparar cada elemento con el siguiente, empareja la lista consigo misma desplazada una posición: `zip(numeros, numeros[1:])` produce los pares `(anterior, siguiente)`.",
+    "`max(lista, default=0)` evita el `ValueError` cuando no hay ningún salto que comparar."
+   ],
+   "explain": "`zip(numeros, numeros[1:])` es un modismo clásico para trabajar con elementos consecutivos: como `zip` se detiene en la colección más corta, nunca te sales de rango ni necesitas índices. Con la lista vacía o de un elemento no hay pares, y todo encaja: `all([])` es `True`, `any([])` es `False` y `max([], default=0)` es `0`.\n\nCoste: O(n) en tiempo; la rebanada `numeros[1:]` y las listas intermedias usan O(n) de memoria.\n\nVersión «pro» (s12): sin corchetes, con expresiones generadoras, `all` y `any` pueden parar en cuanto conocen la respuesta sin construir listas. Y `itertools.pairwise(numeros)` (desde 3.10) da directamente los pares consecutivos:\n```python\nfrom itertools import pairwise\n\ndef analizar(numeros):\n    return {\n        \"todos_positivos\": all(n > 0 for n in numeros),\n        \"hay_cero\": any(n == 0 for n in numeros),\n        \"ordenada\": all(a <= b for a, b in pairwise(numeros)),\n        \"maximo_salto\": max((abs(b - a) for a, b in pairwise(numeros)), default=0),\n    }\n```"
+  },
+  {
+   "id": "s04-e6",
+   "title": "Frecuencia de palabras",
+   "level": "medio",
+   "minutes": 18,
+   "prompt": [
+    "Escribe dos funciones sobre un texto sin signos de puntuación:",
+    "`frecuencias(texto)` devuelve un diccionario `palabra -> número de apariciones`. Las palabras se comparan **en minúsculas** y se separan por cualquier espacio en blanco (espacios, tabuladores, saltos de línea). Las claves deben quedar en **orden de primera aparición**.",
+    "`mas_frecuente(texto)` devuelve la palabra (en minúsculas) que más se repite; si hay empate, la que apareció **primero**. Si el texto no tiene palabras, devuelve `None`.",
+    "Recuerda el adelanto de la lección 4: `texto.lower()` pasa a minúsculas y `texto.split()` devuelve la lista de palabras."
+   ],
+   "examples": [
+    {
+     "call": "frecuencias(\"El gato y el perro y EL pez\")",
+     "result": "{'el': 3, 'gato': 1, 'y': 2, 'perro': 1, 'pez': 1}"
+    },
+    {
+     "call": "mas_frecuente(\"b a b a c\")",
+     "result": "'b'"
+    },
+    {
+     "call": "mas_frecuente(\"   \")",
+     "result": "None"
+    }
+   ],
+   "starter": "def frecuencias(texto):\n    # Devuelve {palabra: veces} en orden de primera aparición\n    pass\n\n\ndef mas_frecuente(texto):\n    # Devuelve la palabra más repetida (la primera en caso de empate) o None\n    pass\n",
+   "solution": "def frecuencias(texto):\n    conteo = {}\n    for palabra in texto.lower().split():\n        conteo[palabra] = conteo.get(palabra, 0) + 1\n    return conteo\n\n\ndef mas_frecuente(texto):\n    conteo = frecuencias(texto)\n    if not conteo:\n        return None\n    return max(conteo, key=conteo.get)\n",
+   "tests": [
+    {
+     "name": "Cuenta sin distinguir mayúsculas",
+     "code": "r = frecuencias(\"El gato y el perro y EL pez\")\nesperado = {\"el\": 3, \"gato\": 1, \"y\": 2, \"perro\": 1, \"pez\": 1}\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Orden de primera aparición",
+     "code": "r = frecuencias(\"c b a b c c\")\nassert list(r) == [\"c\", \"b\", \"a\"], f\"Las claves deben estar en orden de aparición (c, b, a); están en {list(r)}\""
+    },
+    {
+     "name": "Espacios múltiples, tabuladores y saltos de línea",
+     "code": "r = frecuencias(\"  uno   dos\\nuno\\t tres  \")\nassert r == {\"uno\": 2, \"dos\": 1, \"tres\": 1}, f\"Se obtuvo {r!r}; ¿aparecen palabras vacías? Usa split() sin argumentos\""
+    },
+    {
+     "name": "Texto vacío o solo espacios",
+     "code": "assert frecuencias(\"\") == {}, \"Con un texto vacío debe devolver {}\"\nassert frecuencias(\"   \\n \") == {}, \"Con un texto de solo espacios debe devolver {}\""
+    },
+    {
+     "name": "Palabras con tildes",
+     "code": "r = frecuencias(\"Canción canción ÁRBOL árbol canción\")\nassert r == {\"canción\": 3, \"árbol\": 2}, f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "La más frecuente",
+     "code": "r = mas_frecuente(\"el sol y el mar y el cielo\")\nassert r == \"el\", f\"La más frecuente es 'el' (3 veces), no {r!r}\""
+    },
+    {
+     "name": "Empate: gana la primera en aparecer",
+     "code": "r = mas_frecuente(\"b a b a c\")\nassert r == \"b\", f\"'b' y 'a' aparecen 2 veces; debe ganar 'b', que salió antes; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Sin palabras devuelve None",
+     "code": "assert mas_frecuente(\"\") is None, \"Con un texto vacío debe devolver None\"\nassert mas_frecuente(\"  \\t \") is None, \"Con un texto de solo espacios debe devolver None\""
+    },
+    {
+     "name": "Devuelve en minúsculas",
+     "code": "r = mas_frecuente(\"Hola HOLA adios\")\nassert r == \"hola\", f\"Debe devolver la palabra en minúsculas: 'hola', no {r!r}\""
+    }
+   ],
+   "hints": [
+    "`texto.lower().split()` te da la lista de palabras ya en minúsculas, sin palabras vacías aunque haya varios espacios seguidos.",
+    "El patrón para contar: `conteo[palabra] = conteo.get(palabra, 0) + 1`. El diccionario conserva solo el orden de la primera inserción de cada clave.",
+    "Para `mas_frecuente`, reutiliza `frecuencias`. `max(conteo, key=conteo.get)` devuelve la clave con mayor valor, y ante un empate devuelve la primera que encuentra al recorrer el diccionario."
+   ],
+   "explain": "`frecuencias` es el patrón **contar** con `get(clave, 0)`: una sola pasada, O(n) en el número de palabras. El orden de primera aparición sale gratis porque los diccionarios recuerdan el orden de inserción y actualizar una clave no la mueve.\n\n`mas_frecuente` apoya el desempate en dos garantías documentadas: `max` devuelve el **primer** elemento máximo que encuentra, y el diccionario se recorre en orden de inserción.\n\nCuidado con `split(\" \")` (con argumento): con dos espacios seguidos genera palabras vacías `''`. Sin argumento, trata cualquier secuencia de espacios en blanco como un único separador (lo verás en s05).\n\nVersión «pro» (s07/s15): `collections.Counter` hace el conteo, y `most_common(1)` respeta también el orden de primera aparición en los empates:\n```python\nfrom collections import Counter\n\ndef mas_frecuente(texto):\n    conteo = Counter(texto.lower().split())\n    return conteo.most_common(1)[0][0] if conteo else None\n```"
+  },
+  {
+   "id": "s04-e7",
+   "title": "Matrices sin trampas",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe dos funciones para trabajar con matrices representadas como listas de filas:",
+    "`crear_matriz(filas, columnas, valor)` devuelve una matriz de `filas × columnas` con todas las celdas a `valor`. Cada fila debe ser una **lista independiente**: cambiar una celda no puede afectar a otras filas.",
+    "`transponer(matriz)` devuelve una **matriz nueva** en la que las filas pasan a ser columnas: el elemento `matriz[i][j]` pasa a la posición `[j][i]`. Las filas del resultado deben ser listas. Si la matriz está vacía (`[]`), devuelve `[]`. No modifiques la matriz recibida."
+   ],
+   "examples": [
+    {
+     "call": "crear_matriz(2, 3, 0)",
+     "result": "[[0, 0, 0], [0, 0, 0]]"
+    },
+    {
+     "call": "transponer([[1, 2, 3], [4, 5, 6]])",
+     "result": "[[1, 4], [2, 5], [3, 6]]"
+    },
+    {
+     "call": "transponer([[1, 2, 3]])",
+     "result": "[[1], [2], [3]]"
+    }
+   ],
+   "starter": "def crear_matriz(filas, columnas, valor):\n    # Cuidado: cada fila debe ser una lista distinta\n    pass\n\n\ndef transponer(matriz):\n    # Devuelve una matriz nueva con filas y columnas intercambiadas\n    pass\n",
+   "solution": "def crear_matriz(filas, columnas, valor):\n    return [[valor] * columnas for _ in range(filas)]\n\n\ndef transponer(matriz):\n    if not matriz:\n        return []\n    columnas = len(matriz[0])\n    resultado = []\n    for j in range(columnas):\n        nueva_fila = []\n        for fila in matriz:\n            nueva_fila.append(fila[j])\n        resultado.append(nueva_fila)\n    return resultado\n",
+   "tests": [
+    {
+     "name": "crear_matriz: contenido",
+     "code": "r = crear_matriz(2, 3, 0)\nassert r == [[0, 0, 0], [0, 0, 0]], f\"crear_matriz(2, 3, 0) devolvió {r!r}\""
+    },
+    {
+     "name": "crear_matriz: filas independientes",
+     "code": "m = crear_matriz(3, 2, 0)\nm[0][0] = 9\nassert m == [[9, 0], [0, 0], [0, 0]], f\"Tras m[0][0] = 9 la matriz quedó {m}: ¿repetiste la MISMA fila con *?\""
+    },
+    {
+     "name": "crear_matriz: casos límite",
+     "code": "assert crear_matriz(0, 5, 1) == [], \"Con 0 filas debe devolver []\"\nassert crear_matriz(2, 0, 1) == [[], []], \"Con 0 columnas deben salir 2 filas vacías: [[], []]\""
+    },
+    {
+     "name": "transponer: rectangular",
+     "code": "r = transponer([[1, 2, 3], [4, 5, 6]])\nassert r == [[1, 4], [2, 5], [3, 6]], f\"Se esperaba [[1, 4], [2, 5], [3, 6]] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "transponer: cuadrada",
+     "code": "r = transponer([[1, 2, 3], [4, 5, 6], [7, 8, 9]])\nassert r == [[1, 4, 7], [2, 5, 8], [3, 6, 9]], f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "transponer: una fila y una columna",
+     "code": "assert transponer([[1, 2, 3]]) == [[1], [2], [3]], \"Una fila de 3 debe convertirse en 3 filas de 1\"\nassert transponer([[1], [2]]) == [[1, 2]], \"Una columna de 2 debe convertirse en una fila de 2\""
+    },
+    {
+     "name": "transponer: matriz vacía",
+     "code": "assert transponer([]) == [], \"La traspuesta de [] es []\""
+    },
+    {
+     "name": "transponer: filas de tipo lista",
+     "code": "r = transponer([[1, 2], [3, 4]])\nassert all([isinstance(f, list) for f in r]), f\"Las filas del resultado deben ser listas: {r!r}\""
+    },
+    {
+     "name": "transponer: no modifica la original",
+     "code": "m = [[1, 2], [3, 4]]\ntransponer(m)\nassert m == [[1, 2], [3, 4]], f\"La matriz original cambió a {m}\""
+    },
+    {
+     "name": "Doble transposición",
+     "code": "m = [[\"a\", \"b\", \"c\"], [\"d\", \"e\", \"f\"]]\nassert transponer(transponer(m)) == m, \"Transponer dos veces debe devolver la matriz original\""
+    }
+   ],
+   "hints": [
+    "Para `crear_matriz`, cada fila tiene que crearse de nuevo en cada vuelta: dentro de un bucle o de una comprensión (`[... for _ in range(filas)]`), nunca con `[fila] * filas`.",
+    "Si la matriz tiene `f` filas y `c` columnas, la traspuesta tiene `c` filas y `f` columnas. La fila `j` de la traspuesta es la columna `j` de la original.",
+    "Recorre `j` desde `0` hasta `len(matriz[0]) - 1` y, para cada `j`, construye una lista con `fila[j]` de cada `fila` de la matriz."
+   ],
+   "explain": "`[[valor] * columnas for _ in range(filas)]` evalúa `[valor] * columnas` una vez **por vuelta**, así que cada fila es un objeto distinto. `[[valor] * columnas] * filas` crearía una sola fila referenciada `filas` veces: el error de la lista compartida de la lección 7. (Si `valor` fuera mutable, por ejemplo una lista, harían falta copias también dentro de cada fila.)\n\n`transponer` recorre cada celda una vez: O(f·c). La versión con comprensiones anidadas (s12) cabe en una línea: `[[fila[j] for fila in matriz] for j in range(len(matriz[0]))]`.\n\nVersión «pro»: `zip` convierte filas en columnas. El asterisco de `zip(*matriz)` reparte las filas como argumentos separados (desempaquetado en llamadas, s06), y como `zip` produce tuplas, se convierten a listas:\n```python\ndef transponer(matriz):\n    return [list(columna) for columna in zip(*matriz)]\n```\nPara cálculo numérico serio con matrices se usa NumPy (s19)."
+  },
+  {
+   "id": "s04-e8",
+   "title": "Ranking de alumnos",
+   "level": "medio",
+   "minutes": 18,
+   "prompt": [
+    "Recibes una lista de alumnos, cada uno un diccionario `{\"nombre\": str, \"nota\": float}`. Escribe `ranking(alumnos)`, que devuelve una **lista de tuplas** `(posicion, nombre, nota)`:",
+    "ordenada por nota de **mayor a menor**; si hay empate de nota, por nombre en orden **alfabético**. Las posiciones empiezan en 1 y son consecutivas (no hace falta dar la misma posición a los empatados).",
+    "No modifiques la lista recibida: su orden original puede importar a quien te la pasa."
+   ],
+   "examples": [
+    {
+     "call": "ranking([{\"nombre\": \"Eva\", \"nota\": 8.5}, {\"nombre\": \"Luis\", \"nota\": 9.1}, {\"nombre\": \"Ana\", \"nota\": 8.5}])",
+     "result": "[(1, 'Luis', 9.1), (2, 'Ana', 8.5), (3, 'Eva', 8.5)]"
+    },
+    {
+     "call": "ranking([])",
+     "result": "[]"
+    }
+   ],
+   "starter": "def ranking(alumnos):\n    # Devuelve [(posicion, nombre, nota), ...] por nota descendente y nombre ascendente\n    pass\n",
+   "solution": "def clave_ranking(alumno):\n    return (-alumno[\"nota\"], alumno[\"nombre\"])\n\n\ndef ranking(alumnos):\n    ordenados = sorted(alumnos, key=clave_ranking)\n    resultado = []\n    for posicion, alumno in enumerate(ordenados, start=1):\n        resultado.append((posicion, alumno[\"nombre\"], alumno[\"nota\"]))\n    return resultado\n",
+   "setup": "CLASE = [\n    {\"nombre\": \"Eva\", \"nota\": 8.5},\n    {\"nombre\": \"Luis\", \"nota\": 9.1},\n    {\"nombre\": \"Ana\", \"nota\": 8.5},\n    {\"nombre\": \"Iker\", \"nota\": 7.0},\n]",
+   "tests": [
+    {
+     "name": "Ordena por nota y desempata por nombre",
+     "code": "r = ranking(CLASE)\nesperado = [(1, \"Luis\", 9.1), (2, \"Ana\", 8.5), (3, \"Eva\", 8.5), (4, \"Iker\", 7.0)]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Lista vacía",
+     "code": "assert ranking([]) == [], \"Sin alumnos, el ranking es []\""
+    },
+    {
+     "name": "Un solo alumno",
+     "code": "r = ranking([{\"nombre\": \"Pau\", \"nota\": 5.0}])\nassert r == [(1, \"Pau\", 5.0)], f\"Se obtuvo {r!r}\""
+    },
+    {
+     "name": "Todos empatados: orden alfabético",
+     "code": "r = ranking([{\"nombre\": \"Zoe\", \"nota\": 6}, {\"nombre\": \"Bea\", \"nota\": 6}, {\"nombre\": \"Max\", \"nota\": 6}])\nassert [t[1] for t in r] == [\"Bea\", \"Max\", \"Zoe\"], f\"Con la misma nota deben ir en orden alfabético; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Posiciones consecutivas desde 1",
+     "code": "r = ranking(CLASE)\nassert [t[0] for t in r] == [1, 2, 3, 4], f\"Las posiciones deben ser 1, 2, 3, 4; se obtuvo {[t[0] for t in r]}\""
+    },
+    {
+     "name": "Devuelve tuplas de 3 elementos",
+     "code": "r = ranking(CLASE)\nassert all([isinstance(t, tuple) and len(t) == 3 for t in r]), f\"Cada elemento debe ser una tupla (posicion, nombre, nota): {r!r}\""
+    },
+    {
+     "name": "No modifica la lista recibida",
+     "code": "datos = [{\"nombre\": \"B\", \"nota\": 1.0}, {\"nombre\": \"A\", \"nota\": 2.0}]\nranking(datos)\nassert datos == [{\"nombre\": \"B\", \"nota\": 1.0}, {\"nombre\": \"A\", \"nota\": 2.0}], f\"La lista original cambió a {datos}: ¿usaste .sort()?\""
+    },
+    {
+     "name": "Muchos alumnos",
+     "code": "alumnos = []\nfor i in range(60):\n    alumnos.append({\"nombre\": \"A\" + str(1000 + i), \"nota\": (i * 7) % 11})\nr = ranking(alumnos)\nassert [t[0] for t in r] == list(range(1, 61)), \"Las posiciones deben ir de 1 a 60\"\nfor (p1, n1, x1), (p2, n2, x2) in zip(r, r[1:]):\n    assert x1 > x2 or (x1 == x2 and n1 < n2), f\"Orden incorrecto entre {(p1, n1, x1)} y {(p2, n2, x2)}\""
+    }
+   ],
+   "hints": [
+    "`sorted(alumnos, key=funcion)` ordena según lo que devuelva `funcion(alumno)` para cada alumno. Define esa función con `def` (recibe un diccionario y devuelve la clave de orden).",
+    "Para «nota de mayor a menor y, en empate, nombre de A a Z», haz que la clave sea la tupla `(-nota, nombre)`: las tuplas se comparan elemento a elemento, y negar la nota invierte su orden sin invertir el del nombre.",
+    "`enumerate(ordenados, start=1)` te da la posición empezando en 1."
+   ],
+   "explain": "La función clave devuelve una **tupla**, y las tuplas se comparan lexicográficamente: primero `-nota` (así las notas altas quedan delante) y, solo si empatan, `nombre`. Todo en una única ordenación O(n log n) que no toca la lista original gracias a `sorted`.\n\nAlternativa que aprovecha la **estabilidad**: ordenar primero por el criterio secundario y después por el principal con `reverse=True` (la estabilidad se mantiene también al invertir):\n```python\ndef por_nombre(alumno):\n    return alumno[\"nombre\"]\n\ndef por_nota(alumno):\n    return alumno[\"nota\"]\n\ndef ranking(alumnos):\n    ordenados = sorted(sorted(alumnos, key=por_nombre), key=por_nota, reverse=True)\n    return [(i, a[\"nombre\"], a[\"nota\"]) for i, a in enumerate(ordenados, start=1)]\n```\nEl truco de negar solo sirve para números; con dos criterios de texto en sentidos opuestos, la opción de dos pasadas es la buena. En s06 escribirás la clave en una línea con `lambda a: (-a['nota'], a['nombre'])`, y en s12 con `operator.itemgetter`."
+  },
+  {
+   "id": "s04-e9",
+   "title": "Fusionar inventarios",
+   "level": "medio",
+   "minutes": 18,
+   "prompt": [
+    "Una tienda guarda su `stock` como un diccionario `producto -> unidades`. Cada día recibe un diccionario de `movimientos` con el mismo formato: cantidades positivas para las entradas y negativas para las ventas.",
+    "Escribe `fusionar_stock(stock, movimientos)`, que devuelve un **diccionario nuevo** con el stock actualizado: suma las cantidades de los productos comunes, añade los productos nuevos y **elimina** los que queden con 0 unidades o menos.",
+    "Orden de las claves: primero los productos de `stock` en su orden, después los nuevos en el orden en que aparecen en `movimientos`. **No modifiques** ninguno de los dos diccionarios recibidos."
+   ],
+   "examples": [
+    {
+     "call": "fusionar_stock({\"pan\": 10, \"leche\": 5}, {\"leche\": -5, \"huevos\": 12, \"pan\": 3})",
+     "result": "{'pan': 13, 'huevos': 12}"
+    },
+    {
+     "call": "fusionar_stock({}, {\"x\": 2, \"y\": -1})",
+     "result": "{'x': 2}"
+    }
+   ],
+   "starter": "def fusionar_stock(stock, movimientos):\n    # Devuelve un dict NUEVO con el stock actualizado (sin productos agotados)\n    pass\n",
+   "solution": "def fusionar_stock(stock, movimientos):\n    resultado = dict(stock)                 # copia: no tocamos el original\n    for producto, cantidad in movimientos.items():\n        resultado[producto] = resultado.get(producto, 0) + cantidad\n    return {p: c for p, c in resultado.items() if c > 0}\n",
+   "tests": [
+    {
+     "name": "Ejemplo del enunciado",
+     "code": "r = fusionar_stock({\"pan\": 10, \"leche\": 5}, {\"leche\": -5, \"huevos\": 12, \"pan\": 3})\nassert r == {\"pan\": 13, \"huevos\": 12}, f\"Se esperaba {{'pan': 13, 'huevos': 12}} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Orden de las claves",
+     "code": "r = fusionar_stock({\"b\": 1, \"a\": 1}, {\"c\": 1, \"a\": 1})\nassert list(r) == [\"b\", \"a\", \"c\"], f\"Primero las claves del stock (b, a) y luego las nuevas (c); se obtuvo {list(r)}\""
+    },
+    {
+     "name": "Sin movimientos devuelve una copia",
+     "code": "s = {\"x\": 1, \"y\": 4}\nr = fusionar_stock(s, {})\nassert r == {\"x\": 1, \"y\": 4}, f\"Sin movimientos el stock no cambia; se obtuvo {r!r}\"\nassert r is not s, \"Debe devolver un diccionario NUEVO, no el mismo objeto que recibió\""
+    },
+    {
+     "name": "Stock vacío",
+     "code": "r = fusionar_stock({}, {\"x\": 2, \"y\": -1})\nassert r == {\"x\": 2}, f\"'y' queda en -1 y debe eliminarse; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Elimina los agotados y los que ya estaban a 0",
+     "code": "r = fusionar_stock({\"a\": 0, \"b\": 2, \"c\": 5}, {\"c\": -5})\nassert r == {\"b\": 2}, f\"'a' (0) y 'c' (5 - 5 = 0) deben desaparecer; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Todo agotado",
+     "code": "r = fusionar_stock({\"a\": 1}, {\"a\": -3})\nassert r == {}, f\"Si todo se agota el resultado es {{}}; se obtuvo {r!r}\""
+    },
+    {
+     "name": "No modifica los diccionarios recibidos",
+     "code": "s = {\"pan\": 10, \"leche\": 5}\nm = {\"leche\": -5, \"huevos\": 12}\nfusionar_stock(s, m)\nassert s == {\"pan\": 10, \"leche\": 5}, f\"El stock original cambió a {s}\"\nassert m == {\"leche\": -5, \"huevos\": 12}, f\"Los movimientos cambiaron a {m}\""
+    }
+   ],
+   "hints": [
+    "Empieza con una **copia** del stock: `dict(stock)` o `stock.copy()`. Si trabajas sobre `stock` directamente, cambiarás el diccionario de quien te llama.",
+    "Para cada `producto, cantidad` de `movimientos.items()`, acumula con `resultado.get(producto, 0) + cantidad`: los productos nuevos se añaden al final, respetando el orden pedido.",
+    "Filtra al final con una comprensión de diccionario que conserve solo los totales positivos. No borres claves mientras recorres ese mismo diccionario (`RuntimeError`)."
+   ],
+   "explain": "Tres decisiones hacen correcta la solución: (1) copiar antes de modificar, para no tener efectos secundarios; (2) usar `get(producto, 0)` para tratar igual los productos existentes y los nuevos; (3) filtrar con una comprensión que crea un diccionario nuevo en lugar de borrar durante el recorrido. El orden sale solo: la copia conserva el orden de `stock`, actualizar una clave no la mueve y las claves nuevas se añaden al final. Coste: O(len(stock) + len(movimientos)).\n\nCuidado con `stock | movimientos`: el operador `|` no suma, **sustituye** (gana el valor de la derecha).\n\nVersión «pro» (s15): `collections.Counter` suma con `+` y descarta automáticamente los resultados con cuenta 0 o negativa:\n```python\nfrom collections import Counter\n\ndef fusionar_stock(stock, movimientos):\n    return dict(Counter(stock) + Counter(movimientos))\n```"
+  },
+  {
+   "id": "s04-e10",
+   "title": "La pareja que suma",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Escribe `pareja_que_suma(numeros, objetivo)`, que devuelve una tupla de índices `(i, j)`, con `i < j`, tal que `numeros[i] + numeros[j] == objetivo`. Si no existe ninguna pareja, devuelve `None`. Un mismo elemento no puede usarse dos veces, pero sí dos elementos distintos con el mismo valor.",
+    "Si hay varias parejas, devuelve **la primera que se completa al recorrer la lista de izquierda a derecha**: la de `j` más pequeño y, para ese `j`, la de `i` más pequeño.",
+    "Es una pregunta clásica de entrevista. La solución directa con dos bucles anidados es O(n²); intenta encontrar una O(n) con un diccionario."
+   ],
+   "examples": [
+    {
+     "call": "pareja_que_suma([2, 7, 11, 15], 9)",
+     "result": "(0, 1)"
+    },
+    {
+     "call": "pareja_que_suma([3, 2, 4], 6)",
+     "result": "(1, 2)"
+    },
+    {
+     "call": "pareja_que_suma([1, 2, 4, 7, 8, 5], 6)",
+     "result": "(1, 2)"
+    },
+    {
+     "call": "pareja_que_suma([1, 2, 3], 100)",
+     "result": "None"
+    }
+   ],
+   "starter": "def pareja_que_suma(numeros, objetivo):\n    # Devuelve (i, j) con i < j y numeros[i] + numeros[j] == objetivo, o None\n    pass\n",
+   "solution": "def pareja_que_suma(numeros, objetivo):\n    vistos = {}                        # valor -> primer índice donde apareció\n    for j, x in enumerate(numeros):\n        complemento = objetivo - x\n        if complemento in vistos:      # ¿apareció antes lo que me falta?\n            return (vistos[complemento], j)\n        if x not in vistos:            # guardamos solo la PRIMERA aparición\n            vistos[x] = j\n    return None\n",
+   "tests": [
+    {
+     "name": "Caso básico",
+     "code": "r = pareja_que_suma([2, 7, 11, 15], 9)\nassert r == (0, 1), f\"2 + 7 = 9: se esperaba (0, 1) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "No reutiliza el mismo elemento",
+     "code": "r = pareja_que_suma([3, 2, 4], 6)\nassert r == (1, 2), f\"3 + 3 usaría el mismo elemento dos veces; la respuesta es (1, 2), no {r!r}\""
+    },
+    {
+     "name": "Valores repetidos en posiciones distintas",
+     "code": "r = pareja_que_suma([3, 3], 6)\nassert r == (0, 1), f\"Dos 3 en posiciones distintas sí valen: se esperaba (0, 1) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Sin solución",
+     "code": "r = pareja_que_suma([1, 2, 3], 100)\nassert r is None, f\"Si no hay pareja debe devolver None, no {r!r}\""
+    },
+    {
+     "name": "Listas vacía y de un elemento",
+     "code": "assert pareja_que_suma([], 5) is None, \"Con una lista vacía debe devolver None\"\nassert pareja_que_suma([5], 10) is None, \"Con un solo elemento no hay pareja posible\""
+    },
+    {
+     "name": "Negativos y cero",
+     "code": "r = pareja_que_suma([-4, 10, 0, 4], 0)\nassert r == (0, 3), f\"-4 + 4 = 0: se esperaba (0, 3) y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Primera pareja que se completa (menor j)",
+     "code": "r = pareja_que_suma([1, 2, 4, 7, 8, 5], 6)\nassert r == (1, 2), f\"(1, 2) se completa en j = 2, antes que (0, 5); se obtuvo {r!r}\""
+    },
+    {
+     "name": "Para ese j, el menor i",
+     "code": "r = pareja_que_suma([2, 2, 2, 4], 6)\nassert r == (0, 3), f\"Hay tres 2 que suman 6 con el 4; debe usarse el primero: (0, 3), no {r!r}\""
+    },
+    {
+     "name": "Lista larga",
+     "code": "datos = list(range(0, 4000, 2)) + [1]\nr = pareja_que_suma(datos, 3999)\nassert r == (1999, 2000), f\"3998 (índice 1999) + 1 (índice 2000) = 3999; se obtuvo {r!r}\""
+    }
+   ],
+   "hints": [
+    "La solución directa prueba todas las parejas con dos bucles. Si la usas, recorre `j` por fuera e `i` por dentro (de 0 a `j - 1`) para respetar la regla de «la primera que se completa».",
+    "Idea O(n): al llegar al valor `x` en la posición `j`, la pregunta es «¿he visto ya el valor `objetivo - x`?». Un diccionario `valor -> índice` responde en O(1).",
+    "Comprueba el complemento **antes** de guardar `x` (así nunca emparejas un elemento consigo mismo) y guarda solo la primera posición de cada valor (así, ante repetidos, `i` es el menor)."
+   ],
+   "explain": "La solución recorre la lista una sola vez y, para cada elemento, hace una búsqueda O(1) de media en el diccionario: **O(n) en tiempo y O(n) en memoria**. Es el intercambio típico: gastamos memoria para ahorrar tiempo.\n\nLa versión de fuerza bruta también es correcta, pero O(n²): con 100 000 números son unos 5 000 millones de comparaciones.\n```python\ndef pareja_que_suma(numeros, objetivo):\n    for j in range(len(numeros)):\n        for i in range(j):\n            if numeros[i] + numeros[j] == objetivo:\n                return (i, j)\n    return None\n```\nCon un `set` sabrías *si* existe pareja, pero no *dónde*; por eso aquí el diccionario guarda el índice como valor. Y si la lista estuviera ordenada, la técnica de dos punteros (s15) lo resolvería en O(n) sin memoria extra."
+  },
+  {
+   "id": "s04-e11",
+   "title": "Agrupar anagramas",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Dos palabras son **anagramas** si tienen exactamente las mismas letras, el mismo número de veces, en otro orden (sin distinguir mayúsculas): «amor», «Roma» y «mora» lo son; «aab» y «abb» no.",
+    "Escribe `agrupar_anagramas(palabras)`, que devuelve una **lista de grupos**, cada grupo una lista de palabras anagramas entre sí. Los grupos aparecen en el orden en que aparece su primera palabra, y dentro de cada grupo las palabras conservan su orden original, escritas tal como venían.",
+    "Si una palabra exacta se repite, solo cuenta su primera aparición (\"ola\" y \"Ola\" son palabras distintas). Las palabras sin anagramas forman un grupo de una sola palabra. No modifiques la lista recibida."
+   ],
+   "examples": [
+    {
+     "call": "agrupar_anagramas([\"amor\", \"casa\", \"Roma\", \"saca\", \"mora\", \"luz\"])",
+     "result": "[['amor', 'Roma', 'mora'], ['casa', 'saca'], ['luz']]"
+    },
+    {
+     "call": "agrupar_anagramas([])",
+     "result": "[]"
+    }
+   ],
+   "starter": "def agrupar_anagramas(palabras):\n    # Devuelve una lista de grupos (listas) de anagramas\n    pass\n",
+   "solution": "def agrupar_anagramas(palabras):\n    grupos = {}                      # firma (tupla de letras ordenadas) -> lista de palabras\n    for palabra in palabras:\n        firma = tuple(sorted(palabra.lower()))\n        grupo = grupos.setdefault(firma, [])\n        if palabra not in grupo:\n            grupo.append(palabra)\n    return list(grupos.values())\n",
+   "tests": [
+    {
+     "name": "Ejemplo del enunciado",
+     "code": "r = agrupar_anagramas([\"amor\", \"casa\", \"Roma\", \"saca\", \"mora\", \"luz\"])\nesperado = [[\"amor\", \"Roma\", \"mora\"], [\"casa\", \"saca\"], [\"luz\"]]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Lista vacía",
+     "code": "assert agrupar_anagramas([]) == [], \"Sin palabras no hay grupos: []\""
+    },
+    {
+     "name": "Ningún anagrama",
+     "code": "r = agrupar_anagramas([\"sol\", \"mar\", \"luz\"])\nassert r == [[\"sol\"], [\"mar\"], [\"luz\"]], f\"Cada palabra forma su propio grupo, en orden; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Sin distinguir mayúsculas",
+     "code": "r = agrupar_anagramas([\"Ave\", \"vea\", \"EVA\"])\nassert r == [[\"Ave\", \"vea\", \"EVA\"]], f\"Ave, vea y EVA son anagramas (ignorando mayúsculas) y se conservan tal cual; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Mismas letras, distinta cantidad",
+     "code": "r = agrupar_anagramas([\"aab\", \"abb\", \"bab\"])\nassert r == [[\"aab\"], [\"abb\", \"bab\"]], f\"aab y abb tienen las mismas letras pero no las mismas cantidades; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Repetidas exactas cuentan una vez",
+     "code": "r = agrupar_anagramas([\"ola\", \"loa\", \"ola\", \"Ola\"])\nassert r == [[\"ola\", \"loa\", \"Ola\"]], f\"El segundo 'ola' sobra, pero 'Ola' es otra palabra; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Las tildes son letras distintas",
+     "code": "r = agrupar_anagramas([\"café\", \"éfac\", \"face\"])\nassert r == [[\"café\", \"éfac\"], [\"face\"]], f\"'é' y 'e' son caracteres distintos; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Devuelve una lista de listas",
+     "code": "r = agrupar_anagramas([\"rata\", \"tara\", \"arta\"])\nassert isinstance(r, list) and all([isinstance(g, list) for g in r]), f\"Debe devolver una lista de listas, no {r!r}\""
+    },
+    {
+     "name": "No modifica la lista recibida",
+     "code": "datos = [\"amor\", \"Roma\", \"amor\"]\nagrupar_anagramas(datos)\nassert datos == [\"amor\", \"Roma\", \"amor\"], f\"La lista recibida cambió a {datos}\""
+    }
+   ],
+   "hints": [
+    "Dos palabras son anagramas si, al ordenar sus letras en minúsculas, obtienes lo mismo: `sorted('Roma'.lower())` da `['a', 'm', 'o', 'r']`, igual que `sorted('mora')`. Esa lista ordenada es la «firma» del grupo.",
+    "Usa la firma como clave de un diccionario `firma -> lista de palabras`… pero una lista no puede ser clave, porque no es hashable. Conviértela en tupla con `tuple(...)`.",
+    "`grupos.setdefault(firma, [])` devuelve la lista del grupo (creándola si no existía), lista para hacer `append`. Al final, `list(grupos.values())` ya está en orden de primera aparición."
+   ],
+   "explain": "La idea central es la **firma canónica**: una transformación que da el mismo resultado para todos los miembros de un grupo y distinto para los demás. Ordenar las letras cumple esa condición, y convertir la firma en tupla la hace hashable, así que puede ser clave de diccionario. El diccionario conserva el orden de inserción, lo que da gratis el orden de los grupos.\n\nCoste: para n palabras de longitud k, O(n · k log k) por ordenar cada palabra, más la comprobación `palabra not in grupo` (lineal en el tamaño del grupo, normalmente pequeño; con un `set` auxiliar de palabras vistas sería O(1)).\n\n¿Por qué no `frozenset(palabra)` como firma? Porque un conjunto pierde las repeticiones: «aab» y «abb» tendrían la misma firma `{'a', 'b'}`. En s05 verás la variante habitual con `''.join(sorted(palabra))`, y en s15 `collections.defaultdict(list)` para no tener que llamar a `setdefault`."
+  },
+  {
+   "id": "s04-e12",
+   "title": "¿Sudoku válido?",
+   "level": "dificil",
+   "minutes": 30,
+   "prompt": [
+    "Un tablero de sudoku es una lista de 9 filas, cada una con 9 enteros del 0 al 9, donde **0 significa casilla vacía**. Un tablero (completo o a medias) es **válido** si ninguna cifra del 1 al 9 se repite en ninguna fila, en ninguna columna ni en ninguna de las nueve cajas de 3×3. Los ceros pueden repetirse.",
+    "Escribe `sudoku_valido(tablero)`, que devuelve `True` o `False`. No hace falta comprobar que el sudoku tenga solución, solo que no haya repeticiones. No modifiques el tablero.",
+    "Las cajas son los bloques de 3×3 que empiezan en las filas 0, 3 y 6 y en las columnas 0, 3 y 6. En los tests tienes disponibles los tableros `RESUELTO` y `PARCIAL` y las funciones `copia(tablero)` y `vacio()` para experimentar."
+   ],
+   "examples": [
+    {
+     "call": "sudoku_valido(PARCIAL)",
+     "result": "True"
+    },
+    {
+     "call": "sudoku_valido(vacio())",
+     "result": "True"
+    },
+    {
+     "call": "t = vacio(); t[0][0] = 2; t[1][1] = 2; sudoku_valido(t)",
+     "result": "False  (dos 2 en la misma caja)"
+    }
+   ],
+   "starter": "def sudoku_valido(tablero):\n    # Comprueba filas, columnas y cajas de 3x3 (ignorando los ceros)\n    pass\n",
+   "solution": "def sin_repetidos(valores):\n    vistos = set()\n    for v in valores:\n        if v != 0:\n            if v in vistos:\n                return False\n            vistos.add(v)\n    return True\n\n\ndef sudoku_valido(tablero):\n    for fila in tablero:\n        if not sin_repetidos(fila):\n            return False\n    for j in range(9):\n        columna = [tablero[i][j] for i in range(9)]\n        if not sin_repetidos(columna):\n            return False\n    for fila_inicio in range(0, 9, 3):\n        for col_inicio in range(0, 9, 3):\n            caja = []\n            for i in range(fila_inicio, fila_inicio + 3):\n                caja.extend(tablero[i][col_inicio:col_inicio + 3])\n            if not sin_repetidos(caja):\n                return False\n    return True\n",
+   "setup": "RESUELTO = [\n    [5, 3, 4, 6, 7, 8, 9, 1, 2],\n    [6, 7, 2, 1, 9, 5, 3, 4, 8],\n    [1, 9, 8, 3, 4, 2, 5, 6, 7],\n    [8, 5, 9, 7, 6, 1, 4, 2, 3],\n    [4, 2, 6, 8, 5, 3, 7, 9, 1],\n    [7, 1, 3, 9, 2, 4, 8, 5, 6],\n    [9, 6, 1, 5, 3, 7, 2, 8, 4],\n    [2, 8, 7, 4, 1, 9, 6, 3, 5],\n    [3, 4, 5, 2, 8, 6, 1, 7, 9],\n]\n\nPARCIAL = [\n    [5, 3, 0, 0, 7, 0, 0, 0, 0],\n    [6, 0, 0, 1, 9, 5, 0, 0, 0],\n    [0, 9, 8, 0, 0, 0, 0, 6, 0],\n    [8, 0, 0, 0, 6, 0, 0, 0, 3],\n    [4, 0, 0, 8, 0, 3, 0, 0, 1],\n    [7, 0, 0, 0, 2, 0, 0, 0, 6],\n    [0, 6, 0, 0, 0, 0, 2, 8, 0],\n    [0, 0, 0, 4, 1, 9, 0, 0, 5],\n    [0, 0, 0, 0, 8, 0, 0, 7, 9],\n]\n\n\ndef copia(tablero):\n    return [fila[:] for fila in tablero]\n\n\ndef vacio():\n    return [[0] * 9 for _ in range(9)]",
+   "tests": [
+    {
+     "name": "Sudoku resuelto correcto",
+     "code": "assert sudoku_valido(RESUELTO) is True, \"RESUELTO es un sudoku correcto: debe devolver True\""
+    },
+    {
+     "name": "Sudoku a medias correcto",
+     "code": "assert sudoku_valido(PARCIAL) is True, \"PARCIAL no tiene repeticiones (los ceros no cuentan): debe devolver True\""
+    },
+    {
+     "name": "Tablero vacío",
+     "code": "assert sudoku_valido(vacio()) is True, \"Un tablero todo a 0 es válido: los ceros pueden repetirse\""
+    },
+    {
+     "name": "Repetición solo en una fila",
+     "code": "t = vacio()\nt[0][0] = 4\nt[0][8] = 4\nassert sudoku_valido(t) is False, \"Hay dos 4 en la fila 0 (columnas y cajas distintas): debe devolver False\""
+    },
+    {
+     "name": "Repetición solo en una columna",
+     "code": "t = vacio()\nt[0][0] = 7\nt[8][0] = 7\nassert sudoku_valido(t) is False, \"Hay dos 7 en la columna 0 (filas y cajas distintas): debe devolver False\""
+    },
+    {
+     "name": "Repetición solo en una caja",
+     "code": "t = vacio()\nt[0][0] = 2\nt[1][1] = 2\nassert sudoku_valido(t) is False, \"Hay dos 2 en la caja superior izquierda (fila y columna distintas): debe devolver False\""
+    },
+    {
+     "name": "Cajas central y última",
+     "code": "t = vacio()\nt[3][4] = 5\nt[5][3] = 5\nassert sudoku_valido(t) is False, \"Dos 5 en la caja central: debe devolver False\"\nt = vacio()\nt[7][7] = 9\nt[8][8] = 9\nassert sudoku_valido(t) is False, \"Dos 9 en la caja inferior derecha: ¿recorres las nueve cajas?\""
+    },
+    {
+     "name": "Filas y columnas bien, cajas mal",
+     "code": "t = copia(RESUELTO)\nfor fila in t:\n    fila[2], fila[3] = fila[3], fila[2]\nassert sudoku_valido(t) is False, \"Al intercambiar las columnas 2 y 3 las filas y columnas siguen sin repetidos, pero las cajas se rompen: debe devolver False\""
+    },
+    {
+     "name": "Un error en un sudoku casi resuelto",
+     "code": "t = copia(RESUELTO)\nt[4][4] = 6\nassert sudoku_valido(t) is False, \"Con un 6 en el centro se repite en su fila, columna y caja: debe devolver False\""
+    },
+    {
+     "name": "No modifica el tablero",
+     "code": "t = copia(PARCIAL)\nsudoku_valido(t)\nassert t == PARCIAL, \"El tablero recibido ha cambiado\""
+    }
+   ],
+   "hints": [
+    "Divide el problema: escribe una función auxiliar `sin_repetidos(valores)` que diga si una lista de 9 valores no repite ninguna cifra, ignorando los ceros. Un `set` de vistos es perfecto.",
+    "Filas: cada `fila` del tablero. Columnas: para cada `j`, la lista `[tablero[i][j] for i in range(9)]`.",
+    "Cajas: sus esquinas superiores izquierdas están en `range(0, 9, 3)` para las filas y para las columnas. Con rebanadas, `tablero[i][c:c + 3]` es el trozo de la fila `i` que pertenece a la caja que empieza en la columna `c`."
+   ],
+   "explain": "Hay 27 «unidades» que comprobar (9 filas, 9 columnas y 9 cajas), cada una con la misma regla. Extraer esa regla a `sin_repetidos` hace el código corto, legible y fácil de probar por separado: es la clave de este ejercicio.\n\nCoste: cada casilla se mira tres veces; como el tablero es fijo (81 casillas), es O(1) en la práctica, y O(n²) para un sudoku generalizado de n×n.\n\nVersión «pro» de la función auxiliar: si no hay repetidos, quitar duplicados no cambia la longitud:\n```python\ndef sin_repetidos(valores):\n    cifras = [v for v in valores if v != 0]\n    return len(cifras) == len(set(cifras))\n```\nOtra alternativa de una sola pasada: tres diccionarios de conjuntos (por fila, por columna y por caja, usando la tupla `(i // 3, j // 3)` como clave de la caja), rellenados mientras recorres el tablero una vez."
+  },
+  {
+   "id": "s04-e13",
+   "title": "Buscaminas",
+   "level": "dificil",
+   "minutes": 30,
+   "prompt": [
+    "Un tablero de buscaminas llega como una lista de cadenas de igual longitud, donde `'*'` es una mina y `'.'` una casilla libre. Recuerda que una cadena es una secuencia: `tablero[i][j]` es el carácter de la fila `i`, columna `j`.",
+    "Escribe `contar_minas(tablero)`, que devuelve una **matriz** (lista de listas de enteros) del mismo tamaño en la que cada casilla libre contiene el número de minas entre sus hasta 8 vecinas (horizontal, vertical y diagonal) y cada mina contiene `-1`.",
+    "Cuidado con los bordes: una casilla de la primera fila no tiene vecinas por arriba."
+   ],
+   "examples": [
+    {
+     "call": "contar_minas([\"*..\", \"...\", \".*.\"])",
+     "result": "[[-1, 1, 0], [2, 2, 1], [1, -1, 1]]"
+    },
+    {
+     "call": "contar_minas([\"..*\"])",
+     "result": "[[0, 1, -1]]"
+    },
+    {
+     "call": "contar_minas([])",
+     "result": "[]"
+    }
+   ],
+   "starter": "def contar_minas(tablero):\n    # Devuelve una matriz de enteros: -1 en las minas, nº de minas vecinas en el resto\n    pass\n",
+   "solution": "def contar_minas(tablero):\n    filas = len(tablero)\n    resultado = []\n    for i in range(filas):\n        columnas = len(tablero[i])\n        fila_resultado = []\n        for j in range(columnas):\n            if tablero[i][j] == \"*\":\n                fila_resultado.append(-1)\n                continue\n            minas = 0\n            for di in (-1, 0, 1):\n                for dj in (-1, 0, 1):\n                    vi = i + di\n                    vj = j + dj\n                    if 0 <= vi < filas and 0 <= vj < columnas and tablero[vi][vj] == \"*\":\n                        minas += 1\n            fila_resultado.append(minas)\n        resultado.append(fila_resultado)\n    return resultado\n",
+   "tests": [
+    {
+     "name": "Ejemplo 3x3",
+     "code": "r = contar_minas([\"*..\", \"...\", \".*.\"])\nesperado = [[-1, 1, 0], [2, 2, 1], [1, -1, 1]]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Tablero vacío",
+     "code": "assert contar_minas([]) == [], \"Sin filas, el resultado es []\""
+    },
+    {
+     "name": "Sin minas",
+     "code": "r = contar_minas([\"...\", \"...\"])\nassert r == [[0, 0, 0], [0, 0, 0]], f\"Sin minas todo debe valer 0; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Todo minas",
+     "code": "r = contar_minas([\"**\", \"**\"])\nassert r == [[-1, -1], [-1, -1]], f\"Las minas se marcan con -1; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Una sola casilla",
+     "code": "assert contar_minas([\"*\"]) == [[-1]], \"Una mina sola: [[-1]]\"\nassert contar_minas([\".\"]) == [[0]], \"Una casilla libre sola: [[0]]\""
+    },
+    {
+     "name": "Una fila",
+     "code": "r = contar_minas([\"*.*..\"])\nassert r == [[-1, 2, -1, 1, 0]], f\"Se esperaba [[-1, 2, -1, 1, 0]] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Los bordes no dan la vuelta (vertical)",
+     "code": "r = contar_minas([\".\", \".\", \"*\"])\nassert r == [[0], [1], [-1]], f\"Se obtuvo {r!r}. Ojo: tablero[-1] no da error, ¡es la última fila! Comprueba los límites antes de acceder\""
+    },
+    {
+     "name": "Los bordes no dan la vuelta (horizontal)",
+     "code": "r = contar_minas([\"..*\"])\nassert r == [[0, 1, -1]], f\"Se obtuvo {r!r}. Ojo: el índice -1 apunta al último carácter; la casilla 0 no tiene vecina a la izquierda\""
+    },
+    {
+     "name": "Casilla rodeada de minas",
+     "code": "r = contar_minas([\"***\", \"*.*\", \"***\"])\nassert r[1][1] == 8, f\"La casilla central tiene 8 minas alrededor; se obtuvo {r[1][1]}\""
+    },
+    {
+     "name": "Devuelve listas de enteros",
+     "code": "r = contar_minas([\"*.\", \"..\"])\nassert all([isinstance(f, list) for f in r]), \"Cada fila del resultado debe ser una lista\"\nassert r == [[-1, 1], [1, 1]], f\"Se esperaba [[-1, 1], [1, 1]] y se obtuvo {r!r}\""
+    }
+   ],
+   "hints": [
+    "Recorre cada casilla `(i, j)` con dos bucles. Si es una mina, añade `-1`; si no, cuenta las minas de sus vecinas y añade ese número.",
+    "Las vecinas de `(i, j)` son las casillas `(i + di, j + dj)` con `di` y `dj` tomando los valores `-1`, `0` y `1` (la combinación `(0, 0)` es la propia casilla, que no es mina, así que no suma).",
+    "¡Ojo con los bordes! `tablero[-1]` no lanza error: es la última fila, y el resultado sería incorrecto sin avisar. Comprueba `0 <= fila < filas` y `0 <= columna < columnas` **antes** de acceder."
+   ],
+   "explain": "Es el patrón de **vecindad en una rejilla**, omnipresente en juegos, procesamiento de imágenes y problemas de entrevista. La parte delicada son los bordes: en otros lenguajes un índice fuera de rango da error y lo notas enseguida, pero en Python los índices negativos son **válidos** y dan la vuelta. Por eso la comprobación `0 <= vi < filas` (una comparación encadenada, s02) es imprescindible.\n\nCoste: O(filas × columnas × 9), es decir, lineal en el número de casillas.\n\nEnfoque alternativo, «desde las minas»: crea la matriz de ceros con `[[0] * columnas for _ in range(filas)]` (¡nunca con `*` sobre la fila!), recorre solo las minas y suma 1 a cada vecina válida que no sea mina. Es más rápido cuando hay pocas minas. Y una lista de desplazamientos precalculada, `VECINOS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]`, deja el bucle interior más limpio."
+  },
+  {
+   "id": "s04-e14",
+   "title": "Proyecto: agenda de contactos",
+   "level": "proyecto",
+   "minutes": 50,
+   "prompt": [
+    "Vas a construir el núcleo de una agenda de contactos. La agenda es un **diccionario** `nombre -> datos`, donde `datos` es a su vez un diccionario con dos claves: `\"telefonos\"`, una **lista** de cadenas (sin repetidos, en orden de alta), y `\"etiquetas\"`, un **conjunto** de cadenas. Ejemplo:",
+    "```python\nagenda = {\n    \"Ana\": {\"telefonos\": [\"600111222\", \"910000001\"], \"etiquetas\": {\"familia\", \"trabajo\"}},\n    \"Luis\": {\"telefonos\": [\"611333444\"], \"etiquetas\": set()},\n}\n```",
+    "Escribe estas funciones (las que modifican la agenda lo hacen **en el sitio**, sobre el diccionario recibido):",
+    "1) `agregar_contacto(agenda, nombre, telefono)`: si el contacto no existe, lo crea con ese teléfono y sin etiquetas, y devuelve `True`. Si ya existe, añade el teléfono al final de su lista (solo si no lo tenía) y devuelve `False`.",
+    "2) `etiquetar(agenda, nombre, etiqueta)`: añade la etiqueta al contacto y devuelve `True`; si el contacto no existe, no hace nada y devuelve `False`.",
+    "3) `eliminar_contacto(agenda, nombre)`: quita el contacto y devuelve sus datos; si no existe, devuelve `None` sin error.",
+    "4) `buscar(agenda, texto)`: lista **ordenada** de nombres que contienen `texto`, sin distinguir mayúsculas (`'an' in 'mariana'` es `True`: con cadenas, `in` busca fragmentos).",
+    "5) `por_etiqueta(agenda, etiqueta)`: lista ordenada de los nombres que tienen esa etiqueta.",
+    "6) `resumen(agenda)`: lista de tuplas `(nombre, cantidad_de_telefonos, etiquetas)`, ordenada por nombre, donde `etiquetas` es una **tupla ordenada** alfabéticamente.",
+    "7) `exportar(agenda)`: devuelve una copia **totalmente independiente** de la agenda (modificar la copia, incluidas sus listas y conjuntos, no debe afectar al original).",
+    "Las funciones de consulta (4 a 7) no deben modificar la agenda. En los tests tienes disponible `agenda_demo()`, que devuelve siempre una agenda de ejemplo nueva."
+   ],
+   "examples": [
+    {
+     "call": "a = {}; agregar_contacto(a, \"Ana\", \"600\")",
+     "result": "True  -> a == {'Ana': {'telefonos': ['600'], 'etiquetas': set()}}"
+    },
+    {
+     "call": "buscar(agenda_demo(), \"AN\")",
+     "result": "['Ana', 'Juan', 'Mariana']"
+    },
+    {
+     "call": "resumen(agenda_demo())[0]",
+     "result": "('Ana', 2, ('familia', 'trabajo'))"
+    }
+   ],
+   "starter": "def agregar_contacto(agenda, nombre, telefono):\n    pass\n\n\ndef etiquetar(agenda, nombre, etiqueta):\n    pass\n\n\ndef eliminar_contacto(agenda, nombre):\n    pass\n\n\ndef buscar(agenda, texto):\n    pass\n\n\ndef por_etiqueta(agenda, etiqueta):\n    pass\n\n\ndef resumen(agenda):\n    pass\n\n\ndef exportar(agenda):\n    pass\n",
+   "solution": "import copy\n\n\ndef agregar_contacto(agenda, nombre, telefono):\n    if nombre not in agenda:\n        agenda[nombre] = {\"telefonos\": [telefono], \"etiquetas\": set()}\n        return True\n    telefonos = agenda[nombre][\"telefonos\"]\n    if telefono not in telefonos:\n        telefonos.append(telefono)\n    return False\n\n\ndef etiquetar(agenda, nombre, etiqueta):\n    if nombre not in agenda:\n        return False\n    agenda[nombre][\"etiquetas\"].add(etiqueta)\n    return True\n\n\ndef eliminar_contacto(agenda, nombre):\n    return agenda.pop(nombre, None)\n\n\ndef buscar(agenda, texto):\n    texto = texto.lower()\n    return sorted([nombre for nombre in agenda if texto in nombre.lower()])\n\n\ndef por_etiqueta(agenda, etiqueta):\n    return sorted([nombre for nombre, datos in agenda.items() if etiqueta in datos[\"etiquetas\"]])\n\n\ndef resumen(agenda):\n    filas = []\n    for nombre in sorted(agenda):\n        datos = agenda[nombre]\n        filas.append((nombre, len(datos[\"telefonos\"]), tuple(sorted(datos[\"etiquetas\"]))))\n    return filas\n\n\ndef exportar(agenda):\n    return copy.deepcopy(agenda)\n",
+   "setup": "def agenda_demo():\n    return {\n        \"Ana\": {\"telefonos\": [\"600111222\", \"910000001\"], \"etiquetas\": {\"familia\", \"trabajo\"}},\n        \"Luis\": {\"telefonos\": [\"611333444\"], \"etiquetas\": {\"trabajo\"}},\n        \"Mariana\": {\"telefonos\": [\"622555666\"], \"etiquetas\": set()},\n        \"Juan\": {\"telefonos\": [], \"etiquetas\": {\"futbol\"}},\n    }",
+   "tests": [
+    {
+     "name": "Agregar un contacto nuevo",
+     "code": "a = {}\nr = agregar_contacto(a, \"Ana\", \"600\")\nassert r is True, f\"Al crear un contacto nuevo debe devolver True, no {r!r}\"\nassert a == {\"Ana\": {\"telefonos\": [\"600\"], \"etiquetas\": set()}}, f\"La agenda quedó así: {a}\""
+    },
+    {
+     "name": "Agregar un teléfono a un contacto existente",
+     "code": "a = {}\nagregar_contacto(a, \"Ana\", \"600\")\nr = agregar_contacto(a, \"Ana\", \"700\")\nassert r is False, f\"Si el contacto ya existía debe devolver False, no {r!r}\"\nassert a[\"Ana\"][\"telefonos\"] == [\"600\", \"700\"], f\"Los teléfonos deben quedar ['600', '700']: {a['Ana']['telefonos']}\""
+    },
+    {
+     "name": "Un teléfono repetido no se duplica",
+     "code": "a = {}\nagregar_contacto(a, \"Ana\", \"600\")\nagregar_contacto(a, \"Ana\", \"600\")\nassert a[\"Ana\"][\"telefonos\"] == [\"600\"], f\"El teléfono no debe repetirse: {a['Ana']['telefonos']}\""
+    },
+    {
+     "name": "Etiquetar un contacto",
+     "code": "a = agenda_demo()\nassert etiquetar(a, \"Luis\", \"gimnasio\") is True, \"Etiquetar un contacto existente debe devolver True\"\netiquetar(a, \"Luis\", \"gimnasio\")\nassert a[\"Luis\"][\"etiquetas\"] == {\"trabajo\", \"gimnasio\"}, f\"Etiquetas de Luis: {a['Luis']['etiquetas']}\""
+    },
+    {
+     "name": "Etiquetar un contacto inexistente",
+     "code": "a = agenda_demo()\nassert etiquetar(a, \"Pepe\", \"vip\") is False, \"Si el contacto no existe debe devolver False\"\nassert \"Pepe\" not in a, \"Etiquetar no debe crear contactos nuevos\""
+    },
+    {
+     "name": "Cada contacto tiene sus propias etiquetas",
+     "code": "a = {}\nagregar_contacto(a, \"Ana\", \"1\")\nagregar_contacto(a, \"Luis\", \"2\")\netiquetar(a, \"Ana\", \"vip\")\nassert a[\"Luis\"][\"etiquetas\"] == set(), f\"Luis no debería tener etiquetas: {a['Luis']['etiquetas']}. ¿Comparten el mismo conjunto?\"\nassert a[\"Ana\"][\"etiquetas\"] is not a[\"Luis\"][\"etiquetas\"], \"Cada contacto necesita su PROPIO conjunto de etiquetas\""
+    },
+    {
+     "name": "Eliminar un contacto",
+     "code": "a = agenda_demo()\ndatos = eliminar_contacto(a, \"Luis\")\nassert datos == {\"telefonos\": [\"611333444\"], \"etiquetas\": {\"trabajo\"}}, f\"Debe devolver los datos del contacto eliminado, no {datos!r}\"\nassert \"Luis\" not in a and len(a) == 3, f\"Luis debe desaparecer de la agenda: {sorted(a)}\""
+    },
+    {
+     "name": "Eliminar un contacto inexistente",
+     "code": "a = agenda_demo()\nr = eliminar_contacto(a, \"Pepe\")\nassert r is None, f\"Si no existe debe devolver None, no {r!r}\"\nassert len(a) == 4, \"La agenda no debe cambiar\""
+    },
+    {
+     "name": "Buscar sin distinguir mayúsculas",
+     "code": "r = buscar(agenda_demo(), \"AN\")\nassert r == [\"Ana\", \"Juan\", \"Mariana\"], f\"Se esperaba ['Ana', 'Juan', 'Mariana'] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "Buscar: sin resultados y texto vacío",
+     "code": "assert buscar(agenda_demo(), \"zz\") == [], \"Si nadie coincide, debe devolver []\"\nr = buscar(agenda_demo(), \"\")\nassert r == [\"Ana\", \"Juan\", \"Luis\", \"Mariana\"], f\"El texto vacío está contenido en cualquier nombre; se obtuvo {r!r}\""
+    },
+    {
+     "name": "Contactos por etiqueta",
+     "code": "r = por_etiqueta(agenda_demo(), \"trabajo\")\nassert r == [\"Ana\", \"Luis\"], f\"Se esperaba ['Ana', 'Luis'] y se obtuvo {r!r}\"\nassert por_etiqueta(agenda_demo(), \"nada\") == [], \"Con una etiqueta que nadie tiene debe devolver []\""
+    },
+    {
+     "name": "Resumen ordenado",
+     "code": "r = resumen(agenda_demo())\nesperado = [\n    (\"Ana\", 2, (\"familia\", \"trabajo\")),\n    (\"Juan\", 0, (\"futbol\",)),\n    (\"Luis\", 1, (\"trabajo\",)),\n    (\"Mariana\", 1, ()),\n]\nassert r == esperado, f\"Se esperaba {esperado} y se obtuvo {r!r}\"\nassert resumen({}) == [], \"El resumen de una agenda vacía es []\""
+    },
+    {
+     "name": "Exportar hace una copia independiente",
+     "code": "a = agenda_demo()\ne = exportar(a)\nassert e == a and e is not a, \"La copia debe ser igual pero ser otro objeto\"\ne[\"Ana\"][\"telefonos\"].append(\"999\")\ne[\"Luis\"][\"etiquetas\"].add(\"secreto\")\ne[\"Nuevo\"] = {\"telefonos\": [], \"etiquetas\": set()}\nassert a == agenda_demo(), \"Modificar la copia cambió el original: hace falta una copia PROFUNDA\""
+    },
+    {
+     "name": "Las consultas no modifican la agenda",
+     "code": "a = agenda_demo()\nbuscar(a, \"a\")\npor_etiqueta(a, \"trabajo\")\nresumen(a)\nexportar(a)\nassert a == agenda_demo(), \"Alguna función de consulta modificó la agenda\""
+    },
+    {
+     "name": "Flujo completo",
+     "code": "a = {}\nagregar_contacto(a, \"Zoe\", \"1\")\nagregar_contacto(a, \"bea\", \"2\")\nagregar_contacto(a, \"Zoe\", \"3\")\netiquetar(a, \"Zoe\", \"amigos\")\netiquetar(a, \"bea\", \"amigos\")\netiquetar(a, \"Zoe\", \"club\")\neliminar_contacto(a, \"nadie\")\nassert por_etiqueta(a, \"amigos\") == [\"Zoe\", \"bea\"], \"sorted ordena por código Unicode: las mayúsculas van antes\"\nassert resumen(a) == [(\"Zoe\", 2, (\"amigos\", \"club\")), (\"bea\", 1, (\"amigos\",))], f\"Resumen: {resumen(a)}\"\nassert buscar(a, \"E\") == [\"Zoe\", \"bea\"], f\"buscar(a, 'E') devolvió {buscar(a, 'E')}\""
+    }
+   ],
+   "hints": [
+    "Crea cada contacto nuevo con **objetos nuevos**: `{\"telefonos\": [telefono], \"etiquetas\": set()}` dentro de la función, para que ningún contacto comparta su lista o su conjunto con otro. Para borrar sin error, `dict.pop(clave, None)`.",
+    "Para las búsquedas, una comprensión con filtro y `sorted()`: por ejemplo, `sorted([n for n in agenda if ...])`. Para el resumen, `tuple(sorted(conjunto))` convierte un conjunto en una tupla ordenada.",
+    "Para `exportar`, piensa en qué hay dentro: un diccionario de diccionarios que contienen listas y conjuntos. Una copia superficial compartiría todo eso; `copy.deepcopy` (con `import copy`) copia todos los niveles."
+   ],
+   "explain": "Este proyecto combina las cuatro colecciones, cada una elegida por un motivo:\n\n- **dict** para la agenda: buscar un contacto por nombre es O(1) de media.\n- **list** para los teléfonos: importa el orden de alta y son pocos, así que `telefono not in telefonos` (O(k)) es aceptable.\n- **set** para las etiquetas: no admite repetidos y `etiqueta in etiquetas` es O(1).\n- **tuple** en el resumen: registros de campos fijos que el llamador no debería modificar.\n\nEl contrato de cada función está claro: las que mutan lo hacen en el sitio y devuelven un dato útil (`True`/`False` o los datos eliminados), nunca la agenda; las de consulta no tienen efectos secundarios. `exportar` necesita `copy.deepcopy`: con `dict(agenda)` o `agenda.copy()` la copia compartiría los diccionarios internos y, con ellos, las listas y los conjuntos.\n\nFíjate en el último test: `sorted` ordena por código Unicode, así que «Zoe» va antes que «bea». Para un orden «humano» usarías `sorted(nombres, key=str.lower)`. Más adelante darás el siguiente paso: guardar la agenda en JSON (s09, donde tendrás que convertir los conjuntos en listas, porque JSON no tiene conjuntos) y convertirla en una clase `Agenda` (s10)."
+  },
+  {
+   "id": "s04-e15",
+   "title": "Proyecto: informe de ventas",
+   "level": "proyecto",
+   "minutes": 60,
+   "prompt": [
+    "Recibes las ventas de una tienda como si vinieran de una hoja de cálculo: una `cabecera` (tupla con los nombres de las columnas) y una lista de `filas` (tuplas). El **importe** de una venta es `unidades * precio`. Ejemplo de datos (en los tests están disponibles como `CABECERA` y `FILAS`):",
+    "```python\nCABECERA = (\"fecha\", \"region\", \"producto\", \"unidades\", \"precio\")\nFILAS = [\n    (\"2026-03-01\", \"Norte\", \"Teclado\", 3, 25.0),\n    (\"2026-03-01\", \"Sur\", \"Ratón\", 10, 12.5),\n    (\"2026-03-04\", \"Este\"),                 # fila incompleta: se ignora\n    ...\n]\n```",
+    "1) `a_registros(cabecera, filas)`: convierte cada fila en un diccionario `columna -> valor` y devuelve la lista de registros. **Ignora** las filas cuya longitud no coincida con la de la cabecera.",
+    "2) `total_por(registros, campo)`: devuelve un diccionario `valor_del_campo -> importe total`, con cada total redondeado a 2 decimales y las claves ordenadas de **mayor a menor importe** (en empate, por la clave en orden alfabético).",
+    "3) `top_productos(registros, n)`: lista de las `n` primeras tuplas `(producto, unidades_totales)`, ordenadas por unidades de mayor a menor (en empate, por nombre). Si hay menos de `n` productos, devuelve todos.",
+    "4) `informe(cabecera, filas)`: devuelve un diccionario con las claves `\"num_ventas\"` (registros válidos), `\"importe_total\"` (suma de todos los importes, redondeada a 2 decimales al final), `\"por_region\"` y `\"por_producto\"` (calculados con `total_por`), `\"mejor_region\"` (la de mayor importe, o `None` si no hay ventas) y `\"productos_por_region\"` (diccionario `region -> lista ordenada de productos distintos vendidos`, con las regiones en orden de primera aparición).",
+    "Ninguna función debe modificar los datos recibidos."
+   ],
+   "examples": [
+    {
+     "call": "a_registros((\"a\", \"b\"), [(1, 2), (3,), (4, 5)])",
+     "result": "[{'a': 1, 'b': 2}, {'a': 4, 'b': 5}]"
+    },
+    {
+     "call": "total_por(a_registros(CABECERA, FILAS), \"region\")",
+     "result": "{'Sur': 502.5, 'Norte': 305.0, 'Este': 69.95}"
+    },
+    {
+     "call": "top_productos(a_registros(CABECERA, FILAS), 2)",
+     "result": "[('Ratón', 14), ('Teclado', 6)]"
+    },
+    {
+     "call": "informe(CABECERA, FILAS)[\"mejor_region\"]",
+     "result": "'Sur'"
+    }
+   ],
+   "starter": "def a_registros(cabecera, filas):\n    pass\n\n\ndef total_por(registros, campo):\n    pass\n\n\ndef top_productos(registros, n):\n    pass\n\n\ndef informe(cabecera, filas):\n    pass\n",
+   "solution": "def a_registros(cabecera, filas):\n    registros = []\n    for fila in filas:\n        if len(fila) == len(cabecera):\n            registros.append(dict(zip(cabecera, fila)))\n    return registros\n\n\ndef importe(registro):\n    return registro[\"unidades\"] * registro[\"precio\"]\n\n\ndef clave_desc(par):\n    clave, valor = par\n    return (-valor, clave)\n\n\ndef total_por(registros, campo):\n    totales = {}\n    for r in registros:\n        totales[r[campo]] = totales.get(r[campo], 0) + importe(r)\n    redondeados = {clave: round(total, 2) for clave, total in totales.items()}\n    return dict(sorted(redondeados.items(), key=clave_desc))\n\n\ndef top_productos(registros, n):\n    unidades = {}\n    for r in registros:\n        unidades[r[\"producto\"]] = unidades.get(r[\"producto\"], 0) + r[\"unidades\"]\n    return sorted(unidades.items(), key=clave_desc)[:n]\n\n\ndef informe(cabecera, filas):\n    registros = a_registros(cabecera, filas)\n    por_region = total_por(registros, \"region\")\n    productos = {}\n    for r in registros:\n        productos.setdefault(r[\"region\"], set()).add(r[\"producto\"])\n    return {\n        \"num_ventas\": len(registros),\n        \"importe_total\": round(sum([importe(r) for r in registros]), 2),\n        \"por_region\": por_region,\n        \"por_producto\": total_por(registros, \"producto\"),\n        \"mejor_region\": list(por_region)[0] if por_region else None,\n        \"productos_por_region\": {region: sorted(prods) for region, prods in productos.items()},\n    }\n",
+   "setup": "CABECERA = (\"fecha\", \"region\", \"producto\", \"unidades\", \"precio\")\n\nFILAS = [\n    (\"2026-03-01\", \"Norte\", \"Teclado\", 3, 25.0),\n    (\"2026-03-01\", \"Sur\", \"Ratón\", 10, 12.5),\n    (\"2026-03-02\", \"Norte\", \"Monitor\", 1, 180.0),\n    (\"2026-03-02\", \"Este\", \"Teclado\", 2, 25.0),\n    (\"2026-03-03\", \"Sur\", \"Monitor\", 2, 175.0),\n    (\"2026-03-03\", \"Norte\", \"Ratón\", 4, 12.5),\n    (\"2026-03-04\", \"Este\"),\n    (\"2026-03-04\", \"Este\", \"Cable\", 5, 3.99),\n    (\"2026-03-05\", \"Sur\", \"Teclado\", 1, 27.5),\n]",
+   "tests": [
+    {
+     "name": "a_registros: convierte filas en diccionarios",
+     "code": "regs = a_registros(CABECERA, FILAS)\nassert isinstance(regs, list) and len(regs) == 8, f\"Hay 8 filas válidas; se obtuvieron {len(regs) if isinstance(regs, list) else regs!r}\"\nesperado = {\"fecha\": \"2026-03-01\", \"region\": \"Norte\", \"producto\": \"Teclado\", \"unidades\": 3, \"precio\": 25.0}\nassert regs[0] == esperado, f\"El primer registro debería ser {esperado} y es {regs[0]!r}\""
+    },
+    {
+     "name": "a_registros: ignora filas de otra longitud",
+     "code": "r = a_registros((\"a\", \"b\"), [(1, 2), (3,), (4, 5), (6, 7, 8)])\nassert r == [{\"a\": 1, \"b\": 2}, {\"a\": 4, \"b\": 5}], f\"Solo valen las filas de longitud 2; se obtuvo {r!r}\"\nassert a_registros(CABECERA, []) == [], \"Sin filas, la lista de registros está vacía\""
+    },
+    {
+     "name": "total_por región: valores y orden",
+     "code": "r = total_por(a_registros(CABECERA, FILAS), \"region\")\nassert r == {\"Sur\": 502.5, \"Norte\": 305.0, \"Este\": 69.95}, f\"Totales por región incorrectos: {r!r}\"\nassert list(r) == [\"Sur\", \"Norte\", \"Este\"], f\"Las claves deben ir de mayor a menor importe; están en {list(r)}\""
+    },
+    {
+     "name": "total_por producto",
+     "code": "r = total_por(a_registros(CABECERA, FILAS), \"producto\")\nassert r == {\"Monitor\": 530.0, \"Ratón\": 175.0, \"Teclado\": 152.5, \"Cable\": 19.95}, f\"Totales por producto incorrectos: {r!r}\"\nassert list(r) == [\"Monitor\", \"Ratón\", \"Teclado\", \"Cable\"], f\"Orden incorrecto: {list(r)}\""
+    },
+    {
+     "name": "total_por: empates en orden alfabético",
+     "code": "regs = [\n    {\"region\": \"B\", \"unidades\": 1, \"precio\": 10.0},\n    {\"region\": \"A\", \"unidades\": 2, \"precio\": 5.0},\n    {\"region\": \"C\", \"unidades\": 1, \"precio\": 30.0},\n]\nr = total_por(regs, \"region\")\nassert list(r) == [\"C\", \"A\", \"B\"], f\"C (30) primero; A y B empatan a 10 y van por orden alfabético; se obtuvo {list(r)}\"\nassert total_por([], \"region\") == {}, \"Sin registros, el total es un diccionario vacío\""
+    },
+    {
+     "name": "top_productos",
+     "code": "regs = a_registros(CABECERA, FILAS)\nr = top_productos(regs, 2)\nassert r == [(\"Ratón\", 14), (\"Teclado\", 6)], f\"Se esperaba [('Ratón', 14), ('Teclado', 6)] y se obtuvo {r!r}\""
+    },
+    {
+     "name": "top_productos: n grande y n = 0",
+     "code": "regs = a_registros(CABECERA, FILAS)\nr = top_productos(regs, 10)\nassert r == [(\"Ratón\", 14), (\"Teclado\", 6), (\"Cable\", 5), (\"Monitor\", 3)], f\"Con n mayor que el número de productos deben salir todos: {r!r}\"\nassert top_productos(regs, 0) == [], \"Con n = 0 debe devolver []\""
+    },
+    {
+     "name": "informe: cifras generales",
+     "code": "inf = informe(CABECERA, FILAS)\nassert inf[\"num_ventas\"] == 8, f\"num_ventas debe ser 8, no {inf['num_ventas']!r}\"\nassert inf[\"importe_total\"] == 877.45, f\"importe_total debe ser 877.45, no {inf['importe_total']!r}\"\nassert inf[\"mejor_region\"] == \"Sur\", f\"mejor_region debe ser 'Sur', no {inf['mejor_region']!r}\""
+    },
+    {
+     "name": "informe: totales por región y producto",
+     "code": "inf = informe(CABECERA, FILAS)\nassert list(inf[\"por_region\"].items()) == [(\"Sur\", 502.5), (\"Norte\", 305.0), (\"Este\", 69.95)], f\"por_region: {inf['por_region']!r}\"\nassert list(inf[\"por_producto\"]) == [\"Monitor\", \"Ratón\", \"Teclado\", \"Cable\"], f\"por_producto: {inf['por_producto']!r}\""
+    },
+    {
+     "name": "informe: productos por región",
+     "code": "ppr = informe(CABECERA, FILAS)[\"productos_por_region\"]\nesperado = {\"Norte\": [\"Monitor\", \"Ratón\", \"Teclado\"], \"Sur\": [\"Monitor\", \"Ratón\", \"Teclado\"], \"Este\": [\"Cable\", \"Teclado\"]}\nassert ppr == esperado, f\"Se esperaba {esperado} y se obtuvo {ppr!r}\"\nassert list(ppr) == [\"Norte\", \"Sur\", \"Este\"], f\"Las regiones deben ir en orden de primera aparición: {list(ppr)}\""
+    },
+    {
+     "name": "informe: sin ventas válidas",
+     "code": "esperado = {\"num_ventas\": 0, \"importe_total\": 0, \"por_region\": {}, \"por_producto\": {}, \"mejor_region\": None, \"productos_por_region\": {}}\nassert informe(CABECERA, []) == esperado, f\"Sin filas se esperaba {esperado}\"\nassert informe(CABECERA, [(\"2026-01-01\", \"Norte\")]) == esperado, \"Si todas las filas son incompletas, el informe debe estar vacío\""
+    },
+    {
+     "name": "No modifica los datos recibidos",
+     "code": "copia_filas = list(FILAS)\nregs = a_registros(CABECERA, FILAS)\ncopia_regs = [dict(r) for r in regs]\ntotal_por(regs, \"region\")\ntop_productos(regs, 3)\ninforme(CABECERA, FILAS)\nassert FILAS == copia_filas, \"La lista de filas ha cambiado\"\nassert regs == copia_regs, \"Los registros han cambiado al calcular totales\""
+    }
+   ],
+   "hints": [
+    "`dict(zip(cabecera, fila))` convierte una fila en un registro emparejando cada nombre de columna con su valor. Comprueba antes `len(fila) == len(cabecera)`: `zip` truncaría en silencio una fila incompleta.",
+    "Para `total_por` y `top_productos`: acumula con el patrón contar (`d[k] = d.get(k, 0) + cantidad`) y ordena `d.items()` con una función clave que devuelva `(-valor, clave)`. `dict(lista_de_pares)` reconstruye un diccionario que respeta ese orden.",
+    "En `informe`, reutiliza tus funciones. La mejor región es la primera clave de `por_region` (`list(por_region)[0]`, si no está vacío). Para los productos por región, agrupa con `setdefault(region, set()).add(producto)` y al final convierte cada conjunto con `sorted()`."
+   ],
+   "explain": "Este proyecto reproduce un flujo real de análisis de datos con solo la biblioteca estándar:\n\n1. **Normalizar**: `dict(zip(cabecera, fila))` transforma filas anónimas en registros con nombre, mucho más legibles (`r['precio']` en lugar de `fila[4]`). Validar la longitud antes es imprescindible: `zip` se detiene en silencio en la colección más corta (con `strict=True` lanzaría `ValueError`, que aprenderás a capturar en s08).\n2. **Agregar**: el patrón contar con `get`, generalizado a sumas.\n3. **Ordenar**: una sola clave `(-valor, clave)` resuelve «de mayor a menor con desempate alfabético», y `dict(sorted(...))` aprovecha que los diccionarios conservan el orden de inserción para devolver un diccionario ordenado.\n4. **Agrupar**: `setdefault` con conjuntos para quedarse con los productos distintos.\n\nDetalle numérico: se redondea al **final** de cada suma, no en cada paso, para no acumular errores de redondeo (`5 * 3.99` vale `19.950000000000003` en coma flotante). Para dinero de verdad se usa `decimal.Decimal`.\n\nCoste: O(n) para agregar y O(k log k) para ordenar k claves distintas. En s09 leerás estos mismos datos desde un CSV real con `csv.DictReader`, que, como `a_registros`, convierte cada fila en un diccionario usando la cabecera."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué devuelve `lista.sort()`?",
+   "back": "`None`. Ordena la lista en el sitio. Para obtener una lista nueva ordenada sin tocar la original, usa `sorted(lista)`."
+  },
+  {
+   "front": "¿Qué elementos toma la rebanada `s[i:j:k]`?",
+   "back": "Desde la posición `i` (incluida) hasta la `j` (excluida), avanzando de `k` en `k`. Los que se omiten toman valores por defecto (principio, final, 1) y nunca lanza `IndexError`."
+  },
+  {
+   "front": "¿Cómo inviertes una secuencia sin modificarla?",
+   "back": "`s[::-1]` (devuelve una secuencia nueva del mismo tipo) o `reversed(s)` (devuelve un iterador para recorrerla al revés)."
+  },
+  {
+   "front": "¿Cómo se escribe una tupla de un solo elemento?",
+   "back": "`(5,)` o `5,`. Es la coma la que crea la tupla; `(5)` es solo el entero 5."
+  },
+  {
+   "front": "`a, *resto = [1, 2, 3]`: ¿cuánto valen `a` y `resto`?",
+   "back": "`a = 1` y `resto = [2, 3]`. La variable con asterisco recibe siempre una **lista** (vacía si no sobra nada)."
+  },
+  {
+   "front": "¿Qué objetos pueden ser claves de un `dict` o elementos de un `set`?",
+   "back": "Los hashables: `int`, `float`, `str`, `bool`, `None`, tuplas de hashables y `frozenset`. No valen `list`, `dict` ni `set`."
+  },
+  {
+   "front": "`d[k]` frente a `d.get(k)` cuando `k` no existe",
+   "back": "`d[k]` lanza `KeyError`; `d.get(k)` devuelve `None` (o el valor por defecto que le pases: `d.get(k, 0)`). Ninguno de los dos inserta la clave."
+  },
+  {
+   "front": "¿Qué hace `d.setdefault(k, v)`?",
+   "back": "Si `k` existe, devuelve su valor. Si no, inserta `k: v` y devuelve `v`. Es la base del patrón agrupar: `d.setdefault(k, []).append(x)`."
+  },
+  {
+   "front": "¿Qué orden siguen las claves de un diccionario?",
+   "back": "El de inserción, garantizado desde Python 3.7. Actualizar una clave no la mueve. Pero `==` entre diccionarios ignora el orden."
+  },
+  {
+   "front": "¿Qué hace `d1 | d2`?",
+   "back": "Crea un diccionario nuevo con las entradas de ambos; si una clave está en los dos, gana el valor de `d2` (la derecha). `d1 |= d2` actualiza `d1` en el sitio. Desde Python 3.9 (PEP 584)."
+  },
+  {
+   "front": "¿Cómo creas un conjunto vacío?",
+   "back": "Con `set()`. `{}` crea un diccionario vacío."
+  },
+  {
+   "front": "¿Qué calcula `A ^ B` con conjuntos?",
+   "back": "La diferencia simétrica: los elementos que están en uno de los dos, pero no en ambos. Método equivalente: `A.symmetric_difference(B)`."
+  },
+  {
+   "front": "Operadores de conjuntos frente a métodos",
+   "back": "Los operadores (`|`, `&`, `-`, `^`) exigen conjuntos en ambos lados; los métodos (`union`, `intersection`…) aceptan cualquier iterable: `set('abc').intersection('cbs')`."
+  },
+  {
+   "front": "¿Para qué sirve `frozenset`?",
+   "back": "Es un conjunto inmutable y hashable: puede ser clave de diccionario o elemento de otro conjunto."
+  },
+  {
+   "front": "¿Cómo eliminas duplicados de una lista conservando el orden?",
+   "back": "`list(dict.fromkeys(datos))`, o a mano con un `set` de vistos y una lista resultado. `list(set(datos))` pierde el orden."
+  },
+  {
+   "front": "Coste de `x in lista` frente a `x in conjunto`",
+   "back": "Lista: O(n), compara elemento a elemento. Conjunto o diccionario: O(1) de media, gracias al hash."
+  },
+  {
+   "front": "¿Qué problema tiene `[[0] * 3] * 3`?",
+   "back": "Crea tres referencias a la **misma** fila: cambiar una celda cambia las tres filas. Usa `[[0] * 3 for _ in range(3)]`."
+  },
+  {
+   "front": "Copia superficial frente a copia profunda",
+   "back": "Superficial (`a[:]`, `.copy()`, `copy.copy`): contenedor nuevo con las mismas referencias dentro. Profunda (`copy.deepcopy`): copia recursivamente también los objetos contenidos."
+  },
+  {
+   "front": "Con listas, `a += b` frente a `a = a + b`",
+   "back": "`a += b` amplía la lista en el sitio (como `extend`): los alias ven el cambio. `a = a + b` crea una lista nueva y solo `a` pasa a apuntar a ella."
+  },
+  {
+   "front": "¿Qué produce `enumerate(datos, start=1)`?",
+   "back": "Pares `(posición, elemento)` empezando a contar en 1: ideal para `for i, x in enumerate(datos, start=1):`."
+  },
+  {
+   "front": "¿Qué hace `zip` con iterables de distinta longitud?",
+   "back": "Se detiene en el más corto, en silencio. Con `strict=True` (Python 3.10+, PEP 618) lanza `ValueError`."
+  },
+  {
+   "front": "¿Qué devuelven `all([])` y `any([])`?",
+   "back": "`all([])` es `True` (verdad vacía) y `any([])` es `False`."
+  },
+  {
+   "front": "¿Qué significa que `sorted` sea estable?",
+   "back": "Los elementos con la misma clave conservan su orden relativo original, también con `reverse=True`. Permite ordenar por varios criterios en varias pasadas."
+  },
+  {
+   "front": "¿Qué recibe el parámetro `key` de `sorted`, `min` y `max`?",
+   "back": "Una función de un argumento (sin llamarla: `key=len`, `key=str.lower` o una función tuya) que se aplica una vez a cada elemento para obtener su clave de comparación."
+  },
+  {
+   "front": "Filtro frente a expresión condicional en una comprensión",
+   "back": "Filtro al final: `[x for x in d if x > 0]` (quita elementos). Expresión condicional al principio, con `else` obligatorio: `[x if x > 0 else 0 for x in d]` (sustituye valores)."
+  },
+  {
+   "front": "¿Se escapa la variable de una comprensión?",
+   "back": "No: vive solo dentro de la comprensión. Desde 3.12 (PEP 709) las comprensiones de lista, dict y set se integran en el código que las contiene y son más rápidas, pero mantienen ese aislamiento."
+  },
+  {
+   "front": "¿Cuánta memoria ocupa `range(10**9)`?",
+   "back": "La misma que `range(10)`: solo guarda `start`, `stop` y `step`. Además, `x in range(...)` con enteros se calcula en tiempo constante."
+  },
+  {
+   "front": "`t = (['a'], 'b')`; ¿qué hace `t[0] += ['c']`?",
+   "back": "Lanza `TypeError` (una tupla no admite asignación)… pero la lista ya quedó como `['a', 'c']`, porque `+=` amplía la lista antes de intentar reasignar."
+  },
+  {
+   "front": "¿Qué ocurre si añades o borras claves de un dict mientras lo recorres?",
+   "back": "`RuntimeError: dictionary changed size during iteration`. Recorre una copia de las claves: `for k in list(d):`. Cambiar solo los valores sí está permitido."
+  },
+  {
+   "front": "¿Qué quita `d.popitem()`?",
+   "back": "El último par clave-valor insertado (orden LIFO, garantizado desde 3.7), y lo devuelve como tupla. En un diccionario vacío lanza `KeyError`."
+  },
+  {
+   "front": "¿Qué es `{1: 'a', True: 'b'}`?",
+   "back": "`{1: 'b'}`: `1` y `True` son iguales y tienen el mismo hash, así que son la misma clave. Se queda la primera clave con el último valor."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s04-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ns = [10, 20, 30, 40, 50]\nprint(s[1:4])\n```",
+   "options": [
+    "`[10, 20, 30, 40]`",
+    "`[20, 30, 40]`",
+    "`[20, 30, 40, 50]`",
+    "`[10, 20, 30]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La rebanada `s[1:4]` incluye la posición 1 y excluye la 4: toma las posiciones 1, 2 y 3, es decir, `4 - 1 = 3` elementos."
+  },
+  {
+   "id": "s04-q2",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ns = [10, 20, 30, 40, 50]\nprint(s[::-2])\n```",
+   "options": [
+    "`[50, 30, 10]`",
+    "`[50, 40, 30, 20, 10]`",
+    "`[10, 30, 50]`",
+    "`[40, 20]`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con paso negativo y sin inicio ni fin, se recorre desde el último elemento hacia atrás, de dos en dos: posiciones 4, 2 y 0."
+  },
+  {
+   "id": "s04-q3",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ns = [10, 20, 30]\nprint(s[5:10], s[-10:2])\n```",
+   "options": [
+    "Lanza `IndexError`",
+    "`[] [10, 20]`",
+    "`None [10, 20]`",
+    "`[] []`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las rebanadas nunca lanzan `IndexError`: los límites fuera de rango se ajustan a la longitud. `s[5:10]` queda vacía y `s[-10:2]` equivale a `s[0:2]`."
+  },
+  {
+   "id": "s04-q4",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = [3, 1, 2]\nb = a.sort()\nprint(a, b)\n```",
+   "options": [
+    "`[1, 2, 3] [1, 2, 3]`",
+    "`[3, 1, 2] [1, 2, 3]`",
+    "`[1, 2, 3] None`",
+    "`None None`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`list.sort()` ordena la lista **en el sitio** y devuelve `None`. Si quieres una lista nueva ordenada sin tocar la original, usa `sorted(a)`."
+  },
+  {
+   "id": "s04-q5",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = [3, 1, 2]\nb = sorted(a)\nb.append(0)\nprint(a)\n```",
+   "options": [
+    "`[3, 1, 2]`",
+    "`[1, 2, 3]`",
+    "`[1, 2, 3, 0]`",
+    "`[3, 1, 2, 0]`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`sorted()` crea una lista nueva; `a` no se modifica ni comparte objeto con `b`, así que el `append` sobre `b` no la afecta."
+  },
+  {
+   "id": "s04-q6",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = [1, 2, 3]\ny = x\ny.append(4)\nprint(x)\n```",
+   "options": [
+    "`[1, 2, 3]`",
+    "`[1, 2, 3, 4]`",
+    "`[4]`",
+    "Lanza un error"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`y = x` no copia: crea otro nombre para la **misma** lista. El cambio hecho a través de `y` se ve a través de `x` (aliasing)."
+  },
+  {
+   "id": "s04-q7",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = [1, 2]\nb = a\na = a + [3]\nprint(b)\n```",
+   "options": [
+    "`[1, 2, 3]`",
+    "`[1, 2]`",
+    "`[3]`",
+    "`None`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`a + [3]` crea una lista **nueva** y `a` pasa a apuntar a ella; `b` sigue apuntando a la original. Con `a += [3]` el resultado habría sido `[1, 2, 3]`, porque `+=` amplía la lista en el sitio."
+  },
+  {
+   "id": "s04-q8",
+   "type": "single",
+   "q": "¿De qué tipo es `t` tras ejecutar `t = (5)`?",
+   "options": [
+    "`tuple`",
+    "`int`",
+    "`list`",
+    "Es un error de sintaxis"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los paréntesis solos solo agrupan: `(5)` es el entero 5. Lo que crea la tupla es la coma: `(5,)` o `5,`."
+  },
+  {
+   "id": "s04-q9",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na, *b = \"hola\"\nprint(b)\n```",
+   "options": [
+    "`'ola'`",
+    "`('o', 'l', 'a')`",
+    "`['o', 'l', 'a']`",
+    "Lanza `ValueError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En el desempaquetado extendido, la variable con asterisco recibe **siempre una lista** con lo que sobra, sea cual sea el tipo del iterable original."
+  },
+  {
+   "id": "s04-q10",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nt = (1, [2])\nt[1].append(3)\nprint(t)\n```",
+   "options": [
+    "Lanza `TypeError`",
+    "`(1, [2])`",
+    "`(1, [2, 3])`",
+    "`(1, [2], 3)`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La tupla es inmutable (sus referencias no cambian), pero la lista a la que apunta su segunda posición sí es mutable. `append` modifica esa lista sin reasignar nada en la tupla."
+  },
+  {
+   "id": "s04-q11",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nd = {\"a\": 1}\nprint(d.get(\"b\", 0), len(d))\n```",
+   "options": [
+    "`0 1`",
+    "`None 1`",
+    "`0 2`",
+    "Lanza `KeyError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`get` devuelve el valor por defecto si la clave no existe y **no** la inserta: el diccionario sigue teniendo una entrada. (`setdefault` sí la insertaría.)"
+  },
+  {
+   "id": "s04-q12",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nd = {1: \"a\", True: \"b\", 1.0: \"c\"}\nprint(d)\n```",
+   "options": [
+    "`{1: 'a', True: 'b', 1.0: 'c'}`",
+    "`{1: 'c'}`",
+    "`{1.0: 'c'}`",
+    "`{True: 'b'}`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`1`, `True` y `1.0` son iguales y tienen el mismo hash, así que son la **misma clave**. Se conserva la primera clave insertada (`1`) y el último valor asignado (`'c'`)."
+  },
+  {
+   "id": "s04-q13",
+   "type": "single",
+   "q": "¿Qué imprime `print(type({}))`?",
+   "options": [
+    "`<class 'set'>`",
+    "`<class 'dict'>`",
+    "`<class 'tuple'>`",
+    "`<class 'NoneType'>`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`{}` es un diccionario vacío. Para un conjunto vacío hay que escribir `set()`."
+  },
+  {
+   "id": "s04-q14",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nm = [[0] * 2] * 2\nm[0][0] = 5\nprint(m)\n```",
+   "options": [
+    "`[[5, 0], [0, 0]]`",
+    "`[[5, 0], [5, 0]]`",
+    "`[[5, 5], [0, 0]]`",
+    "`[[5, 5], [5, 5]]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`* 2` sobre la lista externa repite **dos referencias a la misma fila**. Al modificar `m[0][0]` se modifica esa única fila, que aparece dos veces. Se evita con `[[0] * 2 for _ in range(2)]`."
+  },
+  {
+   "id": "s04-q15",
+   "type": "single",
+   "q": "¿Qué imprime `print(all([]), any([]))`?",
+   "options": [
+    "`True True`",
+    "`False False`",
+    "`True False`",
+    "`False True`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`all` de una colección vacía es `True` (ningún elemento incumple la condición: «verdad vacía») y `any` de una vacía es `False` (ninguno la cumple)."
+  },
+  {
+   "id": "s04-q16",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(list(zip([1, 2, 3], \"ab\")))\n```",
+   "options": [
+    "`[(1, 'a'), (2, 'b'), (3, None)]`",
+    "`[(1, 'a'), (2, 'b')]`",
+    "Lanza `ValueError`",
+    "`[1, 'a', 2, 'b']`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`zip` se detiene cuando se agota el iterable más corto. Solo con `zip(..., strict=True)` (Python 3.10+) lanzaría `ValueError` por la diferencia de longitudes."
+  },
+  {
+   "id": "s04-q17",
+   "type": "multi",
+   "q": "¿Cuáles de estos objetos pueden ser claves de un diccionario? (Selecciona TRES.)",
+   "options": [
+    "`(1, 2)`",
+    "`[1, 2]`",
+    "`frozenset({1})`",
+    "`{1: 2}`",
+    "`'texto'`"
+   ],
+   "answer": [
+    0,
+    2,
+    4
+   ],
+   "explain": "Las claves deben ser hashables. Las tuplas (de elementos hashables), los `frozenset` y las cadenas lo son; las listas y los diccionarios, al ser mutables, no."
+  },
+  {
+   "id": "s04-q18",
+   "type": "multi",
+   "q": "Con `a = [[1], [2]]`, ¿cuáles hacen una copia **superficial** de `a`? (Selecciona TRES.)",
+   "options": [
+    "`b = a[:]`",
+    "`b = a.copy()`",
+    "`b = list(a)`",
+    "`b = a`",
+    "`b = copy.deepcopy(a)`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Rebanar entera, `.copy()` y `list()` crean una lista nueva con las mismas referencias dentro (copia superficial). `b = a` no copia nada (alias) y `deepcopy` hace una copia **profunda**."
+  },
+  {
+   "id": "s04-q19",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = [[1, 2], [3]]\nb = a.copy()\nb[0].append(9)\nb.append([7])\nprint(a)\n```",
+   "options": [
+    "`[[1, 2], [3]]`",
+    "`[[1, 2, 9], [3]]`",
+    "`[[1, 2, 9], [3], [7]]`",
+    "`[[1, 2], [3], [7]]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La copia superficial crea una lista externa nueva (por eso el `append([7])` no afecta a `a`), pero las sublistas son las mismas: `b[0].append(9)` modifica la sublista compartida."
+  },
+  {
+   "id": "s04-q20",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación sobre diccionarios en Python 3.14.",
+   "statements": [
+    {
+     "text": "El orden de inserción de las claves está garantizado por el lenguaje.",
+     "answer": true
+    },
+    {
+     "text": "En `d1 | d2`, si una clave está en ambos, gana el valor de `d1`.",
+     "answer": false
+    },
+    {
+     "text": "`'x' in d` comprueba si `'x'` es uno de los valores.",
+     "answer": false
+    },
+    {
+     "text": "`d.pop(k, None)` no lanza error aunque `k` no exista.",
+     "answer": true
+    },
+    {
+     "text": "`{'a': 1, 'b': 2} == {'b': 2, 'a': 1}` es `True`.",
+     "answer": true
+    }
+   ],
+   "explain": "El orden de inserción está garantizado desde 3.7. En `d1 | d2` gana el de la **derecha**. `in` comprueba claves (para valores, `x in d.values()`). `pop` con valor por defecto no falla. Y `==` entre diccionarios ignora el orden."
+  },
+  {
+   "id": "s04-q21",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(sorted([\"b\", \"C\", \"a\"]))\n```",
+   "options": [
+    "`['a', 'b', 'C']`",
+    "`['C', 'a', 'b']`",
+    "`['a', 'C', 'b']`",
+    "Lanza `TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las cadenas se comparan por código Unicode, y las mayúsculas (`'C'` = 67) van antes que las minúsculas (`'a'` = 97). Para ignorar mayúsculas: `sorted(lista, key=str.lower)`."
+  },
+  {
+   "id": "s04-q22",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(sorted([\"pera\", \"kiwi\", \"uva\"], key=len))\n```",
+   "options": [
+    "`['uva', 'kiwi', 'pera']`",
+    "`['uva', 'pera', 'kiwi']`",
+    "`['kiwi', 'pera', 'uva']`",
+    "`['pera', 'kiwi', 'uva']`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Se ordena por longitud: `'uva'` (3) primero; `'pera'` y `'kiwi'` empatan con 4 y, como la ordenación es **estable**, conservan su orden original (primero `'pera'`)."
+  },
+  {
+   "id": "s04-q23",
+   "type": "single",
+   "q": "¿Cuál de estas operaciones es O(n) de media (su coste crece con el tamaño de la colección)?",
+   "options": [
+    "`x in conjunto`",
+    "`d[clave]`",
+    "`x in lista`",
+    "`lista.append(x)`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Buscar en una lista obliga a comparar elemento a elemento: O(n). En un `set` o `dict` la búsqueda usa el hash: O(1) de media. `append` es O(1) amortizado."
+  },
+  {
+   "id": "s04-q24",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ns = {1, 2, 3}\nt = {3, 4}\nprint(sorted(s ^ t))\n```",
+   "options": [
+    "`[3]`",
+    "`[1, 2, 3, 4]`",
+    "`[1, 2, 4]`",
+    "`[1, 2]`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`^` es la diferencia simétrica: los elementos que están en uno de los dos conjuntos pero no en ambos."
+  },
+  {
+   "id": "s04-q25",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint([x * 2 for x in range(5) if x % 2])\n```",
+   "options": [
+    "`[0, 4, 8]`",
+    "`[2, 6]`",
+    "`[1, 3]`",
+    "`[0, 2, 4, 6, 8]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El filtro `if x % 2` deja pasar los valores con resto distinto de 0 (verdadero): 1 y 3. La expresión los duplica: `[2, 6]`."
+  },
+  {
+   "id": "s04-q26",
+   "type": "single",
+   "q": "¿Qué tipo de objeto crea `{x % 3 for x in range(10)}`?",
+   "options": [
+    "Un `dict` `{0: 0, 1: 1, 2: 2}`",
+    "Un `set` `{0, 1, 2}`",
+    "Una lista `[0, 1, 2]`",
+    "Un generador"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Llaves sin dos puntos: es una comprensión de **conjunto**. Los restos posibles son 0, 1 y 2, y los repetidos desaparecen."
+  },
+  {
+   "id": "s04-q27",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nnums = [2, 4, 6, 7]\nfor n in nums:\n    if n % 2 == 0:\n        nums.remove(n)\nprint(nums)\n```",
+   "options": [
+    "`[7]`",
+    "`[4, 7]`",
+    "`[4, 6, 7]`",
+    "Lanza `RuntimeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Al borrar el 2 (posición 0) todo se desplaza y el 4 pasa a la posición 0, que el bucle ya visitó; la siguiente vuelta mira la posición 1 (el 6) y lo borra; después ya no quedan posiciones por visitar. Nunca modifiques una lista mientras la recorres: construye una nueva."
+  },
+  {
+   "id": "s04-q28",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este código?\n```python\nd = {\"a\": 1, \"b\": 2}\nfor k in d:\n    d[k] *= 10\nprint(d)\n```",
+   "options": [
+    "Lanza `RuntimeError: dictionary changed size during iteration`",
+    "Imprime `{'a': 10, 'b': 20}`",
+    "Imprime `{'a': 1, 'b': 2}`",
+    "Entra en un bucle infinito"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Cambiar los **valores** de claves existentes mientras recorres el diccionario está permitido. Lo que lanza `RuntimeError` es añadir o borrar claves (cambiar su tamaño) durante el recorrido."
+  },
+  {
+   "id": "s04-q29",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nc = {}\nc.setdefault(\"x\", []).append(1)\nc.setdefault(\"x\", []).append(2)\nprint(c)\n```",
+   "options": [
+    "`{'x': [2]}`",
+    "`{'x': [1, 2]}`",
+    "`{'x': [[1], [2]]}`",
+    "Lanza `KeyError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La primera llamada inserta `'x': []` y devuelve esa lista; la segunda encuentra la clave y devuelve **la misma** lista. Es el patrón para agrupar."
+  },
+  {
+   "id": "s04-q30",
+   "type": "multi",
+   "q": "¿Cuáles de estas instrucciones lanzan una excepción? (Selecciona TRES.)",
+   "options": [
+    "`[].pop()`",
+    "`{}.get('k')`",
+    "`{1}.remove(2)`",
+    "`{1}.discard(2)`",
+    "`[1, 2].index(3)`"
+   ],
+   "answer": [
+    0,
+    2,
+    4
+   ],
+   "explain": "`[].pop()` lanza `IndexError` (lista vacía); `{1}.remove(2)` lanza `KeyError`; `[1, 2].index(3)` lanza `ValueError`. En cambio, `get` devuelve `None` y `discard` no hace nada si el elemento no está."
+  },
+  {
+   "id": "s04-q31",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = 10\nr = [x for x in range(3)]\nprint(x)\n```",
+   "options": [
+    "`2`",
+    "`10`",
+    "`3`",
+    "Lanza `NameError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La variable de una comprensión vive en su propio ámbito y no se escapa: la `x` exterior sigue valiendo 10. Desde 3.12 (PEP 709) las comprensiones se «inlinean», pero ese aislamiento se mantiene."
+  },
+  {
+   "id": "s04-q32",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(dict(zip(\"abc\", [1, 2])))\n```",
+   "options": [
+    "`{'a': 1, 'b': 2, 'c': None}`",
+    "`{'a': 1, 'b': 2}`",
+    "Lanza `ValueError`",
+    "`{'abc': [1, 2]}`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`zip` empareja `'a'` con 1 y `'b'` con 2 y se detiene porque la lista se agota; la `'c'` se pierde en silencio. Por eso existe `strict=True`."
+  },
+  {
+   "id": "s04-q33",
+   "type": "single",
+   "q": "¿Qué imprime `print(len(range(2, 20, 3)))`?",
+   "options": [
+    "`6`",
+    "`7`",
+    "`18`",
+    "`5`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los valores son 2, 5, 8, 11, 14 y 17 (el 20 queda excluido): 6 elementos. `len` sobre un `range` se calcula sin generar los valores."
+  },
+  {
+   "id": "s04-q34",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\na = [1, 2]\nb = [a, a]\na.append(3)\nprint(b)\n```",
+   "options": [
+    "`[[1, 2], [1, 2]]`",
+    "`[[1, 2, 3], [1, 2]]`",
+    "`[[1, 2, 3], [1, 2, 3]]`",
+    "`[[1, 2], [1, 2], 3]`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`b` guarda dos referencias al mismo objeto `a`. Al modificar `a`, ambas posiciones de `b` muestran el cambio."
+  },
+  {
+   "id": "s04-q35",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación sobre tuplas y conjuntos.",
+   "statements": [
+    {
+     "text": "`(1,)` es una tupla de un elemento.",
+     "answer": true
+    },
+    {
+     "text": "Se puede acceder al primer elemento de un `set` con `s[0]`.",
+     "answer": false
+    },
+    {
+     "text": "Un `frozenset` puede ser elemento de otro conjunto.",
+     "answer": true
+    },
+    {
+     "text": "`set('abc') & 'cbs'` funciona y devuelve `{'b', 'c'}`.",
+     "answer": false
+    },
+    {
+     "text": "En `a, *resto = (1, 2, 3)`, `resto` es una tupla.",
+     "answer": false
+    }
+   ],
+   "explain": "La coma crea la tupla. Los conjuntos no tienen posiciones. `frozenset` es hashable, así que puede estar dentro de otro conjunto. Los operadores de conjuntos exigen conjuntos en ambos lados (el método `intersection` sí aceptaría la cadena). Y la variable con asterisco siempre recibe una lista."
+  },
+  {
+   "id": "s04-q36",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nd = {\"b\": 1, \"a\": 2}\nprint(list(d), sorted(d))\n```",
+   "options": [
+    "`['a', 'b'] ['a', 'b']`",
+    "`['b', 'a'] ['a', 'b']`",
+    "`[1, 2] [1, 2]`",
+    "`['b', 'a'] ['b', 'a']`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`list(d)` da las claves en orden de inserción; `sorted(d)` da una lista nueva con las claves ordenadas. Ninguna de las dos incluye los valores."
+  },
+  {
+   "id": "s04-q37",
+   "type": "single",
+   "q": "Tras `t = (['a'], 'b')`, ejecutas `t[0] += ['c']`. ¿Qué ocurre?",
+   "options": [
+    "Funciona sin error y `t` vale `(['a', 'c'], 'b')`",
+    "Lanza `TypeError` y `t` no cambia",
+    "Lanza `TypeError`, pero `t` queda como `(['a', 'c'], 'b')`",
+    "Crea una tupla nueva `(['a', 'c'], 'b')` y la asigna a `t`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Trampa documentada en la FAQ oficial: `+=` primero amplía la lista en el sitio (funciona) y después intenta reasignar `t[0]`, lo que falla porque la tupla es inmutable. El error llega cuando la lista ya se ha modificado."
+  },
+  {
+   "id": "s04-q38",
+   "type": "single",
+   "q": "¿Qué devuelve `max(['pera', 'Uva', 'manzana'], key=len)`?",
+   "options": [
+    "`'Uva'`",
+    "`'pera'`",
+    "`'manzana'`",
+    "`7`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Con `key=len`, `max` compara las longitudes, pero devuelve el **elemento** original, no la clave: `'manzana'` (7 letras)."
+  },
+  {
+   "id": "s04-q39",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre ordenación y comprensiones.",
+   "statements": [
+    {
+     "text": "`sorted()` acepta cualquier iterable y devuelve siempre una lista.",
+     "answer": true
+    },
+    {
+     "text": "Las tuplas tienen un método `sort()`.",
+     "answer": false
+    },
+    {
+     "text": "La función `key` se llama una vez por cada elemento.",
+     "answer": true
+    },
+    {
+     "text": "Con `reverse=True` la ordenación deja de ser estable.",
+     "answer": false
+    },
+    {
+     "text": "`[x if x > 0 for x in datos]` es una comprensión válida.",
+     "answer": false
+    }
+   ],
+   "explain": "`sorted` funciona con cualquier iterable y devuelve una lista; `sort` solo existe en las listas. `key` se evalúa una vez por elemento. `reverse=True` conserva la estabilidad. Una expresión condicional dentro de una comprensión necesita su `else`: `[x if x > 0 else 0 for x in datos]`."
+  },
+  {
+   "id": "s04-q40",
+   "type": "single",
+   "q": "Necesitas guardar las coordenadas `(fila, columna)` de las casillas visitadas en un juego y comprobar muchas veces si una casilla ya se visitó. ¿Qué estructura es la más adecuada?",
+   "options": [
+    "Una lista de listas `[fila, columna]`",
+    "Un `set` de tuplas `(fila, columna)`",
+    "Un `set` de listas `[fila, columna]`",
+    "Una tupla de tuplas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un `set` responde «¿está?» en O(1) de media, y sus elementos deben ser hashables: las tuplas lo son, las listas no (un `set` de listas lanzaría `TypeError`). Con una lista, cada comprobación sería O(n)."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Tutorial de Python 3.14: 5. Estructuras de datos",
+   "url": "https://docs.python.org/3/tutorial/datastructures.html"
+  },
+  {
+   "title": "Built-in Types: Sequence Types (list, tuple, range)",
+   "url": "https://docs.python.org/3/library/stdtypes.html#sequence-types-list-tuple-range"
+  },
+  {
+   "title": "Built-in Types: Mapping Types (dict) y vistas de diccionario",
+   "url": "https://docs.python.org/3/library/stdtypes.html#mapping-types-dict"
+  },
+  {
+   "title": "Built-in Types: Set Types (set, frozenset)",
+   "url": "https://docs.python.org/3/library/stdtypes.html#set-types-set-frozenset"
+  },
+  {
+   "title": "Built-in Functions (sorted, min, max, sum, zip, enumerate, reversed, any, all)",
+   "url": "https://docs.python.org/3/library/functions.html"
+  },
+  {
+   "title": "copy — Shallow and deep copy operations",
+   "url": "https://docs.python.org/3/library/copy.html"
+  },
+  {
+   "title": "Sorting Techniques (HOWTO)",
+   "url": "https://docs.python.org/3/howto/sorting.html"
+  },
+  {
+   "title": "Programming FAQ (listas multidimensionales, tuple += , copias)",
+   "url": "https://docs.python.org/3/faq/programming.html"
+  },
+  {
+   "title": "Language Reference: displays y comprensiones, comparaciones",
+   "url": "https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries"
+  },
+  {
+   "title": "Glosario: hashable, sequence, mapping, dictionary view",
+   "url": "https://docs.python.org/3/glossary.html"
+  },
+  {
+   "title": "What's New in Python 3.14 (mensajes de error de tipos no hashables)",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "What's New in Python 3.13 (copy.replace)",
+   "url": "https://docs.python.org/3/whatsnew/3.13.html"
+  },
+  {
+   "title": "What's New in Python 3.12 (PEP 709, sum con suma compensada)",
+   "url": "https://docs.python.org/3/whatsnew/3.12.html"
+  },
+  {
+   "title": "PEP 584 – Add Union Operators To dict",
+   "url": "https://peps.python.org/pep-0584/"
+  },
+  {
+   "title": "PEP 3132 – Extended Iterable Unpacking",
+   "url": "https://peps.python.org/pep-3132/"
+  },
+  {
+   "title": "PEP 448 – Additional Unpacking Generalizations",
+   "url": "https://peps.python.org/pep-0448/"
+  },
+  {
+   "title": "PEP 618 – Add Optional Length-Checking To zip",
+   "url": "https://peps.python.org/pep-0618/"
+  },
+  {
+   "title": "PEP 709 – Inlined comprehensions",
+   "url": "https://peps.python.org/pep-0709/"
+  },
+  {
+   "title": "Python Wiki: TimeComplexity",
+   "url": "https://wiki.python.org/moin/TimeComplexity"
+  },
+  {
+   "title": "Python Institute: PCEP-30-0x Exam Syllabus (bloque Data Collections)",
+   "url": "https://pythoninstitute.org/pcep-exam-syllabus"
+  }
+ ]
+}

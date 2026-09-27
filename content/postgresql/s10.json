@@ -1,0 +1,2509 @@
+{
+  "id": "s10",
+  "order": 10,
+  "title": "Funciones de ventana",
+  "domain": "consultas",
+  "summary": "Aprende a calcular sobre grupos de filas sin perder el detalle: el promedio del departamento al lado de cada sueldo, el puesto de cada alumno en su curso, la variación de las ventas respecto del mes anterior o el acumulado del año. Verás cómo PostgreSQL arma particiones y marcos, por qué las ventanas se evalúan después de WHERE, GROUP BY y HAVING, y cómo resolver con ellas los problemas clásicos: top-N por grupo, deduplicación, huecos e islas y sesiones.",
+  "goal": "Resolver con funciones de ventana consultas analíticas reales (rankings, top-N por grupo, comparaciones entre períodos, acumulados, promedios deslizantes, huecos e islas) prediciendo el valor de cada fila, incluso con empates y con el marco por defecto.",
+  "objectives": [
+    "Calcular agregados de ventana con OVER (), PARTITION BY y ORDER BY, y contrastarlos con GROUP BY.",
+    "Ubicar las funciones de ventana en el orden lógico de evaluación y filtrar sus resultados con una CTE o subconsulta.",
+    "Rankear filas con row_number, rank, dense_rank, ntile, percent_rank y cume_dist, prediciendo su comportamiento ante empates.",
+    "Resolver el top-N por grupo eligiendo la función de ranking según cómo deban tratarse los empates.",
+    "Comparar cada fila con sus vecinas con lag y lead, y obtener el primero, el último y el n-ésimo de cada partición corrigiendo el marco por defecto.",
+    "Definir marcos con ROWS, RANGE y GROUPS (con EXCLUDE) para acumulados, promedios deslizantes y ventanas de tiempo, y reutilizarlos con WINDOW.",
+    "Resolver problemas clásicos con ventanas: primero por grupo, deduplicación, huecos, islas de consecutivos y sesiones."
+  ],
+  "lessons": [
+    {
+      "id": "s10-l1",
+      "title": "Qué es una ventana: OVER y PARTITION BY",
+      "minutes": 20,
+      "goals": [
+        "Calcular agregados de ventana con OVER () y OVER (PARTITION BY …) junto a las columnas de cada fila.",
+        "Contrastar el resultado de un agregado con GROUP BY y el de un agregado de ventana (cantidad de filas y columnas disponibles).",
+        "Calcular el porcentaje de cada fila sobre el total de su grupo, incluso sobre filas ya agrupadas con sum(sum(…)) OVER ().",
+        "Ubicar las funciones de ventana en el orden lógico de evaluación y corregir los errores de usarlas en WHERE, GROUP BY o HAVING."
+      ],
+      "takeaways": [
+        "Una función de ventana calcula sobre un conjunto de filas relacionadas con la fila actual, pero no colapsa filas: el resultado tiene tantas filas como antes, con una columna más.",
+        "OVER es lo que convierte a sum, avg, count, min o max en función de ventana; OVER () usa todas las filas del resultado y PARTITION BY las separa en grupos independientes.",
+        "Las ventanas se calculan después de FROM, WHERE, GROUP BY y HAVING, y antes de DISTINCT, ORDER BY y LIMIT: solo ven las filas que sobrevivieron a los filtros.",
+        "Por eso una ventana no puede ir en WHERE, GROUP BY ni HAVING (solo en el SELECT y en el ORDER BY), y un agregado sí puede ir dentro de una ventana: sum(sum(x)) OVER ().",
+        "Para filtrar por el resultado de una ventana, calcúlala en una subconsulta o CTE y filtra afuera."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "En la sección 7 aprendiste a resumir: `GROUP BY` convierte muchas filas en **una por grupo**. Pero muchas preguntas del día a día necesitan **el detalle y el resumen al mismo tiempo**: «¿cuánto gana cada persona comparado con el promedio de su departamento?», «¿qué porcentaje de las ventas aporta cada categoría?», «¿en qué lugar quedó cada alumno de su curso?». Con GROUP BY pierdes el detalle; con una subconsulta correlacionada (sección 9) lo recuperas, pero la consulta se alarga y repite trabajo."
+        },
+        {
+          "type": "p",
+          "text": "Las **funciones de ventana** (*window functions*) resuelven justo eso. Piensa en la libreta de notas que el profesor jefe proyecta en la sala: cada alumno ve **su** nota y, al lado, el promedio **de su curso**. Nadie desaparece de la lista; cada fila solo gana una columna calculada mirando a sus compañeros. Ese «conjunto de filas que cada fila puede mirar» es la **ventana**."
+        },
+        {
+          "type": "diagram",
+          "title": "GROUP BY colapsa; una ventana conserva las filas",
+          "mermaid": "flowchart LR\n  A[\"12 empleados<br/>de Finanzas y Personas\"] --> B[\"GROUP BY departamento_id<br/>avg(sueldo)\"]\n  B --> C[\"2 filas<br/>una por departamento\"]\n  A --> D[\"avg(sueldo) OVER<br/>(PARTITION BY departamento_id)\"]\n  D --> E[\"12 filas<br/>cada una con el promedio<br/>de su departamento\"]",
+          "caption": "Mismo cálculo (el promedio por departamento), dos formas de entregarlo: resumido o pegado a cada fila."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT departamento_id, round(avg(sueldo)) AS promedio\nFROM empleados\nWHERE departamento_id IN (2, 6)\nGROUP BY departamento_id\nORDER BY departamento_id;\n\nSELECT nombre, apellido, departamento_id, sueldo,\n       round(avg(sueldo) OVER (PARTITION BY departamento_id)) AS prom_depto\nFROM empleados\nWHERE departamento_id IN (2, 6)\nORDER BY departamento_id, sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "La primera consulta devuelve 2 filas; la segunda, las 12, y cada una trae el promedio de **su** departamento: 2.585.000 en Finanzas (2) y 2.627.500 en Personas (6). Lo único que cambió es la cláusula `OVER`: es la que convierte a `avg` en una función de ventana. Sin `OVER`, `avg` es un agregado normal y exigiría un GROUP BY; con `OVER`, calcula sobre la ventana y deja las filas intactas. Por eso puedes mostrar `nombre` y `sueldo` sin agruparlos: la regla de oro del GROUP BY no aplica a las ventanas."
+        },
+        {
+          "type": "h",
+          "text": "Anatomía de una llamada de ventana"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "función(argumentos) OVER (\n    PARTITION BY expresión, …        -- en qué grupos se separan las filas (opcional)\n    ORDER BY expresión [ASC | DESC], … -- en qué orden se recorre cada grupo (opcional)\n    marco                            -- qué filas del grupo ve cada fila (opcional, lección 4)\n)"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Parte",
+            "Qué hace",
+            "Si la omites"
+          ],
+          "rows": [
+            [
+              "`OVER ( … )`",
+              "Marca la función como función de ventana.",
+              "Es un agregado normal (o un error, si la función solo existe como ventana, como `rank()`)."
+            ],
+            [
+              "`PARTITION BY`",
+              "Divide las filas en **particiones** que se procesan por separado, como los grupos de un GROUP BY pero sin colapsarlos.",
+              "Todas las filas del resultado forman **una sola** partición."
+            ],
+            [
+              "`ORDER BY`",
+              "Define el orden de las filas **dentro** de cada partición. Imprescindible para rankings, `lag`/`lead` y acumulados.",
+              "Las filas se procesan en un orden no especificado."
+            ],
+            [
+              "Marco (`ROWS`, `RANGE`, `GROUPS`)",
+              "Recorta, para cada fila, qué parte de la partición ve la función.",
+              "Se usa el marco por defecto (lecciones 3 y 4)."
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "OVER (): la ventana es todo el resultado"
+        },
+        {
+          "type": "p",
+          "text": "Con los paréntesis vacíos no hay partición ni orden: cada fila ve **todas** las filas del resultado. Sirve para poner un total general al lado de cada fila y calcular porcentajes del total."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT nombre, apellido, sueldo,\n       sum(sueldo) OVER ()                           AS planilla,\n       count(*)    OVER ()                           AS personas,\n       round(100.0 * sueldo / sum(sueldo) OVER (), 1) AS pct_planilla\nFROM empleados\nWHERE departamento_id = 6\nORDER BY sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en `planilla`: 10.510.000, la suma de **las 4 personas de Personas**, no la de toda la empresa. El WHERE se evalúa antes que la ventana, así que `OVER ()` no significa «toda la tabla», sino «todas las filas que quedaron después de los filtros». Y como en la sección 7, el `100.0` evita la división entera."
+        },
+        {
+          "type": "h",
+          "text": "Porcentajes y comparaciones dentro de cada grupo"
+        },
+        {
+          "type": "p",
+          "text": "Con `PARTITION BY`, cada fila se compara con su propio grupo. En una misma consulta puedes usar varias ventanas distintas: aquí, el peso de cada sueldo dentro de su departamento y la distancia al sueldo más alto del departamento."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT departamento_id, nombre, apellido, sueldo,\n       round(100.0 * sueldo / sum(sueldo) OVER (PARTITION BY departamento_id), 1) AS pct_depto,\n       max(sueldo) OVER (PARTITION BY departamento_id) - sueldo                AS bajo_el_mayor,\n       count(*) OVER (PARTITION BY departamento_id)                            AS en_su_depto\nFROM empleados\nWHERE departamento_id IN (2, 6)\nORDER BY departamento_id, sueldo DESC;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`PARTITION BY` acepta expresiones, igual que GROUP BY: `PARTITION BY extract(year FROM fecha)` o `PARTITION BY a.curso_id, n.asignatura_id`. Lo que **no** acepta son alias del SELECT ni números de columna: `PARTITION BY 1` no es «la primera columna», sino la constante 1, que es igual en todas las filas… y deja una sola partición."
+        },
+        {
+          "type": "h",
+          "text": "Ventanas sobre filas agrupadas: sum(sum(…)) OVER ()"
+        },
+        {
+          "type": "p",
+          "text": "Si la consulta tiene GROUP BY, las ventanas se calculan **después** de agrupar: ven una fila por grupo, no las filas originales. Por eso puedes meter un agregado **dentro** de una ventana. `sum(sum(x)) OVER ()` se lee de adentro hacia afuera: el `sum(x)` interno es el total de cada grupo (lo calcula el GROUP BY) y el `sum(…) OVER ()` externo suma esos totales sobre todas las filas del resultado. Así sale el porcentaje de cada categoría sobre las ventas totales en una sola consulta:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.nombre                         AS categoria,\n       sum(i.cantidad * i.precio_unitario) AS ventas,\n       round(100.0 * sum(i.cantidad * i.precio_unitario)\n             / sum(sum(i.cantidad * i.precio_unitario)) OVER (), 1) AS pct_total\nFROM pedido_items i\nJOIN pedidos p    ON p.id = i.pedido_id\nJOIN productos pr ON pr.id = i.producto_id\nJOIN categorias c ON c.id = pr.categoria_id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\nGROUP BY c.nombre\nORDER BY ventas DESC;"
+        },
+        {
+          "type": "h",
+          "text": "Dónde se evalúan las ventanas"
+        },
+        {
+          "type": "diagram",
+          "title": "Orden lógico de evaluación con funciones de ventana",
+          "mermaid": "flowchart TD\n  A[\"1. FROM y JOIN<br/>arman las filas\"] --> B[\"2. WHERE<br/>descarta filas\"]\n  B --> C[\"3. GROUP BY y agregados<br/>una fila por grupo\"]\n  C --> D[\"4. HAVING<br/>descarta grupos\"]\n  D --> E[\"5. Funciones de ventana<br/>OVER (…) sobre las filas que quedan\"]\n  E --> F[\"6. Resto del SELECT<br/>expresiones y alias\"]\n  F --> G[\"7. DISTINCT\"]\n  G --> H[\"8. ORDER BY<br/>puede usar ventanas y alias\"]\n  H --> I[\"9. LIMIT y OFFSET\"]",
+          "caption": "Las ventanas llegan tarde: después de todos los filtros y agrupaciones, y antes de ordenar y cortar el resultado."
+        },
+        {
+          "type": "p",
+          "text": "De este orden salen todas las reglas. La documentación lo dice así: las funciones de ventana solo se permiten en la lista del **SELECT** y en el **ORDER BY**, porque lógicamente se ejecutan después de WHERE, GROUP BY y HAVING. Si intentas usarlas antes, PostgreSQL se niega:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "errors": true,
+          "code": "SELECT nombre, sueldo\nFROM empleados\nWHERE sueldo > avg(sueldo) OVER ();\n\nSELECT departamento_id, count(*)\nFROM empleados\nGROUP BY departamento_id\nHAVING count(*) > avg(count(*)) OVER ();\n\nWITH e AS (\n  SELECT nombre, apellido, sueldo,\n         round(avg(sueldo) OVER ()) AS promedio_empresa\n  FROM empleados\n)\nSELECT nombre, apellido, sueldo, promedio_empresa\nFROM e\nWHERE sueldo > 2 * promedio_empresa\nORDER BY sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "La salida es la de la tercera consulta: calcular la ventana **adentro** (en una CTE, sección 9) y filtrar **afuera**. Adentro, la ventana ya existe como una columna más; afuera, el WHERE la ve como cualquier otra columna. Es el patrón que usarás en todo lo que sigue (por ejemplo, para el top-N por grupo de la próxima lección)."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El LIMIT se aplica **después** de las ventanas. `SELECT nombre, count(*) OVER () AS total FROM empleados ORDER BY sueldo DESC LIMIT 3` devuelve 3 filas, pero `total` dice 55: la ventana contó antes del corte. Es un truco útil para paginar (una página de filas + el total de resultados en la misma consulta), y una trampa si esperabas que la ventana viera solo las 3 filas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT nombre, apellido, sueldo,\n       count(*) OVER ()           AS total_empleados,\n       round(avg(sueldo) OVER ()) AS promedio_empresa\nFROM empleados\nORDER BY sueldo DESC\nLIMIT 3;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que siempre preguntan: (1) una función de ventana **no reduce** la cantidad de filas, a diferencia de GROUP BY; (2) solo puede ir en el **SELECT** y en el **ORDER BY** (`window functions are not allowed in WHERE`); (3) se evalúa después de WHERE, GROUP BY y HAVING, así que `sum(sum(x)) OVER ()` es válido y `sum(x) OVER ()` dentro de un agregado no (`aggregate function calls cannot contain window function calls`)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Función de ventana",
+              "en": "window function",
+              "def": "Función que se calcula para cada fila sobre un conjunto de filas relacionadas con ella (su ventana) sin colapsar el resultado. Se reconoce por la cláusula OVER."
+            },
+            {
+              "term": "Partición",
+              "en": "partition",
+              "def": "Cada uno de los grupos en que PARTITION BY divide las filas. Las funciones se calculan por separado en cada partición."
+            },
+            {
+              "term": "Fila actual",
+              "en": "current row",
+              "def": "La fila para la que se está calculando el valor en este momento."
+            },
+            {
+              "term": "Pares",
+              "en": "peers",
+              "def": "Filas que el ORDER BY de la ventana considera equivalentes (empatadas) a la fila actual."
+            },
+            {
+              "term": "Marco",
+              "en": "window frame",
+              "def": "Subconjunto de la partición que ve cada fila en las funciones que trabajan sobre el marco (agregados, first_value, last_value, nth_value)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s10-l2",
+      "title": "Rankings: row_number, rank, dense_rank y el top-N por grupo",
+      "minutes": 25,
+      "goals": [
+        "Numerar y rankear filas por partición con row_number, rank y dense_rank, prediciendo sus valores cuando hay empates.",
+        "Calcular posiciones relativas con ntile, percent_rank y cume_dist a partir de sus fórmulas.",
+        "Obtener el top-N de cada grupo calculando el ranking en una CTE y filtrándolo en la consulta externa.",
+        "Elegir entre row_number, rank y dense_rank según cómo deban tratarse los empates en el corte."
+      ],
+      "takeaways": [
+        "El ORDER BY dentro de OVER define el orden en que se recorre cada partición; los rankings dependen completamente de él.",
+        "Con empates: row_number numera 1, 2, 3… sin repetir (el orden entre empatados es arbitrario), rank repite y deja saltos (1, 1, 3) y dense_rank repite sin saltos (1, 1, 2).",
+        "percent_rank = (rank − 1) / (filas − 1) va de 0 a 1; cume_dist = (filas con valor igual o anterior) / filas va de 1/n a 1; ntile(k) reparte en k grupos lo más parejos posible.",
+        "Una ventana no se puede filtrar en el WHERE de su misma consulta (y PostgreSQL no tiene QUALIFY): el top-N se calcula en una CTE o subconsulta y se filtra afuera.",
+        "Para un corte de exactamente N filas usa row_number con desempate; para incluir a los empatados en el límite, rank; para los N mejores valores distintos, dense_rank."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "En la lección anterior el `OVER` no llevaba `ORDER BY`: cada fila miraba su grupo completo y daba lo mismo en qué orden. Para un ranking el orden lo es todo: «el primero» solo tiene sentido si dices **según qué**. El `ORDER BY` dentro de `OVER` define en qué orden se recorre cada partición, y es independiente del `ORDER BY` final de la consulta (que solo decide cómo se muestran las filas)."
+        },
+        {
+          "type": "h",
+          "text": "row_number, rank y dense_rank: tres formas de numerar"
+        },
+        {
+          "type": "p",
+          "text": "Las tres numeran las filas de cada partición según el `ORDER BY` de la ventana y no reciben argumentos: todo lo decide el `OVER`. Se diferencian **solo cuando hay empates**, es decir, filas **pares** (*peers*) que el ORDER BY de la ventana no distingue. Piensa en una carrera en el Estadio Nacional con un empate en la meta: ¿los dos son primeros? ¿Quién viene después, el segundo o el tercero? Cada función responde distinto:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT alumno, nota,\n       row_number() OVER (ORDER BY nota DESC, alumno) AS row_number,\n       rank()       OVER (ORDER BY nota DESC)         AS rank,\n       dense_rank() OVER (ORDER BY nota DESC)         AS dense_rank\nFROM (VALUES ('Ana', 6.5), ('Beto', 6.5), ('Carla', 6.3),\n             ('Diego', 6.3), ('Elisa', 6.3), ('Franco', 6.1)) AS t(alumno, nota)\nORDER BY nota DESC, alumno;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Qué devuelve",
+            "Con empates",
+            "En el ejemplo"
+          ],
+          "rows": [
+            [
+              "`row_number()`",
+              "El número de la fila dentro de su partición, desde 1.",
+              "Nunca repite: los empatados reciben números distintos en un orden **no especificado**.",
+              "1, 2, 3, 4, 5, 6"
+            ],
+            [
+              "`rank()`",
+              "El `row_number` de la **primera** fila de su grupo de pares.",
+              "Repite el puesto y deja un **salto** después.",
+              "1, 1, 3, 3, 3, 6"
+            ],
+            [
+              "`dense_rank()`",
+              "Cuenta los grupos de pares.",
+              "Repite el puesto y **no** deja saltos.",
+              "1, 1, 2, 2, 2, 3"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Truco para recordarlo: el `rank` de Franco es 6 porque hay 5 personas delante de él (5 + 1); su `dense_rank` es 3 porque hay 2 **notas distintas** mejores que la suya (2 + 1). En el ejemplo, `row_number` desempata por `alumno` para que el resultado sea siempre el mismo."
+        },
+        {
+          "type": "p",
+          "text": "Ahora con datos reales: el ranking del 4° Medio A (curso 6) según el promedio de todas sus notas, redondeado a una décima como en la libreta. Observa que la ventana ordena por un **agregado**: las ventanas se evalúan después del GROUP BY, así que `rank() OVER (ORDER BY round(avg(n.nota), 1) DESC)` es perfectamente válido."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT a.id,\n       a.nombre || ' ' || a.apellido AS alumno,\n       round(avg(n.nota), 1)         AS promedio,\n       row_number() OVER (ORDER BY round(avg(n.nota), 1) DESC, a.id) AS row_number,\n       rank()       OVER (ORDER BY round(avg(n.nota), 1) DESC)       AS rank,\n       dense_rank() OVER (ORDER BY round(avg(n.nota), 1) DESC)       AS dense_rank\nFROM alumnos a\nJOIN notas n ON n.alumno_id = a.id\nWHERE a.curso_id = 6\nGROUP BY a.id\nORDER BY promedio DESC, a.id;"
+        },
+        {
+          "type": "p",
+          "text": "Mira los tres alumnos con 5.6: los tres tienen `rank` 6 y el siguiente (5.4) salta al 9; con `dense_rank` son 6 y el siguiente es 7. Al final, Matías Bravo tiene `rank` 24 (es el último de 24) pero `dense_rank` 16, porque solo hay 16 promedios distintos en el curso."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`row_number()` con empates es **no determinista**: la documentación dice que los empatados se numeran «en un orden no especificado», y dos ejecuciones pueden asignarles números distintos. Si el número importa (paginar, quedarte con «el primero», deduplicar), agrega columnas de desempate al ORDER BY de la ventana hasta que el orden sea único, típicamente la clave primaria: `ORDER BY promedio DESC, a.id`."
+        },
+        {
+          "type": "h",
+          "text": "ntile, percent_rank y cume_dist: posiciones relativas"
+        },
+        {
+          "type": "p",
+          "text": "A veces no interesa el puesto exacto sino **en qué parte** de la distribución cae cada fila: ¿está en el cuarto superior?, ¿qué porcentaje de sus compañeros quedó bajo él? Para eso hay tres funciones más:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Devuelve",
+            "Fórmula o regla",
+            "Rango"
+          ],
+          "rows": [
+            [
+              "`ntile(k)`",
+              "`integer`",
+              "Reparte las filas de la partición en `k` grupos (baldes) lo más parejos posible; si no es exacto, los **primeros** grupos reciben una fila más.",
+              "1 a k"
+            ],
+            [
+              "`percent_rank()`",
+              "`double precision`",
+              "(rank − 1) / (filas de la partición − 1)",
+              "0 a 1"
+            ],
+            [
+              "`cume_dist()`",
+              "`double precision`",
+              "(filas anteriores o pares de la fila actual) / (filas de la partición)",
+              "1/n a 1"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Con las mismas 6 notas de antes: `percent_rank` de Carla es (3 − 1) / (6 − 1) = 0.4, y su `cume_dist` es 5 / 6 ≈ 0.833, porque 5 filas tienen una nota igual o mejor que la suya (ella y sus 2 pares incluidos). Con `ntile(4)` y 6 filas salen grupos de 2, 2, 1 y 1."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT nombre, apellido, sueldo,\n       ntile(4) OVER (ORDER BY sueldo DESC)                          AS cuartil,\n       round(percent_rank() OVER (ORDER BY sueldo DESC)::numeric, 3) AS percent_rank,\n       round(cume_dist()    OVER (ORDER BY sueldo DESC)::numeric, 3) AS cume_dist\nFROM empleados\nWHERE departamento_id = 3 AND fecha_salida IS NULL\nORDER BY sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "Son 18 personas en 4 cuartiles: 18 = 4 × 4 + 2, así que los dos primeros grupos tienen 5 personas y los dos últimos, 4. Como `percent_rank` y `cume_dist` devuelven `double precision`, se convierten a `numeric` antes de redondear (`round(x, 3)` no existe para `double precision`)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "¿Y la mediana por departamento al lado de cada fila? Los agregados de conjunto ordenado de la sección 7 **no** funcionan como ventana: `percentile_cont(0.5) WITHIN GROUP (ORDER BY sueldo) OVER ()` falla con `OVER is not supported for ordered-set aggregate percentile_cont`. Calcula las medianas con GROUP BY en una CTE y únelas con JOIN. Tampoco se admite `DISTINCT` dentro de una ventana: `count(DISTINCT cargo) OVER (…)` da `DISTINCT is not implemented for window functions`."
+        },
+        {
+          "type": "h",
+          "text": "El top-N de cada grupo"
+        },
+        {
+          "type": "p",
+          "text": "«Los 3 mejores alumnos de cada curso», «los 2 productos más vendidos de cada categoría», «el último pedido de cada cliente»: es de las preguntas más comunes en el trabajo y en las entrevistas. La idea natural es numerar con `PARTITION BY` y quedarse con los números 1 a 3… pero ¿dónde pones ese filtro?"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "errors": true,
+          "code": "SELECT a.curso_id, a.nombre, a.apellido,\n       rank() OVER (PARTITION BY a.curso_id ORDER BY a.fecha_nacimiento) AS puesto\nFROM alumnos a\nWHERE rank() OVER (PARTITION BY a.curso_id ORDER BY a.fecha_nacimiento) <= 3;\n\nSELECT a.curso_id, a.nombre, a.apellido,\n       rank() OVER (PARTITION BY a.curso_id ORDER BY a.fecha_nacimiento) AS puesto\nFROM alumnos a\nWHERE puesto <= 3;\n\nSELECT a.curso_id, a.nombre, a.apellido\nFROM alumnos a\nQUALIFY rank() OVER (PARTITION BY a.curso_id ORDER BY a.fecha_nacimiento) <= 3;"
+        },
+        {
+          "type": "p",
+          "text": "Los tres intentos fallan, cada uno por una razón distinta: (1) la ventana no puede ir en el WHERE porque se calcula después; (2) el alias `puesto` todavía no existe cuando se evalúa el WHERE (`column \"puesto\" does not exist`); (3) `QUALIFY`, la cláusula que otros motores (Snowflake, BigQuery, DuckDB) tienen para filtrar ventanas, **no existe en PostgreSQL**, que responde con un `syntax error`. La solución es la de la lección 1: calcular adentro y filtrar afuera."
+        },
+        {
+          "type": "diagram",
+          "title": "Receta del top-N por grupo",
+          "mermaid": "flowchart LR\n  A[\"Consulta interna (CTE)<br/>rank() OVER (PARTITION BY grupo<br/>ORDER BY criterio DESC) AS puesto\"] --> B[\"Consulta externa<br/>WHERE puesto <= N\"]\n  B --> C[\"ORDER BY final<br/>grupo, puesto, desempate\"]",
+          "caption": "La ventana se convierte en una columna común de la CTE, y la consulta externa la filtra como cualquier otra."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "WITH ranking AS (\n  SELECT c.nombre AS curso,\n         a.id,\n         a.nombre || ' ' || a.apellido AS alumno,\n         round(avg(n.nota), 1)         AS promedio,\n         rank() OVER (PARTITION BY c.id\n                      ORDER BY round(avg(n.nota), 1) DESC) AS puesto\n  FROM notas n\n  JOIN alumnos a ON a.id = n.alumno_id\n  JOIN cursos c  ON c.id = a.curso_id\n  GROUP BY c.id, a.id\n)\nSELECT curso, puesto, alumno, promedio\nFROM ranking\nWHERE puesto <= 3\nORDER BY curso, puesto, id;"
+        },
+        {
+          "type": "p",
+          "text": "Salen 20 filas, no 18. En el 2° Medio B dos alumnos empatan en el 3.er lugar con 6.3 y entran los dos; en el 3° Medio A **tres** empatan en el 2.° lugar con 6.5, así que ese curso tiene 4 alumnos en su top-3; y en el 1° Medio B dos empatan en el 2.° lugar con 6.4, el siguiente queda 4.° y no entra. Cambiar la función cambia la respuesta:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Filtro",
+            "Qué significa",
+            "1° Medio B",
+            "3° Medio A"
+          ],
+          "rows": [
+            [
+              "`row_number() … <= 3`",
+              "Exactamente 3 filas; los empates en el corte se resuelven por el desempate (o al azar si no hay).",
+              "3 alumnos",
+              "3 alumnos"
+            ],
+            [
+              "`rank() … <= 3`",
+              "Los que tienen a menos de 3 personas delante: incluye a los empatados en el límite.",
+              "3 alumnos (1.°, 2.°, 2.°)",
+              "4 alumnos (1.°, 2.°, 2.°, 2.°)"
+            ],
+            [
+              "`dense_rank() … <= 3`",
+              "Los que tienen alguno de los 3 **mejores promedios distintos**.",
+              "6 alumnos",
+              "7 alumnos"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Otras formas de resolver lo mismo, que ya conoces: para quedarte con **uno** por grupo, `DISTINCT ON (grupo) … ORDER BY grupo, criterio DESC` (sección 2) es más corto, pero es propio de PostgreSQL; para N por grupo, `JOIN LATERAL (… ORDER BY … LIMIT N)` (sección 8) brilla cuando hay un índice que sirva y pocos grupos; y si no hay grupos, `ORDER BY … FETCH FIRST 3 ROWS WITH TIES` (sección 2) equivale a `rank() <= 3`. La versión con ventanas es estándar, funciona en cualquier motor y es la que se espera en una entrevista."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta clásica: «obtén el **segundo** sueldo más alto de cada departamento». Con `dense_rank() OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) = 2` obtienes el segundo **valor** distinto aunque dos personas empaten en el primero; con `row_number()` obtendrías la segunda **persona**, que podría ganar lo mismo que la primera; con `rank()` podrías no obtener nada si dos empatan en el primero (el siguiente sería el 3). Y el filtro va siempre en la consulta externa."
+        }
+      ]
+    },
+    {
+      "id": "s10-l3",
+      "title": "Mirar a los vecinos: lag, lead, first_value, last_value y nth_value",
+      "minutes": 25,
+      "goals": [
+        "Comparar cada fila con la anterior o la siguiente de su partición usando lag y lead, con desplazamiento y valor por defecto.",
+        "Calcular variaciones absolutas y porcentuales período a período (ventas mes a mes, reajustes de sueldo).",
+        "Obtener el primer, el último y el n-ésimo valor de una partición, corrigiendo el marco por defecto cuando corresponde.",
+        "Clasificar las funciones de ventana según trabajen sobre la partición completa o sobre el marco."
+      ],
+      "takeaways": [
+        "lag(valor, k, defecto) devuelve el valor de la fila que está k filas antes en la partición (lead, k filas después); si no existe, devuelve el defecto (NULL si no se indica).",
+        "lag y lead cuentan filas, no meses ni días: si falta un período en los datos, lag(monto, 12) compara con el mes equivocado.",
+        "Sin PARTITION BY, lag cruza de un grupo a otro: la primera fila del empleado 2 se compararía con el último sueldo del empleado 1.",
+        "El marco por defecto con ORDER BY es RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW: termina en la fila actual (y sus pares), por eso last_value devuelve la fila actual y nth_value da NULL en las primeras filas.",
+        "Para ver toda la partición agrega ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING, o usa first_value con el orden invertido."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Hasta ahora cada fila miraba su grupo completo o su posición en él. Ahora vas a mirar a los **vecinos**. Imagina la fila para pagar en el supermercado, ordenada por hora de llegada: `lag` le pregunta a cada persona «¿quién está justo antes que tú?» y `lead`, «¿quién viene justo después?». Con eso se responden preguntas como «¿cuánto crecieron las ventas respecto del mes anterior?» o «¿de cuánto fue cada reajuste de sueldo?», que con GROUP BY exigirían unir la tabla consigo misma."
+        },
+        {
+          "type": "diagram",
+          "title": "lag y lead desde la fila de marzo",
+          "mermaid": "flowchart LR\n  E[\"ene · 658220\"] --> F[\"feb · 398380\"] --> M[\"mar · 541950<br/>fila actual\"] --> A[\"abr · 1639150\"] --> Y[\"may · 2172330\"]\n  M -. \"lag(monto) = 398380\" .-> F\n  M -. \"lag(monto, 2) = 658220\" .-> E\n  M -. \"lead(monto) = 1639150\" .-> A",
+          "caption": "Las flechas punteadas muestran de qué fila saca el valor cada función cuando la fila actual es marzo de 2025 (ORDER BY mes)."
+        },
+        {
+          "type": "h",
+          "text": "lag: comparar con el período anterior"
+        },
+        {
+          "type": "p",
+          "text": "Primero armamos las ventas por mes (pedidos pagados, enviados o entregados) en una CTE, y después aplicamos las ventanas sobre esas 18 filas. Separar «primero agrego, después comparo» hace la consulta mucho más legible:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, monto,\n       lag(monto) OVER (ORDER BY mes)         AS mes_anterior,\n       monto - lag(monto) OVER (ORDER BY mes) AS variacion,\n       round(100.0 * (monto - lag(monto) OVER (ORDER BY mes))\n             / lag(monto) OVER (ORDER BY mes), 1) AS pct\nFROM ventas\nWHERE mes < '2025-07-01'\nORDER BY mes;"
+        },
+        {
+          "type": "p",
+          "text": "Mira la primera fila: no hay mes anterior, así que `lag` devuelve NULL y toda la aritmética con él también da NULL. El resto se lee solo: en abril de 2025 las ventas crecieron 202.5 % respecto de marzo, y en junio cayeron 50.7 %."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Ojo con el `WHERE mes < '2025-07-01'` del ejemplo: filtra la **CTE ya calculada**, antes de las ventanas de la consulta externa, así que `lag` solo ve enero a junio. Si en cambio filtraras julio a diciembre, la fila de julio tendría `mes_anterior` NULL aunque junio exista en los datos, porque el WHERE lo sacó antes de que la ventana lo viera. Para mostrar solo algunos períodos sin perder a sus vecinos, calcula `lag` en una CTE sobre todos los datos y filtra **afuera**."
+        },
+        {
+          "type": "h",
+          "text": "Desplazamiento y valor por defecto"
+        },
+        {
+          "type": "p",
+          "text": "La firma completa es `lag(valor [, desplazamiento [, defecto]])` y `lead` es igual pero hacia adelante. El desplazamiento (1 si lo omites) es cuántas filas retroceder o avanzar; el defecto (NULL si lo omites) es lo que se devuelve cuando esa fila no existe. Ambos se evalúan en la fila actual, así que `lag(monto, 1, monto)` es válido y devuelve el propio monto en la primera fila."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, monto,\n       lag(monto, 12) OVER (ORDER BY mes)  AS mismo_mes_anio_anterior,\n       round(100.0 * monto / lag(monto, 12) OVER (ORDER BY mes) - 100, 1) AS pct_interanual,\n       lead(monto) OVER (ORDER BY mes)     AS mes_siguiente,\n       lag(monto, 1, 0) OVER (ORDER BY mes) AS anterior_o_cero\nFROM ventas\nORDER BY mes;"
+        },
+        {
+          "type": "p",
+          "text": "`lag(monto, 12)` compara cada mes de 2026 con el mismo mes de 2025 (la variación **interanual**, que elimina la estacionalidad: diciembre siempre vende más). Solo funciona porque hay **una fila por mes, sin huecos**: lag cuenta filas, no meses. Si un mes no tuviera ventas, no existiría su fila y el desplazamiento de 12 caería en el mes equivocado sin ningún aviso. Cuando no puedas garantizarlo, completa el calendario con `generate_series` (sección 4) y un LEFT JOIN antes de usar lag."
+        },
+        {
+          "type": "h",
+          "text": "PARTITION BY: vecinos del mismo grupo"
+        },
+        {
+          "type": "p",
+          "text": "En `historial_sueldos` cada empleado tiene varias filas, una por cada cambio de sueldo. Para calcular cada reajuste hay que comparar con el sueldo **anterior del mismo empleado**: la partición impide que `lag` cruce de una persona a otra."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT empleado_id, desde, sueldo,\n       lag(sueldo) OVER (PARTITION BY empleado_id ORDER BY desde) AS sueldo_anterior,\n       round(100.0 * sueldo\n             / lag(sueldo) OVER (PARTITION BY empleado_id ORDER BY desde) - 100, 1) AS reajuste_pct,\n       desde - lag(desde) OVER (PARTITION BY empleado_id ORDER BY desde)        AS dias_desde_el_anterior\nFROM historial_sueldos\nWHERE empleado_id IN (1, 2)\nORDER BY empleado_id, desde;"
+        },
+        {
+          "type": "p",
+          "text": "La primera fila del empleado 2 (2015-11-26) tiene `sueldo_anterior` NULL: su partición empieza ahí. Sin el `PARTITION BY` recibiría 8.900.000, el último sueldo del empleado 1, y mostraría una «rebaja» de −53 % que nunca existió. Y fíjate en la última fila: el reajuste de −0.9 % delata que al empleado 2 le **bajaron** el sueldo en 2022. `desde - lag(desde)` resta dos `date` y da un entero: los días entre un cambio y el siguiente."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "PostgreSQL 18 **no** implementa `IGNORE NULLS` ni `RESPECT NULLS` en `lag`, `lead`, `first_value`, `last_value` ni `nth_value`: siempre se comporta como `RESPECT NULLS` (escribir `lag(x) IGNORE NULLS OVER …` es un `syntax error`). Por eso, si `lag(x)` devuelve NULL, no sabes si no hay fila anterior o si la fila anterior tiene x nulo; si necesitas distinguirlo, usa un valor por defecto que no pueda aparecer en los datos."
+        },
+        {
+          "type": "h",
+          "text": "first_value, last_value y la trampa del marco por defecto"
+        },
+        {
+          "type": "p",
+          "text": "`first_value(x)` devuelve x en la **primera** fila del marco, `last_value(x)` en la **última** y `nth_value(x, n)` en la n-ésima (contando desde 1; NULL si no existe). La palabra clave es **marco**: estas tres funciones, igual que los agregados usados como ventana, no miran la partición completa, sino el marco de la fila actual. Y cuando la ventana tiene ORDER BY, el marco por defecto es:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n-- desde la primera fila de la partición hasta la fila actual (incluidos sus pares)"
+        },
+        {
+          "type": "p",
+          "text": "Es decir, el marco **crece** fila a fila y termina en la fila actual. Para `first_value` da lo mismo (la primera fila siempre está), pero `last_value` devuelve la fila actual… o su último par si hay empates. Compruébalo: queremos, en cada fila, quién gana más y quién gana menos de su departamento."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT departamento_id, apellido, sueldo,\n       first_value(apellido) OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) AS gana_mas,\n       last_value(apellido)  OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) AS gana_menos_mal,\n       last_value(apellido)  OVER (PARTITION BY departamento_id ORDER BY sueldo DESC\n                                   ROWS BETWEEN UNBOUNDED PRECEDING\n                                            AND UNBOUNDED FOLLOWING)            AS gana_menos\nFROM empleados\nWHERE departamento_id = 6\nORDER BY sueldo DESC;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Fila actual",
+            "Marco por defecto (filas que ve)",
+            "last_value por defecto",
+            "Con ROWS … UNBOUNDED FOLLOWING"
+          ],
+          "rows": [
+            [
+              "Torres Fuentes (4.800.000)",
+              "Torres",
+              "Torres Fuentes",
+              "Carrasco Riquelme"
+            ],
+            [
+              "Sánchez Gutiérrez (2.700.000)",
+              "Torres, Sánchez",
+              "Sánchez Gutiérrez",
+              "Carrasco Riquelme"
+            ],
+            [
+              "Araya Pérez (1.540.000)",
+              "Torres, Sánchez, Araya",
+              "Araya Pérez",
+              "Carrasco Riquelme"
+            ],
+            [
+              "Carrasco Riquelme (1.470.000)",
+              "las 4 filas",
+              "Carrasco Riquelme",
+              "Carrasco Riquelme"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "`gana_menos_mal` repite el nombre de la fila actual: es el error de manual con `last_value`. La corrección es declarar el marco completo, `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` (toda la partición), o evitar `last_value`: el que gana menos es el **primero** si ordenas al revés, `first_value(apellido) OVER (PARTITION BY departamento_id ORDER BY sueldo ASC)`. Y si solo quieres el monto, `min(sueldo) OVER (PARTITION BY departamento_id)` sin ORDER BY ya mira la partición completa."
+        },
+        {
+          "type": "h",
+          "text": "nth_value: el n-ésimo de la partición"
+        },
+        {
+          "type": "p",
+          "text": "`nth_value` tiene la misma trampa, más escondida: en las primeras filas el marco todavía no tiene n filas y devuelve NULL. El estándar SQL define `FROM LAST` para contar desde el final, pero PostgreSQL solo implementa `FROM FIRST`; para el «penúltimo», invierte el ORDER BY."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT departamento_id, apellido, sueldo,\n       nth_value(apellido, 2) OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) AS segundo_mal,\n       nth_value(apellido, 2) OVER (PARTITION BY departamento_id ORDER BY sueldo DESC\n                                    ROWS BETWEEN UNBOUNDED PRECEDING\n                                             AND UNBOUNDED FOLLOWING)           AS segundo\nFROM empleados\nWHERE departamento_id IN (2, 6)\nORDER BY departamento_id, sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "En la fila del gerente de cada departamento, `segundo_mal` es NULL: su marco por defecto tiene una sola fila (él mismo), así que no hay segunda. Desde la segunda fila en adelante acierta, porque el marco ya incluye a la segunda persona. Con el marco completo, todas las filas ven a la segunda."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Funciones",
+            "¿Sobre qué trabajan?",
+            "¿Les afecta el marco?"
+          ],
+          "rows": [
+            [
+              "`row_number`, `rank`, `dense_rank`, `percent_rank`, `cume_dist`, `ntile`",
+              "La partición completa y el orden de la ventana",
+              "No"
+            ],
+            [
+              "`lag`, `lead`",
+              "La partición completa: se desplazan k filas desde la actual",
+              "No"
+            ],
+            [
+              "`first_value`, `last_value`, `nth_value`",
+              "El marco de la fila actual",
+              "Sí"
+            ],
+            [
+              "Agregados como ventana: `sum`, `avg`, `count`, `min`, `max`, `string_agg`…",
+              "El marco de la fila actual",
+              "Sí"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta de entrevista: «¿por qué `last_value(x) OVER (ORDER BY y)` me devuelve el mismo valor de la fila?». Porque con ORDER BY el marco por defecto es `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` y la última fila del marco es la actual (o su último par). Solución: `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` o `first_value` con el orden invertido. Y sin ORDER BY en la ventana, el marco es toda la partición (todas las filas son pares)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Si varias funciones usan la misma ventana larga, la cláusula `WINDOW` (lección 4) te evita repetirla: `… OVER w … FROM … WINDOW w AS (PARTITION BY empleado_id ORDER BY desde)`."
+        }
+      ]
+    },
+    {
+      "id": "s10-l4",
+      "title": "Marcos: ROWS, RANGE, GROUPS, EXCLUDE y WINDOW",
+      "minutes": 25,
+      "goals": [
+        "Definir marcos con ROWS, RANGE y GROUPS BETWEEN para calcular acumulados, promedios deslizantes y ventanas de tiempo.",
+        "Predecir la diferencia entre ROWS, RANGE y GROUPS cuando el ORDER BY de la ventana tiene empates.",
+        "Excluir filas del marco con EXCLUDE CURRENT ROW, EXCLUDE GROUP y EXCLUDE TIES.",
+        "Reutilizar definiciones de ventana con la cláusula WINDOW respetando sus reglas de copia."
+      ],
+      "takeaways": [
+        "El marco es, para cada fila, el tramo de su partición que ven los agregados y first_value, last_value y nth_value: va de un inicio a un fin medidos desde la fila actual.",
+        "ROWS cuenta filas físicas, RANGE mide diferencias en el valor de la única columna del ORDER BY (números, fechas, intervalos) y GROUPS cuenta grupos de pares; con CURRENT ROW, RANGE y GROUPS incluyen a todos los pares.",
+        "El marco por defecto (RANGE UNBOUNDED PRECEDING) da un acumulado, pero con empates en el ORDER BY entrega el mismo total a todos los pares: para un acumulado fila a fila usa ROWS y un desempate.",
+        "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW son 7 filas, no 7 días; para una ventana de tiempo real usa RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW.",
+        "WINDOW w AS (…) nombra una ventana; OVER w la usa tal cual y OVER (w …) la copia para agregarle ORDER BY (si no tenía) o un marco (si no tenía)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "En la lección anterior viste que el **marco** decide qué ve `last_value`. Ahora lo vas a controlar a voluntad. Piensa en una lupa que se desliza sobre las filas ordenadas de la partición: en cada fila, la lupa cubre desde un **inicio** hasta un **fin**, medidos desde la fila actual. Los agregados (`sum`, `avg`, `count`, `min`, `max`…) y `first_value`/`last_value`/`nth_value` calculan solo sobre lo que cubre la lupa; los rankings y `lag`/`lead` la ignoran."
+        },
+        {
+          "type": "diagram",
+          "title": "Los puntos de inicio y fin de un marco",
+          "mermaid": "flowchart LR\n  A[\"UNBOUNDED PRECEDING<br/>primera fila de la partición\"] --> B[\"n PRECEDING<br/>n antes de la actual\"]\n  B --> C[\"CURRENT ROW<br/>fila actual\"]\n  C --> D[\"n FOLLOWING<br/>n después de la actual\"]\n  D --> E[\"UNBOUNDED FOLLOWING<br/>última fila de la partición\"]",
+          "caption": "El marco va desde un punto de inicio hasta un punto de fin de esta línea, y el fin no puede quedar a la izquierda del inicio. El inicio no puede ser UNBOUNDED FOLLOWING ni el fin UNBOUNDED PRECEDING."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "{ ROWS | RANGE | GROUPS } BETWEEN inicio AND fin [ EXCLUDE … ]\n{ ROWS | RANGE | GROUPS } inicio            -- forma corta: el fin es CURRENT ROW\n\n-- ejemplos\nROWS BETWEEN 2 PRECEDING AND CURRENT ROW          -- la fila actual y las 2 anteriores\nROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING          -- una antes, la actual y una después\nROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING  -- toda la partición\nRANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW -- los últimos 7 días\n-- por defecto: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+        },
+        {
+          "type": "h",
+          "text": "Acumulados"
+        },
+        {
+          "type": "p",
+          "text": "Un **acumulado** (*running total*) suma desde el inicio de la partición hasta la fila actual. Es exactamente el marco por defecto cuando hay ORDER BY, así que `sum(monto) OVER (ORDER BY mes)` ya acumula. Con `PARTITION BY` el acumulado se reinicia en cada grupo: aquí, cada año parte de cero."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, monto,\n       sum(monto) OVER (ORDER BY mes) AS acumulado,\n       sum(monto) OVER (PARTITION BY extract(year FROM mes) ORDER BY mes) AS acumulado_anio,\n       round(100.0 * sum(monto) OVER (PARTITION BY extract(year FROM mes) ORDER BY mes)\n             / sum(monto) OVER (PARTITION BY extract(year FROM mes)), 1) AS pct_del_anio\nFROM ventas\nORDER BY mes;"
+        },
+        {
+          "type": "p",
+          "text": "En enero de 2026 `acumulado_anio` vuelve a 1.455.280 mientras `acumulado` sigue sumando. La última columna combina dos ventanas: el acumulado del año dividido por el total del año (sin ORDER BY, el marco es la partición completa). En diciembre de 2025 llega a 100.0, como debe ser."
+        },
+        {
+          "type": "h",
+          "text": "Promedios deslizantes"
+        },
+        {
+          "type": "p",
+          "text": "Un **promedio deslizante** (*moving average*) suaviza una serie que sube y baja: cada mes se promedia con sus vecinos. Aquí el marco ya no parte en la primera fila, sino que se desliza: `ROWS BETWEEN 2 PRECEDING AND CURRENT ROW` son la fila actual y las dos anteriores (un promedio de 3 meses), y `ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING` es un promedio **centrado**."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, monto,\n       round(avg(monto) OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS prom_3m,\n       count(*)         OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)  AS meses_promediados,\n       round(avg(monto) OVER (ORDER BY mes ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)) AS centrado_3\nFROM ventas\nORDER BY mes;"
+        },
+        {
+          "type": "p",
+          "text": "La columna `meses_promediados` muestra algo que se olvida seguido: en los bordes de la partición el marco tiene **menos filas**. El «promedio deslizante de 3 meses» de enero de 2025 es solo enero, y el de febrero promedia 2 meses. Si solo quieres promedios completos, filtra afuera con `WHERE meses_promediados = 3`, o muestra NULL con `CASE WHEN count(*) OVER (…) = 3 THEN avg(monto) OVER (…) END`."
+        },
+        {
+          "type": "h",
+          "text": "ROWS, RANGE y GROUPS: la diferencia está en los empates"
+        },
+        {
+          "type": "p",
+          "text": "Mientras el ORDER BY de la ventana no tenga empates, los tres modos se parecen. Con empates cambian por completo, porque cada uno mide la distancia de otra forma:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "**ROWS** cuenta **filas físicas**: `1 PRECEDING` es la fila anterior, sea cual sea su valor. `CURRENT ROW` es solo la fila actual.",
+            "**RANGE** mide la **diferencia de valor** en la columna del ORDER BY: `1 PRECEDING` incluye todas las filas cuyo valor está a 1 o menos por debajo del actual. `CURRENT ROW` incluye a la fila actual **y a todos sus pares**.",
+            "**GROUPS** (desde PostgreSQL 11) cuenta **grupos de pares**: `1 PRECEDING` es el grupo de valores inmediatamente anterior, esté a la distancia que esté. `CURRENT ROW` también incluye a todos los pares."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "p",
+          "text": "Para verlo sin ruido usamos una tabla de juguete, `abonos`, con dos abonos el día 1, ninguno el día 3 y uno en cada uno de los días 2, 4 y 5:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE abonos (\n  id    integer PRIMARY KEY,\n  dia   integer NOT NULL,\n  monto integer NOT NULL\n);\nINSERT INTO abonos VALUES\n  (1, 1, 100), (2, 1, 50), (3, 2, 30), (4, 4, 20), (5, 5, 10);\n\nSELECT id, dia, monto,\n       sum(monto) OVER (ORDER BY dia) AS por_defecto,\n       sum(monto) OVER (ORDER BY dia, id\n                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS con_rows\nFROM abonos\nORDER BY dia, id;\n\nSELECT id, dia, monto,\n       sum(monto) OVER (ORDER BY dia, id ROWS   BETWEEN 1 PRECEDING AND CURRENT ROW) AS rows_1,\n       sum(monto) OVER (ORDER BY dia     RANGE  BETWEEN 1 PRECEDING AND CURRENT ROW) AS range_1,\n       sum(monto) OVER (ORDER BY dia     GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) AS groups_1\nFROM abonos\nORDER BY dia, id;"
+        },
+        {
+          "type": "p",
+          "text": "En la primera consulta, `por_defecto` le da **150** a los dos abonos del día 1: el marco por defecto es RANGE y termina en el último par, así que ambos ven los dos abonos. Si esperabas un saldo que avanza abono por abono (100, 150, 180…), necesitas `ROWS` **y** un desempate (`ORDER BY dia, id`), porque sin desempate el orden entre los dos abonos del día 1 no está definido."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué cuenta cada modo con «1 PRECEDING AND CURRENT ROW»",
+          "mermaid": "flowchart LR\n  F[\"Fila actual<br/>id 4 · día 4 · 20\"] --> R[\"ROWS: filas físicas<br/>id 3 + id 4<br/>= 50\"]\n  F --> G[\"RANGE: valores de dia<br/>días 3 a 4 (el 3 no existe)<br/>= 20\"]\n  F --> S[\"GROUPS: grupos de pares<br/>grupo del día 2 + grupo del día 4<br/>= 50\"]",
+          "caption": "Para la fila del día 4, los tres modos eligen filas distintas; para los días 1 y 2 coinciden RANGE y GROUPS."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Modo",
+            "La distancia se mide en…",
+            "CURRENT ROW incluye…",
+            "Offsets (`n PRECEDING`)"
+          ],
+          "rows": [
+            [
+              "`ROWS`",
+              "filas físicas",
+              "solo la fila actual",
+              "entero ≥ 0; no exige ORDER BY"
+            ],
+            [
+              "`RANGE`",
+              "valor de la columna del ORDER BY",
+              "la fila actual y todos sus pares",
+              "exige **exactamente una** columna en el ORDER BY, numérica o de fecha/hora (el offset de una fecha es un `interval`)"
+            ],
+            [
+              "`GROUPS`",
+              "grupos de pares",
+              "la fila actual y todos sus pares",
+              "entero ≥ 0; exige ORDER BY"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "RANGE con intervalos: ventanas de tiempo de verdad"
+        },
+        {
+          "type": "p",
+          "text": "`ROWS BETWEEN 6 PRECEDING AND CURRENT ROW` son **7 filas**, que solo equivalen a 7 días si hay exactamente una fila por día. En diciembre de 2025 hubo días sin ventas, así que 7 filas pueden abarcar más de una semana. `RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW` en cambio mira el **valor** de la fecha: entran las filas de los 6 días anteriores y del día actual, existan o no todos."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "WITH diarias AS (\n  SELECT p.fecha::date AS dia,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n    AND p.fecha >= '2025-12-01' AND p.fecha < '2026-01-01'\n  GROUP BY 1\n)\nSELECT dia, monto,\n       sum(monto) OVER (ORDER BY dia ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ultimas_7_filas,\n       sum(monto) OVER (ORDER BY dia RANGE BETWEEN INTERVAL '6 days' PRECEDING\n                                               AND CURRENT ROW)            AS ultimos_7_dias,\n       count(*)   OVER (ORDER BY dia RANGE BETWEEN INTERVAL '6 days' PRECEDING\n                                               AND CURRENT ROW)            AS dias_con_venta\nFROM diarias\nORDER BY dia;\n\nSELECT dia, sum(monto) OVER (ORDER BY dia, monto\n                             RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW)\nFROM (VALUES ('2025-12-01'::date, 10), ('2025-12-02', 20)) AS t(dia, monto);\n\nSELECT dia, sum(monto) OVER (GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW)\nFROM (VALUES ('2025-12-01'::date, 10), ('2025-12-02', 20)) AS t(dia, monto);"
+        },
+        {
+          "type": "p",
+          "text": "Hasta el 6 de diciembre las dos columnas coinciden: todavía no hay 7 filas ni 7 días hacia atrás. Desde el 8 se separan. El 13 de diciembre, por ejemplo, las últimas 7 filas se remontan hasta el día 4 (10 días de calendario) y suman 1.177.050, mientras que los últimos 7 días (del 7 al 13) solo tienen 4 días con ventas y suman 346.800. Las dos consultas finales muestran las reglas: RANGE con offset exige **una sola** columna en el ORDER BY (`RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column`) y GROUPS exige ORDER BY (`GROUPS mode requires an ORDER BY clause`). Detalle: las ventas de fines de noviembre no entran en la ventana del 1 de diciembre, porque el WHERE de la CTE las sacó antes."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Un marco con `ROWS` sobre un ORDER BY con empates es **no determinista**: dos filas empatadas pueden quedar en cualquier orden y cada ejecución puede sumar distinto. Agrega un desempate (`ORDER BY dia, id`) o usa RANGE/GROUPS, que tratan a los pares como un bloque."
+        },
+        {
+          "type": "h",
+          "text": "EXCLUDE: sacar filas del marco"
+        },
+        {
+          "type": "p",
+          "text": "Después del inicio y el fin puedes excluir filas cercanas a la actual: `EXCLUDE CURRENT ROW` saca la fila actual; `EXCLUDE GROUP` saca la fila actual y sus pares; `EXCLUDE TIES` saca los pares pero **deja** la fila actual; `EXCLUDE NO OTHERS` (el valor por defecto) no saca nada. El uso típico: comparar a cada uno con **el resto** de su grupo, sin que su propio valor contamine el promedio."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT apellido, sueldo,\n       round(avg(sueldo) OVER (PARTITION BY departamento_id)) AS prom_con_el,\n       round(avg(sueldo) OVER (PARTITION BY departamento_id\n                               ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n                               EXCLUDE CURRENT ROW))  AS prom_de_los_demas\nFROM empleados\nWHERE departamento_id = 6\nORDER BY sueldo DESC;"
+        },
+        {
+          "type": "p",
+          "text": "El gerente de Personas gana 4.800.000; el promedio del departamento **con él** es 2.627.500, pero el de **los demás** es 1.903.333. Cuidado con los pares: como esta ventana no tiene ORDER BY, todas las filas del departamento son pares entre sí, así que `EXCLUDE CURRENT ROW` saca solo la fila actual, pero `EXCLUDE GROUP` sacaría al departamento entero (el promedio daría NULL) y `EXCLUDE TIES` dejaría solo a la fila actual. Con ORDER BY, los pares son únicamente las filas empatadas en ese orden."
+        },
+        {
+          "type": "h",
+          "text": "WINDOW: ventanas con nombre"
+        },
+        {
+          "type": "p",
+          "text": "Cuando varias funciones comparten la misma ventana, repetir `OVER (PARTITION BY … ORDER BY …)` es largo y propenso a errores. La cláusula `WINDOW`, que va después de HAVING y antes de ORDER BY, le pone nombre a una definición:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS monto\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, monto,\n       lag(monto) OVER w                                  AS anterior,\n       sum(monto) OVER w                                  AS acumulado,\n       round(avg(monto) OVER (w ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS prom_3m,\n       sum(monto) OVER anual_ord                          AS acumulado_anio,\n       rank()     OVER (ORDER BY monto DESC)              AS puesto_del_mes\nFROM ventas\nWINDOW w         AS (ORDER BY mes),\n       anual     AS (PARTITION BY extract(year FROM mes)),\n       anual_ord AS (anual ORDER BY mes)\nORDER BY mes;\n\nSELECT id, sum(costo_despacho) OVER (m3 ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)\nFROM pedidos\nWINDOW m3 AS (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW);"
+        },
+        {
+          "type": "list",
+          "items": [
+            "`OVER w` usa la ventana **tal cual**, incluido su marco si lo tiene.",
+            "`OVER (w …)` **copia** la ventana para modificarla: puede agregar ORDER BY solo si `w` no tenía, y siempre usa su propio marco; si `w` ya tenía marco, falla (`cannot copy window \"m3\" because it has a frame clause`, la segunda consulta del ejemplo).",
+            "Una ventana nombrada puede partir de otra definida antes en la misma cláusula (`anual_ord AS (anual ORDER BY mes)`), pero no puede redefinir su PARTITION BY (`cannot override PARTITION BY clause of window …`).",
+            "Una ventana nombrada que nadie usa simplemente se ignora."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Tres preguntas seguras: (1) el marco por defecto es `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` (con ORDER BY, hasta el último par; sin ORDER BY, toda la partición); (2) con empates en el ORDER BY, `ROWS` y `RANGE` dan acumulados distintos, porque `CURRENT ROW` en RANGE incluye a los pares; (3) `ROWS n PRECEDING` cuenta filas, `RANGE INTERVAL '…' PRECEDING` cuenta tiempo, y `GROUPS n PRECEDING` cuenta valores distintos."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Rendimiento en una frase: PostgreSQL necesita las filas ordenadas por el PARTITION BY y el ORDER BY de cada ventana, y las funciones con la **misma** partición y orden se calculan en la misma pasada (en `EXPLAIN` verás un nodo `WindowAgg` sobre un `Sort`; sección 15). Mientras menos ventanas distintas uses, menos ordenamientos. Y como el orden de salida no está garantizado, termina siempre con un ORDER BY explícito."
+        }
+      ]
+    },
+    {
+      "id": "s10-l5",
+      "title": "Problemas clásicos: primero por grupo, duplicados, huecos, islas y sesiones",
+      "minutes": 25,
+      "goals": [
+        "Obtener el primer o el último registro de cada grupo con row_number y compararlo con DISTINCT ON y con min().",
+        "Eliminar filas duplicadas conservando una por grupo con row_number, una subconsulta y DELETE dentro de una transacción.",
+        "Detectar huecos con lead y agrupar islas de valores consecutivos con la diferencia valor − row_number.",
+        "Segmentar eventos en sesiones o períodos combinando lag, una marca de inicio y una suma acumulada."
+      ],
+      "takeaways": [
+        "Primero por grupo: row_number() OVER (PARTITION BY grupo ORDER BY criterio, desempate) en una CTE y WHERE n = 1 afuera; para el último, invierte el orden.",
+        "Deduplicar: numera cada grupo de duplicados con row_number, decide cuál conservar con el ORDER BY de la ventana y borra los que tienen n > 1.",
+        "Huecos: compara cada valor con lead(valor); si la diferencia es mayor que el paso esperado, entre ambos hay un hueco.",
+        "Islas de valores consecutivos: valor − row_number() es constante dentro de cada isla; agrupa por esa diferencia (con DISTINCT o dense_rank si hay repetidos).",
+        "Islas por condición (sesiones, rachas): marca con 1 cada fila que empieza una isla (usando lag) y la suma acumulada de las marcas numera las islas."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Ya tienes todas las piezas: particiones, rankings, vecinos y marcos. En esta lección las combinas en recetas que aparecen una y otra vez en el trabajo real y en las entrevistas técnicas. Todas siguen la misma forma: **una CTE que calcula ventanas** y una consulta externa que filtra o agrupa sobre ellas."
+        },
+        {
+          "type": "h",
+          "text": "El primero de cada grupo: la primera compra de cada cliente"
+        },
+        {
+          "type": "p",
+          "text": "Marketing quiere saber cuándo compró por primera vez cada cliente y cuál fue ese pedido. Con `min(fecha)` y GROUP BY obtienes la fecha, pero no el `id` del pedido ni sus otras columnas. Con `row_number` numeras los pedidos de cada cliente del más antiguo al más nuevo y te quedas con el número 1, **con todas sus columnas**. De paso, `count(*) OVER (PARTITION BY cliente_id)` cuenta cuántas compras hizo en total, en la misma pasada."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH numerados AS (\n  SELECT cliente_id, id AS pedido_id, fecha,\n         row_number() OVER (PARTITION BY cliente_id ORDER BY fecha, id) AS n,\n         count(*)     OVER (PARTITION BY cliente_id)                    AS compras\n  FROM pedidos\n  WHERE estado <> 'cancelado'\n)\nSELECT cliente_id, pedido_id, fecha::date AS primera_compra, compras\nFROM numerados\nWHERE n = 1\nORDER BY primera_compra, cliente_id\nLIMIT 8;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Técnica",
+            "Ventajas",
+            "Límites"
+          ],
+          "rows": [
+            [
+              "`row_number() … WHERE n = 1`",
+              "SQL estándar; trae todas las columnas; se generaliza a los N primeros (`n <= 3`) y al último (`ORDER BY fecha DESC`).",
+              "Más largo de escribir."
+            ],
+            [
+              "`DISTINCT ON (cliente_id) … ORDER BY cliente_id, fecha, id`",
+              "Muy corto (sección 2).",
+              "Solo PostgreSQL; solo sirve para **uno** por grupo."
+            ],
+            [
+              "`min(fecha) … GROUP BY cliente_id`",
+              "Simple y rápido.",
+              "Solo da el valor mínimo, no la fila completa; para el resto hay que volver a unir."
+            ],
+            [
+              "`JOIN LATERAL (… ORDER BY fecha LIMIT 1)`",
+              "Eficiente con un índice adecuado y pocos grupos (sección 8).",
+              "Recorre la subconsulta una vez por grupo."
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Deduplicar"
+        },
+        {
+          "type": "p",
+          "text": "Un clásico de las cargas de datos: la tabla `suscriptores` se llenó desde varios formularios y el mismo correo aparece varias veces, a veces con mayúsculas o espacios distintos. Primero **mira** los duplicados: numera cada grupo de correos iguales (normalizados con `lower(trim(email))`) y decide con el ORDER BY de la ventana cuál conservar; aquí, el registro más antiguo. Después borra los que no son el número 1, dentro de una transacción para poder revisar antes de confirmar:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "CREATE TABLE suscriptores (\n  id        integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  email     text NOT NULL,\n  nombre    text NOT NULL,\n  comuna    text,\n  creado_en date NOT NULL\n);\nINSERT INTO suscriptores (email, nombre, comuna, creado_en) VALUES\n  ('ana.rojas@gmail.com',     'Ana Rojas',      'Ñuñoa',      '2026-01-05'),\n  ('pedro.soto@hotmail.com',  'Pedro Soto',     'Maipú',      '2026-01-07'),\n  ('Ana.Rojas@gmail.com ',    'Ana Rojas',      NULL,         '2026-02-10'),\n  ('camila.diaz@gmail.com',   'Camila Díaz',    'Providencia','2026-02-11'),\n  ('pedro.soto@hotmail.com',  'Pedro A. Soto',  'Maipú',      '2026-03-02'),\n  ('jose.perez@yahoo.com',    'José Pérez',     'La Florida', '2026-03-15'),\n  ('ANA.ROJAS@GMAIL.COM',     'Ana Rojas M.',   'Ñuñoa',      '2026-04-20'),\n  ('camila.diaz@gmail.com',   'Camila Díaz',    'Providencia','2026-05-01');\n\nSELECT id, email, nombre, creado_en,\n       row_number() OVER (PARTITION BY lower(trim(email))\n                          ORDER BY creado_en, id) AS n\nFROM suscriptores\nORDER BY lower(trim(email)), n;\n\nBEGIN;\nDELETE FROM suscriptores\nWHERE id IN (\n  SELECT id\n  FROM (SELECT id,\n               row_number() OVER (PARTITION BY lower(trim(email))\n                                  ORDER BY creado_en, id) AS n\n        FROM suscriptores) AS s\n  WHERE n > 1\n)\nRETURNING id, email;\nSELECT count(*) AS quedan, count(DISTINCT lower(trim(email))) AS correos_distintos\nFROM suscriptores;\nCOMMIT;"
+        },
+        {
+          "type": "p",
+          "text": "Quedan 4 filas para 4 correos distintos: se borraron las 4 copias (ids 3, 5, 7 y 8). La subconsulta es necesaria porque `DELETE … WHERE row_number() OVER (…) > 1` no es válido (las ventanas no van en WHERE). Una alternativa equivalente usa una CTE y `USING`: `WITH dup AS (SELECT id, row_number() OVER (…) AS n FROM suscriptores) DELETE FROM suscriptores s USING dup WHERE s.id = dup.id AND dup.n > 1`."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "El ORDER BY de la ventana es **la política de conservación**: `ORDER BY creado_en, id` guarda el más antiguo; `ORDER BY creado_en DESC, id DESC`, el más reciente; `ORDER BY (comuna IS NULL), creado_en, id`, el más antiguo **que tenga comuna** (false va antes que true). Y después de limpiar, evita que vuelva a pasar con un índice único sobre la expresión normalizada, `CREATE UNIQUE INDEX ON suscriptores (lower(trim(email)))` (sección 14)."
+        },
+        {
+          "type": "h",
+          "text": "Huecos: lo que falta entre dos valores"
+        },
+        {
+          "type": "p",
+          "text": "En el problema de **huecos e islas** (*gaps and islands*) tienes una secuencia de valores con saltos: días con pedidos, números de boleta, meses con compras. Las **islas** son los tramos sin saltos y los **huecos**, lo que falta entre ellos. Los huecos son lo más fácil: ordena, mira el valor siguiente con `lead` y, si el salto es mayor que el paso normal (1 día), lo que hay entre medio es un hueco. Por ejemplo, los períodos más largos en que Tienda Andes no recibió ningún pedido:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH dias AS (\n  SELECT DISTINCT fecha::date AS dia\n  FROM pedidos\n),\nsiguientes AS (\n  SELECT dia, lead(dia) OVER (ORDER BY dia) AS siguiente\n  FROM dias\n)\nSELECT dia + 1               AS desde,\n       siguiente - 1         AS hasta,\n       siguiente - dia - 1   AS dias_sin_pedidos\nFROM siguientes\nWHERE siguiente - dia > 1\nORDER BY dias_sin_pedidos DESC, desde\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "El peor tramo fue de 7 días, y ocurrió dos veces: del 27 de agosto al 2 de septiembre y del 15 al 21 de octubre de 2025. La última fila de `siguientes` tiene `lead` NULL, así que `siguiente - dia > 1` es NULL y el WHERE la descarta sola."
+        },
+        {
+          "type": "h",
+          "text": "Islas: el truco de restar row_number"
+        },
+        {
+          "type": "p",
+          "text": "Las islas piden un truco elegante. Numera los días con pedidos en orden con `row_number()`. Dentro de una racha de días seguidos, el día **y** el número avanzan de a 1 al mismo tiempo, así que su diferencia `dia − n` se mantiene **constante**; cuando hay un salto en los días, el número sigue avanzando de a 1 y la diferencia cambia. Esa diferencia es un identificador de isla: basta agrupar por ella."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH dias AS (\n  SELECT DISTINCT fecha::date AS dia\n  FROM pedidos\n  WHERE fecha >= '2025-12-01' AND fecha < '2025-12-16'\n)\nSELECT dia,\n       row_number() OVER (ORDER BY dia)              AS n,\n       dia - (row_number() OVER (ORDER BY dia))::int AS isla\nFROM dias\nORDER BY dia;"
+        },
+        {
+          "type": "p",
+          "text": "Del 3 al 6 de diciembre la columna `isla` vale siempre 2025-12-01; del 8 al 10, 2025-12-02; del 12 al 15, 2025-12-03. El valor en sí no significa nada (es una fecha «de mentira»); solo importa que sea igual dentro de cada racha y distinto entre rachas. El `::int` es obligatorio: `row_number()` devuelve `bigint` y no existe el operador `date - bigint` (`operator does not exist: date - bigint`)."
+        },
+        {
+          "type": "diagram",
+          "title": "Receta de las islas",
+          "mermaid": "flowchart LR\n  A[\"Valores únicos<br/>SELECT DISTINCT dia\"] --> B[\"Numerar<br/>row_number() OVER (ORDER BY dia)\"]\n  B --> C[\"Identificador de isla<br/>dia − n (constante en cada racha)\"]\n  C --> D[\"GROUP BY isla<br/>min(dia), max(dia), count(*)\"]",
+          "caption": "Si los valores pueden repetirse, usa DISTINCT antes o dense_rank() en vez de row_number(): con repetidos, row_number rompe la constancia de la diferencia."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH dias AS (\n  SELECT DISTINCT fecha::date AS dia\n  FROM pedidos\n),\nmarcados AS (\n  SELECT dia, dia - (row_number() OVER (ORDER BY dia))::int AS isla\n  FROM dias\n)\nSELECT min(dia) AS desde, max(dia) AS hasta, count(*) AS dias_seguidos\nFROM marcados\nGROUP BY isla\nORDER BY dias_seguidos DESC, desde\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "La racha más larga con pedidos todos los días fue de 9 días, del 21 al 29 de abril de 2026. El mismo truco sirve para números de boleta correlativos (`numero - row_number()`), para meses (`mes - n * INTERVAL '1 month'`) y, con `PARTITION BY`, para las rachas de cada cliente o de cada tarjeta por separado."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El truco exige valores **sin repetir**. Si un día tuviera dos filas, `row_number` avanzaría dos veces mientras el día avanza una, y la diferencia cambiaría en plena isla. Por eso la CTE usa `SELECT DISTINCT`. Otra salida es cambiar `row_number()` por `dense_rank()`, que da el mismo número a los repetidos: `dia - dense_rank() OVER (ORDER BY dia)::int`."
+        },
+        {
+          "type": "h",
+          "text": "Islas por condición: sesiones y períodos de uso"
+        },
+        {
+          "type": "p",
+          "text": "A veces la isla no la define «valor siguiente = valor + 1», sino una **condición** entre filas vecinas: «una nueva sesión empieza si pasaron más de 30 minutos desde el clic anterior», «un nuevo período de uso empieza si la tarjeta estuvo más de 7 días sin validar». La receta tiene dos pasos: (1) con `lag`, **marcar con 1** cada fila que inicia una isla y con 0 las demás; (2) la **suma acumulada** de esas marcas numera las islas (1, 1, 1, 2, 2…). En el metro, los períodos de uso de tres tarjetas:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "metro",
+          "code": "WITH marcas AS (\n  SELECT tarjeta_id, ts,\n         CASE WHEN ts - lag(ts) OVER (PARTITION BY tarjeta_id ORDER BY ts)\n                   <= INTERVAL '7 days'\n              THEN 0 ELSE 1 END AS inicia\n  FROM validaciones\n  WHERE tarjeta_id IN (1000001, 1000002, 1000003)\n),\nperiodos AS (\n  SELECT tarjeta_id, ts,\n         sum(inicia) OVER (PARTITION BY tarjeta_id ORDER BY ts) AS periodo\n  FROM marcas\n)\nSELECT tarjeta_id, periodo,\n       min(ts)::date AS desde,\n       max(ts)::date AS hasta,\n       count(*)      AS viajes\nFROM periodos\nGROUP BY tarjeta_id, periodo\nORDER BY tarjeta_id, periodo;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en el detalle del `CASE`: en la primera validación de cada tarjeta, `lag` es NULL, la resta es NULL y la comparación también, así que el CASE cae en el `ELSE 1`: la primera fila siempre inicia un período, que es justo lo que queremos. La tarjeta 1000003 tiene 3 períodos; el último es un solo viaje el 28 de junio. Hay que hacerlo en dos CTE porque una ventana no puede contener otra (`window function calls cannot be nested`): primero se calcula `lag` y después se acumula."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Receta",
+            "Cuándo",
+            "Ventanas que usa"
+          ],
+          "rows": [
+            [
+              "Primero/último por grupo",
+              "Primera compra, último estado, sueldo vigente",
+              "`row_number()` con PARTITION BY"
+            ],
+            [
+              "Deduplicar",
+              "Cargas repetidas, registros duplicados",
+              "`row_number()` + `DELETE … WHERE id IN (…)`"
+            ],
+            [
+              "Huecos",
+              "Días sin ventas, boletas faltantes",
+              "`lead()` (o `lag()`)"
+            ],
+            [
+              "Islas de consecutivos",
+              "Rachas de días, meses o números seguidos",
+              "`valor − row_number()` (o `dense_rank()`)"
+            ],
+            [
+              "Islas por condición",
+              "Sesiones web, períodos de uso, rachas de notas rojas",
+              "`lag()` para marcar + `sum()` acumulada"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "En entrevistas de analista y de ingeniería de datos, *gaps and islands* es casi obligatorio. Lo que se evalúa: que no intentes filtrar la ventana en el WHERE (CTE o subconsulta), que conozcas el truco `valor − row_number()` y por qué funciona, que resuelvas las sesiones con `lag` + suma acumulada, y que desempates el `row_number` para que el resultado sea determinista."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s10-e1",
+      "title": "Cada sueldo frente al promedio de su departamento",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Personas quiere revisar qué tan lejos está cada sueldo del promedio de su propio departamento, sin perder el detalle de cada empleado.",
+        "Considera solo a los empleados **vigentes** (`fecha_salida` nula) que **tienen departamento**. Devuelve `departamento_id`, `apellido`, `sueldo`, `prom_depto` (promedio de sueldo de los vigentes de su departamento, redondeado a entero con `round`) y `diferencia` (sueldo menos `prom_depto` ya redondeado).",
+        "Ordena por `departamento_id` y, dentro de cada departamento, del sueldo más alto al más bajo (si empatan, por `id` del empleado)."
+      ],
+      "starter": "-- Una fila por empleado vigente con departamento\nSELECT departamento_id, apellido, sueldo\nFROM empleados\nWHERE fecha_salida IS NULL AND departamento_id IS NOT NULL;",
+      "solution": "SELECT departamento_id, apellido, sueldo,\n       round(avg(sueldo) OVER (PARTITION BY departamento_id))          AS prom_depto,\n       sueldo - round(avg(sueldo) OVER (PARTITION BY departamento_id)) AS diferencia\nFROM empleados\nWHERE fecha_salida IS NULL AND departamento_id IS NOT NULL\nORDER BY departamento_id, sueldo DESC, id;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bover\\s*\\(\\s*partition\\s+by\\b",
+          "msg": "Calcula el promedio con una ventana: avg(sueldo) OVER (PARTITION BY departamento_id)",
+          "name": "Usa OVER (PARTITION BY …)"
+        }
+      ],
+      "hints": [
+        "No necesitas GROUP BY: un agregado con `OVER (…)` calcula el promedio sin colapsar las filas.",
+        "`round(avg(sueldo) OVER (PARTITION BY departamento_id))` es el promedio de cada departamento; la diferencia es `sueldo - round(avg(sueldo) OVER (PARTITION BY departamento_id))`."
+      ],
+      "explain": "`PARTITION BY departamento_id` hace que cada fila vea solo a los vigentes de su departamento; salen las 52 personas, cada una con el promedio de su grupo (por ejemplo, 2.982.222 en Tecnología). El WHERE se evalúa antes que la ventana, así que los que ya se fueron no entran al promedio. Trampas: con `OVER ()` obtendrías el promedio de toda la empresa; y si no excluyes a la practicante sin departamento, forma su propia partición (PARTITION BY agrupa los NULL juntos, como GROUP BY) con un promedio de 500.000. Alternativas: una CTE con `GROUP BY departamento_id` unida con JOIN, o una subconsulta correlacionada en el SELECT; ambas funcionan, pero la ventana resuelve todo en una pasada y sin repetir los filtros."
+    },
+    {
+      "id": "s10-e2",
+      "title": "El peso de cada departamento en la planilla",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Finanzas prepara el presupuesto y necesita saber cuánto pesa cada departamento en la planilla de sueldos de los empleados **vigentes** (`fecha_salida` nula).",
+        "Devuelve una fila por departamento con `departamento` (nombre), `personas` (cantidad de vigentes), `planilla` (suma de sus sueldos) y `pct` (porcentaje de la planilla del departamento sobre la suma de todas las planillas del resultado, con 1 decimal). La practicante sin departamento no entra.",
+        "Ordena de la planilla más grande a la más chica."
+      ],
+      "starter": "-- Una fila por departamento\nSELECT d.nombre AS departamento, count(*) AS personas, sum(e.sueldo) AS planilla\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nGROUP BY d.nombre;",
+      "solution": "SELECT d.nombre      AS departamento,\n       count(*)      AS personas,\n       sum(e.sueldo) AS planilla,\n       round(100.0 * sum(e.sueldo) / sum(sum(e.sueldo)) OVER (), 1) AS pct\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nGROUP BY d.nombre\nORDER BY planilla DESC;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bover\\s*\\(",
+          "msg": "Calcula el total de todas las planillas con una función de ventana (… OVER ())",
+          "name": "Usa una función de ventana"
+        }
+      ],
+      "hints": [
+        "Las ventanas se calculan después del GROUP BY: ven una fila por departamento y pueden recibir agregados como argumento.",
+        "El total de todas las planillas es `sum(sum(e.sueldo)) OVER ()`. Multiplica por `100.0` antes de dividir."
+      ],
+      "explain": "`sum(sum(e.sueldo)) OVER ()` se lee de adentro hacia afuera: el `sum` interno es la planilla de cada departamento (lo calcula el GROUP BY) y el externo, con `OVER ()`, suma esas 6 planillas: 132.250.000. Tecnología pesa 40.6 %. Si escribes `sum(e.sueldo) OVER ()` sin el agregado interno, PostgreSQL responde `column \"e.sueldo\" must appear in the GROUP BY clause or be used in an aggregate function`, porque después de agrupar ya no existe cada sueldo por separado. Alternativa: una subconsulta escalar `(SELECT sum(sueldo) FROM empleados WHERE fecha_salida IS NULL AND departamento_id IS NOT NULL)`, pero tienes que repetir exactamente los mismos filtros. Ojo: los porcentajes redondeados suman 99.8, no 100.0; es normal al redondear cada parte por separado."
+    },
+    {
+      "id": "s10-e3",
+      "title": "Ranking de Matemática del 2° Medio A",
+      "level": "facil",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "La profesora de Matemática del 2° Medio A (curso con `id` 3) quiere el ranking de su curso en su asignatura (`asignatura_id` 2), considerando **todas** las notas registradas del año.",
+        "Devuelve `puesto`, `alumno` (nombre y apellido separados por un espacio) y `promedio` (promedio de sus notas de Matemática redondeado a 1 decimal). El puesto se calcula sobre el **promedio ya redondeado**, como en la libreta: dos alumnos con 5.4 comparten el puesto y el siguiente salta los lugares ocupados (1, 2, 3, 4, 4, 6…).",
+        "Ordena por `puesto` y, si empatan, por `id` del alumno."
+      ],
+      "starter": "-- Promedio de Matemática de cada alumno del 2° Medio A\nSELECT a.nombre || ' ' || a.apellido AS alumno,\n       round(avg(n.nota), 1) AS promedio\nFROM alumnos a\nJOIN notas n ON n.alumno_id = a.id\nWHERE a.curso_id = 3 AND n.asignatura_id = 2\nGROUP BY a.id;",
+      "solution": "SELECT rank() OVER (ORDER BY round(avg(n.nota), 1) DESC) AS puesto,\n       a.nombre || ' ' || a.apellido AS alumno,\n       round(avg(n.nota), 1)         AS promedio\nFROM alumnos a\nJOIN notas n ON n.alumno_id = a.id\nWHERE a.curso_id = 3 AND n.asignatura_id = 2\nGROUP BY a.id\nORDER BY puesto, a.id;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brank\\s*\\(\\s*\\)\\s*over\\b",
+          "msg": "Calcula el puesto con rank() OVER (ORDER BY …)",
+          "name": "Usa rank()"
+        }
+      ],
+      "hints": [
+        "La numeración con empates repetidos y saltos es la de `rank()`.",
+        "La ventana puede ordenar por un agregado porque se evalúa después del GROUP BY: `rank() OVER (ORDER BY round(avg(n.nota), 1) DESC)`."
+      ],
+      "explain": "Como la ventana se calcula después de agrupar, puede ordenar por `round(avg(n.nota), 1)`, y no hace falta una CTE. Diego Valenzuela queda 1.° con 6.1; los dos alumnos con 5.4 comparten el 4.° puesto y el siguiente es 6.°. Trampas: si rankeas por el promedio **sin redondear**, casi no hay empates y los puestos cambian; con `dense_rank()` el siguiente a los empatados sería 5.° y no 6.°; con `row_number()` los empatados recibirían puestos distintos en un orden arbitrario. Y ordenar solo por `puesto` no basta para un orden determinado: el `a.id` desempata. Alternativa equivalente: calcular el promedio en una CTE y hacer el `rank()` en la consulta externa."
+    },
+    {
+      "id": "s10-e4",
+      "title": "Ventas acumuladas de 2026",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Gerencia sigue mes a mes cuánto se lleva vendido en el año. Considera solo pedidos pagados, enviados o entregados; el monto vendido es la suma de `cantidad * precio_unitario` de sus ítems.",
+        "Para cada mes de **2026** con ventas devuelve `mes` (primer día del mes, tipo `date`), `ventas` (monto del mes) y `acumulado` (suma de las ventas desde enero de 2026 hasta ese mes, inclusive). Ordena por mes."
+      ],
+      "starter": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n    AND p.fecha >= '2026-01-01'\n  GROUP BY 1\n)\nSELECT mes, ventas\nFROM ventas\nORDER BY mes;",
+      "solution": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n    AND p.fecha >= '2026-01-01'\n  GROUP BY 1\n)\nSELECT mes, ventas,\n       sum(ventas) OVER (ORDER BY mes) AS acumulado\nFROM ventas\nORDER BY mes;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bover\\s*\\(\\s*order\\s+by\\b",
+          "msg": "Acumula con una ventana ordenada por mes: sum(ventas) OVER (ORDER BY mes)",
+          "name": "Usa OVER (ORDER BY …)"
+        }
+      ],
+      "hints": [
+        "Un acumulado es una suma cuya ventana crece fila a fila: necesita un `ORDER BY` dentro del `OVER`.",
+        "Agrega `sum(ventas) OVER (ORDER BY mes) AS acumulado` a la consulta externa."
+      ],
+      "explain": "Con `ORDER BY mes`, el marco por defecto va desde la primera fila hasta la actual, así que `sum` acumula: en junio llega a 10.427.920, el total del semestre. Como no hay dos filas con el mismo mes, el marco por defecto (RANGE) y `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` dan lo mismo. Trampa: sin `ORDER BY` en la ventana, cada fila vería las 6 filas y `acumulado` diría 10.427.920 en todos los meses. Filtrar 2026 dentro de la CTE está bien porque el acumulado debe partir en enero; si quisieras mostrar solo abril a junio sin perder lo vendido antes, tendrías que calcular el acumulado primero y filtrar afuera."
+    },
+    {
+      "id": "s10-e5",
+      "title": "El podio de Matemática en cada curso",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "Para el cuadro de honor del **primer semestre**, el departamento de Matemática (`asignatura_id` 2) quiere el podio de cada curso: los alumnos que ocupan los puestos 1 a 3 según su promedio de Matemática del semestre 1, redondeado a 1 decimal.",
+        "Los empatados comparten puesto y el siguiente salta (1, 1, 3…); todos los que tengan puesto 3 o mejor entran al podio, aunque sean más de 3.",
+        "Devuelve `curso` (nombre), `puesto`, `alumno` (nombre y apellido separados por un espacio) y `promedio`. Ordena por curso, puesto e `id` del alumno."
+      ],
+      "starter": "-- Calcula el ranking dentro de cada curso y filtra afuera\nWITH ranking AS (\n  SELECT c.nombre AS curso, a.id,\n         a.nombre || ' ' || a.apellido AS alumno,\n         round(avg(n.nota), 1) AS promedio\n  FROM notas n\n  JOIN alumnos a ON a.id = n.alumno_id\n  JOIN cursos c  ON c.id = a.curso_id\n  WHERE n.asignatura_id = 2 AND n.semestre = 1\n  GROUP BY c.id, a.id\n)\nSELECT curso, alumno, promedio\nFROM ranking\nORDER BY curso, promedio DESC;",
+      "solution": "WITH ranking AS (\n  SELECT c.nombre AS curso, a.id,\n         a.nombre || ' ' || a.apellido AS alumno,\n         round(avg(n.nota), 1) AS promedio,\n         rank() OVER (PARTITION BY c.id\n                      ORDER BY round(avg(n.nota), 1) DESC) AS puesto\n  FROM notas n\n  JOIN alumnos a ON a.id = n.alumno_id\n  JOIN cursos c  ON c.id = a.curso_id\n  WHERE n.asignatura_id = 2 AND n.semestre = 1\n  GROUP BY c.id, a.id\n)\nSELECT curso, puesto, alumno, promedio\nFROM ranking\nWHERE puesto <= 3\nORDER BY curso, puesto, id;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brank\\s*\\(\\s*\\)\\s*over\\s*\\(\\s*partition\\s+by\\b",
+          "msg": "Numera dentro de cada curso con rank() OVER (PARTITION BY …)",
+          "name": "Usa rank() con PARTITION BY"
+        }
+      ],
+      "hints": [
+        "El ranking se reinicia en cada curso: `PARTITION BY c.id`. La regla «1, 1, 3» es la de `rank()`.",
+        "No puedes filtrar la ventana en el WHERE de la misma consulta: agrega `rank() OVER (PARTITION BY c.id ORDER BY round(avg(n.nota), 1) DESC) AS puesto` dentro de la CTE y filtra `WHERE puesto <= 3` afuera."
+      ],
+      "explain": "Es el patrón top-N por grupo: la CTE calcula el puesto de cada alumno en su curso y la consulta externa se queda con los puestos 1 a 3. Salen 20 filas y no 18 por los empates: en el 1° Medio B dos alumnos comparten el 1.er lugar con 6.3 (el siguiente es 3.°), y en el 1° Medio A y el 2° Medio A dos comparten el 3.er lugar y entran ambos. Con `row_number()` tendrías exactamente 3 por curso y los empates se resolverían arbitrariamente; con `dense_rank()` entrarían los 3 mejores promedios **distintos** (más filas). Si escribes `WHERE rank() OVER (…) <= 3`, PostgreSQL responde `window functions are not allowed in WHERE`. El `WHERE n.semestre = 1` va dentro de la CTE, antes de agrupar y rankear."
+    },
+    {
+      "id": "s10-e6",
+      "title": "El segundo mejor sueldo de cada departamento",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Una pregunta clásica de entrevista, con datos reales: ¿quién tiene el **segundo sueldo más alto** de cada departamento, considerando solo a los empleados vigentes (`fecha_salida` nula)?",
+        "«Segundo sueldo más alto» es el segundo **monto distinto**: si dos personas empataran en el primer lugar, el segundo sería el monto siguiente, y si varias personas tuvieran ese segundo monto, aparecerían todas. Un departamento con un solo sueldo distinto no aparece.",
+        "Devuelve `departamento` (nombre), `apellido` y `sueldo`, ordenado por departamento y apellido."
+      ],
+      "starter": "-- Sueldos de los vigentes con su departamento\nSELECT d.nombre AS departamento, e.apellido, e.sueldo\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.fecha_salida IS NULL\nORDER BY departamento, e.sueldo DESC;",
+      "solution": "WITH r AS (\n  SELECT d.nombre AS departamento, e.apellido, e.sueldo,\n         dense_rank() OVER (PARTITION BY e.departamento_id\n                            ORDER BY e.sueldo DESC) AS lugar\n  FROM empleados e\n  JOIN departamentos d ON d.id = e.departamento_id\n  WHERE e.fecha_salida IS NULL\n)\nSELECT departamento, apellido, sueldo\nFROM r\nWHERE lugar = 2\nORDER BY departamento, apellido;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bdense_rank\\s*\\(",
+          "msg": "Numera los montos distintos con dense_rank()",
+          "name": "Usa dense_rank()"
+        }
+      ],
+      "hints": [
+        "¿Qué función da el mismo número a los montos iguales y no deja saltos? Esa es la que cuenta montos distintos.",
+        "En una CTE: `dense_rank() OVER (PARTITION BY e.departamento_id ORDER BY e.sueldo DESC) AS lugar`; afuera, `WHERE lugar = 2`."
+      ],
+      "explain": "`dense_rank` numera los montos distintos de cada departamento, así que `lugar = 2` es exactamente el segundo monto, aunque haya empates arriba o en el mismo segundo lugar. Salen 5 filas: Gerencia no aparece porque tiene una sola persona. En estos datos no hay empates en el primer lugar, así que `rank()` y `row_number()` darían lo mismo, pero no son correctas en general: con dos personas empatadas en el primer lugar, `rank` saltaría del 1 al 3 (no habría ningún 2) y `row_number` devolvería a la segunda persona empatada, que gana lo mismo que la primera. Alternativa sin ventanas: `max(sueldo)` de los que ganan menos que el máximo de su departamento, con subconsultas correlacionadas; más larga y difícil de generalizar al tercero o al quinto."
+    },
+    {
+      "id": "s10-e7",
+      "title": "Cuartiles de clientes según su gasto",
+      "level": "medio",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing quiere segmentar a los clientes en cuatro grupos del mismo tamaño según cuánto han gastado (pedidos pagados, enviados o entregados; el gasto es la suma de `cantidad * precio_unitario` de sus ítems). Solo cuentan los clientes con al menos una compra de ese tipo.",
+        "Asigna el cuartil con `ntile(4)` ordenando por gasto de **mayor a menor** (cuartil 1 = los que más gastan) y, si dos clientes gastaron lo mismo, por `id` de cliente ascendente.",
+        "Devuelve una fila por cuartil con `cuartil`, `clientes` (cantidad), `minimo` y `maximo` (gasto mínimo y máximo de un cliente del cuartil), `total` (gasto sumado del cuartil) y `pct` (porcentaje del total sobre el gasto de todos los cuartiles, con 1 decimal). Ordena por cuartil."
+      ],
+      "starter": "-- Paso 1: el gasto de cada cliente\nSELECT p.cliente_id, sum(i.cantidad * i.precio_unitario) AS total\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\nGROUP BY p.cliente_id;",
+      "solution": "WITH gasto AS (\n  SELECT p.cliente_id, sum(i.cantidad * i.precio_unitario) AS total\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY p.cliente_id\n),\ncuartiles AS (\n  SELECT cliente_id, total,\n         ntile(4) OVER (ORDER BY total DESC, cliente_id) AS cuartil\n  FROM gasto\n)\nSELECT cuartil,\n       count(*)   AS clientes,\n       min(total) AS minimo,\n       max(total) AS maximo,\n       sum(total) AS total,\n       round(100.0 * sum(total) / sum(sum(total)) OVER (), 1) AS pct\nFROM cuartiles\nGROUP BY cuartil\nORDER BY cuartil;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bntile\\s*\\(\\s*4\\s*\\)",
+          "msg": "Reparte a los clientes en cuatro grupos con ntile(4)",
+          "name": "Usa ntile(4)"
+        }
+      ],
+      "hints": [
+        "Son tres pasos: el gasto por cliente (GROUP BY), el cuartil de cada cliente (ventana) y el resumen por cuartil (otro GROUP BY). Encadénalos con CTE.",
+        "El cuartil es `ntile(4) OVER (ORDER BY total DESC, cliente_id)`. En el resumen, el porcentaje usa `sum(sum(total)) OVER ()`."
+      ],
+      "explain": "`ntile(4)` reparte a los 50 clientes en grupos de 13, 13, 12 y 12: como 50 no es divisible por 4, los dos primeros grupos reciben una fila más. El resultado es un Pareto de libro: el primer cuartil (13 clientes) concentra el 51.9 % del gasto y el último apenas el 4.9 %. El desempate por `cliente_id` importa: si dos clientes con el mismo gasto quedaran justo en el borde entre dos cuartiles, sin desempate su asignación sería arbitraria y `minimo`, `maximo` y `total` podrían cambiar entre ejecuciones. No se puede agrupar directamente por la ventana (`window functions are not allowed in GROUP BY`): por eso el cuartil se calcula en una CTE y se agrupa en la siguiente consulta."
+    },
+    {
+      "id": "s10-e8",
+      "title": "Rebajas de sueldo en el historial",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Auditoría quiere revisar los casos en que a alguien le **bajaron** el sueldo. En `historial_sueldos` cada fila es un sueldo vigente desde la fecha `desde`; una rebaja es una fila cuyo sueldo es menor que el de la fila **anterior del mismo empleado**.",
+        "Devuelve `empleado` (nombre y apellido separados por un espacio), `desde`, `anterior` (sueldo anterior), `sueldo` (sueldo nuevo) y `variacion_pct` (variación porcentual respecto del anterior, con 1 decimal; será negativa). Ordena por `desde`."
+      ],
+      "starter": "-- Historial de sueldos de cada empleado, en orden\nSELECT empleado_id, desde, sueldo\nFROM historial_sueldos\nORDER BY empleado_id, desde;",
+      "solution": "WITH cambios AS (\n  SELECT empleado_id, desde, sueldo,\n         lag(sueldo) OVER (PARTITION BY empleado_id ORDER BY desde) AS anterior\n  FROM historial_sueldos\n)\nSELECT e.nombre || ' ' || e.apellido AS empleado,\n       c.desde, c.anterior, c.sueldo,\n       round(100.0 * c.sueldo / c.anterior - 100, 1) AS variacion_pct\nFROM cambios c\nJOIN empleados e ON e.id = c.empleado_id\nWHERE c.sueldo < c.anterior\nORDER BY c.desde;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\blag\\s*\\(",
+          "msg": "Obtén el sueldo anterior con lag()",
+          "name": "Usa lag()"
+        }
+      ],
+      "hints": [
+        "El sueldo anterior del mismo empleado es `lag(sueldo) OVER (PARTITION BY empleado_id ORDER BY desde)`.",
+        "Calcula `lag` en una CTE y filtra afuera con `WHERE sueldo < anterior`; después une con `empleados` para el nombre."
+      ],
+      "explain": "Hay 6 rebajas, desde −0.2 % hasta −6.9 %. Tres detalles: (1) sin `PARTITION BY empleado_id`, la primera fila de cada empleado se compararía con el último sueldo del empleado anterior y aparecerían «rebajas» falsas; (2) `lag` no puede ir en el WHERE de su misma consulta, por eso la CTE; (3) la primera fila de cada empleado tiene `anterior` NULL, y `sueldo < NULL` es NULL, así que el WHERE la descarta sin que tengas que escribir `anterior IS NOT NULL`. El JOIN con `empleados` va afuera y no altera la ventana. Alternativa sin ventanas: un self join de `historial_sueldos` con la fila de fecha máxima anterior (subconsulta correlacionada), mucho más larga."
+    },
+    {
+      "id": "s10-e9",
+      "title": "La última compra de cada cliente",
+      "level": "medio",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El equipo de retención quiere ver la última compra de cada cliente y cuánto tiempo había pasado desde la compra anterior. Considera los pedidos **no cancelados** (estado distinto de `'cancelado'`).",
+        "Devuelve una fila por cliente con `cliente_id`, `pedido_id` (su pedido más reciente; si dos tuvieran la misma fecha y hora, el de mayor `id`), `ultima_compra` (fecha de ese pedido como `date`), `dias_desde_la_anterior` (días entre la fecha, como `date`, de su última compra y la de su compra anterior; NULL si tiene una sola) y `compras` (cantidad de pedidos no cancelados del cliente).",
+        "Ordena por `ultima_compra` y, si empatan, por `cliente_id`."
+      ],
+      "starter": "-- Pedidos no cancelados de cada cliente\nSELECT cliente_id, id AS pedido_id, fecha\nFROM pedidos\nWHERE estado <> 'cancelado'\nORDER BY cliente_id, fecha;",
+      "solution": "WITH compras AS (\n  SELECT cliente_id, id AS pedido_id, fecha,\n         row_number() OVER (PARTITION BY cliente_id ORDER BY fecha DESC, id DESC) AS n,\n         fecha::date - lag(fecha::date) OVER (PARTITION BY cliente_id\n                                              ORDER BY fecha, id)    AS dias_desde_la_anterior,\n         count(*) OVER (PARTITION BY cliente_id)                     AS compras\n  FROM pedidos\n  WHERE estado <> 'cancelado'\n)\nSELECT cliente_id, pedido_id, fecha::date AS ultima_compra,\n       dias_desde_la_anterior, compras\nFROM compras\nWHERE n = 1\nORDER BY ultima_compra, cliente_id;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brow_number\\s*\\(",
+          "msg": "Numera las compras de cada cliente con row_number() para quedarte con la última",
+          "name": "Usa row_number()"
+        },
+        {
+          "pattern": "\\blag\\s*\\(",
+          "msg": "Obtén la fecha de la compra anterior con lag()",
+          "name": "Usa lag()"
+        }
+      ],
+      "hints": [
+        "Todo se calcula en una CTE sobre **todos** los pedidos no cancelados: el número de compra (del más reciente al más antiguo), la fecha anterior y la cantidad de compras. Solo afuera te quedas con la última.",
+        "`row_number() OVER (PARTITION BY cliente_id ORDER BY fecha DESC, id DESC) AS n` marca la última con `n = 1`; `fecha::date - lag(fecha::date) OVER (PARTITION BY cliente_id ORDER BY fecha, id)` da los días desde la anterior."
+      ],
+      "explain": "La clave está en **dónde** filtras: `lag` y `count(*) OVER` tienen que calcularse antes de quedarte con `n = 1`. Si primero filtraras la última compra y después calcularas `lag`, cada cliente tendría una sola fila y la compra anterior ya no existiría (todo NULL). Una misma CTE puede usar ventanas con órdenes distintos (`fecha DESC` para numerar y `fecha` para lag). Salen 50 clientes; los clientes 27 y 6 tienen una sola compra y `dias_desde_la_anterior` NULL. Alternativa para la última fila: `DISTINCT ON (cliente_id) … ORDER BY cliente_id, fecha DESC, id DESC`, pero igual necesitas las ventanas para la compra anterior y el conteo."
+    },
+    {
+      "id": "s10-e10",
+      "title": "Los extremos de cada departamento",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Para un informe de equidad salarial, al lado de cada empleado vigente (`fecha_salida` nula) con departamento se quiere ver quién es el mejor y el peor pagado de su departamento, y cuántas veces gana el mínimo de su departamento.",
+        "Devuelve `departamento_id`, `apellido`, `sueldo`, `mejor_pagado` (apellido del que gana más en su departamento), `peor_pagado` (apellido del que gana menos) y `veces_el_minimo` (sueldo dividido por el sueldo mínimo del departamento, con 1 decimal).",
+        "Usa `first_value` para el mejor pagado y `last_value` para el peor pagado. Ordena por `departamento_id` y sueldo de mayor a menor."
+      ],
+      "starter": "SELECT departamento_id, apellido, sueldo,\n       first_value(apellido) OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) AS mejor_pagado,\n       last_value(apellido)  OVER (PARTITION BY departamento_id ORDER BY sueldo DESC) AS peor_pagado\nFROM empleados\nWHERE fecha_salida IS NULL AND departamento_id IS NOT NULL\nORDER BY departamento_id, sueldo DESC;",
+      "solution": "SELECT departamento_id, apellido, sueldo,\n       first_value(apellido) OVER w                    AS mejor_pagado,\n       last_value(apellido)  OVER w                    AS peor_pagado,\n       round(sueldo::numeric / min(sueldo) OVER w, 1)  AS veces_el_minimo\nFROM empleados\nWHERE fecha_salida IS NULL AND departamento_id IS NOT NULL\nWINDOW w AS (PARTITION BY departamento_id ORDER BY sueldo DESC\n             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)\nORDER BY departamento_id, sueldo DESC;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bfirst_value\\s*\\(",
+          "msg": "Obtén el mejor pagado con first_value()",
+          "name": "Usa first_value()"
+        },
+        {
+          "pattern": "\\blast_value\\s*\\(",
+          "msg": "Obtén el peor pagado con last_value() (corrigiendo su marco)",
+          "name": "Usa last_value()"
+        }
+      ],
+      "hints": [
+        "Ejecuta el código inicial y mira `peor_pagado`: repite el apellido de la fila actual. ¿Qué filas ve `last_value` con el marco por defecto?",
+        "Agrega el marco `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` a la ventana de `last_value`. Para no repetirla tres veces, defínela con `WINDOW w AS (…)`. Divide con `sueldo::numeric` para que `round(…, 1)` funcione."
+      ],
+      "explain": "El código inicial cae en la trampa del marco por defecto: con ORDER BY, el marco termina en la fila actual, así que `last_value` devuelve el propio apellido de cada fila. Con `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` el marco es todo el departamento. `first_value` funcionaba igual con el marco por defecto (la primera fila siempre está) y `min(sueldo)` también da el mínimo correcto con el marco completo; con el marco por defecto y ORDER BY sueldo DESC, en cambio, `min` sería el sueldo de la fila actual. Alternativas para el peor pagado: `first_value(apellido) OVER (PARTITION BY departamento_id ORDER BY sueldo ASC)`. El `::numeric` evita la división entera (5600000 / 1590000 daría 3) y permite `round(x, 1)`. En Operaciones la brecha es de 7.4 veces."
+    },
+    {
+      "id": "s10-e11",
+      "title": "La tendencia del promedio deslizante",
+      "level": "dificil",
+      "minutes": 18,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Las ventas mensuales suben y bajan mucho; gerencia prefiere mirar un **promedio deslizante de 3 meses** (el mes y los dos anteriores) y saber si ese promedio va subiendo o bajando. Ventas: pedidos pagados, enviados o entregados; monto = suma de `cantidad * precio_unitario`.",
+        "Devuelve solo los meses con un promedio **completo** (3 meses con datos) con: `mes` (tipo `date`), `ventas`, `prom_3m` (promedio deslizante redondeado a entero con `round`) y `tendencia`: `'sube'` si `prom_3m` es mayor que el `prom_3m` del mes anterior **de este mismo resultado**, `'baja'` si es menor y NULL si no hay mes anterior en el resultado.",
+        "Ordena por mes."
+      ],
+      "starter": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, ventas\nFROM ventas\nORDER BY mes;",
+      "solution": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n),\nmoviles AS (\n  SELECT mes, ventas,\n         round(avg(ventas) OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)) AS prom_3m,\n         count(*)          OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)  AS meses\n  FROM ventas\n)\nSELECT mes, ventas, prom_3m,\n       CASE WHEN prom_3m > lag(prom_3m) OVER (ORDER BY mes) THEN 'sube'\n            WHEN prom_3m < lag(prom_3m) OVER (ORDER BY mes) THEN 'baja'\n       END AS tendencia\nFROM moviles\nWHERE meses = 3\nORDER BY mes;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brows\\s+between\\b",
+          "msg": "Define el promedio deslizante con un marco ROWS BETWEEN 2 PRECEDING AND CURRENT ROW",
+          "name": "Usa ROWS BETWEEN"
+        },
+        {
+          "pattern": "\\blag\\s*\\(",
+          "msg": "Compara con el promedio deslizante del mes anterior usando lag()",
+          "name": "Usa lag()"
+        }
+      ],
+      "hints": [
+        "Necesitas dos niveles de ventanas: primero el promedio deslizante (y cuántos meses promedió cada fila), y después, sobre ese resultado, compararlo con el anterior. Una ventana no puede contener a otra, así que usa otra CTE.",
+        "En la segunda CTE: `round(avg(ventas) OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW))` y `count(*) OVER (…mismo marco…) AS meses`.",
+        "En la consulta final, `WHERE meses = 3` se aplica **antes** que el `lag` de esa misma consulta: así el primer mes completo (marzo de 2025) queda sin anterior y su tendencia es NULL."
+      ],
+      "explain": "El promedio deslizante de enero y febrero de 2025 es incompleto (1 y 2 meses), por eso se filtra con `count(*) OVER (…)` = 3. El detalle fino es el orden de evaluación: en la consulta final, el WHERE descarta enero y febrero **antes** de calcular `lag(prom_3m)`, así que la primera fila (marzo de 2025) no tiene anterior y su tendencia es NULL, tal como pide el enunciado. Si calcularas `lag` en la CTE, antes de filtrar, marzo se compararía con el promedio incompleto de febrero y diría 'sube'. Salen 16 meses; el promedio sube cuatro meses seguidos, de septiembre a diciembre de 2025. `CASE` sin `ELSE` devuelve NULL cuando lag es NULL, porque las comparaciones con NULL no son verdaderas. Con `ROWS` y una fila por mes, el marco es exacto; si pudiera faltar un mes, `RANGE BETWEEN INTERVAL '2 months' PRECEDING AND CURRENT ROW` sería más fiel."
+    },
+    {
+      "id": "s10-e12",
+      "title": "Ventas de los últimos 7 días, en enero",
+      "level": "dificil",
+      "minutes": 18,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El panel de operaciones muestra, para cada día, las ventas del día y las de los **últimos 7 días calendario** (el día y los 6 anteriores, hayan tenido ventas o no). Ventas: pedidos pagados, enviados o entregados; el día es `fecha::date`; monto = suma de `cantidad * precio_unitario`.",
+        "Devuelve solo los días de **enero de 2026** que tuvieron ventas, con `dia`, `ventas` (del día), `ventas_7_dias` y `dias_con_venta` (cuántos días con ventas hay en esa ventana de 7 días). Ojo: la ventana del 1 de enero incluye los últimos días de diciembre de 2025.",
+        "Ordena por día."
+      ],
+      "starter": "-- Ventas por día\nSELECT p.fecha::date AS dia,\n       sum(i.cantidad * i.precio_unitario) AS ventas\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\nGROUP BY 1\nORDER BY 1;",
+      "solution": "WITH diarias AS (\n  SELECT p.fecha::date AS dia,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n),\nventanas AS (\n  SELECT dia, ventas,\n         sum(ventas) OVER (ORDER BY dia RANGE BETWEEN INTERVAL '6 days' PRECEDING\n                                              AND CURRENT ROW) AS ventas_7_dias,\n         count(*)    OVER (ORDER BY dia RANGE BETWEEN INTERVAL '6 days' PRECEDING\n                                              AND CURRENT ROW) AS dias_con_venta\n  FROM diarias\n)\nSELECT dia, ventas, ventas_7_dias, dias_con_venta\nFROM ventanas\nWHERE dia >= '2026-01-01' AND dia < '2026-02-01'\nORDER BY dia;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\brange\\s+between\\b",
+          "msg": "Define la ventana de 7 días con RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW",
+          "name": "Usa RANGE BETWEEN"
+        }
+      ],
+      "hints": [
+        "`ROWS BETWEEN 6 PRECEDING AND CURRENT ROW` son 7 **filas**, no 7 días: si hubo días sin ventas, abarcaría más de una semana. Para medir tiempo usa `RANGE` con un `INTERVAL`.",
+        "Si filtras enero **antes** de la ventana (en la CTE de ventas diarias), el 1 de enero no verá diciembre. Calcula las ventanas sobre todos los días y filtra enero en la consulta externa."
+      ],
+      "explain": "Dos trampas en una. (1) `RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW` mira el valor de la fecha: entran las filas cuyo día está entre `dia - 6` y `dia`, existan o no los días intermedios; con `ROWS 6 PRECEDING` la ventana del 24 de enero se estiraría hasta el 13. (2) El WHERE se evalúa antes que las ventanas de su misma consulta: si filtras enero en la CTE `diarias`, la fila del 1 de enero tendría `ventas_7_dias` = 29.980 (solo ese día) en vez de 217.910, que incluye las ventas del 26 al 31 de diciembre. Por eso las ventanas se calculan en una CTE sobre todo el historial y el filtro de enero va afuera. En un sistema grande conviene acotar la CTE con un margen (`p.fecha >= '2025-12-26'`) para no procesar años de datos."
+    },
+    {
+      "id": "s10-e13",
+      "title": "Limpiar inscripciones duplicadas",
+      "level": "dificil",
+      "minutes": 18,
+      "mode": "script",
+      "setup": "CREATE TABLE inscripciones (\n  id        integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  rut       text NOT NULL,\n  nombre    text NOT NULL,\n  taller    text NOT NULL,\n  creado_en timestamptz NOT NULL\n);\nINSERT INTO inscripciones (rut, nombre, taller, creado_en) VALUES\n  ('12.345.678-5', 'Ana Rojas',   'Ajedrez', '2026-01-10 10:00'),\n  ('9.876.543-3',  'Luis Soto',   'Fútbol',  '2026-01-10 11:00'),\n  ('12345678-5',   'Ana Rojas',   'Ajedrez', '2026-01-12 09:30'),\n  ('12345678-5',   'Ana Rojas',   'Pintura', '2026-01-12 09:35'),\n  ('16.222.333-k', 'Marta Díaz',  'Ajedrez', '2026-01-13 18:00'),\n  ('16222333-K',   'Marta Díaz',  'Ajedrez', '2026-01-13 18:00'),\n  ('9876543-3',    'Luis Soto',   'Fútbol',  '2026-01-09 08:00'),\n  ('12.345.678-5', 'Ana Rojas',   'Ajedrez', '2026-01-11 15:00'),\n  ('20.123.456-5', 'Pedro Pérez', 'Pintura', '2026-01-14 12:00'),\n  ('16.222.333-K', 'Marta Díaz',  'Ajedrez', '2026-01-12 10:00');",
+      "prompt": [
+        "La municipalidad abrió las inscripciones para los talleres de verano y el formulario web guardó varias veces a algunas personas. La tabla `inscripciones` tiene `id`, `rut`, `nombre`, `taller` y `creado_en`.",
+        "Dos filas son la **misma inscripción** si corresponden al mismo RUT **y** al mismo taller. El RUT se escribió de distintas formas: con o sin puntos y con la `k` del dígito verificador en minúscula o mayúscula (`'16.222.333-k'` y `'16222333-K'` son el mismo RUT).",
+        "Borra los duplicados dejando, de cada inscripción, **la más reciente** (`creado_en` mayor); si dos copias tienen la misma fecha y hora, conserva la de mayor `id`. No borres nada más. Revisa con un SELECT antes de borrar."
+      ],
+      "starter": "-- 1) Mira los duplicados: numera cada grupo (mismo RUT normalizado y mismo taller)\n-- 2) Borra los que no son el número 1\nSELECT id, rut, taller, creado_en\nFROM inscripciones\nORDER BY taller, rut;",
+      "solution": "DELETE FROM inscripciones\nWHERE id IN (\n  SELECT id\n  FROM (SELECT id,\n               row_number() OVER (PARTITION BY upper(replace(rut, '.', '')), taller\n                                  ORDER BY creado_en DESC, id DESC) AS n\n        FROM inscripciones) AS s\n  WHERE n > 1\n);",
+      "checks": [
+        {
+          "name": "No quedan inscripciones duplicadas",
+          "sql": "SELECT count(*) = count(DISTINCT (upper(replace(rut, '.', '')), taller)), 'Todavía hay ' || (count(*) - count(DISTINCT (upper(replace(rut, '.', '')), taller))) || ' filas duplicadas (mismo RUT normalizado y mismo taller)' FROM inscripciones",
+          "fail": "Todavía hay filas con el mismo RUT (sin puntos y con K mayúscula) y el mismo taller."
+        },
+        {
+          "name": "Quedan exactamente 5 inscripciones",
+          "sql": "SELECT count(*) = 5, 'Quedan ' || count(*) || ' inscripciones; deberían quedar 5' FROM inscripciones",
+          "fail": "Deberían quedar 5 inscripciones: una por cada combinación de persona y taller."
+        },
+        {
+          "name": "Se conservó la copia más reciente de cada inscripción",
+          "sql": "SELECT mismas_filas($$SELECT id FROM inscripciones$$, $$VALUES (2), (3), (4), (6), (9)$$)",
+          "fail": "Las filas que quedan no son las correctas: de cada grupo debe quedar la de creado_en más reciente y, si empatan, la de mayor id."
+        },
+        {
+          "name": "La tabla conserva todas sus columnas",
+          "sql": "SELECT existe_columna('inscripciones', 'rut') AND existe_columna('inscripciones', 'creado_en')",
+          "fail": "No modifiques la estructura de la tabla: solo borra filas."
+        }
+      ],
+      "requires": [
+        {
+          "pattern": "\\brow_number\\s*\\(",
+          "msg": "Numera las copias de cada inscripción con row_number()",
+          "name": "Usa row_number()"
+        }
+      ],
+      "hints": [
+        "Normaliza el RUT para comparar: `upper(replace(rut, '.', ''))` convierte `'16.222.333-k'` en `'16222333-K'`. El grupo es ese RUT normalizado más el taller.",
+        "`row_number() OVER (PARTITION BY upper(replace(rut, '.', '')), taller ORDER BY creado_en DESC, id DESC)` le da el número 1 a la copia que se conserva.",
+        "Las ventanas no van en el WHERE: usa `DELETE FROM inscripciones WHERE id IN (SELECT id FROM (…) AS s WHERE n > 1)`."
+      ],
+      "explain": "Se borran 5 filas (ids 1, 5, 7, 8 y 10) y quedan 2, 3, 4, 6 y 9. El ORDER BY de la ventana es la política de conservación: `creado_en DESC` deja la más reciente y `id DESC` resuelve el empate exacto entre las filas 5 y 6 de Marta (misma fecha y hora); sin ese desempate, cuál se borra quedaría al azar. Ana aparece en Ajedrez y en Pintura: son inscripciones distintas porque el taller es parte del grupo. Si normalizaras solo con `replace` y no con `upper`, `'16222333-k'` y `'16222333-K'` quedarían en grupos distintos. Alternativa equivalente: `WITH n AS (SELECT id, row_number() OVER (…) AS n FROM inscripciones) DELETE FROM inscripciones i USING n WHERE i.id = n.id AND n.n > 1`. En la vida real, hazlo dentro de `BEGIN` … `COMMIT` revisando el `RETURNING`, y después crea un índice único sobre `(upper(replace(rut, '.', '')), taller)` para que no vuelva a pasar."
+    },
+    {
+      "id": "s10-e14",
+      "title": "Clientes fieles: rachas de meses con compras",
+      "level": "dificil",
+      "minutes": 20,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El programa de fidelización premiará a quienes compraron **5 meses seguidos o más**. Un cliente «compró en un mes» si tiene al menos un pedido no cancelado (estado distinto de `'cancelado'`) con fecha en ese mes.",
+        "Encuentra todas las rachas de meses consecutivos con compras de 5 o más meses. Devuelve `cliente_id`, `cliente` (nombre y apellido separados por un espacio), `desde` y `hasta` (primer día del primer y del último mes de la racha, tipo `date`) y `meses` (largo de la racha). Un cliente puede tener más de una racha.",
+        "Ordena de la racha más larga a la más corta; si empatan, por `cliente_id` y luego por `desde`."
+      ],
+      "starter": "-- Meses con compras de cada cliente\nSELECT DISTINCT cliente_id, date_trunc('month', fecha)::date AS mes\nFROM pedidos\nWHERE estado <> 'cancelado'\nORDER BY cliente_id, mes;",
+      "solution": "WITH meses AS (\n  SELECT DISTINCT cliente_id, date_trunc('month', fecha)::date AS mes\n  FROM pedidos\n  WHERE estado <> 'cancelado'\n),\nislas AS (\n  SELECT cliente_id, mes,\n         (extract(year FROM mes) * 12 + extract(month FROM mes))::int\n           - row_number() OVER (PARTITION BY cliente_id ORDER BY mes) AS isla\n  FROM meses\n)\nSELECT c.id AS cliente_id,\n       c.nombre || ' ' || c.apellido AS cliente,\n       min(i.mes) AS desde,\n       max(i.mes) AS hasta,\n       count(*)   AS meses\nFROM islas i\nJOIN clientes c ON c.id = i.cliente_id\nGROUP BY c.id, i.isla\nHAVING count(*) >= 5\nORDER BY meses DESC, cliente_id, desde;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\b(row_number|dense_rank)\\s*\\(",
+          "msg": "Numera los meses de cada cliente con row_number() (o dense_rank())",
+          "name": "Usa row_number() o dense_rank()"
+        }
+      ],
+      "hints": [
+        "Es un problema de islas: dentro de una racha, el mes avanza de a 1 al mismo tiempo que un `row_number()` por cliente, así que su diferencia es constante.",
+        "Para restar hace falta un número de mes que avance de a 1: `(extract(year FROM mes) * 12 + extract(month FROM mes))::int` (diciembre de 2025 y enero de 2026 quedan seguidos). Usa `SELECT DISTINCT` antes: un cliente puede comprar varias veces en un mes.",
+        "Agrupa por cliente y por la diferencia `numero_de_mes - row_number() OVER (PARTITION BY cliente_id ORDER BY mes)`, y quédate con `HAVING count(*) >= 5`."
+      ],
+      "explain": "Salen 7 rachas; la más larga es de 6 meses (cliente 11, de junio a noviembre de 2025) y la clienta 44 tiene dos rachas de 5. El truco valor − row_number necesita un valor que avance de a 1 por mes: la fecha no sirve directamente (restar un número a una fecha resta días), por eso se convierte a «número de mes» con año × 12 + mes; otra opción es `mes - row_number() OVER (…) * INTERVAL '1 month'`. El `DISTINCT` es imprescindible: con dos pedidos en el mismo mes, `row_number` avanzaría dos veces y partiría la racha (o usa `dense_rank()` sin DISTINCT). `PARTITION BY cliente_id` hace que cada cliente tenga su propia numeración; sin ella, meses de clientes distintos se mezclarían en islas sin sentido. El HAVING filtra grupos ya formados, así que aquí no hace falta otra CTE."
+    },
+    {
+      "id": "s10-e15",
+      "title": "Proyecto: tablero mensual de ventas",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Eres analista de Tienda Andes y te piden la tabla que alimentará el tablero mensual de ventas de gerencia, con los 18 meses de historia. Ventas: pedidos pagados, enviados o entregados; monto = suma de `cantidad * precio_unitario` de sus ítems.",
+        "Una fila por mes con estas columnas, en este orden: `mes` (primer día, tipo `date`); `ventas`; `pedidos` (pedidos distintos); `ticket_promedio` (ventas / pedidos, redondeado a entero); `var_mensual_pct` (variación porcentual respecto del mes anterior, 1 decimal); `var_interanual_pct` (variación respecto del mismo mes del año anterior, 1 decimal; NULL si no existe); `acumulado_anio` (ventas acumuladas desde enero de su año); `pct_del_anio` (porcentaje de las ventas del mes sobre el total de su año, 1 decimal) y `puesto_en_el_anio` (lugar del mes dentro de su año según ventas, de mayor a menor, con `rank`).",
+        "Hay una fila por mes y ningún mes sin ventas, así que «el mes anterior» es la fila anterior. Define las ventanas con la cláusula `WINDOW` para no repetirlas. Ordena por mes."
+      ],
+      "starter": "-- Paso 1: resumen mensual (ventas y pedidos)\nSELECT date_trunc('month', p.fecha)::date AS mes,\n       sum(i.cantidad * i.precio_unitario) AS ventas\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.estado IN ('pagado', 'enviado', 'entregado')\nGROUP BY 1\nORDER BY 1;",
+      "solution": "WITH ventas AS (\n  SELECT date_trunc('month', p.fecha)::date AS mes,\n         count(DISTINCT p.id)                AS pedidos,\n         sum(i.cantidad * i.precio_unitario) AS ventas\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado IN ('pagado', 'enviado', 'entregado')\n  GROUP BY 1\n)\nSELECT mes, ventas, pedidos,\n       round(ventas::numeric / pedidos)                        AS ticket_promedio,\n       round(100.0 * ventas / lag(ventas) OVER w - 100, 1)     AS var_mensual_pct,\n       round(100.0 * ventas / lag(ventas, 12) OVER w - 100, 1) AS var_interanual_pct,\n       sum(ventas) OVER anio_ord                               AS acumulado_anio,\n       round(100.0 * ventas / sum(ventas) OVER anio, 1)        AS pct_del_anio,\n       rank() OVER (anio ORDER BY ventas DESC)                 AS puesto_en_el_anio\nFROM ventas\nWINDOW w        AS (ORDER BY mes),\n       anio     AS (PARTITION BY extract(year FROM mes)),\n       anio_ord AS (anio ORDER BY mes)\nORDER BY mes;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bwindow\\s+\\w+\\s+as\\s*\\(",
+          "msg": "Define las ventanas con nombre en una cláusula WINDOW … AS (…)",
+          "name": "Usa la cláusula WINDOW"
+        },
+        {
+          "pattern": "\\blag\\s*\\(",
+          "msg": "Calcula las variaciones con lag()",
+          "name": "Usa lag()"
+        },
+        {
+          "pattern": "\\brank\\s*\\(",
+          "msg": "Calcula el puesto del mes con rank()",
+          "name": "Usa rank()"
+        }
+      ],
+      "hints": [
+        "Primero una CTE con `mes`, `pedidos` (`count(DISTINCT p.id)`, porque el JOIN con los ítems repite cada pedido) y `ventas`. Todas las ventanas van en la consulta externa, sobre esas 18 filas.",
+        "Tres ventanas bastan: `w AS (ORDER BY mes)` para `lag(ventas)` y `lag(ventas, 12)`; `anio AS (PARTITION BY extract(year FROM mes))` para el total del año; y `anio_ord AS (anio ORDER BY mes)` para el acumulado.",
+        "El puesto necesita la partición del año con otro orden: `rank() OVER (anio ORDER BY ventas DESC)` copia `anio` y le agrega su ORDER BY (se puede porque `anio` no tiene uno). El ticket: `round(ventas::numeric / pedidos)`."
+      ],
+      "explain": "Este tablero junta casi toda la sección: `lag` con desplazamiento 1 y 12, un acumulado que se reinicia cada año (PARTITION BY + ORDER BY), un porcentaje sobre el total de la partición (sin ORDER BY, el marco es todo el año) y un ranking por partición con otro orden. La cláusula WINDOW evita repetir definiciones: `OVER w` usa la ventana tal cual, y `OVER (anio ORDER BY ventas DESC)` la copia agregándole un orden, algo permitido porque `anio` no tiene ORDER BY ni marco (si lo tuviera, `cannot override ORDER BY clause of window \"anio\"`). Octubre fue el mejor mes de 2025 y febrero el mejor de 2026 (+445.2 % interanual). Trampas: `count(*)` en vez de `count(DISTINCT p.id)` contaría ítems, no pedidos; `lag(ventas, 12)` solo es correcto porque no falta ningún mes; y `pct_del_anio` de 2026 es sobre el semestre disponible, no sobre un año completo."
+    },
+    {
+      "id": "s10-e16",
+      "title": "Proyecto: cartola de viajes con períodos de uso",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "query",
+      "dataset": "metro",
+      "prompt": [
+        "El área de clientes del metro quiere enviar a los usuarios una «cartola» de sus viajes del primer semestre, agrupada en **períodos de uso**. Arma la cartola de las tarjetas `1000002` y `1000003`.",
+        "Un **período** empieza con el primer viaje de la tarjeta y cada vez que pasan **más de 7 días** entre la fecha (`ts::date`) de un viaje y la del viaje anterior de la misma tarjeta. Los períodos de cada tarjeta se numeran 1, 2, 3…",
+        "Columnas, en este orden: `tarjeta_id`; `viaje` (número de viaje de la tarjeta en orden cronológico, desde 1); `fecha` (`ts::date`); `estacion` (nombre de la estación); `dias_desde_anterior` (días entre la fecha de este viaje y la del anterior de la misma tarjeta; NULL en el primero); `periodo`; `viaje_en_periodo` (número del viaje dentro de su período, desde 1) y `gasto_periodo` (suma acumulada de `tarifa` dentro del período hasta ese viaje, inclusive).",
+        "Ordena por tarjeta y número de viaje."
+      ],
+      "starter": "-- Viajes de las dos tarjetas con el nombre de la estación\nSELECT v.tarjeta_id, v.ts, e.nombre AS estacion, v.tarifa\nFROM validaciones v\nJOIN estaciones e ON e.id = v.estacion_id\nWHERE v.tarjeta_id IN (1000002, 1000003)\nORDER BY v.tarjeta_id, v.ts;",
+      "solution": "WITH viajes AS (\n  SELECT v.tarjeta_id, v.ts, v.tarifa, e.nombre AS estacion,\n         row_number() OVER (PARTITION BY v.tarjeta_id ORDER BY v.ts)     AS viaje,\n         v.ts::date - lag(v.ts::date) OVER (PARTITION BY v.tarjeta_id\n                                            ORDER BY v.ts)            AS dias_desde_anterior\n  FROM validaciones v\n  JOIN estaciones e ON e.id = v.estacion_id\n  WHERE v.tarjeta_id IN (1000002, 1000003)\n),\nmarcados AS (\n  SELECT *,\n         sum(CASE WHEN dias_desde_anterior <= 7 THEN 0 ELSE 1 END)\n           OVER (PARTITION BY tarjeta_id ORDER BY ts) AS periodo\n  FROM viajes\n)\nSELECT tarjeta_id, viaje, ts::date AS fecha, estacion, dias_desde_anterior, periodo,\n       row_number() OVER (PARTITION BY tarjeta_id, periodo ORDER BY ts) AS viaje_en_periodo,\n       sum(tarifa)  OVER (PARTITION BY tarjeta_id, periodo ORDER BY ts) AS gasto_periodo\nFROM marcados\nORDER BY tarjeta_id, viaje;",
+      "ordered": true,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\blag\\s*\\(",
+          "msg": "Calcula los días desde el viaje anterior con lag()",
+          "name": "Usa lag()"
+        },
+        {
+          "pattern": "\\brow_number\\s*\\(",
+          "msg": "Numera los viajes con row_number()",
+          "name": "Usa row_number()"
+        }
+      ],
+      "hints": [
+        "Trabaja en tres capas, porque una ventana no puede contener a otra: (1) número de viaje y días desde el anterior; (2) número de período; (3) número y gasto dentro del período.",
+        "El período es una isla por condición: marca con 1 los viajes que inician período (`CASE WHEN dias_desde_anterior <= 7 THEN 0 ELSE 1 END`: el primer viaje tiene NULL y cae en el ELSE) y numera con la suma acumulada `sum(…) OVER (PARTITION BY tarjeta_id ORDER BY ts)`.",
+        "Dentro del período la partición es doble: `PARTITION BY tarjeta_id, periodo`. Con ORDER BY ts, `sum(tarifa)` acumula y `row_number()` numera desde 1 en cada período."
+      ],
+      "explain": "Salen 40 filas. La tarjeta 1000002 tiene 2 períodos de 10 viajes (entre el 12 de marzo y el 16 de mayo pasaron 65 días); la 1000003, tres: 9 viajes en enero, 10 entre marzo y abril y un último viaje suelto el 28 de junio. La técnica es la de las islas por condición: lag para medir el hueco, una marca 1/0 y una suma acumulada que numera los períodos. El `ELSE 1` resuelve el primer viaje sin escribir un caso aparte, porque `NULL <= 7` no es verdadero. Cada capa necesita su propia CTE: `sum(CASE WHEN lag(…) … END) OVER (…)` falla con `window function calls cannot be nested`. Y todas las ventanas llevan `PARTITION BY tarjeta_id`: sin ella, el primer viaje de la tarjeta 1000003 se compararía con el último de la 1000002 y la numeración de viajes seguiría de una tarjeta a otra. Como cada tarjeta tiene a lo más un viaje por instante, `ORDER BY ts` deja el orden totalmente determinado."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "¿Qué convierte a `sum`, `avg` o `count` en una función de ventana?",
+      "back": "La cláusula `OVER (…)` escrita justo después de la función. Sin OVER es un agregado normal (colapsa filas); con OVER calcula sobre la ventana y conserva cada fila."
+    },
+    {
+      "front": "Agregado con GROUP BY vs agregado de ventana",
+      "back": "GROUP BY devuelve **una fila por grupo**. La ventana devuelve **todas las filas**, cada una con el valor calculado sobre su partición. Por eso con una ventana puedes mostrar columnas que no están agrupadas."
+    },
+    {
+      "front": "`OVER ()` (paréntesis vacíos)",
+      "back": "Una sola partición con **todas las filas del resultado**: las que quedaron después de WHERE, GROUP BY y HAVING, no toda la tabla. LIMIT no la afecta, porque se aplica después."
+    },
+    {
+      "front": "`PARTITION BY`",
+      "back": "Divide las filas en particiones que se procesan por separado, como GROUP BY pero sin colapsar. Acepta expresiones, pero no alias del SELECT ni números de columna: `PARTITION BY 1` es la constante 1 (una sola partición)."
+    },
+    {
+      "front": "¿En qué cláusulas se permiten las funciones de ventana?",
+      "back": "Solo en la lista del **SELECT** y en el **ORDER BY**. En WHERE, GROUP BY y HAVING dan error (`window functions are not allowed in WHERE`)."
+    },
+    {
+      "front": "Orden lógico de una consulta con ventanas",
+      "back": "FROM → WHERE → GROUP BY y agregados → HAVING → **funciones de ventana** → resto del SELECT → DISTINCT → ORDER BY → LIMIT/OFFSET."
+    },
+    {
+      "front": "`sum(sum(x)) OVER ()`",
+      "back": "El `sum(x)` interno es el agregado de cada grupo (GROUP BY); el externo con `OVER ()` suma esos totales en todas las filas del resultado. Sirve para el % de cada grupo sobre el total. Al revés no se puede: `aggregate function calls cannot contain window function calls`."
+    },
+    {
+      "front": "¿Cómo filtras por el resultado de una ventana (por ejemplo, `puesto <= 3`)?",
+      "back": "Calculas la ventana en una CTE o subconsulta y filtras en la consulta externa. PostgreSQL no tiene `QUALIFY` (es `syntax error`) y el WHERE de la misma consulta no ve ni la ventana ni su alias."
+    },
+    {
+      "front": "`row_number`, `rank` y `dense_rank` para las notas 7.0, 6.5, 6.5, 6.0 (de mayor a menor)",
+      "back": "row_number: 1, 2, 3, 4 · rank: 1, 2, 2, 4 · dense_rank: 1, 2, 2, 3."
+    },
+    {
+      "front": "¿Por qué `row_number()` puede ser no determinista?",
+      "back": "Con empates en el ORDER BY de la ventana, los pares se numeran en un orden no especificado. Agrega columnas de desempate (por ejemplo, la clave primaria) hasta que el orden sea único."
+    },
+    {
+      "front": "Fórmula de `percent_rank()`",
+      "back": "(rank − 1) / (filas de la partición − 1). Va de 0 a 1 y devuelve `double precision`."
+    },
+    {
+      "front": "Fórmula de `cume_dist()`",
+      "back": "(filas anteriores o pares de la fila actual) / (filas de la partición). Va de 1/n a 1 y devuelve `double precision`."
+    },
+    {
+      "front": "¿Cómo reparte `ntile(k)` las filas?",
+      "back": "En k grupos lo más parejos posible; si no es exacto, los **primeros** grupos tienen una fila más. 7 filas con `ntile(3)`: 3, 2 y 2. Devuelve `integer`."
+    },
+    {
+      "front": "Top-N por grupo: `row_number` vs `rank` vs `dense_rank` con `<= 3`",
+      "back": "row_number: exactamente 3 filas (empates resueltos por el desempate). rank: los que tienen menos de 3 delante (incluye empatados en el borde). dense_rank: los que tienen uno de los 3 mejores valores distintos."
+    },
+    {
+      "front": "Firma de `lag` y `lead`",
+      "back": "`lag(valor [, desplazamiento [, defecto]])`: el valor de la fila que está `desplazamiento` filas antes (lead: después) en la partición; si no existe, `defecto` (NULL por omisión). El desplazamiento por omisión es 1."
+    },
+    {
+      "front": "¿`lag(monto, 12)` es «el mismo mes del año anterior»?",
+      "back": "Solo si hay exactamente una fila por mes y ningún mes falta: lag cuenta **filas**, no meses. Si falta un mes, compara con el mes equivocado sin avisar. Completa el calendario con generate_series si hace falta."
+    },
+    {
+      "front": "¿Por qué `lag(sueldo)` en `historial_sueldos` necesita `PARTITION BY empleado_id`?",
+      "back": "Sin partición, la primera fila de cada empleado recibe el último sueldo del empleado anterior y aparecen reajustes falsos."
+    },
+    {
+      "front": "`IGNORE NULLS` y `FROM LAST` en PostgreSQL 18",
+      "back": "No están implementados: lag, lead, first_value, last_value y nth_value siempre se comportan como `RESPECT NULLS`, y nth_value solo cuenta desde el principio (para FROM LAST, invierte el ORDER BY)."
+    },
+    {
+      "front": "Marco por defecto cuando la ventana tiene ORDER BY",
+      "back": "`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`: desde el inicio de la partición hasta el **último par** de la fila actual."
+    },
+    {
+      "front": "Marco por defecto cuando la ventana NO tiene ORDER BY",
+      "back": "Toda la partición: sin ORDER BY todas las filas son pares de la fila actual."
+    },
+    {
+      "front": "¿Por qué `last_value(x) OVER (ORDER BY y)` devuelve el valor de la propia fila?",
+      "back": "Porque el marco por defecto termina en la fila actual (o su último par). Solución: `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`, o `first_value(x)` con el orden invertido."
+    },
+    {
+      "front": "¿Qué funciones dependen del marco?",
+      "back": "`first_value`, `last_value`, `nth_value` y los agregados usados como ventana (`sum`, `avg`, `count`, `min`, `max`…). Los rankings, `ntile`, `percent_rank`, `cume_dist`, `lag` y `lead` trabajan sobre la partición completa."
+    },
+    {
+      "front": "`ROWS` vs `RANGE` vs `GROUPS`",
+      "back": "ROWS cuenta filas físicas; RANGE mide diferencias de valor en la columna del ORDER BY; GROUPS cuenta grupos de pares. En RANGE y GROUPS, `CURRENT ROW` incluye a todos los pares."
+    },
+    {
+      "front": "Requisitos de `RANGE` con offset (`n PRECEDING`)",
+      "back": "El ORDER BY debe tener **exactamente una** columna, numérica o de fecha/hora; para fechas el offset es un `interval` (`RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW`)."
+    },
+    {
+      "front": "¿Qué exige el modo `GROUPS`?",
+      "back": "Un ORDER BY en la ventana (`GROUPS mode requires an ORDER BY clause`). Está disponible desde PostgreSQL 11."
+    },
+    {
+      "front": "Promedio deslizante de 3 meses",
+      "back": "`avg(ventas) OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)`. En los bordes el marco tiene menos filas: los primeros meses promedian 1 y 2 valores."
+    },
+    {
+      "front": "Suma de los últimos 7 días calendario",
+      "back": "`sum(monto) OVER (ORDER BY dia RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW)`. Con `ROWS 6 PRECEDING` serían 7 filas, que abarcan más de una semana si hubo días sin datos."
+    },
+    {
+      "front": "Opciones de `EXCLUDE`",
+      "back": "`EXCLUDE CURRENT ROW` (saca la fila actual), `EXCLUDE GROUP` (la actual y sus pares), `EXCLUDE TIES` (los pares, pero no la actual), `EXCLUDE NO OTHERS` (por defecto, no saca nada)."
+    },
+    {
+      "front": "`WINDOW w AS (…)`: `OVER w` vs `OVER (w …)`",
+      "back": "`OVER w` usa la ventana tal cual. `OVER (w …)` la copia para agregarle ORDER BY (si no tenía) o un marco; falla si `w` ya tiene marco (`cannot copy window \"w\" because it has a frame clause`) y no puede redefinir su PARTITION BY."
+    },
+    {
+      "front": "Truco de las islas de valores consecutivos",
+      "back": "`valor − row_number() OVER (ORDER BY valor)` es constante dentro de cada racha: agrupa por esa diferencia. Exige valores sin repetir (DISTINCT o `dense_rank()`); con fechas, castea: `dia - (row_number() OVER (…))::int`."
+    },
+    {
+      "front": "Receta de sesiones o islas por condición",
+      "back": "1) Marca con 1 las filas que inician isla usando lag: `CASE WHEN ts - lag(ts) OVER (…) <= INTERVAL '30 minutes' THEN 0 ELSE 1 END`. 2) `sum(marca) OVER (ORDER BY ts)` numera las islas. Van en CTE distintas: las ventanas no se anidan."
+    },
+    {
+      "front": "Deduplicar con `row_number()`",
+      "back": "`DELETE FROM t WHERE id IN (SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY clave ORDER BY criterio, id) AS n FROM t) s WHERE n > 1)`. El ORDER BY de la ventana decide qué copia se conserva."
+    },
+    {
+      "front": "¿Se puede usar `DISTINCT` u `ORDER BY` dentro de un agregado de ventana?",
+      "back": "No: `DISTINCT is not implemented for window functions` y `aggregate ORDER BY is not implemented for window functions`. Tampoco se pueden usar `percentile_cont`/`mode` con OVER."
+    },
+    {
+      "front": "¿`FILTER (WHERE …)` funciona con ventanas?",
+      "back": "Sí, pero solo con agregados: `count(*) FILTER (WHERE sueldo > 2000000) OVER (PARTITION BY departamento_id)`. Con `rank()` da `FILTER is not implemented for non-aggregate window functions`."
+    },
+    {
+      "front": "¿Las filas salen ordenadas por la ventana?",
+      "back": "No está garantizado. Hoy suelen salir en el orden de alguna ventana porque se ordenan para calcularlas, pero la documentación dice que no dependas de eso: termina siempre con un ORDER BY explícito."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s10-q1",
+      "type": "single",
+      "q": "La tabla `empleados` tiene 55 filas repartidas en 6 departamentos más una persona sin departamento. ¿Cuántas filas devuelve esta consulta?\n```sql\nSELECT departamento_id, avg(sueldo) OVER (PARTITION BY departamento_id)\nFROM empleados;\n```",
+      "options": [
+        "55",
+        "7",
+        "6",
+        "Un error: falta GROUP BY"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Una función de ventana no colapsa filas: salen las 55, cada una con el promedio de su departamento. Con `GROUP BY departamento_id` y `avg(sueldo)` sin OVER saldrían 7 (el NULL forma su propio grupo)."
+    },
+    {
+      "id": "s10-q2",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta?\n```sql\nSELECT nombre, sueldo\nFROM empleados\nWHERE sueldo > avg(sueldo) OVER ();\n```",
+      "options": [
+        "Devuelve los empleados que ganan más que el promedio",
+        "Error: `window functions are not allowed in WHERE`",
+        "Error: falta GROUP BY",
+        "Devuelve todas las filas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las ventanas se evalúan después del WHERE, así que no pueden usarse en él. Calcula `avg(sueldo) OVER ()` en una CTE y filtra afuera, o usa una subconsulta escalar `(SELECT avg(sueldo) FROM empleados)`."
+    },
+    {
+      "id": "s10-q3",
+      "type": "yesno",
+      "q": "¿En qué partes de una consulta se puede escribir una función de ventana? Indica Sí o No.",
+      "statements": [
+        {
+          "text": "En la lista del SELECT.",
+          "answer": true
+        },
+        {
+          "text": "En el ORDER BY final.",
+          "answer": true
+        },
+        {
+          "text": "En el WHERE.",
+          "answer": false
+        },
+        {
+          "text": "En el HAVING.",
+          "answer": false
+        },
+        {
+          "text": "En el GROUP BY.",
+          "answer": false
+        }
+      ],
+      "explain": "La documentación es explícita: las funciones de ventana solo se permiten en la lista del SELECT y en el ORDER BY, porque lógicamente se ejecutan después de WHERE, GROUP BY y HAVING."
+    },
+    {
+      "id": "s10-q4",
+      "type": "single",
+      "q": "La tabla `t` tiene una columna `x` con los valores 10, 20, 30 y 40. ¿Qué valor tiene la columna `total` en la fila con `x = 30`?\n```sql\nSELECT x, sum(x) OVER () AS total\nFROM t\nWHERE x > 15;\n```",
+      "options": [
+        "100",
+        "90",
+        "30",
+        "60"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El WHERE deja 20, 30 y 40 **antes** de calcular la ventana, y `OVER ()` suma las filas que quedaron: 90. La ventana nunca ve el 10."
+    },
+    {
+      "id": "s10-q5",
+      "type": "single",
+      "q": "Con la misma tabla `t` (10, 20, 30, 40), ¿qué valor tiene `n` en las dos filas del resultado?\n```sql\nSELECT x, count(*) OVER () AS n\nFROM t\nORDER BY x\nLIMIT 2;\n```",
+      "options": [
+        "2",
+        "4",
+        "1 y 2",
+        "Error: no se puede usar LIMIT con ventanas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "LIMIT se aplica al final, después de las ventanas: el conteo ya se hizo sobre las 4 filas. Es el truco para paginar mostrando el total de resultados en cada página."
+    },
+    {
+      "id": "s10-q6",
+      "type": "single",
+      "q": "Para las notas 7.0, 6.5, 6.5 y 6.0, con `OVER (ORDER BY nota DESC)`, ¿qué valores de `rank()` y `dense_rank()` recibe la fila con 6.0?",
+      "options": [
+        "rank 4 y dense_rank 3",
+        "rank 3 y dense_rank 3",
+        "rank 4 y dense_rank 4",
+        "rank 3 y dense_rank 4"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "rank = 1 + cantidad de filas con mejor nota (3), o sea 4; dense_rank = 1 + cantidad de notas distintas mejores (7.0 y 6.5), o sea 3. La secuencia completa: rank 1, 2, 2, 4 y dense_rank 1, 2, 2, 3."
+    },
+    {
+      "id": "s10-q7",
+      "type": "single",
+      "q": "Dos alumnos tienen exactamente el mismo promedio. ¿Qué garantiza `row_number() OVER (ORDER BY promedio DESC)` para esas dos filas?",
+      "options": [
+        "Que reciben el mismo número",
+        "Que reciben números distintos, pero el orden entre ellos no está especificado",
+        "Que el de menor id recibe el número menor",
+        "Que reciben números distintos según el orden alfabético"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "row_number nunca repite, pero a los pares los numera «en un orden no especificado». Si necesitas un resultado estable, agrega un desempate: `ORDER BY promedio DESC, id`."
+    },
+    {
+      "id": "s10-q8",
+      "type": "single",
+      "q": "Para las notas 7.0, 6.5, 6.5 y 6.0, con `OVER (ORDER BY nota DESC)`, ¿qué devuelven `percent_rank()` y `cume_dist()` en las filas con 6.5?",
+      "options": [
+        "0.333… y 0.75",
+        "0.5 y 0.5",
+        "0.25 y 0.75",
+        "0.333… y 0.5"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "percent_rank = (rank − 1) / (n − 1) = (2 − 1) / (4 − 1) = 0.333…; cume_dist = filas con nota igual o mejor / n = 3 / 4 = 0.75 (los dos pares cuentan)."
+    },
+    {
+      "id": "s10-q9",
+      "type": "single",
+      "q": "Una partición tiene 7 filas. Con `ntile(3) OVER (ORDER BY x)`, ¿qué valor recibe la **cuarta** fila?",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "Depende del valor de x"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "7 filas en 3 grupos: 3, 2 y 2 (los primeros grupos reciben la fila sobrante). Las filas 1 a 3 son el grupo 1, la 4 y la 5 el grupo 2, y la 6 y la 7 el grupo 3."
+    },
+    {
+      "id": "s10-q10",
+      "type": "single",
+      "q": "La tabla `t(id, x)` tiene las filas (1, 10), (2, 20), (3, 20) y (4, 30). ¿Qué valor tiene `acum` en la fila con `id = 2`?\n```sql\nSELECT id, x, sum(x) OVER (ORDER BY x) AS acum\nFROM t;\n```",
+      "options": [
+        "30",
+        "50",
+        "20",
+        "80"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El marco por defecto es RANGE hasta el **último par** de la fila actual: las dos filas con x = 20 son pares, así que ambas ven 10 + 20 + 20 = 50. Es la trampa del acumulado con empates."
+    },
+    {
+      "id": "s10-q11",
+      "type": "single",
+      "q": "Con la misma tabla `t(id, x)`: (1, 10), (2, 20), (3, 20), (4, 30), ¿qué valor tiene `acum` en la fila con `id = 2`?\n```sql\nSELECT id, x,\n       sum(x) OVER (ORDER BY x, id\n                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS acum\nFROM t;\n```",
+      "options": [
+        "30",
+        "50",
+        "20",
+        "80"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Con ROWS, `CURRENT ROW` es solo la fila actual, y el desempate por id hace que la fila 2 vaya antes que la 3: 10 + 20 = 30. La fila 3 recibe 50. Es el acumulado fila a fila que suele esperarse."
+    },
+    {
+      "id": "s10-q12",
+      "type": "single",
+      "q": "La tabla `t` tiene los valores 10, 20 y 30 (sin repetidos). ¿Qué devuelve `last_value(x) OVER (ORDER BY x)` en la fila con `x = 10`?",
+      "options": [
+        "30",
+        "10",
+        "NULL",
+        "60"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Con ORDER BY, el marco por defecto va desde el inicio de la partición hasta la fila actual: en la fila del 10, la última fila del marco es ella misma. Para obtener 30 hace falta `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`."
+    },
+    {
+      "id": "s10-q13",
+      "type": "single",
+      "q": "Con los valores 10, 20 y 30, ¿qué devuelve `first_value(x) OVER (ORDER BY x DESC)` en cada fila?",
+      "options": [
+        "30 en todas las filas",
+        "10 en todas las filas",
+        "El propio x de cada fila",
+        "NULL en la primera fila"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La primera fila del marco siempre es la primera de la partición (el marco por defecto parte en UNBOUNDED PRECEDING), y con orden descendente esa fila es el 30. Por eso first_value no sufre la trampa del marco y es la alternativa segura a last_value."
+    },
+    {
+      "id": "s10-q14",
+      "type": "single",
+      "q": "Con los valores 10, 20 y 30, ¿qué devuelve `nth_value(x, 2) OVER (ORDER BY x)` en la fila con `x = 10`?",
+      "options": [
+        "20",
+        "10",
+        "NULL",
+        "Un error"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "En la primera fila, el marco por defecto tiene una sola fila, así que no existe la segunda y nth_value devuelve NULL. En las filas del 20 y del 30 devuelve 20. Con el marco completo devolvería 20 en todas."
+    },
+    {
+      "id": "s10-q15",
+      "type": "single",
+      "q": "Con los valores 10, 20 y 30 y `OVER (ORDER BY x)`, ¿qué devuelven `lag(x, 1, 0)` y `lead(x, 2)` en la fila con `x = 10`?",
+      "options": [
+        "0 y 30",
+        "NULL y 30",
+        "0 y NULL",
+        "10 y 20"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "No hay fila anterior al 10, así que lag devuelve su valor por defecto, 0. lead(x, 2) mira dos filas más adelante: el 30. En la fila del 20, lead(x, 2) ya sería NULL."
+    },
+    {
+      "id": "s10-q16",
+      "type": "multi",
+      "q": "¿Cuáles de estas funciones cambian su resultado si cambias el **marco** de la ventana (manteniendo PARTITION BY y ORDER BY)? (Selecciona TRES.)",
+      "options": [
+        "`last_value(x)`",
+        "`sum(x)`",
+        "`nth_value(x, 2)`",
+        "`lag(x)`",
+        "`rank()`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "first_value, last_value, nth_value y los agregados trabajan sobre el marco. Los rankings (rank, row_number, dense_rank, ntile, percent_rank, cume_dist) y lag/lead trabajan sobre la partición completa y el marco no les afecta."
+    },
+    {
+      "id": "s10-q17",
+      "type": "single",
+      "q": "Una ventana tiene `ORDER BY` pero no declara marco. ¿Cuál es su marco?",
+      "options": [
+        "`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`",
+        "`ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`",
+        "`ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`",
+        "Solo la fila actual"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El marco por defecto es `RANGE UNBOUNDED PRECEDING`, que equivale a `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`: desde el inicio de la partición hasta el último par de la fila actual. Que sea RANGE y no ROWS es lo que hace que los empatados compartan acumulado."
+    },
+    {
+      "id": "s10-q18",
+      "type": "single",
+      "q": "¿Qué devuelve `max(sueldo) OVER (PARTITION BY departamento_id)` en cada fila?",
+      "options": [
+        "El sueldo máximo de todo el departamento",
+        "El máximo desde el inicio del departamento hasta la fila actual",
+        "El sueldo de la fila actual",
+        "Un error: falta ORDER BY"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Sin ORDER BY en la ventana, todas las filas de la partición son pares de la actual y el marco por defecto es la partición completa. Si agregaras `ORDER BY sueldo` (ascendente), el marco se cortaría en la fila actual y max devolvería el sueldo de la propia fila."
+    },
+    {
+      "id": "s10-q19",
+      "type": "single",
+      "q": "La tabla `abonos(id, dia, monto)` tiene (1, 1, 100), (2, 1, 50), (3, 2, 30), (4, 4, 20) y (5, 5, 10). ¿Qué valor tiene `s` en la fila con `id = 4`?\n```sql\nSELECT id, sum(monto) OVER (ORDER BY dia\n                            RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS s\nFROM abonos;\n```",
+      "options": [
+        "20",
+        "50",
+        "30",
+        "200"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En RANGE, `1 PRECEDING` significa «filas cuyo dia está entre dia − 1 y dia»: para el día 4, los días 3 y 4. No hay abonos el día 3, así que solo entra el propio abono: 20. Con ROWS o GROUPS serían 50."
+    },
+    {
+      "id": "s10-q20",
+      "type": "single",
+      "q": "Con la misma tabla `abonos`, ¿qué valor tiene `s` en la fila con `id = 4` (día 4)?\n```sql\nSELECT id, sum(monto) OVER (ORDER BY dia\n                            GROUPS BETWEEN 1 PRECEDING AND CURRENT ROW) AS s\nFROM abonos;\n```",
+      "options": [
+        "20",
+        "50",
+        "30",
+        "80"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "GROUPS cuenta grupos de pares: `1 PRECEDING` es el grupo de valores anterior (el día 2, con 30), esté a la distancia que esté. 30 + 20 = 50."
+    },
+    {
+      "id": "s10-q21",
+      "type": "single",
+      "q": "¿Qué pasa con esta ventana?\n```sql\nsum(monto) OVER (ORDER BY dia, id\n                 RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW)\n```",
+      "options": [
+        "Funciona: suma los últimos 7 días",
+        "Error: `RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column`",
+        "Funciona, pero ignora el id",
+        "Error: los intervalos solo se permiten en ROWS"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "RANGE con un desplazamiento necesita saber «a qué distancia» está cada fila, y eso solo tiene sentido con una única columna de orden (numérica o de fecha/hora). Quita el `id` del ORDER BY: RANGE trata a los pares como un bloque, así que no hace falta desempatar."
+    },
+    {
+      "id": "s10-q22",
+      "type": "yesno",
+      "q": "Sobre los marcos, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`ROWS BETWEEN 6 PRECEDING AND CURRENT ROW` son siempre 7 filas como máximo, no 7 días.",
+          "answer": true
+        },
+        {
+          "text": "`GROUPS` exige que la ventana tenga ORDER BY.",
+          "answer": true
+        },
+        {
+          "text": "Un marco puede empezar en `UNBOUNDED FOLLOWING`.",
+          "answer": false
+        },
+        {
+          "text": "`ROWS BETWEEN 7 PRECEDING AND 8 PRECEDING` produce un error.",
+          "answer": false
+        },
+        {
+          "text": "`ROWS 2 PRECEDING` es una forma corta de `ROWS BETWEEN 2 PRECEDING AND CURRENT ROW`.",
+          "answer": true
+        }
+      ],
+      "explain": "El inicio no puede ser UNBOUNDED FOLLOWING (`frame start cannot be UNBOUNDED FOLLOWING`). `ROWS BETWEEN 7 PRECEDING AND 8 PRECEDING` es válido aunque no seleccione ninguna fila (la documentación lo usa como ejemplo). Si omites el fin, es CURRENT ROW."
+    },
+    {
+      "id": "s10-q23",
+      "type": "single",
+      "q": "Con los valores 10, 20 y 30, ¿qué valor tiene `s` en la fila con `x = 20`?\n```sql\nSELECT x, sum(x) OVER (ORDER BY x\n                       ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n                       EXCLUDE CURRENT ROW) AS s\nFROM t;\n```",
+      "options": [
+        "60",
+        "40",
+        "20",
+        "30"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El marco es toda la partición (60) y `EXCLUDE CURRENT ROW` saca la fila actual: 60 − 20 = 40. Es la forma de comparar a cada uno con «el resto» de su grupo."
+    },
+    {
+      "id": "s10-q24",
+      "type": "single",
+      "q": "La tabla `t(id, x)` tiene (1, 10), (2, 20), (3, 20) y (4, 30). ¿Qué valor tiene `s` en la fila con `id = 2`?\n```sql\nSELECT id, sum(x) OVER (ORDER BY x\n                        RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n                        EXCLUDE GROUP) AS s\nFROM t;\n```",
+      "options": [
+        "40",
+        "60",
+        "80",
+        "50"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "EXCLUDE GROUP saca la fila actual **y sus pares** (las dos filas con 20): 80 − 40 = 40. Con EXCLUDE TIES quedaría la fila actual pero no su par (60), y con EXCLUDE CURRENT ROW también 60."
+    },
+    {
+      "id": "s10-q25",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta?\n```sql\nSELECT id, sum(costo_despacho) OVER (m3 ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)\nFROM pedidos\nWINDOW m3 AS (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW);\n```",
+      "options": [
+        "Usa el marco de 1 PRECEDING, que reemplaza al de m3",
+        "Usa el marco de m3 e ignora el nuevo",
+        "Error: `cannot copy window \"m3\" because it has a frame clause`",
+        "Error: las ventanas nombradas no admiten marco"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`OVER (m3 …)` copia la ventana para modificarla, y eso no se permite si la ventana copiada ya tiene marco. `OVER m3` (sin paréntesis) sí funcionaría, usando su marco de 3 filas."
+    },
+    {
+      "id": "s10-q26",
+      "type": "yesno",
+      "q": "Sobre la cláusula `WINDOW`, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`OVER (w ORDER BY x)` es válido si `w` no tiene ORDER BY.",
+          "answer": true
+        },
+        {
+          "text": "`OVER (w PARTITION BY y)` permite cambiar la partición de `w`.",
+          "answer": false
+        },
+        {
+          "text": "Una ventana nombrada que nadie usa produce un error.",
+          "answer": false
+        },
+        {
+          "text": "Una ventana nombrada puede partir de otra definida antes en la misma cláusula WINDOW.",
+          "answer": true
+        }
+      ],
+      "explain": "Al copiar una ventana no puedes redefinir su PARTITION BY (`cannot override PARTITION BY clause of window …`) y solo puedes agregar ORDER BY si no tenía. Las ventanas sin usar se ignoran. `WINDOW a AS (PARTITION BY x), b AS (a ORDER BY y)` es válido."
+    },
+    {
+      "id": "s10-q27",
+      "type": "single",
+      "q": "¿Cuál de estas consultas devuelve correctamente los 3 alumnos de mayor promedio de cada curso (tabla `prom(curso_id, alumno_id, promedio)`)?",
+      "options": [
+        "`SELECT * FROM prom WHERE row_number() OVER (PARTITION BY curso_id ORDER BY promedio DESC, alumno_id) <= 3;`",
+        "`SELECT *, row_number() OVER (PARTITION BY curso_id ORDER BY promedio DESC, alumno_id) AS n FROM prom WHERE n <= 3;`",
+        "`WITH r AS (SELECT *, row_number() OVER (PARTITION BY curso_id ORDER BY promedio DESC, alumno_id) AS n FROM prom) SELECT * FROM r WHERE n <= 3;`",
+        "`SELECT * FROM prom QUALIFY row_number() OVER (PARTITION BY curso_id ORDER BY promedio DESC) <= 3;`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "La ventana se calcula en la CTE y se filtra afuera. La primera falla (`window functions are not allowed in WHERE`), la segunda también (`column \"n\" does not exist`: el alias no existe en el WHERE) y la cuarta es un `syntax error`: PostgreSQL no tiene QUALIFY."
+    },
+    {
+      "id": "s10-q28",
+      "type": "single",
+      "q": "En el 3° Medio A los mejores promedios son 6.6, 6.5, 6.5, 6.5, 6.3, 6.3, 6.3, 6.2… ¿Cuántos alumnos devuelve el top-3 si filtras con `rank() … <= 3`?",
+      "options": [
+        "3",
+        "4",
+        "7",
+        "5"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "rank da 1, 2, 2, 2, 5, 5, 5…: los que tienen puesto 3 o mejor son 4 alumnos (el 6.6 y los tres 6.5). Con `row_number` serían exactamente 3."
+    },
+    {
+      "id": "s10-q29",
+      "type": "single",
+      "q": "Con los mismos promedios del 3° Medio A (6.6, 6.5, 6.5, 6.5, 6.3, 6.3, 6.3, 6.2…), ¿cuántos alumnos devuelve el filtro `dense_rank() … <= 3`?",
+      "options": [
+        "3",
+        "4",
+        "7",
+        "8"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "dense_rank da 1, 2, 2, 2, 3, 3, 3, 4…: entran todos los que tienen uno de los 3 mejores promedios distintos (6.6, 6.5 y 6.3), que son 7 alumnos."
+    },
+    {
+      "id": "s10-q30",
+      "type": "single",
+      "q": "Quieres el **segundo sueldo más alto** (monto distinto) de cada departamento, aunque dos personas empaten en el primero. ¿Qué filtro usas sobre una CTE con la ventana `OVER (PARTITION BY departamento_id ORDER BY sueldo DESC)`?",
+      "options": [
+        "`row_number() … = 2`",
+        "`rank() … = 2`",
+        "`dense_rank() … = 2`",
+        "`ntile(2) … = 2`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "dense_rank numera montos distintos sin saltos. Con un empate en el primer lugar, rank saltaría del 1 al 3 (no habría ningún 2) y row_number devolvería a la segunda persona empatada, que gana lo mismo que la primera."
+    },
+    {
+      "id": "s10-q31",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar esta consulta?\n```sql\nSELECT departamento_id,\n       count(DISTINCT cargo) OVER (PARTITION BY departamento_id)\nFROM empleados;\n```",
+      "options": [
+        "Cuenta los cargos distintos de cada departamento en cada fila",
+        "Error: `DISTINCT is not implemented for window functions`",
+        "Cuenta todos los cargos, repetidos incluidos",
+        "Error: falta GROUP BY"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "PostgreSQL no admite DISTINCT dentro de un agregado de ventana (ni ORDER BY dentro del agregado). Alternativa: calcula `count(DISTINCT cargo)` con GROUP BY en una CTE y únela, o usa `dense_rank()` sobre los cargos y toma el máximo."
+    },
+    {
+      "id": "s10-q32",
+      "type": "single",
+      "q": "¿Cuál de estas expresiones es válida en una consulta con `GROUP BY departamento_id`?",
+      "options": [
+        "`sum(sum(sueldo)) OVER ()`",
+        "`sum(avg(sueldo) OVER ())`",
+        "`sum(sueldo) OVER ()`",
+        "`rank(sum(sueldo)) OVER ()`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Las ventanas se evalúan después de los agregados, así que un agregado puede ir dentro de una ventana: `sum(sum(sueldo)) OVER ()`. Al revés falla (`aggregate function calls cannot contain window function calls`); `sum(sueldo) OVER ()` sin agregado interno falla porque sueldo no está agrupado; y rank no recibe argumentos."
+    },
+    {
+      "id": "s10-q33",
+      "type": "single",
+      "q": "¿Qué hace `PARTITION BY 1` en `sum(x) OVER (PARTITION BY 1)`?",
+      "options": [
+        "Particiona por la primera columna del SELECT",
+        "Particiona por la constante 1: todas las filas quedan en una sola partición",
+        "Error: PARTITION BY no acepta números",
+        "Crea una partición por fila"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "A diferencia de GROUP BY y ORDER BY de la consulta, en una ventana PARTITION BY y ORDER BY no aceptan números de columna ni alias: `1` es simplemente una expresión constante, igual en todas las filas."
+    },
+    {
+      "id": "s10-q34",
+      "type": "single",
+      "q": "Los días con ventas de un local son 1, 2, 3, 6, 7 y 9. ¿Qué valor tiene `dia - row_number() OVER (ORDER BY dia)` en la fila del día 7, y cuántas islas hay?",
+      "options": [
+        "2, y hay 3 islas",
+        "5, y hay 3 islas",
+        "2, y hay 2 islas",
+        "1, y hay 4 islas"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El día 7 es la quinta fila: 7 − 5 = 2, igual que el día 6 (6 − 4). Las diferencias son 0, 0, 0, 2, 2, 3: tres islas (1–3, 6–7 y 9)."
+    },
+    {
+      "id": "s10-q35",
+      "type": "single",
+      "q": "¿Por qué falla `dia - row_number() OVER (ORDER BY dia)` cuando `dia` es de tipo `date`?",
+      "options": [
+        "Porque no se puede restar a una fecha",
+        "Porque row_number devuelve bigint y no existe el operador `date - bigint`",
+        "Porque las ventanas no se pueden usar en expresiones",
+        "Porque falta PARTITION BY"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`date - integer` existe (resta días), pero `date - bigint` no: `operator does not exist: date - bigint`. Se arregla con un cast: `dia - (row_number() OVER (ORDER BY dia))::int`."
+    },
+    {
+      "id": "s10-q36",
+      "type": "single",
+      "q": "Un usuario hizo clics a las 10:00, 10:10, 11:00, 11:05 y 11:50. Una sesión nueva empieza si pasaron más de 30 minutos desde el clic anterior. Con esta receta, ¿qué valor de `sesion` tiene el clic de las 11:05?\n```sql\nWITH m AS (\n  SELECT ts,\n         CASE WHEN ts - lag(ts) OVER (ORDER BY ts) <= INTERVAL '30 minutes'\n              THEN 0 ELSE 1 END AS inicia\n  FROM clics\n)\nSELECT ts, sum(inicia) OVER (ORDER BY ts) AS sesion FROM m;\n```",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las marcas son 1 (primer clic: lag es NULL y cae en el ELSE), 0, 1 (50 minutos), 0 y 1 (45 minutos). La suma acumulada da 1, 1, 2, 2, 3: el clic de las 11:05 pertenece a la sesión 2, y en total hay 3 sesiones."
+    },
+    {
+      "id": "s10-q37",
+      "type": "single",
+      "q": "¿Qué hace `lag(sueldo) OVER (ORDER BY empleado_id, desde)` en la primera fila del empleado 2 de `historial_sueldos`?",
+      "options": [
+        "Devuelve NULL, porque es su primer sueldo",
+        "Devuelve el último sueldo del empleado 1 (8.900.000)",
+        "Devuelve el sueldo actual del empleado 2",
+        "Da un error por falta de PARTITION BY"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin PARTITION BY toda la tabla es una sola partición y lag toma la fila anterior en ese orden: el último registro del empleado 1. Con `PARTITION BY empleado_id ORDER BY desde` devolvería NULL, que es lo correcto para calcular reajustes."
+    },
+    {
+      "id": "s10-q38",
+      "type": "single",
+      "q": "Para deduplicar una tabla usas `row_number() OVER (PARTITION BY lower(email) ORDER BY creado_en DESC, id DESC)` y borras las filas con número mayor que 1. ¿Qué copia de cada correo se conserva?",
+      "options": [
+        "La más antigua",
+        "La más reciente; si empatan en fecha, la de mayor id",
+        "La de menor id",
+        "Una al azar"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La fila con número 1 es la primera según el ORDER BY de la ventana: la de creado_en más reciente y, en empate, la de mayor id. El ORDER BY de la ventana es la política de conservación; sin desempate, la elección entre copias empatadas sería arbitraria."
+    },
+    {
+      "id": "s10-q39",
+      "type": "multi",
+      "q": "¿Cuáles de estas funciones devuelven `double precision`? (Selecciona DOS.)",
+      "options": [
+        "`percent_rank()`",
+        "`cume_dist()`",
+        "`ntile(4)`",
+        "`row_number()`",
+        "`rank()`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "percent_rank y cume_dist devuelven double precision (por eso hay que convertir a numeric para `round(x, 3)`); ntile devuelve integer y row_number, rank y dense_rank devuelven bigint."
+    },
+    {
+      "id": "s10-q40",
+      "type": "yesno",
+      "q": "Sobre lo que PostgreSQL 18 admite en funciones de ventana, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`lag(x) IGNORE NULLS OVER (…)` está implementado.",
+          "answer": false
+        },
+        {
+          "text": "`nth_value(x, 2) FROM LAST OVER (…)` está implementado.",
+          "answer": false
+        },
+        {
+          "text": "`count(*) FILTER (WHERE …) OVER (…)` es válido.",
+          "answer": true
+        },
+        {
+          "text": "`percentile_cont(0.5) WITHIN GROUP (ORDER BY x) OVER ()` es válido.",
+          "answer": false
+        },
+        {
+          "text": "Cualquier agregado normal (sum, avg, string_agg…) puede usarse como función de ventana.",
+          "answer": true
+        }
+      ],
+      "explain": "IGNORE NULLS y FROM LAST son del estándar pero no están implementados (siempre RESPECT NULLS y FROM FIRST). FILTER se admite en agregados usados como ventana. Los agregados de conjunto ordenado (percentile_cont, mode…) no admiten OVER: `OVER is not supported for ordered-set aggregate percentile_cont`."
+    },
+    {
+      "id": "s10-q41",
+      "type": "single",
+      "q": "¿Cuántas filas devuelve esta consulta? (`empleados` tiene 55 filas en 6 departamentos más una persona sin departamento.)\n```sql\nSELECT DISTINCT departamento_id,\n       count(*) OVER (PARTITION BY departamento_id) AS personas\nFROM empleados;\n```",
+      "options": [
+        "55",
+        "7",
+        "6",
+        "1"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La ventana se calcula primero (55 filas, cada una con el tamaño de su departamento) y el DISTINCT se aplica después, dejando una fila por combinación distinta: 7, porque el NULL cuenta como un valor para DISTINCT. Es equivalente a un GROUP BY, pero más caro."
+    },
+    {
+      "id": "s10-q42",
+      "type": "single",
+      "q": "Una consulta con `row_number() OVER (ORDER BY fecha)` y **sin** ORDER BY final devuelve las filas ordenadas por fecha. ¿Qué dice la documentación sobre eso?",
+      "options": [
+        "Que está garantizado: las filas salen en el orden de la ventana",
+        "Que hoy suele pasar porque las ventanas necesitan datos ordenados, pero no hay que depender de ello: usa un ORDER BY explícito",
+        "Que es un error de PostgreSQL",
+        "Que solo pasa si hay un índice"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las ventanas requieren datos preordenados, así que la salida suele quedar ordenada según alguna de ellas, pero la documentación recomienda no confiar en eso. Si el orden importa, escribe el ORDER BY final."
+    },
+    {
+      "id": "s10-q43",
+      "type": "multi",
+      "q": "La tabla `abonos(id, dia, monto)` tiene (1, 1, 100), (2, 1, 50), (3, 2, 30), (4, 4, 20) y (5, 5, 10). ¿Qué ventanas producen **siempre** el saldo abono por abono 100, 150, 180, 200, 210 (en orden de id)? (Selecciona DOS.)",
+      "options": [
+        "`sum(monto) OVER (ORDER BY dia)`",
+        "`sum(monto) OVER (ORDER BY dia, id)`",
+        "`sum(monto) OVER (ORDER BY dia, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`",
+        "`sum(monto) OVER (ORDER BY dia ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`",
+        "`sum(monto) OVER (ORDER BY dia GROUPS UNBOUNDED PRECEDING)`"
+      ],
+      "answer": [
+        1,
+        2
+      ],
+      "explain": "Con `ORDER BY dia, id` ya no hay pares, así que el marco por defecto (RANGE hasta el último par) termina en la fila actual y da el saldo fila a fila; con ROWS explícito, también. `ORDER BY dia` a secas le da 150 a los dos abonos del día 1 (RANGE y GROUPS incluyen a los pares), y con ROWS sin desempate el orden entre esos dos abonos no está definido: podría dar 50 y 150."
+    },
+    {
+      "id": "s10-q44",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas devuelven la **fila completa** del primer pedido de cada cliente? (Selecciona DOS.)",
+      "options": [
+        "`WITH numerados AS (SELECT *, row_number() OVER (PARTITION BY cliente_id ORDER BY fecha, id) AS n FROM pedidos) SELECT * FROM numerados WHERE n = 1;`",
+        "`SELECT DISTINCT ON (cliente_id) * FROM pedidos ORDER BY cliente_id, fecha, id;`",
+        "`SELECT cliente_id, min(fecha), id FROM pedidos GROUP BY cliente_id;`",
+        "`SELECT * FROM pedidos WHERE row_number() OVER (PARTITION BY cliente_id ORDER BY fecha) = 1;`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "row_number en una CTE con `n = 1` y DISTINCT ON son las dos recetas del «primero por grupo». La tercera falla porque `id` no está agrupado (`column \"pedidos.id\" must appear in the GROUP BY clause…`) y, si agregaras `id` al GROUP BY, obtendrías una fila por pedido y no una por cliente. La cuarta falla porque las ventanas no van en el WHERE."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: tutorial de funciones de ventana",
+      "url": "https://www.postgresql.org/docs/18/tutorial-window.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones de ventana (row_number, rank, lag, first_value…)",
+      "url": "https://www.postgresql.org/docs/18/functions-window.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: llamadas a funciones de ventana (PARTITION BY, ORDER BY, marcos, EXCLUDE)",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: procesamiento de funciones de ventana",
+      "url": "https://www.postgresql.org/docs/18/queries-table-expressions.html#QUERIES-WINDOW"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT (cláusula WINDOW)",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html#SQL-WINDOW"
+    },
+    {
+      "title": "Notas de la versión 11 de PostgreSQL (GROUPS, RANGE con desplazamiento y EXCLUDE)",
+      "url": "https://www.postgresql.org/docs/release/11.0/"
+    }
+  ]
+}

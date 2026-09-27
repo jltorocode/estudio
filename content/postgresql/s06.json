@@ -1,0 +1,2784 @@
+{
+  "id": "s06",
+  "order": 6,
+  "title": "Insertar, modificar y borrar datos (DML)",
+  "domain": "fundamentos",
+  "summary": "Aprende a cambiar datos con seguridad: INSERT de una o muchas filas, UPDATE y DELETE (también combinando tablas), TRUNCATE, upsert con ON CONFLICT, MERGE y carga masiva con COPY y \\copy. Cada cambio se verifica con RETURNING (incluido old/new de PostgreSQL 18) y se protege con BEGIN … ROLLBACK.",
+  "goal": "Modificar datos con INSERT, UPDATE, DELETE, ON CONFLICT, MERGE y COPY tocando exactamente las filas previstas y verificándolo con RETURNING antes de confirmar.",
+  "objectives": [
+    "Insertar una o varias filas con columnas explícitas, DEFAULT e INSERT … SELECT, y recuperar los valores generados con RETURNING.",
+    "Modificar y borrar filas con UPDATE y DELETE, incluidas las formas UPDATE … FROM y DELETE … USING, sin afectar filas de más.",
+    "Mostrar el antes y el después de cada cambio con RETURNING old/new (PostgreSQL 18).",
+    "Probar cambios peligrosos dentro de BEGIN … ROLLBACK, contrastando la etiqueta del comando con el conteo esperado.",
+    "Vaciar tablas con TRUNCATE eligiendo entre RESTART/CONTINUE IDENTITY y CASCADE/RESTRICT.",
+    "Escribir upserts idempotentes con INSERT … ON CONFLICT (DO NOTHING y DO UPDATE con EXCLUDED y WHERE).",
+    "Sincronizar tablas con MERGE usando varias cláusulas WHEN, WHEN NOT MATCHED BY SOURCE y RETURNING merge_action().",
+    "Cargar y exportar datos con COPY y \\copy (CSV, HEADER, ON_ERROR ignore) y generar datos de prueba con generate_series."
+  ],
+  "lessons": [
+    {
+      "id": "s06-l1",
+      "title": "INSERT: agregar filas a una tabla",
+      "minutes": 20,
+      "goals": [
+        "Insertar una o varias filas en una sola sentencia nombrando las columnas y usando DEFAULT.",
+        "Copiar el resultado de una consulta a otra tabla con INSERT … SELECT.",
+        "Recuperar con RETURNING los valores que generó la base de datos (identidad y valores por defecto).",
+        "Interpretar la etiqueta INSERT 0 n y los errores de una inserción rechazada."
+      ],
+      "takeaways": [
+        "Nombra siempre las columnas en el INSERT: el código sobrevive a cambios en la tabla y las columnas omitidas toman su DEFAULT (o NULL si no tienen).",
+        "Un INSERT de varias filas es atómico: si una sola fila viola una restricción, no entra ninguna.",
+        "`INSERT … SELECT` copia filas de una consulta dentro del servidor y empareja columnas **por posición**, no por nombre.",
+        "RETURNING te devuelve lo que realmente quedó guardado (id generado, valores por defecto) sin una consulta extra.",
+        "En `INSERT 0 n`, el 0 es un resto histórico (el OID) y n es la cantidad de filas insertadas."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Hasta ahora solo has **leído** datos con SELECT. Desde esta sección los vas a **cambiar**. Las sentencias que modifican datos forman el **DML** (*Data Manipulation Language*): `INSERT` agrega filas, `UPDATE` las modifica y `DELETE` las borra; PostgreSQL suma `MERGE`, `TRUNCATE` y `COPY` para casos especiales. El DDL de la sección 5 cambia la **forma** de las tablas; el DML cambia su **contenido**."
+        },
+        {
+          "type": "diagram",
+          "title": "La familia DML en PostgreSQL",
+          "mermaid": "mindmap\n  root((DML))\n    Agregar\n      INSERT\n      INSERT … SELECT\n      COPY FROM\n    Cambiar\n      UPDATE\n      UPDATE … FROM\n    Quitar\n      DELETE\n      DELETE … USING\n      TRUNCATE\n    Combinar\n      ON CONFLICT\n      MERGE",
+          "caption": "Todo lo que verás en esta sección. Las cinco lecciones recorren el mapa de izquierda a derecha."
+        },
+        {
+          "type": "h",
+          "text": "El modelo mental: una ventanilla que revisa cada formulario"
+        },
+        {
+          "type": "p",
+          "text": "Piensa en un INSERT como en la ventanilla del Registro Civil: entregas un formulario (la fila) y el funcionario lo revisa campo por campo antes de archivarlo. Cada columna que **no** llenaste recibe su valor por defecto (`DEFAULT`) o queda en `NULL`. Después se revisan **todas** las restricciones de la tabla: `NOT NULL`, `CHECK`, `UNIQUE`, `FOREIGN KEY`. Si algo no cuadra, se rechaza **la sentencia completa**, no solo esa fila, y la tabla queda exactamente como estaba."
+        },
+        {
+          "type": "diagram",
+          "title": "¿De dónde sale el valor de cada columna?",
+          "mermaid": "flowchart TD\n  A[\"Columna de la tabla\"] --> B{\"¿Está en la lista de columnas del INSERT?\"}\n  B -- \"No\" --> D{\"¿Tiene DEFAULT o es de identidad?\"}\n  B -- \"Sí\" --> C{\"¿Le diste un valor o la palabra DEFAULT?\"}\n  C -- \"Un valor\" --> V[\"Se usa tu valor, convertido al tipo de la columna\"]\n  C -- \"DEFAULT\" --> D\n  D -- \"Sí\" --> DF[\"Se calcula el valor por defecto\"]\n  D -- \"No\" --> N[\"Queda NULL\"]\n  V --> R[\"Se revisan NOT NULL, CHECK, UNIQUE y FOREIGN KEY\"]\n  DF --> R\n  N --> R\n  R -- \"Todo cumple\" --> OK[\"Fila guardada: INSERT 0 n\"]\n  R -- \"Algo falla\" --> ERR[\"ERROR: se anula la sentencia completa\"]",
+          "caption": "Si una columna NOT NULL no tiene DEFAULT y no la nombras, el INSERT falla: nadie le dio un valor."
+        },
+        {
+          "type": "h",
+          "text": "Sintaxis básica y RETURNING"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "INSERT INTO tabla (columna1, columna2, …)\nVALUES (valor1, valor2, …)\n[RETURNING expresiones];"
+        },
+        {
+          "type": "p",
+          "text": "En `productos`, el `id` es una columna de identidad (`GENERATED ALWAYS AS IDENTITY`), `stock` tiene `DEFAULT 0` y `activo` tiene `DEFAULT true`. Basta con entregar las columnas obligatorias sin valor por defecto. Con `RETURNING` le pedimos a PostgreSQL que nos devuelva lo que **realmente** guardó: así conocemos el `id` asignado sin hacer otra consulta."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "INSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('ACC-006', 'Soporte para notebook', 4, 19990, 11200, '2026-09-15')\nRETURNING id, sku, stock, activo;"
+        },
+        {
+          "type": "p",
+          "text": "Mira la última línea: `INSERT 0 1`. Es la **etiqueta del comando** (*command tag*) que el servidor devuelve después de cada sentencia. En el INSERT, el primer número es el OID de la fila, un resto histórico que hoy siempre vale 0; el segundo es la cantidad de filas insertadas. Acostúmbrate a leer la etiqueta: es tu primera verificación de que el cambio tocó las filas que esperabas."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Sentencia",
+            "Etiqueta",
+            "Qué cuenta"
+          ],
+          "rows": [
+            [
+              "INSERT",
+              "`INSERT 0 n`",
+              "Filas insertadas (con ON CONFLICT DO UPDATE, insertadas + actualizadas)"
+            ],
+            [
+              "UPDATE",
+              "`UPDATE n`",
+              "Filas actualizadas, **incluidas** las que quedaron con el mismo valor"
+            ],
+            [
+              "DELETE",
+              "`DELETE n`",
+              "Filas borradas"
+            ],
+            [
+              "MERGE",
+              "`MERGE n`",
+              "Filas insertadas + actualizadas + borradas"
+            ],
+            [
+              "COPY",
+              "`COPY n`",
+              "Filas copiadas"
+            ],
+            [
+              "TRUNCATE",
+              "`TRUNCATE TABLE`",
+              "No cuenta nada: no recorre la tabla"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Varias filas en una sola sentencia"
+        },
+        {
+          "type": "p",
+          "text": "Puedes escribir varias listas en `VALUES`, separadas por comas. Es más rápido que un INSERT por fila (un solo viaje al servidor y un solo análisis de la sentencia) y además es **atómico**: o entran todas o no entra ninguna. La tabla `categorias` no tiene identidad, así que aquí sí entregamos el `id`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "INSERT INTO categorias (id, nombre, padre_id)\nVALUES (14, 'Gamer', 1),\n       (15, 'Jardín', 5),\n       (16, 'Running', 8)\nRETURNING *;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Todo o nada.** Si una de las filas viola una restricción, el INSERT completo se anula. En el siguiente ejemplo, `Mascotas` es válida, pero `Audio` ya existe (`categorias.nombre` es UNIQUE): el error se lleva también a `Mascotas`, como muestra el conteo final."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "INSERT INTO categorias (id, nombre, padre_id)\nVALUES (20, 'Mascotas', NULL),\n       (21, 'Audio', 1);\nSELECT count(*) AS insertadas FROM categorias WHERE id >= 20;"
+        },
+        {
+          "type": "h",
+          "text": "DEFAULT, DEFAULT VALUES y columnas de identidad"
+        },
+        {
+          "type": "p",
+          "text": "Hay tres maneras de pedir el valor por defecto: **omitir** la columna, escribir la palabra clave `DEFAULT` en su lugar dentro de `VALUES` (útil cuando en una misma lista algunas filas traen valor y otras no), o usar `DEFAULT VALUES` para insertar una fila hecha solo de valores por defecto. Ojo: `DEFAULT` es una palabra clave, no un texto; `'DEFAULT'` entre comillas sería el texto «DEFAULT»."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE avisos (\n  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  mensaje text NOT NULL DEFAULT 'Sin mensaje',\n  prioridad smallint NOT NULL DEFAULT 3,\n  leido boolean NOT NULL DEFAULT false\n);",
+          "code": "INSERT INTO avisos (mensaje) VALUES ('Stock bajo en COMP-006') RETURNING *;\nINSERT INTO avisos (mensaje, prioridad) VALUES ('Pedido 418 sin pagar', DEFAULT) RETURNING *;\nINSERT INTO avisos DEFAULT VALUES RETURNING *;\nINSERT INTO avisos (prioridad, leido) VALUES (1, true);\nSELECT * FROM avisos;"
+        },
+        {
+          "type": "p",
+          "text": "Una columna `GENERATED ALWAYS AS IDENTITY` **no acepta** valores escritos a mano: PostgreSQL protege la numeración. Si de verdad lo necesitas (por ejemplo, al migrar datos desde otro sistema conservando sus ids), existe `OVERRIDING SYSTEM VALUE`. Pero la secuencia interna **no se entera** de ese valor: después tendrás que ajustarla con `setval`, o el próximo INSERT normal podría chocar con un id existente. Con `GENERATED BY DEFAULT` el valor manual se acepta siempre, con el mismo riesgo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "INSERT INTO productos (id, sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES (100, 'ACC-007', 'Mousepad XL', 4, 9990, 5100, '2026-09-15');"
+        },
+        {
+          "type": "h",
+          "text": "INSERT … SELECT: insertar el resultado de una consulta"
+        },
+        {
+          "type": "p",
+          "text": "En lugar de `VALUES` puedes poner **cualquier SELECT**: cada fila que devuelve la consulta se inserta. Los datos nunca salen del servidor, así que es la forma natural de copiar, transformar o archivar filas. Aquí armamos una tabla de promoción con los productos de Café y té (categoría 13) y un 15 % de descuento redondeado a la decena."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE promo_cafe (\n  sku text PRIMARY KEY,\n  nombre text NOT NULL,\n  precio_normal integer NOT NULL,\n  precio_promo integer NOT NULL\n);",
+          "code": "INSERT INTO promo_cafe (sku, nombre, precio_normal, precio_promo)\nSELECT sku, nombre, precio, round(precio * 0.85, -1)\nFROM productos\nWHERE categoria_id = 13;\nSELECT * FROM promo_cafe;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Las columnas se emparejan por posición, no por nombre.** En `INSERT INTO t (nombre, precio) SELECT precio, nombre FROM productos` la primera columna del SELECT va a `nombre` y la segunda a `precio`, aunque se llamen al revés. Si los tipos no calzan verás `column \"precio\" is of type integer but expression is of type text`; si calzan (por ejemplo, dos columnas integer), el error pasa **en silencio**. Por eso: lista siempre las columnas del INSERT y escribe el SELECT en el mismo orden. Lo mismo vale para `INSERT INTO t VALUES (…)` sin lista de columnas: funciona hoy y se rompe el día que alguien agregue una columna."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: `RETURNING` es una **extensión de PostgreSQL** (no es SQL estándar) y funciona en INSERT, UPDATE, DELETE y MERGE; la etiqueta `INSERT 0 n` (el 0 es el OID histórico); un INSERT de varias filas es atómico; `INSERT … SELECT` empareja por posición; y la diferencia entre `GENERATED ALWAYS` (rechaza valores manuales salvo `OVERRIDING SYSTEM VALUE`) y `GENERATED BY DEFAULT`."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "DML",
+              "en": "Data Manipulation Language",
+              "def": "Sentencias que cambian el contenido de las tablas: INSERT, UPDATE, DELETE, MERGE (y en la práctica TRUNCATE y COPY)."
+            },
+            {
+              "term": "Etiqueta de comando",
+              "en": "command tag",
+              "def": "Texto que devuelve el servidor al terminar una sentencia, como `INSERT 0 3` o `UPDATE 7`. Indica cuántas filas se afectaron."
+            },
+            {
+              "term": "RETURNING",
+              "def": "Cláusula que devuelve datos de las filas insertadas, modificadas o borradas, como si fuera un SELECT sobre ellas."
+            },
+            {
+              "term": "DEFAULT",
+              "def": "Valor por defecto de una columna; también es la palabra clave que lo pide explícitamente en VALUES o en SET."
+            },
+            {
+              "term": "OVERRIDING SYSTEM VALUE",
+              "def": "Cláusula de INSERT que permite escribir un valor manual en una columna GENERATED ALWAYS AS IDENTITY."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s06-l2",
+      "title": "UPDATE, DELETE y TRUNCATE sin miedo",
+      "minutes": 25,
+      "goals": [
+        "Modificar filas con UPDATE usando expresiones, varias columnas y UPDATE … FROM.",
+        "Comparar el antes y el después de cada fila con RETURNING old/new (PostgreSQL 18).",
+        "Borrar filas con DELETE (con WHERE y con USING) y vaciar tablas con TRUNCATE eligiendo RESTART IDENTITY y CASCADE.",
+        "Probar un cambio peligroso dentro de BEGIN … ROLLBACK antes de confirmarlo."
+      ],
+      "takeaways": [
+        "UPDATE y DELETE sin WHERE afectan a **todas** las filas: escribe primero el SELECT con el mismo WHERE y cuenta.",
+        "Dentro de BEGIN … ROLLBACK puedes ejecutar, mirar el resultado y deshacer; solo COMMIT lo vuelve definitivo.",
+        "Todas las expresiones de SET usan los valores **antiguos** de la fila; `RETURNING old.col, new.col` (18) muestra ambos.",
+        "En UPDATE … FROM y DELETE … USING cada fila destino debe calzar con **una sola** fila de la otra tabla, y la tabla destino **nunca** se repite en FROM.",
+        "TRUNCATE vacía tablas completas al instante y es transaccional, pero no admite WHERE ni RETURNING y bloquea la tabla por completo."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Un UPDATE trabaja en dos tiempos. Primero el `WHERE` **elige** las filas (igual que en un SELECT). Después, para cada fila elegida, `SET` **calcula** los valores nuevos a partir de los valores que la fila tenía. PostgreSQL no sobrescribe la fila en el mismo lugar: escribe una **nueva versión** y marca la anterior como obsoleta (es el MVCC, que verás a fondo en la sección 13). DELETE es igual, pero sin el segundo tiempo: las filas elegidas se marcan como borradas."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**La regla de oro: UPDATE y DELETE sin WHERE afectan a TODAS las filas.** `UPDATE productos SET precio = 0;` no pregunta «¿estás seguro?»: cambia los 49 productos, y en psql, que por defecto confirma cada sentencia sola (*autocommit*), el cambio queda guardado al instante. La defensa es un hábito: (1) escribe primero un `SELECT` con el mismo `WHERE` y cuenta las filas; (2) abre una transacción con `BEGIN`; (3) ejecuta el cambio con `RETURNING`; (4) compara la etiqueta (`UPDATE n`) con lo que esperabas; (5) `COMMIT` si está bien, `ROLLBACK` si no."
+        },
+        {
+          "type": "diagram",
+          "title": "La receta segura para cambiar datos",
+          "mermaid": "flowchart TD\n  A[\"1. SELECT con el mismo WHERE\"] --> B[\"2. Revisa y cuenta las filas\"]\n  B --> C[\"3. BEGIN\"]\n  C --> D[\"4. UPDATE o DELETE con RETURNING\"]\n  D --> E{\"¿La etiqueta y las filas devueltas son las esperadas?\"}\n  E -- \"Sí\" --> F[\"5. COMMIT: el cambio queda guardado\"]\n  E -- \"No\" --> G[\"5. ROLLBACK: la tabla vuelve a como estaba\"]\n  G --> A",
+          "caption": "Mientras la transacción está abierta, el prompt de psql pasa de tienda=# a tienda=*#: el asterisco te recuerda que hay cambios sin confirmar."
+        },
+        {
+          "type": "p",
+          "text": "Mira la red de seguridad en acción. Olvidamos el WHERE a propósito, vemos el desastre (`UPDATE 49`) y lo deshacemos:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "BEGIN;\nUPDATE productos SET stock = 0;  -- ¡olvidamos el WHERE!\nSELECT count(*) AS sin_stock FROM productos WHERE stock = 0;\nROLLBACK;\nSELECT count(*) AS sin_stock FROM productos WHERE stock = 0;"
+        },
+        {
+          "type": "p",
+          "text": "Dentro de la transacción ves tus propios cambios (49 productos sin stock); después del `ROLLBACK` todo vuelve a los 7 productos que de verdad no tienen stock. Las demás sesiones nunca vieron el cambio, porque nunca se confirmó. En la sección 13 estudiarás las transacciones a fondo; por ahora quédate con el hábito."
+        },
+        {
+          "type": "h",
+          "text": "UPDATE con expresiones y RETURNING old/new"
+        },
+        {
+          "type": "p",
+          "text": "En `SET` puedes usar cualquier expresión que dependa de la propia fila: `precio = round(precio * 1.05, -1)` sube un 5 % y redondea a la decena. Por defecto, `RETURNING` devuelve los valores **nuevos**. Desde **PostgreSQL 18** puedes pedir explícitamente `old.columna` (antes del cambio) y `new.columna` (después), y el UPDATE se convierte en su propio reporte de auditoría."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "UPDATE productos\nSET precio = round(precio * 1.05, -1)\nWHERE categoria_id = 13\nRETURNING sku, old.precio AS antes, new.precio AS despues,\n          new.precio - old.precio AS alza;"
+        },
+        {
+          "type": "p",
+          "text": "Un detalle fino que se pregunta mucho: **todas** las expresiones de `SET` se calculan con los valores que la fila tenía **antes** del UPDATE. Por eso `SET a = b, b = a` intercambia dos columnas sin variable auxiliar. Puedes asignar varias columnas a la vez con la forma de fila `SET (precio, costo) = (…, …)` y usar `DEFAULT` para volver al valor por defecto. Si `old` o `new` chocan con el nombre de una columna o tabla, renómbralos con `RETURNING WITH (OLD AS o, NEW AS n)`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "UPDATE productos\nSET (precio, costo) = (precio - 1000, costo - 500)\nWHERE sku = 'COMP-003'\nRETURNING WITH (OLD AS o, NEW AS n)\n          sku, o.precio AS precio_antes, n.precio AS precio_despues,\n          o.costo AS costo_antes, n.costo AS costo_despues;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Sentencia",
+            "RETURNING sin calificar",
+            "old.*",
+            "new.*"
+          ],
+          "rows": [
+            [
+              "INSERT",
+              "La fila insertada",
+              "NULL (salvo en ON CONFLICT DO UPDATE)",
+              "La fila insertada"
+            ],
+            [
+              "UPDATE",
+              "La fila nueva",
+              "La fila antes del cambio",
+              "La fila después del cambio"
+            ],
+            [
+              "DELETE",
+              "La fila borrada",
+              "La fila borrada",
+              "NULL"
+            ],
+            [
+              "MERGE",
+              "La fila fuente + la fila destino resultante (la borrada, si fue DELETE)",
+              "Destino antes de la acción",
+              "Destino después de la acción"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "UPDATE … FROM: actualizar con datos de otra tabla"
+        },
+        {
+          "type": "p",
+          "text": "Muchas veces los valores nuevos vienen de **otra tabla**: un ajuste de inventario, una lista de precios. `UPDATE … FROM` combina la tabla destino con las tablas del `FROM` usando la condición del `WHERE`; cada combinación que calza es una actualización. Las filas destino sin pareja no se tocan."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE ajustes (sku text NOT NULL, delta integer NOT NULL);\nINSERT INTO ajustes VALUES ('COMP-006', 10), ('AUD-003', -5), ('LIB-003', 24);",
+          "code": "UPDATE productos AS p\nSET stock = p.stock + a.delta\nFROM ajustes AS a\nWHERE p.sku = a.sku\nRETURNING p.sku, old.stock AS antes, a.delta, new.stock AS despues;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Dos trampas de UPDATE … FROM.** (1) Si una fila destino calza con **varias** filas del FROM (por ejemplo, dos ajustes para el mismo SKU), PostgreSQL usa **solo una** y la documentación advierte que no se puede predecir cuál: los ajustes no se suman. Deja la otra tabla con una fila por clave antes de actualizar. (2) **Nunca repitas la tabla destino en el FROM**: en PostgreSQL eso agrega una segunda copia independiente de la tabla, sin relación con la fila que se actualiza, y el UPDATE termina afectando a todas las filas. Otros motores usan esa sintaxis; PostgreSQL no. Míralo en el ejemplo de abajo: se quería cambiar un producto y la etiqueta dice `UPDATE 49`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "BEGIN;\n-- Error de concepto: se quería cambiar solo COMP-001\nUPDATE productos SET precio = 1\nFROM productos AS p2\nWHERE p2.sku = 'COMP-001';\nROLLBACK;"
+        },
+        {
+          "type": "h",
+          "text": "DELETE y DELETE … USING"
+        },
+        {
+          "type": "p",
+          "text": "`DELETE FROM tabla WHERE …` borra las filas elegidas y, con `RETURNING`, te muestra lo que borraste. Si la condición depende de **otra tabla**, PostgreSQL ofrece `USING`, el equivalente del `FROM` de UPDATE. Aquí borramos las reseñas de los productos inactivos, y el RETURNING incluye una columna de la tabla de USING:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "DELETE FROM resenas AS r\nUSING productos AS p\nWHERE r.producto_id = p.id\n  AND p.activo = false\nRETURNING r.id, p.sku, r.nota;"
+        },
+        {
+          "type": "p",
+          "text": "Las claves foráneas vigilan los borrados. `pedidos` referencia a `clientes` sin acción de borrado (`NO ACTION`), así que no puedes borrar un cliente que tiene pedidos. En cambio, `pedido_items` referencia a `pedidos` con `ON DELETE CASCADE`: al borrar un pedido se borran solos sus ítems."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "DELETE FROM clientes WHERE id = 26;\nSELECT count(*) AS items_pedido_1 FROM pedido_items WHERE pedido_id = 1;\nDELETE FROM pedidos WHERE id = 1 RETURNING id, estado, cliente_id;\nSELECT count(*) AS items_pedido_1 FROM pedido_items WHERE pedido_id = 1;"
+        },
+        {
+          "type": "h",
+          "text": "TRUNCATE: vaciar tablas completas"
+        },
+        {
+          "type": "p",
+          "text": "`TRUNCATE` elimina **todas** las filas de una o más tablas sin recorrerlas: en vez de marcar fila por fila, deja la tabla con archivos nuevos y vacíos. Por eso es instantáneo incluso con millones de filas y libera el espacio de inmediato (DELETE deja el espacio para que VACUUM lo recupere después). A cambio, es un martillo: no tiene WHERE ni RETURNING."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "DELETE sin WHERE",
+            "TRUNCATE"
+          ],
+          "rows": [
+            [
+              "Qué borra",
+              "Las filas que elige el WHERE (sin WHERE, todas)",
+              "Siempre todas las filas"
+            ],
+            [
+              "Velocidad",
+              "Recorre y marca cada fila",
+              "No recorre la tabla: instantáneo"
+            ],
+            [
+              "Espacio en disco",
+              "Lo recupera VACUUM más tarde",
+              "Se libera de inmediato"
+            ],
+            [
+              "RETURNING",
+              "Sí",
+              "No"
+            ],
+            [
+              "Triggers",
+              "Dispara los ON DELETE",
+              "No dispara ON DELETE (sí los ON TRUNCATE)"
+            ],
+            [
+              "Bloqueo",
+              "Bloquea las filas que borra; el resto de la tabla sigue disponible",
+              "ACCESS EXCLUSIVE: nadie más puede ni leer la tabla"
+            ],
+            [
+              "¿Se deshace con ROLLBACK?",
+              "Sí",
+              "Sí (en PostgreSQL es transaccional)"
+            ],
+            [
+              "Identidad y secuencias",
+              "No las toca",
+              "`CONTINUE IDENTITY` (por defecto) o `RESTART IDENTITY`"
+            ],
+            [
+              "Tablas que la referencian",
+              "Revisa cada FK fila por fila",
+              "Error, salvo que se incluyan en el mismo TRUNCATE o se use `CASCADE`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "TRUNCATE productos;\nBEGIN;\nTRUNCATE pedidos RESTART IDENTITY CASCADE;\nSELECT count(*) AS items FROM pedido_items;\nINSERT INTO pedidos (cliente_id, fecha, estado)\nVALUES (1, '2026-09-27 10:00', 'pendiente')\nRETURNING id;\nROLLBACK;\nSELECT count(*) AS pedidos FROM pedidos;"
+        },
+        {
+          "type": "p",
+          "text": "Lee con calma la salida. El primer TRUNCATE falla porque otras tablas referencian a `productos` y TRUNCATE no revisa fila por fila (ese es justamente su atajo). Con `CASCADE`, PostgreSQL avisa con un NOTICE qué otras tablas vacía (`pedido_items`). Con `RESTART IDENTITY`, el siguiente pedido vuelve a ser el 1. Y como todo ocurrió dentro de una transacción, el ROLLBACK devolvió los 420 pedidos."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`TRUNCATE … CASCADE` puede vaciar tablas que ni siquiera nombraste: todas las que referencian a la tabla, y las que referencian a esas, en cadena. Úsalo solo en tablas de prueba o de paso, y la primera vez siempre dentro de BEGIN … ROLLBACK, para leer los NOTICE antes de confirmar."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: la diferencia DELETE / TRUNCATE (tabla de arriba); que en PostgreSQL **TRUNCATE sí se puede deshacer** dentro de una transacción; que por defecto usa `CONTINUE IDENTITY` y `RESTRICT`; que no es *MVCC-safe* (una transacción concurrente que tomó su foto de los datos antes verá la tabla vacía); que `FROM` en UPDATE y `USING` en DELETE son extensiones de PostgreSQL; y que la etiqueta `UPDATE n` cuenta también las filas que quedaron con el mismo valor."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "old / new en RETURNING",
+              "def": "Alias especiales (PostgreSQL 18) para devolver los valores de la fila antes y después del cambio. Se renombran con `RETURNING WITH (OLD AS o, NEW AS n)`."
+            },
+            {
+              "term": "UPDATE … FROM",
+              "def": "Forma de UPDATE que combina la tabla destino con otras tablas para calcular los valores nuevos."
+            },
+            {
+              "term": "DELETE … USING",
+              "def": "Forma de DELETE que usa otras tablas en la condición de borrado."
+            },
+            {
+              "term": "TRUNCATE",
+              "def": "Vacía tablas completas sin recorrerlas. Opciones: RESTART/CONTINUE IDENTITY y CASCADE/RESTRICT."
+            },
+            {
+              "term": "Autocommit",
+              "def": "Modo por defecto de psql: cada sentencia escrita fuera de un BEGIN se confirma sola al terminar."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s06-l3",
+      "title": "Upsert con INSERT … ON CONFLICT",
+      "minutes": 20,
+      "goals": [
+        "Insertar filas omitiendo las que ya existen con ON CONFLICT DO NOTHING.",
+        "Actualizar la fila existente con ON CONFLICT DO UPDATE usando EXCLUDED y una condición WHERE.",
+        "Elegir el objetivo del conflicto (columnas, índice parcial u ON CONSTRAINT) y diagnosticar sus errores.",
+        "Distinguir en RETURNING las filas insertadas de las actualizadas con old (PostgreSQL 18)."
+      ],
+      "takeaways": [
+        "Upsert es «inserta y, si choca con una restricción única, haz otra cosa», en una sola sentencia atómica, incluso con mucha concurrencia.",
+        "`EXCLUDED` es la fila que intentaste insertar; el nombre de la tabla (o su alias) es la fila que ya estaba.",
+        "DO UPDATE exige un objetivo del conflicto que calce con un índice o restricción única; DO NOTHING puede omitirlo y entonces cubre todas.",
+        "Una misma sentencia no puede tocar dos veces la misma fila: deduplica la entrada antes del upsert.",
+        "Con `WHERE` en DO UPDATE evitas escrituras inútiles; la etiqueta `INSERT 0 n` cuenta insertadas + actualizadas."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Caso real: cada semana un proveedor manda su lista de precios. Algunos SKU ya están en tu catálogo (hay que actualizarlos) y otros son nuevos (hay que insertarlos). La solución ingenua desde la aplicación es «hago un SELECT; si existe, UPDATE; si no, INSERT». Tiene una grieta: entre tu SELECT y tu INSERT, **otra sesión** puede insertar el mismo SKU y tu INSERT revienta con `duplicate key`. El **upsert** (*update* + *insert*) resuelve todo en una sola sentencia atómica: `INSERT … ON CONFLICT`."
+        },
+        {
+          "type": "p",
+          "text": "Piensa en la lista de invitados de un matrimonio. Llega un nombre: si no está en la lista, lo anotas; si ya está, o no haces nada (DO NOTHING) o corriges su mesa (DO UPDATE). Quien decide si «ya está» no eres tú mirando la lista, sino la propia **restricción única** de la tabla, que PostgreSQL revisa y respeta aunque diez personas anoten al mismo tiempo."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo decide INSERT … ON CONFLICT, fila por fila",
+          "mermaid": "flowchart TD\n  A[\"Fila propuesta para insertar\"] --> B{\"¿Choca con el índice único del objetivo del conflicto?\"}\n  B -- \"No\" --> I[\"Se inserta\"]\n  B -- \"Sí\" --> C{\"¿Qué acción pediste?\"}\n  C -- \"DO NOTHING\" --> N[\"Se omite en silencio\"]\n  C -- \"DO UPDATE\" --> W{\"¿Se cumple el WHERE de DO UPDATE?\"}\n  W -- \"Sí o no hay WHERE\" --> U[\"Se actualiza la fila existente usando EXCLUDED\"]\n  W -- \"No\" --> S[\"La fila existente queda igual, pero bloqueada\"]\n  I --> R[\"Cuenta en INSERT 0 n y sale en RETURNING\"]\n  U --> R",
+          "caption": "Solo las filas insertadas o actualizadas cuentan en la etiqueta y aparecen en RETURNING. Un choque con otra restricción única que no es la del objetivo sigue siendo un ERROR."
+        },
+        {
+          "type": "h",
+          "text": "DO NOTHING: insertar solo lo nuevo"
+        },
+        {
+          "type": "p",
+          "text": "El primer INSERT de este ejemplo falla porque la categoría 3 ya existe, y por ser atómico tampoco entran las otras dos. Con `ON CONFLICT DO NOTHING` las filas en conflicto se omiten y el resto entra: la etiqueta dice `INSERT 0 2` y RETURNING muestra solo las insertadas. El tercer INSERT muestra la trampa del **objetivo**: `ON CONFLICT (id)` solo vigila la clave primaria, así que un choque con el nombre único (`Audio`) sigue siendo error."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "INSERT INTO categorias (id, nombre, padre_id)\nVALUES (3, 'Audio', 1), (14, 'Gamer', 1), (15, 'Jardín', 5);\nINSERT INTO categorias (id, nombre, padre_id)\nVALUES (3, 'Audio', 1), (14, 'Gamer', 1), (15, 'Jardín', 5)\nON CONFLICT DO NOTHING\nRETURNING *;\nINSERT INTO categorias (id, nombre, padre_id)\nVALUES (30, 'Audio', 1)\nON CONFLICT (id) DO NOTHING;"
+        },
+        {
+          "type": "h",
+          "text": "DO UPDATE y la tabla especial EXCLUDED"
+        },
+        {
+          "type": "p",
+          "text": "Con `DO UPDATE SET …` la fila que ya existía se actualiza. Dentro del SET (y de su WHERE) tienes dos filas a mano: la **existente**, que nombras con el nombre de la tabla o con su alias, y la **propuesta**, que PostgreSQL expone como la tabla especial `EXCLUDED` (se llama así porque fue «excluida» de la inserción)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Dónde",
+            "Cómo se escribe",
+            "Qué contiene"
+          ],
+          "rows": [
+            [
+              "SET y WHERE de DO UPDATE",
+              "`EXCLUDED.precio`",
+              "El valor que intentaste insertar"
+            ],
+            [
+              "SET y WHERE de DO UPDATE",
+              "`productos.precio` o `p.precio` (alias)",
+              "El valor que la fila ya tenía"
+            ],
+            [
+              "RETURNING (PostgreSQL 18)",
+              "`old.precio`",
+              "Valor antes: NULL si la fila se insertó"
+            ],
+            [
+              "RETURNING",
+              "`new.precio` o `p.precio`",
+              "Valor final de la fila insertada o actualizada"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "INSERT INTO productos AS p (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-002', 'Monitor 24\" Full HD', 2, 119990, 77810, '2026-09-27'),\n       ('COMP-003', 'Teclado mecánico', 2, 49990, 28900, '2026-09-27'),\n       ('ACC-006', 'Soporte para notebook', 4, 19990, 11200, '2026-09-27')\nON CONFLICT (sku) DO UPDATE\nSET precio = EXCLUDED.precio,\n    costo  = EXCLUDED.costo\nRETURNING p.sku, old.precio AS antes, new.precio AS despues,\n          CASE WHEN old.sku IS NULL THEN 'insertado' ELSE 'actualizado' END AS accion;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en tres cosas. (1) `old.sku IS NULL` distingue insertadas de actualizadas: en una fila recién insertada no hay «antes». (2) Las columnas que no pusiste en SET (nombre, categoría, `creado_en`) **conservan** su valor: el `'2026-09-27'` propuesto para COMP-002 se descarta. (3) COMP-003 venía con el mismo precio y costo, pero igual se «actualizó»: PostgreSQL escribió una versión nueva idéntica. Eso cuesta escritura en disco y dispara triggers de UPDATE sin necesidad. La cura es un `WHERE`:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "INSERT INTO productos AS p (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-002', 'Monitor 24\" Full HD', 2, 119990, 77810, '2026-09-27'),\n       ('COMP-003', 'Teclado mecánico', 2, 49990, 28900, '2026-09-27'),\n       ('ACC-006', 'Soporte para notebook', 4, 19990, 11200, '2026-09-27')\nON CONFLICT (sku) DO UPDATE\nSET precio = EXCLUDED.precio,\n    costo  = EXCLUDED.costo\nWHERE (p.precio, p.costo) IS DISTINCT FROM (EXCLUDED.precio, EXCLUDED.costo)\nRETURNING p.sku, old.precio AS antes, new.precio AS despues;"
+        },
+        {
+          "type": "p",
+          "text": "Ahora la etiqueta dice `INSERT 0 2`: COMP-003 chocó, pero el WHERE resultó falso y la fila quedó intacta (bloqueada hasta el fin de la transacción, eso sí). Se usa `IS DISTINCT FROM` y no `<>` porque compara bien los NULL: `NULL <> 5` es NULL (no verdadero) y el cambio se perdería."
+        },
+        {
+          "type": "h",
+          "text": "El objetivo del conflicto"
+        },
+        {
+          "type": "p",
+          "text": "Lo que va después de `ON CONFLICT` le dice a PostgreSQL **qué restricción única arbitra** el conflicto (la documentación la llama índice *árbitro*). Las opciones:"
+        },
+        {
+          "type": "list",
+          "items": [
+            "`ON CONFLICT (sku)`: PostgreSQL busca un índice único cuyas columnas sean **exactamente** esas (en cualquier orden). Es la forma más común.",
+            "`ON CONFLICT (lower(email))`: también sirve con un índice único de **expresión**, escribiendo la misma expresión.",
+            "`ON CONFLICT (codigo) WHERE activo`: para un índice único **parcial** hay que repetir su predicado; si no, no lo encuentra.",
+            "`ON CONFLICT ON CONSTRAINT productos_sku_key`: nombra la restricción directamente.",
+            "Sin objetivo: solo se permite con DO NOTHING y cubre **todas** las restricciones únicas y de exclusión."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "INSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, '2026-09-27')\nON CONFLICT DO UPDATE SET precio = EXCLUDED.precio;\nINSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, '2026-09-27')\nON CONFLICT (nombre) DO UPDATE SET precio = EXCLUDED.precio;\nINSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, '2026-09-27'),\n       ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 519990, 330000, '2026-09-27')\nON CONFLICT (sku) DO UPDATE SET precio = EXCLUDED.precio;\nINSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, '2026-09-27')\nON CONFLICT ON CONSTRAINT productos_sku_key DO UPDATE SET precio = EXCLUDED.precio\nRETURNING sku, old.precio AS antes, new.precio AS despues;"
+        },
+        {
+          "type": "p",
+          "text": "Tres errores que vas a ver en la vida real: DO UPDATE **sin objetivo** (PostgreSQL necesita saber qué fila actualizar); un objetivo que **no calza** con ningún índice único (`nombre` no es único en `productos`); y la misma clave **dos veces** en la misma sentencia (`ON CONFLICT DO UPDATE command cannot affect row a second time`): el upsert es determinista y no decide por ti cuál de las dos gana. Deduplica la entrada antes (por ejemplo, con `DISTINCT ON`, que viste en la sección 2)."
+        },
+        {
+          "type": "p",
+          "text": "El caso del índice parcial: en `cupones` un mismo código puede repetirse, pero solo puede haber **uno activo**. Sin el `WHERE activo`, el objetivo no encuentra el índice."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE cupones (\n  codigo text NOT NULL,\n  descuento integer NOT NULL,\n  activo boolean NOT NULL DEFAULT true\n);\nCREATE UNIQUE INDEX cupones_codigo_activo ON cupones (codigo) WHERE activo;\nINSERT INTO cupones VALUES ('CYBER', 10, false), ('CYBER', 15, true), ('VERANO', 20, true);",
+          "errors": true,
+          "code": "INSERT INTO cupones (codigo, descuento) VALUES ('CYBER', 25)\nON CONFLICT (codigo) DO UPDATE SET descuento = EXCLUDED.descuento;\nINSERT INTO cupones (codigo, descuento) VALUES ('CYBER', 25), ('INVIERNO', 30)\nON CONFLICT (codigo) WHERE activo DO UPDATE SET descuento = EXCLUDED.descuento\nRETURNING *;\nSELECT * FROM cupones ORDER BY codigo, activo;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "**Idempotencia.** Un upsert bien escrito es *idempotente*: ejecutarlo una vez o diez veces deja la tabla en el mismo estado. Es exactamente lo que quieres en cargas que pueden reintentarse (se cortó la conexión a la mitad, el proceso nocturno corrió dos veces). Un INSERT normal, en cambio, falla la segunda vez con `duplicate key`."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: qué es `EXCLUDED`; que DO UPDATE **exige** objetivo y DO NOTHING no; que ON CONFLICT solo atrapa violaciones de restricciones **únicas o de exclusión** (no CHECK, NOT NULL ni FK); que `ON CONFLICT DO UPDATE` garantiza un resultado atómico de INSERT **o** UPDATE incluso con alta concurrencia; el error «cannot affect row a second time»; y que ON CONFLICT es extensión de PostgreSQL: el equivalente estándar es MERGE (próxima lección)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Upsert",
+              "def": "Insertar o, si la fila ya existe según una restricción única, actualizarla (o no hacer nada). En PostgreSQL: INSERT … ON CONFLICT."
+            },
+            {
+              "term": "EXCLUDED",
+              "def": "Tabla especial, disponible en el SET y el WHERE de DO UPDATE, con la fila que se intentó insertar."
+            },
+            {
+              "term": "Objetivo del conflicto",
+              "en": "conflict target",
+              "def": "Columnas, expresión, predicado u ON CONSTRAINT que indican qué índice único arbitra el conflicto."
+            },
+            {
+              "term": "Índice árbitro",
+              "en": "arbiter index",
+              "def": "El índice único (o restricción de exclusión) que PostgreSQL usa para detectar el conflicto."
+            },
+            {
+              "term": "Idempotente",
+              "def": "Operación que produce el mismo estado final aunque se ejecute varias veces."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s06-l4",
+      "title": "MERGE: sincronizar una tabla con otra",
+      "minutes": 20,
+      "goals": [
+        "Escribir un MERGE con varias cláusulas WHEN que actualice, inserte o desactive filas según cada caso.",
+        "Sincronizar una tabla completa con WHEN NOT MATCHED BY SOURCE (PostgreSQL 17).",
+        "Auditar lo que hizo un MERGE con RETURNING merge_action() y old/new.",
+        "Elegir entre MERGE e INSERT … ON CONFLICT según la concurrencia y las reglas del caso."
+      ],
+      "takeaways": [
+        "MERGE combina la fuente con el destino y clasifica cada fila **una sola vez**: MATCHED, NOT MATCHED [BY TARGET] o NOT MATCHED BY SOURCE.",
+        "Las cláusulas WHEN se evalúan en el orden escrito y se ejecuta solo la primera verdadera; si ninguna calza, la fila no se toca.",
+        "Si una fila destino calza con varias filas fuente, MERGE falla: deja la fuente con una fila por clave.",
+        "`MERGE n` cuenta insertadas + actualizadas + borradas; `RETURNING merge_action()` (17) dice qué le pasó a cada fila.",
+        "Para upserts con mucha concurrencia prefiere ON CONFLICT; MERGE brilla en sincronizaciones con varias reglas y borrados."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "ON CONFLICT resuelve «inserta o actualiza». Pero una sincronización real suele tener más reglas: actualizar lo que cambió, desactivar lo descontinuado, insertar lo nuevo **y** hacer algo con lo que desapareció de la lista. Para eso existe `MERGE` (desde **PostgreSQL 15**, y parte del estándar SQL). Piénsalo como el **cuadre de caja** al cierre del día: pones lado a lado lo que dice el sistema (el destino) y lo que contaste (la fuente), y cada ítem cae en una de tres cajas: está en ambos, está solo en lo contado o está solo en el sistema."
+        },
+        {
+          "type": "diagram",
+          "title": "MERGE clasifica cada fila en una de tres cajas",
+          "mermaid": "flowchart LR\n  F[\"Fuente: USING\"] --> J{\"Combinación por la condición ON\"}\n  T[\"Destino: MERGE INTO\"] --> J\n  J -- \"Está en ambas\" --> M[\"WHEN MATCHED: UPDATE, DELETE o DO NOTHING\"]\n  J -- \"Solo en la fuente\" --> NT[\"WHEN NOT MATCHED BY TARGET: INSERT o DO NOTHING\"]\n  J -- \"Solo en el destino\" --> NS[\"WHEN NOT MATCHED BY SOURCE: UPDATE, DELETE o DO NOTHING\"]",
+          "caption": "NOT MATCHED a secas significa NOT MATCHED BY TARGET. La tercera caja existe desde PostgreSQL 17; sin ella, las filas que están solo en el destino no se tocan."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Caja",
+            "Significa",
+            "Acciones permitidas",
+            "Desde"
+          ],
+          "rows": [
+            [
+              "`WHEN MATCHED`",
+              "La fila está en la fuente y en el destino",
+              "UPDATE, DELETE, DO NOTHING",
+              "15"
+            ],
+            [
+              "`WHEN NOT MATCHED [BY TARGET]`",
+              "Está en la fuente pero no en el destino",
+              "INSERT, DO NOTHING",
+              "15"
+            ],
+            [
+              "`WHEN NOT MATCHED BY SOURCE`",
+              "Está en el destino pero no en la fuente",
+              "UPDATE, DELETE, DO NOTHING",
+              "17"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Anatomía de un MERGE"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "MERGE INTO destino AS d\nUSING fuente AS f            -- una tabla, una consulta entre paréntesis o VALUES\n   ON d.clave = f.clave      -- cómo se emparejan las filas\nWHEN MATCHED [AND condición] THEN\n  UPDATE SET col = f.col     -- o DELETE, o DO NOTHING\nWHEN NOT MATCHED [AND condición] THEN\n  INSERT (col1, col2) VALUES (f.col1, f.col2)\nWHEN NOT MATCHED BY SOURCE [AND condición] THEN\n  UPDATE SET activo = false  -- o DELETE\n[RETURNING merge_action(), d.*];"
+        },
+        {
+          "type": "p",
+          "text": "Nota que en el `UPDATE SET` y en el `INSERT` no se repite el nombre de la tabla: la acción siempre recae sobre el destino. El primer ejemplo es la sincronización más simple: actualizar precio y costo de lo que existe, insertar lo nuevo. `merge_action()` (desde **PostgreSQL 17**) devuelve `INSERT`, `UPDATE` o `DELETE` para cada fila del RETURNING."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE lista_proveedor (\n  sku text PRIMARY KEY,\n  nombre text NOT NULL,\n  categoria_id integer NOT NULL,\n  precio integer NOT NULL,\n  costo integer NOT NULL,\n  descontinuado boolean NOT NULL DEFAULT false\n);\nINSERT INTO lista_proveedor VALUES\n  ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, false),\n  ('COMP-002', 'Monitor 24\" Full HD', 2, 129990, 77810, false),\n  ('COMP-005', 'Disco SSD 1 TB', 2, 64990, 36500, false),\n  ('COMP-006', 'Cámara web HD', 2, 27990, 17500, true),\n  ('COMP-007', 'Monitor 27\" 2K', 2, 219990, 139000, false);",
+          "code": "MERGE INTO productos AS p\nUSING lista_proveedor AS l\n   ON p.sku = l.sku\nWHEN MATCHED THEN\n  UPDATE SET precio = l.precio, costo = l.costo\nWHEN NOT MATCHED THEN\n  INSERT (sku, nombre, categoria_id, precio, costo, creado_en)\n  VALUES (l.sku, l.nombre, l.categoria_id, l.precio, l.costo, '2026-09-27')\nRETURNING merge_action() AS accion, p.sku,\n          old.precio AS precio_antes, new.precio AS precio_despues;"
+        },
+        {
+          "type": "p",
+          "text": "Resultado: `MERGE 5`. Cuatro actualizaciones (COMP-002 incluida, aunque su precio y costo eran iguales: sin condición, WHEN MATCHED se ejecuta igual) y una inserción. En RETURNING, `p.sku` sin calificar muestra el valor nuevo; `old` y `new` funcionan igual que en UPDATE (PostgreSQL 18)."
+        },
+        {
+          "type": "h",
+          "text": "Varias cláusulas WHEN: el orden importa"
+        },
+        {
+          "type": "p",
+          "text": "Cada caja admite **varias** cláusulas con condiciones extra (`WHEN MATCHED AND …`). Para cada fila candidata, PostgreSQL recorre las cláusulas de su caja **en el orden en que las escribiste** y ejecuta **solo la primera** cuya condición sea verdadera. Si ninguna calza, la fila queda igual y no se cuenta. Aquí: lo descontinuado se desactiva (sin tocar su precio), lo que cambió se actualiza, lo que está igual no se toca, y lo nuevo se inserta."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE lista_proveedor (\n  sku text PRIMARY KEY,\n  nombre text NOT NULL,\n  categoria_id integer NOT NULL,\n  precio integer NOT NULL,\n  costo integer NOT NULL,\n  descontinuado boolean NOT NULL DEFAULT false\n);\nINSERT INTO lista_proveedor VALUES\n  ('COMP-001', 'Notebook 14\" Ryzen 5', 2, 529990, 330000, false),\n  ('COMP-002', 'Monitor 24\" Full HD', 2, 129990, 77810, false),\n  ('COMP-005', 'Disco SSD 1 TB', 2, 64990, 36500, false),\n  ('COMP-006', 'Cámara web HD', 2, 27990, 17500, true),\n  ('COMP-007', 'Monitor 27\" 2K', 2, 219990, 139000, false);",
+          "code": "MERGE INTO productos AS p\nUSING lista_proveedor AS l\n   ON p.sku = l.sku\nWHEN MATCHED AND l.descontinuado THEN\n  UPDATE SET activo = false\nWHEN MATCHED AND (p.precio, p.costo) IS DISTINCT FROM (l.precio, l.costo) THEN\n  UPDATE SET precio = l.precio, costo = l.costo\nWHEN MATCHED THEN\n  DO NOTHING\nWHEN NOT MATCHED THEN\n  INSERT (sku, nombre, categoria_id, precio, costo, creado_en)\n  VALUES (l.sku, l.nombre, l.categoria_id, l.precio, l.costo, '2026-09-27')\nRETURNING merge_action() AS accion, p.sku, old.precio AS precio_antes,\n          new.precio AS precio_despues, new.activo;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**El orden de las cláusulas es parte de la lógica.** COMP-006 viene descontinuado **y** con otro precio (27.990). Como la regla de descontinuados va primero, se desactiva y su precio **no** cambia. Si escribes primero un `WHEN MATCHED THEN UPDATE …` sin condición, esa cláusula atrapa todas las filas coincidentes y las siguientes nunca se ejecutan. Regla práctica: de la condición más específica a la más general, igual que en un CASE."
+        },
+        {
+          "type": "h",
+          "text": "WHEN NOT MATCHED BY SOURCE: sincronización completa"
+        },
+        {
+          "type": "p",
+          "text": "Desde PostgreSQL 17, la tercera caja permite actuar sobre las filas del destino que **no aparecen** en la fuente: borrarlas o marcarlas. Es lo que convierte a MERGE en una sincronización completa (la tabla destino queda como un espejo de la fuente). En este ejemplo de bodega, el conteo físico es la verdad: lo contado se actualiza, lo nuevo se inserta y lo que no se encontró se elimina."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE stock_bodega (sku text PRIMARY KEY, stock integer NOT NULL);\nINSERT INTO stock_bodega VALUES ('A-1', 10), ('B-2', 4), ('C-3', 7);\nCREATE TABLE conteo (sku text PRIMARY KEY, stock integer NOT NULL);\nINSERT INTO conteo VALUES ('A-1', 12), ('D-4', 3);",
+          "code": "MERGE INTO stock_bodega AS s\nUSING conteo AS c\n   ON s.sku = c.sku\nWHEN MATCHED THEN\n  UPDATE SET stock = c.stock\nWHEN NOT MATCHED BY TARGET THEN\n  INSERT (sku, stock) VALUES (c.sku, c.stock)\nWHEN NOT MATCHED BY SOURCE THEN\n  DELETE\nRETURNING merge_action() AS accion, s.*;\nSELECT * FROM stock_bodega ORDER BY sku;"
+        },
+        {
+          "type": "p",
+          "text": "En una fila borrada, RETURNING sin calificar (`s.*`) muestra los valores que tenía antes de borrarse. Ojo con la tabla real: `productos` tiene 49 filas, pero la lista de un proveedor solo trae unas pocas. Un `WHEN NOT MATCHED BY SOURCE THEN UPDATE SET activo = false` **sin condición** desactivaría todo el resto del catálogo. Por eso casi siempre se acota: `WHEN NOT MATCHED BY SOURCE AND p.categoria_id = 2 THEN UPDATE SET activo = false` (solo la categoría que ese proveedor abastece)."
+        },
+        {
+          "type": "h",
+          "text": "Errores típicos y fuentes en línea"
+        },
+        {
+          "type": "p",
+          "text": "La fuente puede ser una tabla, una consulta entre paréntesis o una lista `VALUES` con alias de columnas. Si una fila destino calza con **dos** filas de la fuente, MERGE no elige por ti: falla con `MERGE command cannot affect row a second time` si la acción repetida es UPDATE o DELETE, o con una violación de unicidad si es INSERT."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "MERGE INTO productos AS p\nUSING (VALUES ('COMP-001', 529990), ('COMP-001', 519990)) AS n(sku, precio)\n   ON p.sku = n.sku\nWHEN MATCHED THEN UPDATE SET precio = n.precio;\nMERGE INTO productos AS p\nUSING (VALUES ('LIB-005', 22990), ('LIB-006', 8490)) AS n(sku, precio)\n   ON p.sku = n.sku\nWHEN MATCHED THEN UPDATE SET precio = n.precio\nRETURNING p.sku, old.precio AS antes, new.precio AS despues;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "INSERT … ON CONFLICT",
+            "MERGE"
+          ],
+          "rows": [
+            [
+              "Estándar SQL",
+              "No (extensión de PostgreSQL)",
+              "Sí (BY SOURCE, DO NOTHING y RETURNING son extensiones)"
+            ],
+            [
+              "Cómo detecta si la fila existe",
+              "Una restricción única (índice árbitro)",
+              "Cualquier condición en ON (no necesita índice único)"
+            ],
+            [
+              "Acciones",
+              "INSERT + (UPDATE o nada)",
+              "INSERT, UPDATE, DELETE y nada, con varias reglas"
+            ],
+            [
+              "Filas que desaparecieron de la fuente",
+              "No las ve",
+              "WHEN NOT MATCHED BY SOURCE (17)"
+            ],
+            [
+              "Concurrencia",
+              "Resultado atómico garantizado: si otra sesión inserta a la vez, actualiza",
+              "Reglas normales de aislamiento: un INSERT concurrente puede provocar un error de unicidad"
+            ],
+            [
+              "Etiqueta",
+              "`INSERT 0 n`",
+              "`MERGE n`"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: MERGE existe desde PostgreSQL **15**; `RETURNING`, `merge_action()`, `WHEN NOT MATCHED BY SOURCE` y MERGE sobre vistas actualizables llegaron en **17**; `old`/`new` en RETURNING, en **18**. Cada fila candidata ejecuta **como máximo una** cláusula WHEN (la primera verdadera). `MERGE n` cuenta filas insertadas, actualizadas y borradas (DO NOTHING no cuenta). Y la propia documentación sugiere considerar `INSERT … ON CONFLICT` cuando hay inserciones concurrentes."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Fuente",
+              "en": "data source",
+              "def": "Lo que va en USING: tabla, consulta o VALUES con los datos que mandan."
+            },
+            {
+              "term": "Destino",
+              "en": "target",
+              "def": "La tabla de MERGE INTO: la única que MERGE modifica."
+            },
+            {
+              "term": "Fila candidata",
+              "en": "candidate change row",
+              "def": "Cada resultado de combinar fuente y destino; recibe una sola clasificación y ejecuta como máximo una cláusula WHEN."
+            },
+            {
+              "term": "merge_action()",
+              "def": "Función (17) que, en el RETURNING de MERGE, devuelve 'INSERT', 'UPDATE' o 'DELETE'."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s06-l5",
+      "title": "Carga masiva: COPY, \\copy y datos de prueba",
+      "minutes": 25,
+      "goals": [
+        "Cargar filas con COPY … FROM STDIN y con \\copy desde un archivo CSV con encabezado.",
+        "Exportar el resultado de una consulta con COPY … TO STDOUT y con \\copy … TO.",
+        "Tolerar filas con datos inválidos usando ON_ERROR ignore (17) y REJECT_LIMIT (18), identificando los errores que no cubren.",
+        "Generar miles de filas de prueba con generate_series e INSERT … SELECT."
+      ],
+      "takeaways": [
+        "COPY mueve muchas filas en un solo comando y es la forma más rápida de cargar datos en PostgreSQL.",
+        "`COPY … FROM 'archivo'` lo lee el **servidor** (exige privilegios especiales); `\\copy` lo lee **psql en tu computador** y lo envía como COPY FROM STDIN.",
+        "En CSV, un campo vacío sin comillas es NULL y `\"\"` es texto vacío; HEADER salta la primera línea y HEADER MATCH además verifica los nombres.",
+        "ON_ERROR ignore solo salta errores de **conversión de tipo**; una violación de NOT NULL, CHECK o UNIQUE sigue abortando todo el COPY.",
+        "Patrón profesional: `\\copy` a una tabla de paso → limpiar y deduplicar → upsert o MERGE a la tabla real, todo en una transacción."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Cargar 100.000 filas con 100.000 INSERT es como ir al supermercado cien mil veces a buscar un producto por viaje: cada sentencia paga su viaje de ida y vuelta al servidor, su análisis y su planificación. `COPY` llena el carro de una vez: abre un **flujo de datos** y el servidor va insertando las filas a medida que llegan, dentro de un solo comando. Es la herramienta estándar para importar y exportar datos, y la que usan por dentro herramientas como `pg_dump`."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Forma",
+            "Quién lee o escribe el archivo",
+            "Dónde vive el archivo",
+            "Permisos"
+          ],
+          "rows": [
+            [
+              "`COPY t FROM '/ruta/archivo.csv'`",
+              "El proceso del **servidor**",
+              "En la máquina del servidor",
+              "Superusuario o rol `pg_read_server_files` (`pg_write_server_files` para TO)"
+            ],
+            [
+              "`COPY t FROM STDIN` / `TO STDOUT`",
+              "El **cliente** envía o recibe el flujo por la conexión",
+              "Donde el cliente quiera",
+              "Los de la tabla (INSERT o SELECT)"
+            ],
+            [
+              "`\\copy t FROM 'archivo.csv'` (psql)",
+              "**psql**, que usa COPY FROM STDIN por debajo",
+              "En tu computador",
+              "Los de la tabla + permiso de tu usuario del sistema sobre el archivo"
+            ]
+          ]
+        },
+        {
+          "type": "diagram",
+          "title": "Qué pasa cuando escribes \\copy",
+          "mermaid": "sequenceDiagram\n  participant A as Archivo en tu computador\n  participant P as psql\n  participant S as Servidor PostgreSQL\n  P->>A: Lee precios.csv\n  P->>S: COPY productos FROM STDIN (FORMAT csv, HEADER)\n  S-->>P: Listo para recibir datos\n  P->>S: Todas las líneas del archivo en un solo flujo\n  P->>S: Fin de los datos\n  S-->>P: COPY 3",
+          "caption": "El servidor nunca abre el archivo: solo recibe un flujo por la conexión. Por eso \\copy funciona aunque el servidor esté en otro computador o en la nube."
+        },
+        {
+          "type": "h",
+          "text": "COPY … FROM STDIN: escribir los datos a continuación"
+        },
+        {
+          "type": "p",
+          "text": "Si ejecutas `COPY … FROM STDIN` en psql, el servidor queda esperando datos: psql muestra un aviso y cambia el prompt a `>>`. Escribes una fila por línea y terminas con una línea que contiene **solo** `\\.` (barra invertida y punto). En formato CSV: comas entre campos, comillas dobles para textos que contienen comas, y un campo **vacío sin comillas** significa NULL."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "COPY categorias (id, nombre, padre_id) FROM STDIN (FORMAT csv);\n14,Gamer,1\n15,Mascotas,\n16,\"Arte, dibujo y pintura\",\n\\.\nSELECT * FROM categorias WHERE id >= 14;"
+        },
+        {
+          "type": "list",
+          "items": [
+            "`FORMAT csv` o `FORMAT text` (el valor por defecto: campos separados por tabulador y NULL escrito como `\\N`). También existe `binary`.",
+            "`HEADER`: la primera línea trae los nombres de las columnas y se descarta. `HEADER MATCH` (desde PostgreSQL 15) además exige que esos nombres coincidan con las columnas, en orden.",
+            "`DELIMITER ';'`: separador distinto de la coma (típico de planillas exportadas con configuración regional chilena).",
+            "`NULL 'N/A'`: el texto que representa NULL. En CSV, por defecto, NULL es el campo vacío sin comillas, y `\"\"` es un texto vacío.",
+            "`DEFAULT 'texto'` (desde PostgreSQL 16): donde aparezca ese texto, se usa el valor por defecto de la columna.",
+            "Lista de columnas `(id, nombre, padre_id)`: qué columnas trae el archivo y en qué orden; las demás toman su DEFAULT."
+          ],
+          "ordered": false
+        },
+        {
+          "type": "h",
+          "text": "\\copy: archivos de tu computador"
+        },
+        {
+          "type": "p",
+          "text": "`\\copy` es un **meta-comando de psql** con la misma sintaxis que COPY, pero el archivo lo abre psql en **tu** computador. Dos detalles: todo el resto de la línea son argumentos de `\\copy` (no necesita `;` y no puede partirse en varias líneas), y las rutas relativas se resuelven desde la carpeta donde abriste psql. En el curso los archivos son virtuales: los que trae cada ejercicio y los que tú mismo creas con `\\copy … TO`. En este ejemplo exportamos los productos sin stock a un CSV y lo volvemos a cargar en otra tabla:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE conteo_bodega (sku text NOT NULL, stock integer NOT NULL);",
+          "code": "\\copy (SELECT sku, stock FROM productos WHERE stock = 0 ORDER BY sku) TO 'sin_stock.csv' (FORMAT csv, HEADER)\n\\copy conteo_bodega FROM 'sin_stock.csv' (FORMAT csv, HEADER)\nSELECT * FROM conteo_bodega;"
+        },
+        {
+          "type": "p",
+          "text": "En la vida real lo usarás así desde la terminal de tu computador (bloque de solo lectura):"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "psql -d tienda -c \"\\copy productos TO 'productos.csv' (FORMAT csv, HEADER)\"\npsql -d tienda -c \"\\copy precios_nuevos FROM 'precios.csv' (FORMAT csv, HEADER)\""
+        },
+        {
+          "type": "h",
+          "text": "Exportar: COPY … TO STDOUT"
+        },
+        {
+          "type": "p",
+          "text": "`COPY (consulta) TO STDOUT` envía el resultado como texto CSV por la conexión: psql lo muestra en pantalla (o lo guarda en un archivo si usas `\\copy … TO 'archivo'`). Cualquier SELECT sirve, así que puedes exportar exactamente las columnas, filas y orden que necesites."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "COPY (SELECT sku, nombre, precio FROM productos WHERE categoria_id = 13 ORDER BY sku)\nTO STDOUT (FORMAT csv, HEADER);"
+        },
+        {
+          "type": "h",
+          "text": "Filas malas: ON_ERROR, REJECT_LIMIT y LOG_VERBOSITY"
+        },
+        {
+          "type": "p",
+          "text": "Por defecto COPY es **todo o nada**: una sola fila con un número mal escrito en la línea 99.999 anula la carga completa (y las filas ya escritas quedan ocupando espacio como filas muertas hasta el próximo VACUUM). Desde **PostgreSQL 17**, `ON_ERROR ignore` descarta las filas cuyo valor **no se puede convertir** al tipo de la columna y sigue con las demás; al final avisa cuántas saltó. `LOG_VERBOSITY verbose` avisa cada fila descartada, con su línea y columna, y `silent` (18) no avisa nada. `REJECT_LIMIT n` (18) pone un tope: si hay más de n filas malas, el COPY falla igual."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE conteo_bodega (sku text NOT NULL, stock integer NOT NULL);",
+          "code": "COPY conteo_bodega FROM STDIN (FORMAT csv, HEADER, ON_ERROR ignore, LOG_VERBOSITY verbose);\nsku,stock\nCOMP-001,35\nCOMP-002,sin dato\nCOMP-003,14.5\nCOMP-004,28\n\\.\nSELECT * FROM conteo_bodega;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**ON_ERROR ignore no es un «ignora todo».** Solo cubre errores al **convertir** el texto al tipo de la columna (`'sin dato'` o `'14.5'` en un integer). Una fila que viola `NOT NULL`, `CHECK`, `UNIQUE` o una clave foránea, o que trae columnas de más o de menos, sigue abortando el COPY completo. Además solo funciona con los formatos text y csv. En el ejemplo de abajo, la segunda fila trae el SKU vacío (NULL) y se cae toda la carga; en la segunda carga, dos filas malas superan el `REJECT_LIMIT 1`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE conteo_bodega (sku text NOT NULL, stock integer NOT NULL);",
+          "errors": true,
+          "code": "COPY conteo_bodega FROM STDIN (FORMAT csv, ON_ERROR ignore);\nCOMP-005,20\n,30\n\\.\nCOPY conteo_bodega FROM STDIN (FORMAT csv, ON_ERROR ignore, REJECT_LIMIT 1);\nCOMP-006,x\nCOMP-007,y\nCOMP-008,5\n\\.\nSELECT count(*) AS cargadas FROM conteo_bodega;"
+        },
+        {
+          "type": "h",
+          "text": "Datos de prueba con generate_series"
+        },
+        {
+          "type": "p",
+          "text": "Para probar índices, consultas o una carga, necesitas volumen. `generate_series(1, 10000)` es una función que devuelve una columna con los números del 1 al 10.000 (también acepta fechas con un paso de `interval`). Con `INSERT … SELECT` conviertes cada número en una fila, usando expresiones de `g` para variar los datos de forma **determinista** (siempre el mismo resultado). El `%` (resto de la división) y la división entera son tus mejores amigos para repartir valores."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE boletas (\n  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  fecha date NOT NULL,\n  monto integer NOT NULL CHECK (monto > 0),\n  medio_pago text NOT NULL\n);",
+          "code": "INSERT INTO boletas (fecha, monto, medio_pago)\nSELECT date '2026-01-01' + (g % 181),\n       (1 + (g * 37) % 50) * 1000 - 10,\n       CASE g % 3 WHEN 0 THEN 'debito' WHEN 1 THEN 'credito' ELSE 'transferencia' END\nFROM generate_series(1, 10000) AS g;\nSELECT count(*), min(fecha), max(fecha), min(monto), max(monto) FROM boletas;\nSELECT * FROM boletas ORDER BY id LIMIT 3;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Para datos al azar existe `random()` (y `setseed(0.42)` para que el azar sea repetible en tu sesión). Para cargas grandes de verdad, la documentación recomienda: usar COPY en vez de INSERT, hacerlo todo en **una** transacción, crear los índices y las claves foráneas **después** de cargar y ejecutar `ANALYZE` al final para que el planificador conozca los datos nuevos."
+        },
+        {
+          "type": "h",
+          "text": "El patrón profesional: tabla de paso"
+        },
+        {
+          "type": "diagram",
+          "title": "De un CSV a la tabla real sin sustos",
+          "mermaid": "flowchart LR\n  A[\"Archivo CSV del proveedor\"] --> B[\"\\copy a una tabla de paso temporal\"]\n  B --> C[\"Revisar: contar, buscar NULL, duplicados, valores raros\"]\n  C --> D[\"Limpiar y deduplicar con UPDATE y DELETE\"]\n  D --> E[\"INSERT … ON CONFLICT o MERGE a la tabla real\"]\n  E --> F{\"¿RETURNING y etiquetas cuadran?\"}\n  F -- \"Sí\" --> G[\"COMMIT\"]\n  F -- \"No\" --> H[\"ROLLBACK\"]",
+          "caption": "La tabla real nunca ve datos sin revisar. Todo el proceso va entre BEGIN y COMMIT."
+        },
+        {
+          "type": "p",
+          "text": "Nunca cargues un archivo externo directo a la tabla de producción. Primero créalo en una **tabla de paso** (*staging*), a menudo `CREATE TEMP TABLE` (una tabla temporal que desaparece al cerrar la sesión), con columnas permisivas. Ahí puedes mirar los datos con SELECT, corregirlos con UPDATE, borrar duplicados con DELETE … USING y recién entonces aplicarlos con un upsert o un MERGE, viendo con RETURNING qué pasó con cada fila. Es exactamente lo que harás en los ejercicios difíciles y en el proyecto."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: COPY vs `\\copy` (quién abre el archivo y qué permisos pide); cómo se termina COPY FROM STDIN en psql (`\\.`); NULL vs texto vacío en CSV; que `ON_ERROR ignore` (17) solo cubre errores de conversión de tipo; `REJECT_LIMIT` y `LOG_VERBOSITY silent` (18); la etiqueta `COPY n`; y que un COPY que falla sin ON_ERROR no deja ninguna fila visible."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "COPY",
+              "def": "Comando SQL que mueve datos entre una tabla (o consulta) y un archivo o flujo, en formatos text, csv o binary."
+            },
+            {
+              "term": "\\copy",
+              "def": "Meta-comando de psql que ejecuta COPY FROM STDIN / TO STDOUT y lee o escribe el archivo en el computador del cliente."
+            },
+            {
+              "term": "STDIN / STDOUT",
+              "en": "standard input / output",
+              "def": "Entrada y salida estándar: en COPY, el flujo de datos que viaja por la conexión con el cliente."
+            },
+            {
+              "term": "Tabla de paso",
+              "en": "staging table",
+              "def": "Tabla intermedia (a menudo temporal) donde se cargan y limpian datos externos antes de pasarlos a la tabla real."
+            },
+            {
+              "term": "generate_series",
+              "def": "Función que devuelve una serie de números o fechas; con INSERT … SELECT genera datos de prueba."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s06-e1",
+      "title": "Registrar una clienta nueva",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "Llegó un registro nuevo a la tienda. Inserta en `clientes` a **Camila Soto Vera**: RUT `12345678-5`, email `camila.soto@gmail.com`, **sin teléfono**, comuna `Ñuñoa`, región `Metropolitana` y fecha de registro `2026-09-01`.",
+        "Nombra las columnas explícitamente, **no** entregues el `id` (lo asigna la columna de identidad) y termina con `RETURNING id` para ver qué número le tocó."
+      ],
+      "starter": "-- Inserta la clienta y devuelve su id\n",
+      "solution": "INSERT INTO clientes (rut, nombre, apellido, email, comuna, region, fecha_registro)\nVALUES ('12345678-5', 'Camila', 'Soto Vera', 'camila.soto@gmail.com', 'Ñuñoa', 'Metropolitana', '2026-09-01')\nRETURNING id;",
+      "requires": [
+        {
+          "pattern": "\\breturning\\b",
+          "msg": "Termina el INSERT con RETURNING id",
+          "name": "Devuelve el id con RETURNING"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Existe exactamente una clienta con ese RUT",
+          "sql": "SELECT count(*) = 1, 'Hay ' || count(*) || ' filas con el RUT 12345678-5; se esperaba exactamente 1' FROM clientes WHERE rut = '12345678-5'"
+        },
+        {
+          "name": "Todos los datos coinciden con el enunciado",
+          "sql": "SELECT mismas_filas($$SELECT nombre, apellido, email, telefono, comuna, region, fecha_registro FROM clientes WHERE rut = '12345678-5'$$, $$VALUES ('Camila', 'Soto Vera', 'camila.soto@gmail.com', NULL::text, 'Ñuñoa', 'Metropolitana', DATE '2026-09-01')$$)",
+          "fail": "Revisa cada valor: nombre `Camila`, apellido `Soto Vera`, el email, comuna, región y fecha exactamente como en el enunciado, y el teléfono en NULL (basta con no nombrar esa columna)."
+        },
+        {
+          "name": "El id lo asignó la identidad",
+          "sql": "SELECT valor($$SELECT id FROM clientes WHERE rut = '12345678-5'$$) = '61'",
+          "fail": "El id debe asignarlo la columna de identidad (le corresponde el 61). No lo incluyas en el INSERT."
+        },
+        {
+          "name": "No se agregaron otras filas",
+          "sql": "SELECT count(*) = 61, 'Hay ' || count(*) || ' clientes; se esperaban 61' FROM clientes"
+        }
+      ],
+      "hints": [
+        "Las columnas que no nombras toman su valor por defecto o quedan en NULL: no necesitas mencionar `id` ni `telefono`.",
+        "La forma es `INSERT INTO clientes (rut, nombre, apellido, email, comuna, region, fecha_registro) VALUES (…) RETURNING id;`"
+      ],
+      "explain": "Nombrar las columnas hace que el INSERT sea legible y resistente: si mañana alguien agrega una columna a `clientes`, tu sentencia sigue funcionando. `telefono` no se nombra, así que queda NULL (no tiene DEFAULT); `id` es `GENERATED ALWAYS AS IDENTITY`, así que PostgreSQL le asigna el siguiente número de su secuencia (61) y RETURNING te lo muestra sin otra consulta. Si hubieras escrito el id a mano, verías `cannot insert a non-DEFAULT value into column \"id\"`. La fecha puede ir como texto `'2026-09-01'`: PostgreSQL la convierte al tipo `date` de la columna."
+    },
+    {
+      "id": "s06-e2",
+      "title": "Tres subcategorías en una sola sentencia",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "Agrega a `categorias`, con **un solo INSERT de varias filas**, estas tres subcategorías: id `14` **Gamer** (hija de Tecnología, id 1), id `15` **Jardín** (hija de Hogar, id 5) e id `16` **Running** (hija de Deportes, id 8).",
+        "Usa `RETURNING *` para ver las filas insertadas."
+      ],
+      "starter": "-- Un solo INSERT con tres filas en VALUES\n",
+      "solution": "INSERT INTO categorias (id, nombre, padre_id)\nVALUES (14, 'Gamer', 1),\n       (15, 'Jardín', 5),\n       (16, 'Running', 8)\nRETURNING *;",
+      "requires": [
+        {
+          "pattern": "values\\s*\\([^)]*\\)\\s*,\\s*\\(",
+          "msg": "Inserta las tres filas en un solo INSERT, con varias listas separadas por comas en VALUES",
+          "name": "INSERT de varias filas"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Las tres subcategorías existen con su padre correcto",
+          "sql": "SELECT mismas_filas($$SELECT id, nombre, padre_id FROM categorias WHERE id > 13$$, $$VALUES (14, 'Gamer', 1), (15, 'Jardín', 5), (16, 'Running', 8)$$)",
+          "fail": "Deben existir exactamente las categorías 14 Gamer (padre 1), 15 Jardín (padre 5) y 16 Running (padre 8). Revisa ids, tildes y padres."
+        },
+        {
+          "name": "Hay 16 categorías en total",
+          "sql": "SELECT count(*) = 16, 'Hay ' || count(*) || ' categorías; se esperaban 16' FROM categorias"
+        }
+      ],
+      "hints": [
+        "En VALUES puedes escribir varias tuplas separadas por coma: `VALUES (…), (…), (…)`.",
+        "`categorias` no tiene identidad: aquí sí debes entregar el `id`. Las columnas son `(id, nombre, padre_id)`."
+      ],
+      "explain": "Un INSERT con varias tuplas en VALUES hace un solo viaje al servidor y es atómico: si una de las tres violara una restricción (por ejemplo, un nombre repetido, porque `nombre` es UNIQUE), no entraría ninguna. La etiqueta `INSERT 0 3` confirma las tres filas. Como `padre_id` es una clave foránea hacia la misma tabla, un padre inexistente (por ejemplo, 99) haría fallar la sentencia con `violates foreign key constraint`."
+    },
+    {
+      "id": "s06-e3",
+      "title": "Reajuste del 8 % en Audio",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "Los productos **activos** de la categoría Audio (`categoria_id = 3`) suben un 8 %. El precio nuevo es `round(precio * 1.08, -1)` (redondeado a la decena).",
+        "El producto **inactivo** de Audio no cambia, ni tampoco ningún producto de otra categoría. Agrega `RETURNING` con `old.precio` y `new.precio` para ver el antes y el después de cada producto."
+      ],
+      "starter": "-- UPDATE con WHERE y RETURNING old/new\n",
+      "solution": "UPDATE productos\nSET precio = round(precio * 1.08, -1)\nWHERE categoria_id = 3\n  AND activo\nRETURNING sku, old.precio AS antes, new.precio AS despues;",
+      "requires": [
+        {
+          "pattern": "\\breturning\\b[\\s\\S]*\\bold\\.",
+          "msg": "Muestra el antes y el después con RETURNING old.precio, new.precio",
+          "name": "RETURNING con old/new"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Precios de Audio correctos",
+          "sql": "SELECT mismas_filas($$SELECT sku, precio FROM productos WHERE categoria_id = 3$$, $$VALUES ('AUD-001', 43190), ('AUD-002', 161990), ('AUD-003', 37790), ('AUD-004', 64790), ('AUD-005', 19990)$$)",
+          "fail": "Los precios de Audio no son los esperados. ¿Usaste exactamente round(precio * 1.08, -1)? ¿Dejaste fuera al producto inactivo (AUD-005)?"
+        },
+        {
+          "name": "Los demás productos no cambiaron",
+          "sql": "SELECT sum(precio) = 2023060, 'La suma de precios fuera de Audio cambió (' || sum(precio) || '); ¿falta una condición en el WHERE?' FROM productos WHERE categoria_id <> 3"
+        }
+      ],
+      "hints": [
+        "Necesitas dos condiciones en el WHERE: la categoría y que el producto esté activo (`activo` es boolean: puedes escribir `AND activo`).",
+        "`RETURNING sku, old.precio AS antes, new.precio AS despues` (PostgreSQL 18)."
+      ],
+      "explain": "El WHERE elige las filas (Audio **y** activas: 4 de 5) y SET calcula el valor nuevo a partir del antiguo de cada fila; la etiqueta debe decir `UPDATE 4`. `round(x, -1)` redondea a la decena: 39.990 × 1,08 = 43.189,2 → 43.190. Si hubieras escrito `precio * 1.08` sin round, PostgreSQL convierte el numeric al integer de la columna redondeando a la unidad (43.189), y el precio no terminaría en 0. Con `RETURNING old.precio, new.precio` (nuevo en 18) el propio UPDATE te sirve de reporte; antes de la versión 18 tenías que consultar los precios antes y después."
+    },
+    {
+      "id": "s06-e4",
+      "title": "Limpiar reseñas vacías y negativas",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "Moderación decidió borrar las reseñas que **no tienen comentario** y además tienen **nota 1 o 2**.",
+        "Bórralas con un DELETE y muestra con `RETURNING` el `id`, el `producto_id` y la `nota` de cada reseña borrada. Ojo con la forma de comparar con NULL."
+      ],
+      "starter": "-- DELETE con WHERE y RETURNING\n",
+      "solution": "DELETE FROM resenas\nWHERE comentario IS NULL\n  AND nota <= 2\nRETURNING id, producto_id, nota;",
+      "checks": [
+        {
+          "name": "No quedan reseñas sin comentario con nota 1 o 2",
+          "sql": "SELECT count(*) = 0, 'Aún quedan ' || count(*) || ' reseñas sin comentario con nota 1 o 2' FROM resenas WHERE comentario IS NULL AND nota <= 2"
+        },
+        {
+          "name": "Se borraron exactamente 5 reseñas",
+          "sql": "SELECT count(*) = 145, 'Quedan ' || count(*) || ' reseñas; se esperaban 145 (150 menos las 5 a borrar)' FROM resenas"
+        },
+        {
+          "name": "Las demás reseñas siguen intactas",
+          "sql": "SELECT count(*) FILTER (WHERE comentario IS NOT NULL) = 134 AND count(*) FILTER (WHERE comentario IS NULL) = 11 FROM resenas",
+          "fail": "Se borraron reseñas que no correspondían: solo deben irse las que no tienen comentario Y tienen nota 1 o 2."
+        }
+      ],
+      "hints": [
+        "`comentario = NULL` nunca es verdadero (lógica de tres valores): el DELETE diría `DELETE 0`. Usa `IS NULL`.",
+        "Las dos condiciones van unidas con AND: `WHERE comentario IS NULL AND nota <= 2`."
+      ],
+      "explain": "Con `WHERE comentario = NULL` el DELETE no falla: responde `DELETE 0`, porque comparar con NULL da NULL y el WHERE solo deja pasar lo verdadero. Por eso la etiqueta es tu primera verificación: aquí debe decir `DELETE 5`. Con OR en vez de AND borrarías 33 reseñas (las 16 sin comentario más las 22 con nota baja, menos las 5 que cumplen ambas). En la vida real harías primero `SELECT count(*) … WHERE …` y el DELETE dentro de BEGIN … COMMIT."
+    },
+    {
+      "id": "s06-e5",
+      "title": "La red de seguridad: BEGIN … ROLLBACK",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "psql",
+      "dataset": "tienda",
+      "prompt": [
+        "Vas a practicar el hábito que evita desastres. En la consola: (1) abre una transacción con `BEGIN;`; (2) ejecuta **a propósito** el error clásico `UPDATE productos SET activo = false;` (sin WHERE) y lee la etiqueta; (3) mide el daño con `SELECT count(*) FROM productos WHERE activo;` y deshazlo con `ROLLBACK;`.",
+        "Ahora hazlo bien: abre una transacción nueva y desactiva (`activo = false`) **solo** los productos con `stock = 0`, con `RETURNING sku, stock`. Si la etiqueta coincide con la cantidad de productos sin stock, confírmalo con `COMMIT;`.",
+        "Comprobar revisa lo que quedó **confirmado** en la base."
+      ],
+      "solution": [
+        "BEGIN;",
+        "UPDATE productos SET activo = false;",
+        "SELECT count(*) FROM productos WHERE activo;",
+        "ROLLBACK;",
+        "BEGIN;",
+        "UPDATE productos SET activo = false WHERE stock = 0 RETURNING sku, stock;",
+        "COMMIT;"
+      ],
+      "checks": [
+        {
+          "name": "Solo los productos sin stock quedaron inactivos",
+          "sql": "SELECT mismas_filas($$SELECT sku FROM productos WHERE NOT activo$$, $$VALUES ('AUD-005'), ('ACC-004'), ('COC-005'), ('DEC-003'), ('LIB-003'), ('ALI-001'), ('ALI-003')$$)",
+          "fail": "Deben quedar inactivos exactamente los 7 productos con stock 0, y ninguno más. ¿Deshiciste el UPDATE sin WHERE con ROLLBACK? ¿Confirmaste el bueno con COMMIT?"
+        },
+        {
+          "name": "Los 42 productos con stock siguen activos",
+          "sql": "SELECT count(*) = 42, 'Hay ' || count(*) || ' productos activos con stock; se esperaban 42' FROM productos WHERE activo AND stock > 0"
+        },
+        {
+          "name": "El stock no se tocó",
+          "sql": "SELECT sum(stock) = 2289 FROM productos",
+          "fail": "El stock total cambió: este ejercicio solo cambia la columna activo."
+        }
+      ],
+      "hints": [
+        "Después del UPDATE sin WHERE verás `UPDATE 49` y el prompt `tienda=*#`: hay una transacción abierta. `ROLLBACK;` la deshace entera.",
+        "La versión correcta es `UPDATE productos SET activo = false WHERE stock = 0 RETURNING sku, stock;` y debe decir `UPDATE 7` (AUD-005 ya estaba inactivo, pero igual se cuenta)."
+      ],
+      "explain": "Dentro de la transacción ves tus propios cambios (0 productos activos tras el error) y nadie más los ve; `ROLLBACK` los descarta como si nunca hubieran ocurrido. El prompt es tu aliado: `=*#` significa «transacción abierta», `=#` «sin transacción». La etiqueta `UPDATE 7` incluye a AUD-005, que ya estaba inactivo: UPDATE cuenta las filas que calzan con el WHERE aunque el valor no cambie. Si quisieras contar solo cambios reales, agregarías `AND activo` al WHERE. Sin BEGIN, en psql cada sentencia se confirma sola (autocommit) y el UPDATE sin WHERE habría quedado guardado al instante."
+    },
+    {
+      "id": "s06-e6",
+      "title": "Contactos de regiones con INSERT … SELECT",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE contactos_regiones (\n  cliente_id integer PRIMARY KEY REFERENCES clientes (id),\n  nombre_completo text NOT NULL,\n  email text NOT NULL,\n  region text NOT NULL,\n  origen text NOT NULL DEFAULT 'tienda'\n);",
+      "prompt": [
+        "Marketing quiere escribir a los clientes de **regiones**: los que tienen región registrada **distinta** de `Metropolitana` y además tienen email.",
+        "Llena la tabla `contactos_regiones` (ya creada) con **un solo INSERT … SELECT** desde `clientes`: `cliente_id` = id del cliente, `nombre_completo` = nombre y apellido separados por un espacio, `email` y `region`. La columna `origen` debe quedar con su valor por defecto."
+      ],
+      "starter": "-- INSERT INTO contactos_regiones (…) SELECT … FROM clientes WHERE …;\n",
+      "solution": "INSERT INTO contactos_regiones (cliente_id, nombre_completo, email, region)\nSELECT id, nombre || ' ' || apellido, email, region\nFROM clientes\nWHERE region <> 'Metropolitana'\n  AND email IS NOT NULL;",
+      "requires": [
+        {
+          "pattern": "insert\\s+into\\s+contactos_regiones[\\s\\S]*\\bselect\\b",
+          "msg": "Usa INSERT INTO contactos_regiones (…) SELECT … FROM clientes",
+          "name": "INSERT … SELECT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Están los 16 clientes de regiones",
+          "sql": "SELECT count(*) = 16, 'Hay ' || count(*) || ' contactos; se esperaban 16' FROM contactos_regiones"
+        },
+        {
+          "name": "Cada fila tiene los datos correctos",
+          "sql": "SELECT mismas_filas($$SELECT cliente_id, nombre_completo, email, region FROM contactos_regiones$$, $$SELECT id, nombre || ' ' || apellido, email, region FROM clientes WHERE region <> 'Metropolitana' AND email IS NOT NULL$$)",
+          "fail": "Los datos no coinciden: revisa el orden de las columnas del SELECT (se emparejan por posición) y que nombre_completo sea nombre, un espacio y apellido."
+        },
+        {
+          "name": "origen quedó con su valor por defecto",
+          "sql": "SELECT bool_and(origen = 'tienda') FROM contactos_regiones",
+          "fail": "La columna origen debe quedar en 'tienda' (su DEFAULT): no la incluyas en la lista del INSERT."
+        }
+      ],
+      "hints": [
+        "Lista las columnas del INSERT en el mismo orden que las expresiones del SELECT: se emparejan por posición, no por nombre.",
+        "Para unir nombre y apellido: `nombre || ' ' || apellido`. Para la región: `region <> 'Metropolitana'` (¿qué pasa con los clientes sin región?)."
+      ],
+      "explain": "`INSERT … SELECT` inserta una fila por cada fila del SELECT, sin que los datos salgan del servidor. El cliente con región NULL (id 5) queda fuera sin que lo pidas: `NULL <> 'Metropolitana'` es NULL, y el WHERE solo deja pasar lo verdadero. Aun así, en código real conviene ser explícito (`region IS NOT NULL AND region <> 'Metropolitana'`) para que quien lo lea no tenga que recordar la lógica de tres valores. Si omites `email IS NOT NULL`, el INSERT fallaría por la restricción NOT NULL de la tabla destino... siempre que existiera algún cliente de región sin email (hoy no hay, pero mañana podría). `origen` no se nombra, así que toma su DEFAULT."
+    },
+    {
+      "id": "s06-e7",
+      "title": "Recepción de mercadería con UPDATE … FROM",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE recepcion (sku text PRIMARY KEY, unidades integer NOT NULL CHECK (unidades > 0));\nINSERT INTO recepcion VALUES ('COMP-006', 20), ('AUD-003', 15), ('COC-005', 30), ('LIB-003', 12), ('ALI-003', 50);",
+      "prompt": [
+        "Llegó un camión y la bodega registró lo recibido en la tabla `recepcion (sku, unidades)`, con una fila por SKU.",
+        "Suma esas unidades al `stock` de cada producto con **un solo UPDATE … FROM** (sin escribir los SKU a mano) y devuelve con `RETURNING` el sku, el stock anterior y el nuevo."
+      ],
+      "starter": "-- UPDATE productos … FROM recepcion … WHERE …\n",
+      "solution": "UPDATE productos AS p\nSET stock = p.stock + r.unidades\nFROM recepcion AS r\nWHERE p.sku = r.sku\nRETURNING p.sku, old.stock AS antes, new.stock AS despues;",
+      "requires": [
+        {
+          "pattern": "update\\s+productos[\\s\\S]*\\bfrom\\s+recepcion\\b",
+          "msg": "Toma las unidades de la tabla recepcion con UPDATE productos … FROM recepcion",
+          "name": "UPDATE … FROM"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Stock actualizado en los 5 productos recibidos",
+          "sql": "SELECT mismas_filas($$SELECT sku, stock FROM productos WHERE sku IN ('COMP-006', 'AUD-003', 'COC-005', 'LIB-003', 'ALI-003')$$, $$VALUES ('COMP-006', 26), ('AUD-003', 32), ('COC-005', 30), ('LIB-003', 12), ('ALI-003', 50)$$)",
+          "fail": "El stock de los productos recibidos no es el esperado: hay que SUMAR las unidades al stock actual, no reemplazarlo."
+        },
+        {
+          "name": "Los demás productos no cambiaron",
+          "sql": "SELECT sum(stock) = 2266, 'El stock del resto de los productos suma ' || sum(stock) || '; debía seguir en 2266' FROM productos WHERE sku NOT IN ('COMP-006', 'AUD-003', 'COC-005', 'LIB-003', 'ALI-003')"
+        }
+      ],
+      "hints": [
+        "En UPDATE … FROM, la condición que une las dos tablas va en el WHERE: `WHERE p.sku = r.sku`.",
+        "Para sumar usa el valor actual de la fila: `SET stock = p.stock + r.unidades`. No repitas `productos` dentro del FROM."
+      ],
+      "explain": "UPDATE … FROM combina cada producto con su fila de `recepcion` y actualiza solo los que tienen pareja (`UPDATE 5`). `recepcion.sku` es PRIMARY KEY, así que cada producto calza con **una** fila como máximo: esa es la condición para que el resultado sea predecible. Si la bodega hubiera registrado dos entregas del mismo SKU, PostgreSQL usaría solo una (sin avisar) y habría que sumarlas antes (con GROUP BY, que verás en la sección 7). Un error frecuente es escribir `FROM productos, recepcion`: eso agrega una segunda copia de productos y el UPDATE afecta a todas las filas."
+    },
+    {
+      "id": "s06-e8",
+      "title": "Borrar datos de prueba con DELETE … USING",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "INSERT INTO clientes (rut, nombre, apellido, email, fecha_registro) VALUES\n  ('11111111-1', 'Cliente', 'Prueba Uno', 'qa1@prueba.cl', '2026-09-20'),\n  ('22222222-2', 'Cliente', 'Prueba Dos', 'qa2@prueba.cl', '2026-09-20'),\n  ('33333333-3', 'Cliente', 'Prueba Tres', 'qa3@prueba.cl', '2026-09-20');\nINSERT INTO resenas (producto_id, cliente_id, nota, comentario, fecha) VALUES\n  (1, 61, 5, 'Reseña de prueba', '2026-09-21'),\n  (2, 61, 5, 'Reseña de prueba', '2026-09-21'),\n  (1, 62, 4, 'Reseña de prueba', '2026-09-21'),\n  (2, 62, 3, 'Reseña de prueba', '2026-09-21'),\n  (1, 63, 5, 'Reseña de prueba', '2026-09-21');",
+      "prompt": [
+        "Alguien dejó en producción clientes de prueba (su email termina en `@prueba.cl`) y esos clientes escribieron reseñas.",
+        "Borra **primero sus reseñas con DELETE … USING clientes**, identificándolas por el email del cliente (sin escribir ids a mano), y **después** borra esos clientes. Antes de escribir la solución, prueba borrar los clientes primero y lee el error."
+      ],
+      "starter": "-- 1) DELETE FROM resenas … USING clientes …\n-- 2) DELETE FROM clientes …\n",
+      "solution": "DELETE FROM resenas AS r\nUSING clientes AS c\nWHERE r.cliente_id = c.id\n  AND c.email LIKE '%@prueba.cl'\nRETURNING r.id, c.email;\nDELETE FROM clientes\nWHERE email LIKE '%@prueba.cl'\nRETURNING id, email;",
+      "requires": [
+        {
+          "pattern": "delete\\s+from\\s+resenas[\\s\\S]*\\busing\\b",
+          "msg": "Borra las reseñas con DELETE FROM resenas … USING clientes",
+          "name": "DELETE … USING"
+        }
+      ],
+      "checks": [
+        {
+          "name": "No quedan clientes de prueba",
+          "sql": "SELECT count(*) = 0, 'Quedan ' || count(*) || ' clientes con email @prueba.cl' FROM clientes WHERE email LIKE '%@prueba.cl'"
+        },
+        {
+          "name": "Quedan exactamente los 60 clientes reales",
+          "sql": "SELECT count(*) = 60 AND max(id) = 60 FROM clientes",
+          "fail": "Deben quedar los 60 clientes reales (ids 1 a 60) y ninguno de prueba."
+        },
+        {
+          "name": "Quedan exactamente las 150 reseñas reales",
+          "sql": "SELECT count(*) = 150 AND count(*) FILTER (WHERE comentario = 'Reseña de prueba') = 0 FROM resenas",
+          "fail": "Deben quedar las 150 reseñas reales y ninguna de prueba. ¿Borraste solo las de clientes @prueba.cl?"
+        }
+      ],
+      "hints": [
+        "Si borras primero los clientes, la clave foránea `resenas_cliente_id_fkey` lo impide: primero van los hijos (reseñas), después los padres (clientes).",
+        "`DELETE FROM resenas AS r USING clientes AS c WHERE r.cliente_id = c.id AND c.email LIKE '%@prueba.cl';`"
+      ],
+      "explain": "El orden importa por las claves foráneas: `resenas.cliente_id` referencia a `clientes` sin `ON DELETE CASCADE`, así que borrar primero un cliente con reseñas da `violates foreign key constraint \"resenas_cliente_id_fkey\"`. Con `DELETE … USING` la condición de borrado puede mirar otra tabla (el email está en `clientes`, no en `resenas`); es una extensión de PostgreSQL. La etiqueta debe decir `DELETE 5` y luego `DELETE 3`. Alternativa estándar: `WHERE cliente_id IN (SELECT id FROM clientes WHERE …)` (subconsultas, sección 9). Si el modelo tuviera `ON DELETE CASCADE`, borrar los clientes arrastraría sus reseñas: cómodo, pero peligroso si no lo sabes."
+    },
+    {
+      "id": "s06-e9",
+      "title": "Cargar sucursales con COPY … FROM STDIN",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "psql",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE sucursales (\n  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  nombre text NOT NULL,\n  comuna text NOT NULL,\n  telefono text,\n  abierta boolean NOT NULL DEFAULT true\n);",
+      "prompt": [
+        "En la consola, carga en `sucursales` estas tres filas con `COPY sucursales (nombre, comuna, telefono) FROM STDIN (FORMAT csv, HEADER);`. Escribe los datos en las líneas siguientes, exactamente así, y termina con una línea que tenga solo `\\.`:",
+        "`nombre,comuna,telefono` · `Casa matriz,Santiago,+56 2 2345 6789` · `\"Mall Plaza Oeste, local 12\",Cerrillos,` · `Tienda Concepción,Concepción,+56 41 222 3344` (una por línea).",
+        "La tienda de Concepción aún no abre: después de la carga, márcala con `abierta = false` usando un UPDATE con `RETURNING *`."
+      ],
+      "solution": [
+        "COPY sucursales (nombre, comuna, telefono) FROM STDIN (FORMAT csv, HEADER);",
+        "nombre,comuna,telefono",
+        "Casa matriz,Santiago,+56 2 2345 6789",
+        "\"Mall Plaza Oeste, local 12\",Cerrillos,",
+        "Tienda Concepción,Concepción,+56 41 222 3344",
+        "\\.",
+        "UPDATE sucursales SET abierta = false WHERE comuna = 'Concepción' RETURNING *;"
+      ],
+      "checks": [
+        {
+          "name": "Están las tres sucursales",
+          "sql": "SELECT count(*) = 3, 'Hay ' || count(*) || ' sucursales; se esperaban 3 (¿cargaste también la línea de encabezado como dato?)' FROM sucursales"
+        },
+        {
+          "name": "Los datos se cargaron bien (comas y NULL incluidos)",
+          "sql": "SELECT mismas_filas($$SELECT nombre, comuna, telefono FROM sucursales$$, $$VALUES ('Casa matriz', 'Santiago', '+56 2 2345 6789'), ('Mall Plaza Oeste, local 12', 'Cerrillos', NULL), ('Tienda Concepción', 'Concepción', '+56 41 222 3344')$$)",
+          "fail": "Algún valor no coincide. El nombre con coma debe ir entre comillas dobles y el teléfono vacío (sin comillas) queda NULL."
+        },
+        {
+          "name": "Solo Concepción quedó cerrada",
+          "sql": "SELECT mismas_filas($$SELECT comuna FROM sucursales WHERE NOT abierta$$, $$VALUES ('Concepción')$$) AND count(*) FILTER (WHERE abierta) = 2 FROM sucursales",
+          "fail": "Solo la sucursal de Concepción debe quedar con abierta = false."
+        }
+      ],
+      "hints": [
+        "Después del COPY, psql muestra un aviso y el prompt `>>`: escribe cada línea de datos y termina con `\\.` solo en su línea.",
+        "El campo vacío al final de la línea de Cerrillos (sin comillas) se carga como NULL. Luego: `UPDATE sucursales SET abierta = false WHERE comuna = 'Concepción' RETURNING *;`"
+      ],
+      "explain": "COPY FROM STDIN deja al servidor esperando un flujo de datos que tú escribes a mano; `\\.` marca el fin. Con `HEADER`, la primera línea se descarta (si la olvidas, `nombre,comuna,telefono` se cargaría como una sucursal más). En CSV las comillas dobles protegen las comas dentro de un valor, y un campo vacío sin comillas es NULL (si escribieras `\"\"`, sería texto vacío). `id` y `abierta` no están en la lista de columnas: toman identidad y DEFAULT. El mismo archivo se cargaría desde tu computador con `\\copy sucursales (nombre, comuna, telefono) FROM 'sucursales.csv' (FORMAT csv, HEADER)`."
+    },
+    {
+      "id": "s06-e10",
+      "title": "Importación idempotente de categorías",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "Un sistema antiguo exportó estas categorías, en formato `(id, nombre, padre_id)`: `(3, 'Audio', 1)` (ya existe), `(14, 'Gamer', 1)`, `(20, 'Audio', 1)` (el mismo nombre duplicado con otro id) y `(15, 'Mascotas', NULL)`.",
+        "Cárgalas con **un solo INSERT** que inserte lo nuevo y **omita en silencio cualquier fila que choque con una restricción única**, sea por `id` o por `nombre`. El script debe poder ejecutarse dos veces sin error."
+      ],
+      "starter": "-- Un solo INSERT … ON CONFLICT …\n",
+      "solution": "INSERT INTO categorias (id, nombre, padre_id)\nVALUES (3, 'Audio', 1),\n       (14, 'Gamer', 1),\n       (20, 'Audio', 1),\n       (15, 'Mascotas', NULL)\nON CONFLICT DO NOTHING\nRETURNING *;",
+      "requires": [
+        {
+          "pattern": "on\\s+conflict[\\s\\S]*do\\s+nothing",
+          "msg": "Usa INSERT … ON CONFLICT … DO NOTHING",
+          "name": "ON CONFLICT DO NOTHING"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Se agregaron solo Gamer y Mascotas",
+          "sql": "SELECT mismas_filas($$SELECT id, nombre, padre_id FROM categorias WHERE id > 13$$, $$VALUES (14, 'Gamer', 1), (15, 'Mascotas', NULL::integer)$$)",
+          "fail": "Deben agregarse exactamente 14 Gamer (padre 1) y 15 Mascotas (sin padre). ¿Tu INSERT falló por el duplicado de nombre?"
+        },
+        {
+          "name": "La categoría 3 no cambió y no existe la 20",
+          "sql": "SELECT count(*) = 1 FROM categorias WHERE (id = 3 AND nombre = 'Audio' AND padre_id = 1) OR id = 20",
+          "fail": "La categoría 3 debe seguir igual y la fila duplicada (20, Audio) no debe existir."
+        },
+        {
+          "name": "Hay 15 categorías",
+          "sql": "SELECT count(*) = 15, 'Hay ' || count(*) || ' categorías; se esperaban 15' FROM categorias"
+        }
+      ],
+      "hints": [
+        "La fila `(20, 'Audio', 1)` no choca por id, sino por nombre (`categorias_nombre_key`). ¿Qué restricciones vigila tu ON CONFLICT?",
+        "Con DO NOTHING puedes **omitir** el objetivo del conflicto: `ON CONFLICT DO NOTHING` cubre todas las restricciones únicas."
+      ],
+      "explain": "La trampa es escribir `ON CONFLICT (id) DO NOTHING`: ese objetivo solo vigila la clave primaria, y la fila 20 revienta con `duplicate key value violates unique constraint \"categorias_nombre_key\"`, llevándose al resto (el INSERT es atómico). `ON CONFLICT DO NOTHING` sin objetivo atrapa los choques con **cualquier** restricción única o de exclusión, y la etiqueta dice `INSERT 0 2`. Es idempotente: una segunda ejecución responde `INSERT 0 0` sin error. DO NOTHING sin objetivo no sirve para DO UPDATE: ahí PostgreSQL necesita saber qué fila actualizar."
+    },
+    {
+      "id": "s06-e11",
+      "title": "Lista de precios con upsert y marca de actualización",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "ALTER TABLE productos ADD COLUMN actualizado_en date;",
+      "prompt": [
+        "`productos` tiene una columna nueva, `actualizado_en date` (por ahora vacía). Aplica esta lista del proveedor, en formato `(sku, nombre, categoria_id, precio, costo)`, con **un solo INSERT … ON CONFLICT**: `('COMP-002', 'Monitor 24\" Full HD', 2, 119990, 77810)`, `('COMP-003', 'Teclado mecánico', 2, 49990, 28900)`, `('AUD-004', 'Micrófono USB', 3, 59990, 35900)`, `('ACC-006', 'Soporte para notebook', 4, 19990, 11200)` y `('OUT-006', 'Bastones de trekking', 10, 34990, 21400)`.",
+        "Reglas: los SKU **nuevos** se insertan con `creado_en = current_date` (stock y activo por defecto, `actualizado_en` en NULL). Si el SKU **ya existe**, actualiza solo `precio` y `costo` y marca `actualizado_en = current_date`, **pero únicamente si el precio o el costo cambió**. El nombre y la categoría de los existentes no se tocan."
+      ],
+      "starter": "-- INSERT INTO productos (…) VALUES (…)\n-- ON CONFLICT (…) DO UPDATE SET … WHERE …;\n",
+      "solution": "INSERT INTO productos AS p (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('COMP-002', 'Monitor 24\" Full HD', 2, 119990, 77810, current_date),\n       ('COMP-003', 'Teclado mecánico', 2, 49990, 28900, current_date),\n       ('AUD-004', 'Micrófono USB', 3, 59990, 35900, current_date),\n       ('ACC-006', 'Soporte para notebook', 4, 19990, 11200, current_date),\n       ('OUT-006', 'Bastones de trekking', 10, 34990, 21400, current_date)\nON CONFLICT (sku) DO UPDATE\nSET precio = EXCLUDED.precio,\n    costo = EXCLUDED.costo,\n    actualizado_en = current_date\nWHERE (p.precio, p.costo) IS DISTINCT FROM (EXCLUDED.precio, EXCLUDED.costo)\nRETURNING p.sku, old.precio AS precio_antes, new.precio AS precio_despues;",
+      "requires": [
+        {
+          "pattern": "on\\s+conflict\\s*\\(\\s*sku\\s*\\)\\s*do\\s+update",
+          "msg": "Usa ON CONFLICT (sku) DO UPDATE",
+          "name": "Upsert por sku"
+        },
+        {
+          "pattern": "\\bexcluded\\.",
+          "msg": "Toma los valores propuestos de la tabla especial EXCLUDED",
+          "name": "Usa EXCLUDED"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Precios y costos finales correctos",
+          "sql": "SELECT mismas_filas($$SELECT sku, precio, costo FROM productos WHERE sku IN ('COMP-002', 'COMP-003', 'AUD-004', 'ACC-006', 'OUT-006')$$, $$VALUES ('COMP-002', 119990, 77810), ('COMP-003', 49990, 28900), ('AUD-004', 59990, 35900), ('ACC-006', 19990, 11200), ('OUT-006', 34990, 21400)$$)",
+          "fail": "Algún precio o costo no coincide con la lista del proveedor, o falta algún SKU."
+        },
+        {
+          "name": "Solo se marcaron los productos que cambiaron",
+          "sql": "SELECT mismas_filas($$SELECT sku FROM productos WHERE actualizado_en IS NOT NULL$$, $$VALUES ('COMP-002'), ('AUD-004')$$)",
+          "fail": "Deben quedar marcados solo los existentes cuyo precio o costo cambió. COMP-003 viene igual: usa un WHERE en DO UPDATE para no tocarlo. Los nuevos quedan con actualizado_en NULL."
+        },
+        {
+          "name": "La marca es la fecha de hoy",
+          "sql": "SELECT coalesce(bool_and(actualizado_en = current_date), false) FROM productos WHERE actualizado_en IS NOT NULL",
+          "fail": "actualizado_en debe ser current_date en los productos actualizados."
+        },
+        {
+          "name": "Los productos nuevos se insertaron bien",
+          "sql": "SELECT mismas_filas($$SELECT sku, nombre, categoria_id, creado_en, stock, activo FROM productos WHERE sku IN ('ACC-006', 'OUT-006')$$, $$VALUES ('ACC-006', 'Soporte para notebook', 4, current_date, 0, true), ('OUT-006', 'Bastones de trekking', 10, current_date, 0, true)$$)",
+          "fail": "Los SKU nuevos deben quedar con su nombre, su categoría, creado_en = current_date, stock 0 y activo (los DEFAULT)."
+        },
+        {
+          "name": "El resto del catálogo no cambió",
+          "sql": "SELECT count(*) = 51 AND sum(precio) FILTER (WHERE sku NOT IN ('COMP-002', 'COMP-003', 'AUD-004', 'ACC-006', 'OUT-006')) = 2088040 AND count(*) FILTER (WHERE sku = 'COMP-002' AND nombre = 'Monitor 24\" Full HD' AND categoria_id = 2) = 1 FROM productos",
+          "fail": "Debe haber 51 productos y el resto del catálogo (precios, nombres, categorías) debe seguir igual."
+        }
+      ],
+      "hints": [
+        "Estructura: `INSERT INTO productos AS p (…) VALUES (…), (…) ON CONFLICT (sku) DO UPDATE SET precio = EXCLUDED.precio, … WHERE …;`",
+        "La condición de «cambió» compara la fila existente con la propuesta: `WHERE (p.precio, p.costo) IS DISTINCT FROM (EXCLUDED.precio, EXCLUDED.costo)`. En el SET agrega `actualizado_en = current_date`."
+      ],
+      "explain": "Para los SKU nuevos, las columnas de VALUES se usan tal cual (con `creado_en = current_date` y los DEFAULT de stock y activo). Para los existentes, `DO UPDATE` solo cambia lo que pones en SET: nombre, categoría y `creado_en` propuestos se descartan. El `WHERE` de DO UPDATE compara la fila existente (`p.`) con la propuesta (`EXCLUDED.`); para COMP-003 es falso, así que no se escribe nada y no se marca: la etiqueta dice `INSERT 0 4` (2 insertadas + 2 actualizadas). Comparar filas con `IS DISTINCT FROM` es cómodo y seguro con NULL. Sin el WHERE, COMP-003 quedaría con `actualizado_en` de hoy aunque nada cambió: un dato falso para quien audite. Alternativa: el mismo resultado con MERGE y `WHEN MATCHED AND … THEN UPDATE`."
+    },
+    {
+      "id": "s06-e12",
+      "title": "Sincronizar la categoría Cocina con MERGE",
+      "level": "dificil",
+      "minutes": 18,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE catalogo_casachef (\n  sku text PRIMARY KEY,\n  nombre text NOT NULL,\n  precio integer NOT NULL,\n  costo integer NOT NULL,\n  descontinuado boolean NOT NULL DEFAULT false\n);\nINSERT INTO catalogo_casachef VALUES\n  ('COC-001', 'Hervidor eléctrico', 21990, 14700, false),\n  ('COC-002', 'Cafetera italiana', 19990, 13100, false),\n  ('COC-003', 'Sartén antiadherente 28 cm', 22990, 15120, true),\n  ('COC-004', 'Juego de cuchillos', 42990, 29000, false),\n  ('COC-006', 'Olla a presión', 54990, 31070, false),\n  ('COC-007', 'Tostador eléctrico', 29990, 18900, false);",
+      "prompt": [
+        "El proveedor Casa Chef abastece **toda** la categoría Cocina (`categoria_id = 6`) y envió su catálogo en la tabla `catalogo_casachef (sku, nombre, precio, costo, descontinuado)`.",
+        "Sincroniza `productos` con **un solo MERGE**, con estas reglas y en este orden: (1) si el producto existe y viene `descontinuado`, desactívalo (`activo = false`) **sin cambiar su precio**; (2) si existe y cambió el precio o el costo, actualiza ambos; (3) si no existe, insértalo en la categoría 6 con `creado_en = current_date`; (4) si es de la categoría 6 y **no aparece** en el catálogo, desactívalo. Agrega `RETURNING merge_action(), p.sku` para ver qué pasó con cada fila."
+      ],
+      "starter": "-- MERGE INTO productos AS p USING catalogo_casachef AS c ON …\n",
+      "solution": "MERGE INTO productos AS p\nUSING catalogo_casachef AS c\n   ON p.sku = c.sku\nWHEN MATCHED AND c.descontinuado THEN\n  UPDATE SET activo = false\nWHEN MATCHED AND (p.precio, p.costo) IS DISTINCT FROM (c.precio, c.costo) THEN\n  UPDATE SET precio = c.precio, costo = c.costo\nWHEN NOT MATCHED THEN\n  INSERT (sku, nombre, categoria_id, precio, costo, creado_en)\n  VALUES (c.sku, c.nombre, 6, c.precio, c.costo, current_date)\nWHEN NOT MATCHED BY SOURCE AND p.categoria_id = 6 THEN\n  UPDATE SET activo = false\nRETURNING merge_action(), p.sku;",
+      "requires": [
+        {
+          "pattern": "\\bmerge\\s+into\\s+productos\\b",
+          "msg": "Resuelve con MERGE INTO productos",
+          "name": "Usa MERGE"
+        },
+        {
+          "pattern": "not\\s+matched\\s+by\\s+source",
+          "msg": "Los productos que desaparecieron del catálogo se tratan con WHEN NOT MATCHED BY SOURCE",
+          "name": "WHEN NOT MATCHED BY SOURCE"
+        }
+      ],
+      "checks": [
+        {
+          "name": "La categoría Cocina quedó sincronizada",
+          "sql": "SELECT mismas_filas($$SELECT sku, precio, costo, activo FROM productos WHERE categoria_id = 6$$, $$VALUES ('COC-001', 21990, 14700, true), ('COC-002', 19990, 13100, true), ('COC-003', 24990, 15120, false), ('COC-004', 42990, 29000, true), ('COC-005', 29990, 20060, false), ('COC-006', 54990, 31070, true), ('COC-007', 29990, 18900, true)$$)",
+          "fail": "Cocina no quedó como se esperaba. Revisa el orden de las cláusulas (COC-003 está descontinuado: se desactiva pero conserva su precio) y que COC-005, que no viene en el catálogo, quede inactivo."
+        },
+        {
+          "name": "COC-007 se insertó correctamente",
+          "sql": "SELECT count(*) = 1 FROM productos WHERE sku = 'COC-007' AND nombre = 'Tostador eléctrico' AND categoria_id = 6 AND creado_en = current_date AND stock = 0",
+          "fail": "COC-007 debe existir con su nombre, categoría 6, creado_en = current_date y stock 0."
+        },
+        {
+          "name": "Las demás categorías no cambiaron",
+          "sql": "SELECT count(*) = 43 AND sum(precio) = 2137070 AND count(*) FILTER (WHERE NOT activo) = 1 FROM productos WHERE categoria_id <> 6",
+          "fail": "Cambiaste productos de otras categorías. ¿Le pusiste condición (categoria_id = 6) a WHEN NOT MATCHED BY SOURCE?"
+        }
+      ],
+      "hints": [
+        "Hacen falta cuatro cláusulas WHEN, de la más específica a la más general: `WHEN MATCHED AND c.descontinuado`, `WHEN MATCHED AND (p.precio, p.costo) IS DISTINCT FROM (c.precio, c.costo)`, `WHEN NOT MATCHED` y `WHEN NOT MATCHED BY SOURCE AND …`.",
+        "Sin `AND p.categoria_id = 6`, NOT MATCHED BY SOURCE desactivaría los 42 productos de las demás categorías, porque tampoco están en el catálogo de Casa Chef."
+      ],
+      "explain": "Cada fila candidata ejecuta como máximo una cláusula WHEN: la primera verdadera en el orden escrito. COC-003 viene descontinuado **y** con otro precio; como la regla (1) va primero, se desactiva y conserva sus $24.990. COC-001 y COC-006 no calzan con ninguna cláusula (no están descontinuados y no cambiaron), así que no se tocan ni se cuentan. COC-005 solo está en el destino → NOT MATCHED BY SOURCE (PostgreSQL 17). La etiqueta debe decir `MERGE 5` (3 actualizaciones de productos coincidentes, 1 inserción y 1 desactivación). El error clásico es olvidar la condición de categoría en BY SOURCE: el catálogo de un proveedor nunca describe toda tu tabla."
+    },
+    {
+      "id": "s06-e13",
+      "title": "Inventario físico desde un CSV con errores",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "psql",
+      "dataset": "tienda",
+      "files": {
+        "conteo_bodega.csv": "sku,stock\nCOMP-001,35\nCOMP-004,30\nAUD-002,51\nCOC-005,12\nLIB-003,sin contar\nDEC-003,8\nALI-001,?\nXYZ-999,5\nCAF-004,100\n"
+      },
+      "prompt": [
+        "La bodega hizo un conteo físico y lo dejó en el archivo `conteo_bodega.csv` (encabezado `sku,stock`). Algunas líneas traen basura en lugar de un número y hay un SKU que no existe en el catálogo.",
+        "Dentro de una transacción: (1) crea una tabla temporal `conteo (sku text, stock integer)`; (2) cárgala con `\\copy` **saltando las filas con datos inválidos** y mostrando cuáles fueron; (3) actualiza el `stock` de `productos` con el valor contado, solo para los SKU que existen y cuyo stock **cambió**, con `RETURNING` del antes y el después; (4) confirma.",
+        "Si quieres mirar el archivo antes de cargarlo, cárgalo tal cual en una tabla de una sola columna: `CREATE TEMP TABLE crudo (linea text);` y `\\copy crudo FROM 'conteo_bodega.csv'` (en formato text, sin tabuladores, cada línea completa cae en esa columna)."
+      ],
+      "solution": [
+        "BEGIN;",
+        "CREATE TEMP TABLE conteo (sku text, stock integer);",
+        "\\copy conteo FROM 'conteo_bodega.csv' WITH (FORMAT csv, HEADER, ON_ERROR ignore, LOG_VERBOSITY verbose)",
+        "SELECT * FROM conteo;",
+        "UPDATE productos AS p SET stock = c.stock FROM conteo AS c WHERE p.sku = c.sku AND p.stock <> c.stock RETURNING p.sku, old.stock AS antes, new.stock AS despues;",
+        "COMMIT;"
+      ],
+      "checks": [
+        {
+          "name": "Se aplicó el stock contado",
+          "sql": "SELECT mismas_filas($$SELECT sku, stock FROM productos WHERE sku IN ('COMP-001', 'COMP-004', 'AUD-002', 'COC-005', 'DEC-003', 'CAF-004')$$, $$VALUES ('COMP-001', 35), ('COMP-004', 30), ('AUD-002', 51), ('COC-005', 12), ('DEC-003', 8), ('CAF-004', 100)$$)",
+          "fail": "El stock de los productos contados no coincide con el archivo. ¿Cargaste el CSV y aplicaste el UPDATE? ¿Confirmaste con COMMIT?"
+        },
+        {
+          "name": "Las filas inválidas no tocaron nada",
+          "sql": "SELECT count(*) = 2 FROM productos WHERE sku IN ('LIB-003', 'ALI-001') AND stock = 0",
+          "fail": "LIB-003 y ALI-001 venían con basura en el archivo: su stock debe seguir en 0."
+        },
+        {
+          "name": "No se crearon productos",
+          "sql": "SELECT count(*) = 49 AND count(*) FILTER (WHERE sku = 'XYZ-999') = 0 FROM productos",
+          "fail": "El SKU XYZ-999 no existe en el catálogo: el conteo no debe crear productos."
+        },
+        {
+          "name": "El resto del stock no cambió",
+          "sql": "SELECT sum(stock) = 2063, 'El stock de los productos no contados suma ' || sum(stock) || '; debía seguir en 2063' FROM productos WHERE sku NOT IN ('COMP-001', 'COMP-004', 'AUD-002', 'COC-005', 'DEC-003', 'CAF-004', 'LIB-003', 'ALI-001')"
+        }
+      ],
+      "hints": [
+        "Sin opciones, `\\copy` se detiene en la primera fila inválida (`invalid input syntax for type integer`). Desde PostgreSQL 17: `(FORMAT csv, HEADER, ON_ERROR ignore, LOG_VERBOSITY verbose)`.",
+        "`UPDATE productos AS p SET stock = c.stock FROM conteo AS c WHERE p.sku = c.sku AND p.stock <> c.stock RETURNING p.sku, old.stock, new.stock;` y luego `COMMIT;`."
+      ],
+      "explain": "`ON_ERROR ignore` descarta las filas cuyo texto no se puede convertir a integer (`sin contar`, `?`) y el NOTICE final dice cuántas saltó; con `LOG_VERBOSITY verbose` ves la línea y la columna de cada una, útil para devolverle el archivo a la bodega. XYZ-999 sí se carga en `conteo` (su stock es un número válido), pero el UPDATE … FROM simplemente no le encuentra pareja en `productos`. La condición `p.stock <> c.stock` evita escrituras inútiles: la etiqueta debe decir `UPDATE 6`. La tabla temporal desaparece al cerrar la sesión: es la tabla de paso perfecta. Ojo: ON_ERROR no te salvaría de un SKU vacío si la columna fuera NOT NULL; esos errores siguen abortando todo el COPY."
+    },
+    {
+      "id": "s06-e14",
+      "title": "Un año de boletas de prueba",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE boletas (\n  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  fecha date NOT NULL,\n  monto integer NOT NULL CHECK (monto > 0),\n  medio_pago text NOT NULL CHECK (medio_pago IN ('debito', 'credito', 'transferencia'))\n);\nINSERT INTO boletas (fecha, monto, medio_pago) VALUES\n  ('2024-12-30', 1000, 'debito'), ('2024-12-30', 2000, 'credito'), ('2024-12-31', 3000, 'debito'),\n  ('2024-12-31', 4000, 'transferencia'), ('2024-12-31', 5000, 'credito');",
+      "prompt": [
+        "La tabla `boletas` tiene 5 filas de una prueba anterior. Déjala **vacía y con la identidad reiniciada** (la próxima boleta debe tener id 1).",
+        "Luego genera, con **un solo INSERT … SELECT sobre `generate_series`**, exactamente 730 boletas: dos por cada día de 2025. Para `g` desde 0 hasta 729: `fecha = date '2025-01-01' + g / 2` (división entera), `monto = 990 + (g % 50) * 1000`, y `medio_pago` = `'debito'` si `g % 3` es 0, `'credito'` si es 1 y `'transferencia'` si es 2."
+      ],
+      "starter": "-- 1) Vaciar reiniciando la identidad\n-- 2) INSERT INTO boletas (…) SELECT … FROM generate_series(…) AS g;\n",
+      "solution": "TRUNCATE boletas RESTART IDENTITY;\nINSERT INTO boletas (fecha, monto, medio_pago)\nSELECT date '2025-01-01' + g / 2,\n       990 + (g % 50) * 1000,\n       CASE g % 3 WHEN 0 THEN 'debito' WHEN 1 THEN 'credito' ELSE 'transferencia' END\nFROM generate_series(0, 729) AS g;",
+      "requires": [
+        {
+          "pattern": "\\bgenerate_series\\s*\\(",
+          "msg": "Genera las filas con generate_series",
+          "name": "Usa generate_series"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Hay 730 boletas con ids del 1 al 730",
+          "sql": "SELECT count(*) = 730 AND min(id) = 1 AND max(id) = 730, 'Hay ' || count(*) || ' boletas con ids del ' || coalesce(min(id)::text, '-') || ' al ' || coalesce(max(id)::text, '-') || '; se esperaban 730, del 1 al 730 (¿reiniciaste la identidad?)' FROM boletas"
+        },
+        {
+          "name": "Dos boletas por cada día de 2025",
+          "sql": "SELECT count(DISTINCT fecha) = 365 AND min(fecha) = DATE '2025-01-01' AND max(fecha) = DATE '2025-12-31' FROM boletas",
+          "fail": "Las fechas deben cubrir todo 2025, del 1 de enero al 31 de diciembre, dos boletas por día (g / 2 con división entera)."
+        },
+        {
+          "name": "Montos y medios de pago según la fórmula",
+          "sql": "SELECT mismas_filas($$SELECT fecha, monto, medio_pago FROM boletas$$, $$SELECT date '2025-01-01' + g / 2, 990 + (g % 50) * 1000, CASE g % 3 WHEN 0 THEN 'debito' WHEN 1 THEN 'credito' ELSE 'transferencia' END FROM generate_series(0, 729) AS g$$)",
+          "fail": "Las filas no siguen exactamente la fórmula del enunciado (revisa monto, medio de pago y que g vaya de 0 a 729)."
+        }
+      ],
+      "hints": [
+        "`TRUNCATE boletas RESTART IDENTITY;` vacía la tabla y reinicia la secuencia de la columna de identidad. Un DELETE solo no reinicia el id.",
+        "`INSERT INTO boletas (fecha, monto, medio_pago) SELECT date '2025-01-01' + g / 2, …, CASE g % 3 WHEN 0 THEN … END FROM generate_series(0, 729) AS g;`"
+      ],
+      "explain": "`TRUNCATE … RESTART IDENTITY` vacía la tabla al instante y reinicia la secuencia de `id`; con `DELETE FROM boletas` la tabla quedaría vacía, pero la próxima boleta sería la 6 (la secuencia no retrocede). Equivalente en dos pasos: `DELETE` y luego `ALTER TABLE boletas ALTER COLUMN id RESTART`. En el INSERT … SELECT, `g / 2` es división entera (0, 0, 1, 1, 2, 2…), así que cada fecha aparece dos veces, y sumar un entero a un `date` avanza días. `generate_series(0, 729)` produce 730 números: cuidado con el clásico error de uno: con `generate_series(1, 730)`, el 1 de enero quedaría con una sola boleta y aparecería una del 1 de enero de 2026. Todo es determinista: ejecutar el script otra vez produce exactamente las mismas filas."
+    },
+    {
+      "id": "s06-e15",
+      "title": "Proyecto: sincronización semanal con el proveedor de ciclismo",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "psql",
+      "dataset": "tienda",
+      "files": {
+        "catalogo_ciclismo.csv": "sku,nombre,categoria_id,precio,costo\nCIC-001,Bicicleta urbana aro 28,9,339990,185600\nCIC-002,Casco de ciclismo,9,29990,20370\nCIC-003,Luces LED para bicicleta,9,13990,8990\nCIC-005,Bombín de pie,9,19990,12400\nCIC-006,Portabicicletas para auto,9,49990,sin costo\nCIC-003,Luces LED para bicicleta,9,14990,8990\n"
+      },
+      "prompt": [
+        "El proveedor de ciclismo abastece **toda** la categoría Ciclismo (`categoria_id = 9`) y cada semana manda `catalogo_ciclismo.csv` con encabezado `sku,nombre,categoria_id,precio,costo`. Este archivo trae dos problemas: una línea con un costo inválido y un SKU repetido (el proveedor corrigió un precio al final del archivo: **vale la última línea** de cada SKU).",
+        "Con todo dentro de **una transacción**: (1) crea una tabla temporal de paso `carga` que además de las cinco columnas del archivo tenga un número de línea automático (`linea integer GENERATED ALWAYS AS IDENTITY`); (2) carga el archivo con `\\copy`, **descartando** las filas inválidas; (3) elimina de `carga` los SKU repetidos dejando solo la última línea de cada uno (DELETE … USING de la tabla consigo misma); (4) sincroniza `productos` con un **MERGE**: actualiza precio y costo de los existentes **solo si cambiaron**, inserta los nuevos con `creado_en = current_date` y desactiva los productos de la categoría 9 que **no vienen** en el archivo; (5) revisa el RETURNING y confirma."
+      ],
+      "solution": [
+        "BEGIN;",
+        "CREATE TEMP TABLE carga (linea integer GENERATED ALWAYS AS IDENTITY, sku text, nombre text, categoria_id integer, precio integer, costo integer);",
+        "\\copy carga (sku, nombre, categoria_id, precio, costo) FROM 'catalogo_ciclismo.csv' WITH (FORMAT csv, HEADER, ON_ERROR ignore, LOG_VERBOSITY verbose)",
+        "DELETE FROM carga AS a USING carga AS b WHERE a.sku = b.sku AND a.linea < b.linea RETURNING a.*;",
+        "MERGE INTO productos AS p",
+        "USING carga AS c",
+        "   ON p.sku = c.sku",
+        "WHEN MATCHED AND (p.precio, p.costo) IS DISTINCT FROM (c.precio, c.costo) THEN",
+        "  UPDATE SET precio = c.precio, costo = c.costo",
+        "WHEN NOT MATCHED THEN",
+        "  INSERT (sku, nombre, categoria_id, precio, costo, creado_en)",
+        "  VALUES (c.sku, c.nombre, c.categoria_id, c.precio, c.costo, current_date)",
+        "WHEN NOT MATCHED BY SOURCE AND p.categoria_id = 9 THEN",
+        "  UPDATE SET activo = false",
+        "RETURNING merge_action(), p.sku, old.precio AS antes, new.precio AS despues, new.activo;",
+        "COMMIT;"
+      ],
+      "checks": [
+        {
+          "name": "Ciclismo quedó sincronizado",
+          "sql": "SELECT mismas_filas($$SELECT sku, precio, costo, activo FROM productos WHERE categoria_id = 9$$, $$VALUES ('CIC-001', 339990, 185600, true), ('CIC-002', 29990, 20370, true), ('CIC-003', 14990, 8990, true), ('CIC-004', 19990, 13800, false), ('CIC-005', 19990, 12400, true)$$)",
+          "fail": "La categoría Ciclismo no quedó como se esperaba. Revisa: para CIC-003 vale la última línea del archivo, CIC-004 no viene y debe desactivarse, y CIC-005 es nuevo. ¿Confirmaste con COMMIT?"
+        },
+        {
+          "name": "El producto nuevo se insertó bien",
+          "sql": "SELECT count(*) = 1 FROM productos WHERE sku = 'CIC-005' AND nombre = 'Bombín de pie' AND categoria_id = 9 AND creado_en = current_date AND stock = 0",
+          "fail": "CIC-005 debe existir con su nombre, categoría 9, creado_en = current_date y stock 0."
+        },
+        {
+          "name": "La línea inválida se descartó",
+          "sql": "SELECT count(*) = 0 FROM productos WHERE sku = 'CIC-006'",
+          "fail": "CIC-006 venía con un costo inválido en el archivo: esa fila debe descartarse, no insertarse."
+        },
+        {
+          "name": "Las demás categorías no cambiaron",
+          "sql": "SELECT count(*) = 45 AND sum(precio) = 1915050 AND count(*) FILTER (WHERE NOT activo) = 1 FROM productos WHERE categoria_id <> 9",
+          "fail": "Cambiaste productos de otras categorías. ¿Acotaste WHEN NOT MATCHED BY SOURCE a la categoría 9?"
+        }
+      ],
+      "hints": [
+        "Carga: `\\copy carga (sku, nombre, categoria_id, precio, costo) FROM 'catalogo_ciclismo.csv' WITH (FORMAT csv, HEADER, ON_ERROR ignore, LOG_VERBOSITY verbose)`. La columna `linea` no está en la lista, así que se numera sola en el orden del archivo.",
+        "Duplicados: `DELETE FROM carga AS a USING carga AS b WHERE a.sku = b.sku AND a.linea < b.linea;` borra toda línea que tenga otra posterior con el mismo SKU. Si no lo haces, el MERGE falla con `MERGE command cannot affect row a second time`.",
+        "MERGE: `WHEN MATCHED AND (p.precio, p.costo) IS DISTINCT FROM (c.precio, c.costo) THEN UPDATE …`, `WHEN NOT MATCHED THEN INSERT …`, `WHEN NOT MATCHED BY SOURCE AND p.categoria_id = 9 THEN UPDATE SET activo = false`."
+      ],
+      "explain": "Este es el patrón profesional completo. La tabla de paso con una columna de identidad conserva el **orden del archivo**, lo que permite decidir qué línea «gana» entre duplicados; el DELETE … USING de la tabla consigo misma borra cada línea que tiene otra posterior con el mismo SKU (una técnica que sirve en cualquier deduplicación). `ON_ERROR ignore` descarta CIC-006 (`sin costo` no es un integer). El MERGE aplica las reglas: CIC-001 y CIC-003 cambian (UPDATE), CIC-002 viene igual (ninguna cláusula se ejecuta), CIC-005 es nuevo (INSERT) y CIC-004 no viene (NOT MATCHED BY SOURCE, acotado a la categoría 9): `MERGE 4`. Todo va entre BEGIN y COMMIT: si algo del RETURNING no cuadra, un ROLLBACK deja el catálogo intacto. Alternativa con upsert: `INSERT … SELECT DISTINCT ON (sku) … ORDER BY sku, linea DESC ON CONFLICT (sku) DO UPDATE …`, más un UPDATE aparte para desactivar lo que no vino."
+    },
+    {
+      "id": "s06-e16",
+      "title": "Proyecto: reajuste de sueldos de octubre",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "script",
+      "dataset": "rrhh",
+      "setup": "INSERT INTO historial_sueldos (empleado_id, desde, sueldo) VALUES (1, '2026-10-01', 8900000);",
+      "prompt": [
+        "Andes Digital aplica su reajuste de octubre de 2026. Escribe un script (idealmente dentro de BEGIN … COMMIT) que: (1) suba el sueldo de todos los empleados **activos** (`fecha_salida` NULL) a `round(sueldo * 1.045, -3)` (4,5 % redondeado a miles); (2) sume **además** un bono fijo de $50.000 al sueldo de los activos de departamentos **fuera de Santiago** (`departamentos.ciudad <> 'Santiago'`), usando UPDATE … FROM; (3) registre en `historial_sueldos` una fila por cada empleado activo con `desde = '2026-10-01'` y su sueldo nuevo, con un INSERT … SELECT.",
+        "Un intento anterior dejó registrada en el historial la fila del gerente general (empleado 1, desde `2026-10-01`) con su sueldo **antiguo**. Tu inserción no debe fallar por eso: debe dejar esa fila con el sueldo nuevo. Los ex empleados no cambian, y el practicante sin departamento recibe solo el 4,5 %."
+      ],
+      "starter": "-- BEGIN;\n-- 1) Reajuste general\n-- 2) Bono de regiones con UPDATE … FROM\n-- 3) Historial con INSERT … SELECT … ON CONFLICT\n-- COMMIT;\n",
+      "solution": "BEGIN;\nUPDATE empleados\nSET sueldo = round(sueldo * 1.045, -3)\nWHERE fecha_salida IS NULL;\nUPDATE empleados AS e\nSET sueldo = e.sueldo + 50000\nFROM departamentos AS d\nWHERE e.departamento_id = d.id\n  AND d.ciudad <> 'Santiago'\n  AND e.fecha_salida IS NULL;\nINSERT INTO historial_sueldos (empleado_id, desde, sueldo)\nSELECT id, DATE '2026-10-01', sueldo\nFROM empleados\nWHERE fecha_salida IS NULL\nON CONFLICT (empleado_id, desde) DO UPDATE\nSET sueldo = EXCLUDED.sueldo;\nCOMMIT;",
+      "requires": [
+        {
+          "pattern": "update\\s+empleados[\\s\\S]*\\bfrom\\s+departamentos\\b",
+          "msg": "Aplica el bono con UPDATE empleados … FROM departamentos",
+          "name": "UPDATE … FROM"
+        },
+        {
+          "pattern": "insert\\s+into\\s+historial_sueldos[\\s\\S]*\\bselect\\b[\\s\\S]*on\\s+conflict",
+          "msg": "Registra el historial con INSERT … SELECT … ON CONFLICT",
+          "name": "INSERT … SELECT con upsert"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Sueldos finales exactos",
+          "sql": "SELECT mismas_filas($$SELECT id, sueldo FROM empleados$$, $$VALUES (1, 9301000), (2, 5852000), (3, 6479000), (4, 5693000), (5, 5380000), (6, 5016000), (7, 3344000), (8, 3240000), (9, 4389000), (10, 4285000), (11, 4076000), (12, 3185000), (13, 3290000), (14, 3081000), (15, 2454000), (16, 2822000), (17, 1766000), (18, 2027000), (19, 1923000), (20, 1662000), (21, 1797000), (22, 3140000), (23, 2853000), (24, 3490000), (25, 2069000), (26, 3177000), (27, 2111000), (28, 1787000), (29, 2717000), (30, 2560000), (31, 2362000), (32, 2654000), (33, 3229000), (34, 3292000), (35, 1933000), (36, 2633000), (37, 2030000), (38, 1513000), (39, 1523000), (40, 1576000), (41, 1398000), (42, 1179000), (43, 1304000), (44, 1262000), (45, 1220000), (46, 1712000), (47, 1210000), (48, 771000), (49, 855000), (50, 938000), (51, 928000), (52, 792000), (53, 1536000), (54, 1609000), (55, 523000)$$)",
+          "fail": "Algún sueldo no coincide. Revisa: el 4,5 % con round(sueldo * 1.045, -3) solo a los activos, y el bono de $50.000 solo a los activos de departamentos fuera de Santiago, sumado después del redondeo."
+        },
+        {
+          "name": "Los ex empleados no cambiaron",
+          "sql": "SELECT mismas_filas($$SELECT id, sueldo FROM empleados WHERE fecha_salida IS NOT NULL$$, $$VALUES (22, 3140000), (37, 2030000)$$)",
+          "fail": "Los ex empleados (con fecha_salida) no deben recibir reajuste ni bono."
+        },
+        {
+          "name": "Historial de octubre completo y con el sueldo nuevo",
+          "sql": "SELECT mismas_filas($$SELECT empleado_id, sueldo FROM historial_sueldos WHERE desde = '2026-10-01'$$, $$SELECT id, sueldo FROM empleados WHERE fecha_salida IS NULL$$)",
+          "fail": "historial_sueldos debe tener, con desde = 2026-10-01, exactamente una fila por empleado activo con su sueldo final."
+        },
+        {
+          "name": "La fila del gerente se actualizó (sin duplicarse)",
+          "sql": "SELECT count(*) = 1 AND min(sueldo) = 9301000 FROM historial_sueldos WHERE empleado_id = 1 AND desde = '2026-10-01'",
+          "fail": "La fila del empleado 1 con desde 2026-10-01 ya existía con el sueldo antiguo: tu INSERT debe actualizarla (ON CONFLICT … DO UPDATE)."
+        },
+        {
+          "name": "El historial anterior quedó intacto",
+          "sql": "SELECT count(*) = 221 FROM historial_sueldos WHERE desde < '2026-10-01'",
+          "fail": "No debes modificar ni borrar el historial anterior a octubre de 2026."
+        }
+      ],
+      "hints": [
+        "Paso 1: `UPDATE empleados SET sueldo = round(sueldo * 1.045, -3) WHERE fecha_salida IS NULL;`. Paso 2: `UPDATE empleados AS e SET sueldo = e.sueldo + 50000 FROM departamentos AS d WHERE e.departamento_id = d.id AND d.ciudad <> 'Santiago' AND e.fecha_salida IS NULL;`",
+        "El practicante tiene `departamento_id` NULL: en el paso 2 no calza con ningún departamento y queda fuera sin que hagas nada.",
+        "La clave primaria de `historial_sueldos` es `(empleado_id, desde)`: `INSERT … SELECT … ON CONFLICT (empleado_id, desde) DO UPDATE SET sueldo = EXCLUDED.sueldo;`"
+      ],
+      "explain": "El orden de los pasos importa: el historial se registra **después** de los dos UPDATE, para que el INSERT … SELECT lea los sueldos finales. El bono se suma después del redondeo, así que no se redondea de nuevo. UPDATE … FROM departamentos solo toca a quienes calzan con un departamento fuera de Santiago (Ventas en Concepción y Operaciones en Valparaíso, 21 personas); el practicante sin departamento no calza con nada y recibe solo el 4,5 %. La fila del gerente que dejó el intento anterior haría fallar un INSERT normal con `duplicate key value violates unique constraint \"historial_sueldos_pkey\"`; con `ON CONFLICT (empleado_id, desde) DO UPDATE SET sueldo = EXCLUDED.sueldo` la corrige, y el script completo pasa a ser seguro de reintentar (salvo el reajuste en sí: ejecutar dos veces los UPDATE subiría el sueldo dos veces, por eso va en una transacción y se ejecuta una sola vez). En la vida real agregarías `RETURNING old.sueldo, new.sueldo` a los UPDATE para revisar antes del COMMIT."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "¿Qué es el DML y qué sentencias incluye en PostgreSQL?",
+      "back": "Data Manipulation Language: INSERT, UPDATE, DELETE y MERGE (en la práctica también TRUNCATE y COPY). Cambian el **contenido** de las tablas; el DDL cambia su estructura."
+    },
+    {
+      "front": "Insertar varias filas en una sola sentencia",
+      "back": "`INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y'), (3, 'z');` Un solo viaje al servidor y atómico: si una fila falla, no entra ninguna."
+    },
+    {
+      "front": "¿Qué significa la etiqueta `INSERT 0 3`?",
+      "back": "Se insertaron 3 filas (con ON CONFLICT DO UPDATE, insertadas + actualizadas). El 0 es el OID, un resto histórico que hoy siempre vale 0."
+    },
+    {
+      "front": "Tres formas de usar el valor por defecto en un INSERT",
+      "back": "(1) Omitir la columna; (2) escribir la palabra clave `DEFAULT` en VALUES; (3) `INSERT INTO t DEFAULT VALUES;` para una fila hecha solo de defaults. En UPDATE: `SET col = DEFAULT`."
+    },
+    {
+      "front": "Escribir un id a mano en una columna GENERATED ALWAYS AS IDENTITY",
+      "back": "`INSERT INTO t OVERRIDING SYSTEM VALUE VALUES (…);` Sin eso: `cannot insert a non-DEFAULT value into column`. La secuencia no se entera: ajústala después con setval."
+    },
+    {
+      "front": "INSERT … SELECT: ¿cómo se emparejan las columnas?",
+      "back": "Por **posición**, no por nombre: la 1.ª expresión del SELECT va a la 1.ª columna de la lista del INSERT, y así sucesivamente."
+    },
+    {
+      "front": "¿Para qué sirve RETURNING?",
+      "back": "Devuelve datos de las filas insertadas, modificadas o borradas (id generado, defaults, valores nuevos) sin una consulta extra. Es una extensión de PostgreSQL."
+    },
+    {
+      "front": "RETURNING old/new (PostgreSQL 18)",
+      "back": "`UPDATE … RETURNING old.precio, new.precio;` En INSERT, old es NULL (salvo con ON CONFLICT DO UPDATE); en DELETE, new es NULL. Se renombran con `RETURNING WITH (OLD AS o, NEW AS n)`."
+    },
+    {
+      "front": "La regla de oro de UPDATE y DELETE",
+      "back": "Sin WHERE afectan a TODAS las filas. Receta: SELECT con el mismo WHERE y contar → BEGIN → cambio con RETURNING → revisar la etiqueta → COMMIT o ROLLBACK."
+    },
+    {
+      "front": "`UPDATE t SET a = b, b = a;` ¿qué hace?",
+      "back": "Intercambia a y b: todas las expresiones de SET se calculan con los valores **antiguos** de la fila."
+    },
+    {
+      "front": "Sintaxis de UPDATE … FROM",
+      "back": "`UPDATE productos AS p SET stock = p.stock + a.delta FROM ajustes AS a WHERE p.sku = a.sku;` La tabla destino **no** se repite en el FROM."
+    },
+    {
+      "front": "UPDATE … FROM con varias coincidencias por fila destino",
+      "back": "Se usa solo una de las filas coincidentes y no se puede predecir cuál (no se suman). Deja la otra tabla con una fila por clave antes de actualizar."
+    },
+    {
+      "front": "¿Qué pasa si repites la tabla destino en el FROM de un UPDATE?",
+      "back": "Se agrega una segunda copia independiente de la tabla, sin relación con la fila actualizada: el UPDATE afecta a todas las filas (p. ej., `UPDATE 49`)."
+    },
+    {
+      "front": "Sintaxis de DELETE … USING",
+      "back": "`DELETE FROM resenas AS r USING productos AS p WHERE r.producto_id = p.id AND NOT p.activo;` USING (como FROM en UPDATE) es extensión de PostgreSQL."
+    },
+    {
+      "front": "`UPDATE 0` o `DELETE 0`: ¿es un error?",
+      "back": "No: ninguna fila cumplía el WHERE. Revisa la condición; un clásico es `col = NULL` en vez de `col IS NULL`."
+    },
+    {
+      "front": "TRUNCATE frente a DELETE sin WHERE",
+      "back": "TRUNCATE no recorre la tabla, libera espacio al instante, no dispara triggers ON DELETE, toma ACCESS EXCLUSIVE y no tiene WHERE ni RETURNING. Ambos se pueden deshacer con ROLLBACK."
+    },
+    {
+      "front": "TRUNCATE … RESTART IDENTITY / CONTINUE IDENTITY",
+      "back": "RESTART reinicia las secuencias de las columnas de la tabla (identidad o serial); CONTINUE (por defecto) no las toca."
+    },
+    {
+      "front": "TRUNCATE … CASCADE / RESTRICT",
+      "back": "CASCADE vacía también las tablas que la referencian por FK, en cadena (con `NOTICE: truncate cascades to table …`). RESTRICT, el valor por defecto, se niega si hay referencias."
+    },
+    {
+      "front": "Upsert en PostgreSQL",
+      "back": "`INSERT … ON CONFLICT (col) DO UPDATE SET c = EXCLUDED.c` o `ON CONFLICT DO NOTHING`. Garantiza un resultado atómico de INSERT o UPDATE incluso con alta concurrencia."
+    },
+    {
+      "front": "¿Qué es EXCLUDED?",
+      "back": "La tabla especial con la fila que se intentó insertar (la propuesta). La fila que ya existía se nombra con el nombre de la tabla o su alias."
+    },
+    {
+      "front": "¿Cuándo es obligatorio el objetivo del conflicto?",
+      "back": "Siempre en DO UPDATE. En DO NOTHING es opcional: sin objetivo, cubre todas las restricciones únicas y de exclusión."
+    },
+    {
+      "front": "ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification",
+      "back": "Las columnas de `ON CONFLICT (…)` no calzan exactamente con ningún índice o restricción única (o falta el WHERE de un índice único parcial)."
+    },
+    {
+      "front": "ERROR: ON CONFLICT DO UPDATE command cannot affect row a second time",
+      "back": "La misma sentencia propone dos filas con la misma clave. Deduplica la entrada antes del upsert (p. ej., con DISTINCT ON)."
+    },
+    {
+      "front": "Evitar actualizaciones inútiles en un upsert",
+      "back": "`… DO UPDATE SET precio = EXCLUDED.precio WHERE t.precio IS DISTINCT FROM EXCLUDED.precio` — las filas que no se actualizan no cuentan en la etiqueta (pero quedan bloqueadas)."
+    },
+    {
+      "front": "Estructura de MERGE",
+      "back": "`MERGE INTO destino d USING fuente f ON cond WHEN MATCHED [AND …] THEN UPDATE/DELETE/DO NOTHING WHEN NOT MATCHED [BY TARGET] THEN INSERT/DO NOTHING WHEN NOT MATCHED BY SOURCE THEN UPDATE/DELETE/DO NOTHING`."
+    },
+    {
+      "front": "¿En qué orden se evalúan las cláusulas WHEN de MERGE?",
+      "back": "En el orden escrito. Cada fila candidata ejecuta solo la primera cláusula verdadera; si ninguna calza, la fila queda igual y no se cuenta."
+    },
+    {
+      "front": "merge_action()",
+      "back": "Función (PostgreSQL 17) usable en el RETURNING de MERGE: devuelve 'INSERT', 'UPDATE' o 'DELETE' según la acción que produjo cada fila."
+    },
+    {
+      "front": "Versiones de MERGE",
+      "back": "MERGE: PostgreSQL 15. RETURNING, merge_action(), WHEN NOT MATCHED BY SOURCE y MERGE sobre vistas actualizables: 17. old/new en RETURNING: 18."
+    },
+    {
+      "front": "COPY frente a \\copy",
+      "back": "`COPY … 'archivo'` lo lee o escribe el **servidor** (superusuario o pg_read_server_files / pg_write_server_files). `\\copy` lo lee o escribe **psql** en el computador cliente, usando COPY FROM STDIN / TO STDOUT."
+    },
+    {
+      "front": "¿Cómo terminas los datos de COPY … FROM STDIN en psql?",
+      "back": "Con una línea que contiene solo `\\.` (barra invertida y punto)."
+    },
+    {
+      "front": "CSV: NULL frente a texto vacío",
+      "back": "Un campo vacío **sin comillas** es NULL; `\"\"` es una cadena vacía. En formato text, NULL se escribe `\\N`. Se cambia con la opción `NULL 'texto'`."
+    },
+    {
+      "front": "ON_ERROR ignore (PostgreSQL 17)",
+      "back": "COPY FROM descarta las filas con errores de **conversión de tipo** (formatos text y csv) y avisa cuántas saltó. No cubre NOT NULL, CHECK, UNIQUE, FK ni columnas de más o de menos."
+    },
+    {
+      "front": "REJECT_LIMIT y LOG_VERBOSITY",
+      "back": "`REJECT_LIMIT n` (18): con ON_ERROR ignore, falla si hay más de n filas malas (n > 0). `LOG_VERBOSITY verbose` (17) avisa cada fila saltada; `silent` (18) no avisa nada."
+    },
+    {
+      "front": "Generar 10.000 filas de prueba",
+      "back": "`INSERT INTO t (…) SELECT … FROM generate_series(1, 10000) AS g;` con expresiones de g (`g % 3`, `g / 2`) para variar los datos de forma determinista."
+    },
+    {
+      "front": "Patrón de tabla de paso (staging)",
+      "back": "`\\copy` a una tabla temporal → revisar, limpiar y deduplicar → INSERT … ON CONFLICT o MERGE a la tabla real → revisar RETURNING → COMMIT (todo en una transacción)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s06-q1",
+      "type": "single",
+      "q": "¿Qué muestra psql al terminar bien esta sentencia?\n```sql\nINSERT INTO categorias (id, nombre) VALUES (14, 'Gamer'), (15, 'Jardín');\n```",
+      "options": [
+        "`INSERT 2`",
+        "`INSERT 0 2`",
+        "`INSERT 2 0`",
+        "`(2 rows)`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La etiqueta de INSERT es `INSERT oid count`: el OID es un resto histórico que hoy siempre vale 0, y count es la cantidad de filas insertadas. `(2 rows)` es el pie de una tabla de resultados, que solo aparecería con RETURNING."
+    },
+    {
+      "id": "s06-q2",
+      "type": "single",
+      "q": "Un INSERT trae tres filas en VALUES y la tercera viola una restricción CHECK. ¿Qué queda en la tabla?",
+      "options": [
+        "Las dos primeras filas",
+        "Ninguna de las tres",
+        "Las tres, con NULL en la columna inválida",
+        "Depende del orden de las filas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Toda sentencia es atómica: si falla una fila, se anula la sentencia completa y la tabla queda como estaba. Para cargar «lo que se pueda» hay herramientas específicas (ON CONFLICT para duplicados, ON_ERROR ignore en COPY para errores de tipo), no para CHECK."
+    },
+    {
+      "id": "s06-q3",
+      "type": "single",
+      "q": "En `productos`, `id` es GENERATED ALWAYS AS IDENTITY, `stock` tiene DEFAULT 0 y `activo` DEFAULT true. ¿Qué devuelve el RETURNING?\n```sql\nINSERT INTO productos (sku, nombre, categoria_id, precio, costo, creado_en)\nVALUES ('ACC-006', 'Soporte', 4, 19990, 11200, '2026-09-15')\nRETURNING id, stock, activo;\n```",
+      "options": [
+        "NULL, NULL, NULL: esas columnas no se nombraron",
+        "El id asignado por la identidad, 0 y true",
+        "Un error: faltan columnas NOT NULL",
+        "Solo el id; stock y activo no se devuelven porque no se insertaron"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "RETURNING devuelve la fila tal como quedó guardada, con los valores por defecto ya calculados: el siguiente número de la identidad, stock 0 y activo true. Por eso es la forma estándar de conocer un id generado sin otra consulta."
+    },
+    {
+      "id": "s06-q4",
+      "type": "multi",
+      "q": "¿Qué formas hacen que una columna tome su valor por defecto en un INSERT? (Selecciona TODAS las correctas.)",
+      "options": [
+        "No nombrar la columna en la lista",
+        "Escribir la palabra clave `DEFAULT` en su posición dentro de VALUES",
+        "Escribir `NULL` en su posición",
+        "Usar `INSERT INTO t DEFAULT VALUES`",
+        "Escribir `'DEFAULT'` entre comillas"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "Omitir la columna, la palabra clave DEFAULT y DEFAULT VALUES piden el valor por defecto. `NULL` explícito inserta NULL (o falla si la columna es NOT NULL), y `'DEFAULT'` entre comillas es el texto «DEFAULT»."
+    },
+    {
+      "id": "s06-q5",
+      "type": "single",
+      "q": "La tabla `t` tiene `nombre text` y `precio integer`. ¿Qué pasa aquí?\n```sql\nINSERT INTO t (nombre, precio)\nSELECT precio, nombre FROM productos;\n```",
+      "options": [
+        "Funciona: PostgreSQL empareja las columnas por nombre",
+        "Error: `column \"precio\" is of type integer but expression is of type text`",
+        "Inserta todo con NULL",
+        "Funciona, pero guarda los valores intercambiados sin avisar"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "INSERT … SELECT empareja por **posición**: la 1.ª expresión (precio) va a `nombre` y la 2.ª (nombre, texto) a `precio`. La primera conversión se permite (integer a text), pero texto a integer no, y PostgreSQL rechaza la sentencia. Si ambas columnas fueran del mismo tipo, el intercambio pasaría en silencio."
+    },
+    {
+      "id": "s06-q6",
+      "type": "single",
+      "q": "¿Qué ocurre al ejecutar un INSERT que entrega un valor explícito para una columna `GENERATED ALWAYS AS IDENTITY` (sin cláusulas extra)?",
+      "options": [
+        "Se usa el valor entregado y la secuencia se ajusta sola",
+        "Se ignora el valor y se usa la secuencia",
+        "ERROR `cannot insert a non-DEFAULT value into column`, con un HINT que sugiere OVERRIDING SYSTEM VALUE",
+        "Se inserta la fila con el id en NULL"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "GENERATED ALWAYS protege la numeración. `OVERRIDING SYSTEM VALUE` permite forzar el valor (típico en migraciones), pero la secuencia no se entera y hay que ajustarla con setval. `OVERRIDING USER VALUE` hace lo contrario: ignora el valor entregado y usa la secuencia."
+    },
+    {
+      "id": "s06-q7",
+      "type": "yesno",
+      "q": "Sobre RETURNING, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Es parte del estándar SQL.",
+          "answer": false
+        },
+        {
+          "text": "Puede devolver expresiones calculadas, no solo columnas.",
+          "answer": true
+        },
+        {
+          "text": "En un DELETE, `RETURNING *` devuelve las filas borradas.",
+          "answer": true
+        },
+        {
+          "text": "En PostgreSQL 18, en un INSERT simple, `old.*` devuelve NULL.",
+          "answer": true
+        }
+      ],
+      "explain": "RETURNING es una extensión de PostgreSQL (el estándar no lo tiene). Su lista admite lo mismo que la lista de un SELECT. En DELETE devuelve lo borrado. En un INSERT sin ON CONFLICT no hay «antes», así que old es NULL."
+    },
+    {
+      "id": "s06-q8",
+      "type": "single",
+      "q": "La tabla `par` tiene una fila con a = 1 y b = 2. ¿Qué devuelve?\n```sql\nUPDATE par SET a = b, b = a RETURNING a, b;\n```",
+      "options": [
+        "a = 2, b = 2",
+        "a = 2, b = 1",
+        "a = 1, b = 1",
+        "Error: no se puede asignar una columna a partir de otra que también se modifica"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Todas las expresiones de SET se calculan con los valores que la fila tenía antes del UPDATE, así que se intercambian. No hay una asignación «primero a, luego b»."
+    },
+    {
+      "id": "s06-q9",
+      "type": "single",
+      "q": "En psql, sin haber escrito BEGIN, ejecutas por error `UPDATE productos SET activo = false;` y ves `UPDATE 49`. ¿Cómo lo deshaces?",
+      "options": [
+        "Con `ROLLBACK;`",
+        "No se puede con ROLLBACK: psql confirmó la sentencia al terminar (autocommit); hay que corregir los datos o restaurar un respaldo",
+        "Con `\\undo`",
+        "Cerrando psql sin guardar"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Fuera de una transacción explícita, cada sentencia se confirma sola. ROLLBACK solo responde `WARNING: there is no transaction in progress`. Por eso los cambios delicados se hacen dentro de BEGIN … COMMIT."
+    },
+    {
+      "id": "s06-q10",
+      "type": "multi",
+      "q": "Vas a ejecutar un UPDATE que debería tocar unas 200 filas de una tabla importante. ¿Qué prácticas lo hacen seguro? (Selecciona TODAS las correctas.)",
+      "options": [
+        "Ejecutar antes un SELECT count(*) con el mismo WHERE",
+        "Hacerlo dentro de BEGIN y revisar la etiqueta `UPDATE n` antes de COMMIT",
+        "Agregar RETURNING para ver las filas cambiadas y sus valores old/new",
+        "Desactivar las restricciones de la tabla para que no interrumpan",
+        "Ejecutarlo primero sin WHERE para medir el tiempo"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Contar antes, trabajar dentro de una transacción y mirar el RETURNING y la etiqueta te permiten detectar un WHERE equivocado y hacer ROLLBACK. Desactivar restricciones o ejecutar sin WHERE son justamente las formas de causar un desastre."
+    },
+    {
+      "id": "s06-q11",
+      "type": "single",
+      "q": "La categoría 13 tiene 4 productos. ¿Qué etiqueta devuelve esta sentencia, que no cambia ningún valor?\n```sql\nUPDATE productos SET stock = stock WHERE categoria_id = 13;\n```",
+      "options": [
+        "`UPDATE 0`",
+        "`UPDATE 4`",
+        "`UPDATE 49`",
+        "Un aviso de que no hubo cambios"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La etiqueta de UPDATE cuenta las filas que calzaron con el WHERE, incluidas las que quedaron con el mismo valor (y PostgreSQL igual escribió una versión nueva de cada una). Para evitar escrituras inútiles, filtra en el WHERE las filas que ya tienen el valor deseado."
+    },
+    {
+      "id": "s06-q12",
+      "type": "single",
+      "q": "¿Qué responde PostgreSQL?\n```sql\nDELETE FROM resenas WHERE comentario = NULL;\n```",
+      "options": [
+        "Borra las reseñas sin comentario",
+        "`DELETE 0`",
+        "ERROR: no se puede comparar con NULL",
+        "Borra todas las reseñas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`comentario = NULL` da NULL para todas las filas (lógica de tres valores), y el WHERE solo deja pasar lo verdadero. No hay error: simplemente nada calza. Lo correcto es `comentario IS NULL`."
+    },
+    {
+      "id": "s06-q13",
+      "type": "single",
+      "q": "Se quería cambiar solo el precio de COMP-001. ¿Qué pasa?\n```sql\nUPDATE productos SET precio = 1\nFROM productos AS p2\nWHERE p2.sku = 'COMP-001';\n```",
+      "options": [
+        "Cambia solo COMP-001",
+        "Cambia los 49 productos",
+        "Error: no se puede repetir la tabla destino",
+        "No cambia nada, porque p2 es una copia"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En PostgreSQL, la tabla del FROM es una fuente independiente: `p2` no está relacionada con la fila que se actualiza. Como existe una fila de p2 que cumple el WHERE, **todas** las filas de productos calzan: `UPDATE 49`. La forma correcta es `UPDATE productos SET precio = 1 WHERE sku = 'COMP-001';`."
+    },
+    {
+      "id": "s06-q14",
+      "type": "single",
+      "q": "En `UPDATE productos p SET stock = p.stock + a.delta FROM ajustes a WHERE p.sku = a.sku`, la tabla `ajustes` tiene dos filas para COMP-006 (delta 10 y delta 5). ¿Qué pasa con COMP-006?",
+      "options": [
+        "Su stock sube 15",
+        "Error: la fila se actualizaría dos veces",
+        "Se usa solo una de las dos filas y no se puede predecir cuál: sube 10 o sube 5",
+        "No se actualiza por ambigüedad"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Con UPDATE … FROM, si una fila destino calza con varias filas, PostgreSQL usa solo una de ellas y la documentación advierte que cuál es impredecible. Hay que dejar `ajustes` con una fila por SKU (por ejemplo, sumando antes con GROUP BY)."
+    },
+    {
+      "id": "s06-q15",
+      "type": "yesno",
+      "q": "Sobre `DELETE … USING`, indica Sí o No.",
+      "statements": [
+        {
+          "text": "USING es una extensión de PostgreSQL.",
+          "answer": true
+        },
+        {
+          "text": "El RETURNING puede incluir columnas de la tabla nombrada en USING.",
+          "answer": true
+        },
+        {
+          "text": "DELETE … USING también borra las filas coincidentes de la tabla de USING.",
+          "answer": false
+        },
+        {
+          "text": "Si la condición no relaciona ambas tablas, puede borrar todas las filas de la tabla destino.",
+          "answer": true
+        }
+      ],
+      "explain": "USING solo aporta filas para evaluar la condición; se borra únicamente en la tabla de DELETE FROM. Igual que en UPDATE … FROM, si olvidas la condición de unión, cualquier fila de USING que cumpla el resto hace calzar a todas las filas destino."
+    },
+    {
+      "id": "s06-q16",
+      "type": "single",
+      "q": "`pedidos.cliente_id` referencia a `clientes(id)` sin acción ON DELETE. ¿Qué pasa con `DELETE FROM clientes WHERE id = 26;` si ese cliente tiene pedidos?",
+      "options": [
+        "Se borran el cliente y sus pedidos",
+        "Se borra el cliente y sus pedidos quedan con cliente_id NULL",
+        "ERROR: `update or delete on table \"clientes\" violates foreign key constraint`",
+        "Se borra el cliente sin revisar nada"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Sin acción explícita, la FK es NO ACTION: no se puede borrar un padre que tiene hijos. CASCADE (como `pedido_items` → `pedidos`) borraría los hijos y SET NULL los dejaría huérfanos con NULL."
+    },
+    {
+      "id": "s06-q17",
+      "type": "single",
+      "q": "`pedido_items.pedido_id` referencia a `pedidos(id)` con ON DELETE CASCADE. ¿Qué hace `DELETE FROM pedidos WHERE id = 1 RETURNING id;`?",
+      "options": [
+        "Error, porque el pedido tiene ítems",
+        "Borra el pedido y también sus ítems; RETURNING muestra solo el pedido y la etiqueta dice `DELETE 1`",
+        "Borra el pedido y la etiqueta cuenta también los ítems borrados",
+        "Borra solo los ítems"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La cascada ocurre automáticamente, pero la etiqueta y el RETURNING se refieren solo a la tabla del DELETE. Es cómodo y peligroso a la vez: un DELETE puede borrar mucho más de lo que dice su etiqueta."
+    },
+    {
+      "id": "s06-q18",
+      "type": "yesno",
+      "q": "Sobre TRUNCATE en PostgreSQL, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Dentro de una transacción se puede deshacer con ROLLBACK.",
+          "answer": true
+        },
+        {
+          "text": "Dispara los triggers ON DELETE de la tabla.",
+          "answer": false
+        },
+        {
+          "text": "Por defecto reinicia las columnas de identidad.",
+          "answer": false
+        },
+        {
+          "text": "Toma un bloqueo ACCESS EXCLUSIVE sobre la tabla.",
+          "answer": true
+        }
+      ],
+      "explain": "TRUNCATE es transaccional en PostgreSQL. No dispara ON DELETE (sí ON TRUNCATE). El valor por defecto es CONTINUE IDENTITY; para reiniciar hay que pedir RESTART IDENTITY. Y bloquea la tabla por completo, incluso para lectores."
+    },
+    {
+      "id": "s06-q19",
+      "type": "single",
+      "q": "¿Qué responde `TRUNCATE productos;` si `pedido_items` y `resenas` tienen claves foráneas hacia `productos`?",
+      "options": [
+        "Vacía productos y deja los hijos huérfanos",
+        "Vacía productos y sus hijos automáticamente",
+        "ERROR `cannot truncate a table referenced in a foreign key constraint`, con un HINT que sugiere incluir la otra tabla o usar CASCADE",
+        "Borra solo los productos que no tienen hijos"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "TRUNCATE no revisa fila por fila (ese es su atajo), así que se niega (RESTRICT, por defecto) si otras tablas la referencian. O las incluyes en el mismo TRUNCATE o usas CASCADE, que las vacía también."
+    },
+    {
+      "id": "s06-q20",
+      "type": "single",
+      "q": "Dentro de una transacción ejecutas `TRUNCATE pedidos RESTART IDENTITY CASCADE;` y luego insertas un pedido nuevo sin id. ¿Qué id recibe?",
+      "options": [
+        "421",
+        "1",
+        "NULL",
+        "Error: la secuencia fue eliminada"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "RESTART IDENTITY reinicia la secuencia de la columna de identidad, así que el próximo pedido es el 1. Si luego haces ROLLBACK, se deshacen tanto el vaciado como el reinicio de la secuencia."
+    },
+    {
+      "id": "s06-q21",
+      "type": "single",
+      "q": "¿Qué hace `ON CONFLICT DO NOTHING` sin objetivo del conflicto?",
+      "options": [
+        "Da error: siempre hay que indicar el objetivo",
+        "Ignora los conflictos con cualquier restricción única o de exclusión",
+        "Ignora solo los conflictos de la clave primaria",
+        "Ignora cualquier error, incluidos CHECK y NOT NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin objetivo, DO NOTHING cubre todas las restricciones únicas y de exclusión. Nunca cubre CHECK, NOT NULL ni claves foráneas: ON CONFLICT solo trata violaciones de unicidad o exclusión."
+    },
+    {
+      "id": "s06-q22",
+      "type": "single",
+      "q": "`categorias` tiene PRIMARY KEY (id) y UNIQUE (nombre). Ya existe (3, 'Audio'). ¿Qué pasa?\n```sql\nINSERT INTO categorias (id, nombre, padre_id)\nVALUES (30, 'Audio', 1)\nON CONFLICT (id) DO NOTHING;\n```",
+      "options": [
+        "`INSERT 0 0`: se omite en silencio",
+        "`INSERT 0 1`: se inserta un segundo Audio",
+        "ERROR de clave duplicada en `categorias_nombre_key`",
+        "Actualiza el id de Audio a 30"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "El objetivo `(id)` hace que solo la clave primaria arbitre el conflicto. La fila choca con otra restricción única (nombre), que no está cubierta, y eso sigue siendo un error. `ON CONFLICT DO NOTHING` sin objetivo sí la omitiría."
+    },
+    {
+      "id": "s06-q23",
+      "type": "single",
+      "q": "En `ON CONFLICT (sku) DO UPDATE SET precio = EXCLUDED.precio`, ¿qué es `EXCLUDED.precio`?",
+      "options": [
+        "El precio que la fila tenía antes",
+        "El precio de la fila que se intentó insertar",
+        "El precio de la fila borrada",
+        "Un valor NULL si hubo conflicto"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "EXCLUDED es la fila propuesta, la que quedó «excluida» de la inserción por el conflicto. La fila existente se nombra con el nombre de la tabla o su alias (`productos.precio` o `p.precio`)."
+    },
+    {
+      "id": "s06-q24",
+      "type": "single",
+      "q": "¿Qué responde PostgreSQL a `INSERT … ON CONFLICT DO UPDATE SET precio = EXCLUDED.precio;` (sin columnas entre paréntesis)?",
+      "options": [
+        "Actualiza usando la clave primaria",
+        "ERROR `ON CONFLICT DO UPDATE requires inference specification or constraint name`",
+        "Actualiza usando cualquier restricción única",
+        "Lo trata como DO NOTHING"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "DO UPDATE necesita saber qué restricción arbitra el conflicto para saber qué fila actualizar, así que exige objetivo: columnas, expresión o ON CONSTRAINT. Solo DO NOTHING puede omitirlo."
+    },
+    {
+      "id": "s06-q25",
+      "type": "single",
+      "q": "Un upsert propone 3 filas: una es nueva, otra choca y su WHERE de DO UPDATE es verdadero, y la tercera choca pero su WHERE es falso. ¿Qué etiqueta devuelve?",
+      "options": [
+        "`INSERT 0 3`",
+        "`INSERT 0 2`",
+        "`INSERT 0 1`",
+        "`INSERT 1 1`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La etiqueta cuenta filas insertadas + actualizadas: 1 + 1. La tercera no se modifica (aunque queda bloqueada hasta el fin de la transacción) y tampoco aparece en RETURNING."
+    },
+    {
+      "id": "s06-q26",
+      "type": "multi",
+      "q": "¿Cuáles son objetivos del conflicto válidos, suponiendo que existe el índice o la restricción adecuada? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`ON CONFLICT (sku)` con un UNIQUE sobre sku",
+        "`ON CONFLICT ON CONSTRAINT productos_sku_key`",
+        "`ON CONFLICT (lower(email))` con un índice único sobre lower(email)",
+        "`ON CONFLICT (codigo) WHERE activo` con un índice único parcial `(codigo) WHERE activo`",
+        "`ON CONFLICT (nombre)` sin ningún índice único sobre nombre"
+      ],
+      "answer": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "explain": "El objetivo puede inferir índices únicos por columnas, por expresiones y parciales (repitiendo su predicado), o nombrar la restricción. Sin un índice único que calce exactamente, PostgreSQL responde `there is no unique or exclusion constraint matching the ON CONFLICT specification`."
+    },
+    {
+      "id": "s06-q27",
+      "type": "single",
+      "q": "¿Qué provoca el error `ON CONFLICT DO UPDATE command cannot affect row a second time`?",
+      "options": [
+        "Ejecutar el mismo upsert dos veces seguidas",
+        "Que la misma sentencia proponga dos filas con la misma clave de conflicto",
+        "Que la fila existente tenga un trigger",
+        "Que falte el WHERE en DO UPDATE"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El upsert es determinista: no decide cuál de dos filas propuestas con la misma clave gana. Ejecutarlo dos veces seguidas sí funciona (es idempotente). La solución es deduplicar la entrada antes, por ejemplo con DISTINCT ON."
+    },
+    {
+      "id": "s06-q28",
+      "type": "single",
+      "q": "En PostgreSQL 18, ¿cuál es la forma más clara de saber, en el RETURNING de un upsert, si cada fila se insertó o se actualizó?",
+      "options": [
+        "Comparar la etiqueta con la cantidad de filas propuestas",
+        "Mirar `old.sku IS NULL`: es verdadero en las filas insertadas",
+        "Consultar pg_stat_user_tables",
+        "No se puede saber"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Desde la versión 18, RETURNING acepta old y new. En una fila insertada no hay «antes», así que sus valores old son NULL; en una actualizada, old trae los valores previos."
+    },
+    {
+      "id": "s06-q29",
+      "type": "yesno",
+      "q": "Sobre upsert y concurrencia, indica Sí o No.",
+      "statements": [
+        {
+          "text": "El patrón «SELECT y luego INSERT o UPDATE» desde la aplicación puede fallar si otra sesión inserta la misma clave entre medio.",
+          "answer": true
+        },
+        {
+          "text": "`ON CONFLICT DO UPDATE` garantiza un resultado atómico de INSERT o UPDATE incluso con alta concurrencia.",
+          "answer": true
+        },
+        {
+          "text": "Si el WHERE de DO UPDATE es falso, la fila existente no se bloquea.",
+          "answer": false
+        },
+        {
+          "text": "ON CONFLICT es parte del estándar SQL.",
+          "answer": false
+        }
+      ],
+      "explain": "El upsert existe justamente para cerrar la carrera entre el SELECT y el INSERT. La documentación aclara que todas las filas en conflicto se bloquean, aunque el WHERE impida actualizarlas. ON CONFLICT es una extensión de PostgreSQL; la alternativa estándar es MERGE."
+    },
+    {
+      "id": "s06-q30",
+      "type": "single",
+      "q": "En este MERGE, una fila coincide y la fuente dice `descontinuado = true`. ¿Qué cláusula se ejecuta?\n```sql\nMERGE INTO productos p USING lista l ON p.sku = l.sku\nWHEN MATCHED THEN UPDATE SET precio = l.precio\nWHEN MATCHED AND l.descontinuado THEN UPDATE SET activo = false;\n```",
+      "options": [
+        "Las dos, en orden",
+        "Solo la primera: la segunda nunca se ejecuta para ninguna fila",
+        "Solo la segunda, porque es más específica",
+        "Error: no puede haber dos WHEN MATCHED"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Cada fila candidata ejecuta como máximo una cláusula: la primera verdadera en el orden escrito. Un WHEN MATCHED sin condición atrapa todas las coincidencias, así que las cláusulas MATCHED posteriores quedan muertas. Se ordena de lo más específico a lo más general."
+    },
+    {
+      "id": "s06-q31",
+      "type": "single",
+      "q": "Un MERGE solo tiene cláusulas `WHEN MATCHED`. ¿Qué pasa con una fila de la fuente que no existe en el destino?",
+      "options": [
+        "Se inserta automáticamente",
+        "Da error",
+        "No se hace nada con ella y no se cuenta en la etiqueta",
+        "Se borra de la fuente"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Si ninguna cláusula aplica a una fila candidata, simplemente no pasa nada con ella. MERGE solo hace lo que sus cláusulas WHEN piden."
+    },
+    {
+      "id": "s06-q32",
+      "type": "single",
+      "q": "La fuente tiene 5 filas: 2 coinciden y se actualizan, 1 no existe y se inserta, y 2 coinciden pero caen en `WHEN MATCHED THEN DO NOTHING`. ¿Qué etiqueta devuelve el MERGE?",
+      "options": [
+        "`MERGE 5`",
+        "`MERGE 3`",
+        "`MERGE 2`",
+        "`MERGE 0 3`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`MERGE n` cuenta las filas insertadas, actualizadas y borradas. DO NOTHING no cuenta. A diferencia de INSERT, la etiqueta de MERGE no lleva el 0 del OID."
+    },
+    {
+      "id": "s06-q33",
+      "type": "multi",
+      "q": "¿Qué acciones admite `WHEN NOT MATCHED BY SOURCE`? (Selecciona TODAS las correctas.)",
+      "options": [
+        "UPDATE",
+        "DELETE",
+        "DO NOTHING",
+        "INSERT"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "BY SOURCE trata filas que existen en el destino pero no en la fuente: se pueden actualizar (por ejemplo, desactivar), borrar o dejar igual. INSERT no tiene sentido ahí (la fila ya está en el destino); es la acción de NOT MATCHED BY TARGET."
+    },
+    {
+      "id": "s06-q34",
+      "type": "single",
+      "q": "¿Qué pasa si en un MERGE una fila del destino coincide con dos filas de la fuente y la acción es UPDATE?",
+      "options": [
+        "Se aplica la última fila de la fuente",
+        "Se aplican ambas, en orden",
+        "ERROR `MERGE command cannot affect row a second time`",
+        "Se ignora esa fila"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "MERGE exige que cada fila destino calce con una sola fila de la fuente. Si la acción repetida es UPDATE o DELETE falla con ese error de cardinalidad; si fuera INSERT, con una violación de unicidad. Hay que deduplicar la fuente."
+    },
+    {
+      "id": "s06-q35",
+      "type": "single",
+      "q": "¿Cuál afirmación sobre las versiones de MERGE es correcta?",
+      "options": [
+        "MERGE existe desde PostgreSQL 9.5, junto con ON CONFLICT",
+        "MERGE llegó en 15; RETURNING, merge_action() y WHEN NOT MATCHED BY SOURCE, en 17",
+        "MERGE llegó en 17 y RETURNING en 18",
+        "WHEN NOT MATCHED BY SOURCE es del estándar SQL y existe desde 15"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "ON CONFLICT llegó en 9.5 y MERGE en 15. La versión 17 agregó RETURNING (con merge_action()), WHEN NOT MATCHED BY SOURCE y MERGE sobre vistas actualizables; la 18, old/new en RETURNING. BY SOURCE es una extensión de PostgreSQL."
+    },
+    {
+      "id": "s06-q36",
+      "type": "single",
+      "q": "Una API recibe miles de solicitudes por segundo que insertan o actualizan el mismo tipo de registro por clave única. ¿Qué sentencia conviene?",
+      "options": [
+        "MERGE, porque es estándar",
+        "INSERT … ON CONFLICT DO UPDATE, porque garantiza insertar o actualizar aunque otra sesión inserte la misma clave al mismo tiempo",
+        "SELECT y luego INSERT o UPDATE",
+        "DELETE e INSERT"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Con inserciones concurrentes, un MERGE en READ COMMITTED puede terminar en un error de unicidad, y la propia documentación sugiere considerar ON CONFLICT. MERGE brilla en sincronizaciones con varias reglas, borrados y fuentes que no dependen de un índice único."
+    },
+    {
+      "id": "s06-q37",
+      "type": "single",
+      "q": "Te conectas desde tu notebook a un servidor en la nube y ejecutas `COPY productos FROM '/Users/ana/precios.csv' (FORMAT csv);`. ¿Qué pasa?",
+      "options": [
+        "Se carga el archivo de tu notebook",
+        "El servidor busca esa ruta en **su** propia máquina: falla si no existe allí o si no tienes privilegios (superusuario o pg_read_server_files)",
+        "psql sube el archivo automáticamente",
+        "Se carga pero sin la primera línea"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "COPY con nombre de archivo lo lee el proceso del servidor en la máquina del servidor. Para leer un archivo de tu computador usa `\\copy`, que lo abre psql y lo envía como COPY FROM STDIN."
+    },
+    {
+      "id": "s06-q38",
+      "type": "single",
+      "q": "¿Cómo quedan cargadas estas líneas con `COPY categorias (id, nombre, padre_id) FROM STDIN (FORMAT csv);`?\n```\n15,Mascotas,\n16,\"Arte, dibujo\",\n```",
+      "options": [
+        "Error: faltan valores",
+        "padre_id queda NULL en ambas y el nombre de la 16 es `Arte, dibujo`",
+        "padre_id queda como texto vacío",
+        "La 16 se parte en dos columnas por la coma"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En CSV, un campo vacío sin comillas es NULL, y las comillas dobles protegen las comas dentro de un valor. Un `\"\"` sería un texto vacío (y en una columna integer, un error de conversión)."
+    },
+    {
+      "id": "s06-q39",
+      "type": "yesno",
+      "q": "Sobre `ON_ERROR ignore` en COPY FROM, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Salta una fila que trae `abc` en una columna integer.",
+          "answer": true
+        },
+        {
+          "text": "Salta una fila que viola una restricción NOT NULL.",
+          "answer": false
+        },
+        {
+          "text": "Sin ON_ERROR, si la línea 9.999 falla, las 9.998 anteriores quedan cargadas y visibles.",
+          "answer": false
+        },
+        {
+          "text": "REJECT_LIMIT, para poner un tope de filas malas, llegó en PostgreSQL 18.",
+          "answer": true
+        }
+      ],
+      "explain": "ON_ERROR ignore (17) solo cubre errores de conversión de tipo; las violaciones de restricciones siguen abortando todo el COPY. Sin ON_ERROR, un error anula la carga completa: las filas ya escritas quedan invisibles (ocupando espacio hasta VACUUM). REJECT_LIMIT y LOG_VERBOSITY silent son de la versión 18."
+    },
+    {
+      "id": "s06-q40",
+      "type": "single",
+      "q": "¿Cuál de estas líneas carga correctamente, en psql, un CSV con encabezado desde tu computador?",
+      "options": [
+        "`\\copy productos FROM 'precios.csv' WITH (FORMAT csv, HEADER)`",
+        "`\\copy productos FROM precios.csv USING CSV`",
+        "`COPY productos FROM STDIN 'precios.csv' CSV;`",
+        "`\\copy productos INTO 'precios.csv' (FORMAT csv)`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`\\copy` usa la misma sintaxis que COPY (`FROM 'archivo'` con las opciones entre paréntesis, o la forma antigua `CSV HEADER`). Toda la línea son sus argumentos, así que no necesita punto y coma ni puede partirse en varias líneas."
+    },
+    {
+      "id": "s06-q41",
+      "type": "single",
+      "q": "¿Qué fecha tiene la última fila que produce esta consulta?\n```sql\nSELECT date '2025-01-01' + g / 2 AS fecha\nFROM generate_series(0, 729) AS g;\n```",
+      "options": [
+        "2025-12-30",
+        "2025-12-31",
+        "2026-01-01",
+        "2026-12-31"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`generate_series(0, 729)` produce 730 números. `g / 2` entre enteros es división entera: 729 / 2 = 364, y 2025-01-01 + 364 días = 2025-12-31. Cada fecha aparece dos veces (g = 0 y 1 → 0; g = 2 y 3 → 1…)."
+    },
+    {
+      "id": "s06-q42",
+      "type": "multi",
+      "q": "¿Por qué conviene cargar un CSV externo primero en una tabla de paso y no directo en la tabla real? (Selecciona TODAS las correctas.)",
+      "options": [
+        "Puedes revisar y limpiar los datos con SELECT, UPDATE y DELETE antes de tocar la tabla real",
+        "Puedes deduplicar la entrada, evitando errores de «cannot affect row a second time» en el upsert o MERGE",
+        "Puedes aplicar reglas de negocio con ON CONFLICT o MERGE y revisar RETURNING antes del COMMIT",
+        "Hace innecesarias las restricciones de la tabla real",
+        "COPY no puede cargar directamente en tablas con clave primaria"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "La tabla de paso separa «recibir» de «aplicar»: la tabla real solo ve datos revisados y aplicados con reglas explícitas. Las restricciones de la tabla real siguen siendo la última línea de defensa, y COPY sí puede cargar tablas con clave primaria."
+    },
+    {
+      "id": "s06-q43",
+      "type": "single",
+      "q": "¿Qué muestra psql después de ejecutar esto?\n```sql\nCOPY (SELECT sku, precio FROM productos WHERE categoria_id = 13 ORDER BY sku)\nTO STDOUT (FORMAT csv, HEADER);\n```",
+      "options": [
+        "Una tabla alineada con bordes y `(4 rows)`",
+        "Las líneas CSV, empezando por `sku,precio`",
+        "Solo `COPY 4`",
+        "Un error: COPY no acepta consultas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "COPY TO STDOUT envía texto CSV por la conexión y psql lo imprime tal cual, con la línea de encabezado por HEADER. COPY acepta una consulta entre paréntesis como origen, así que puedes exportar exactamente las filas, columnas y orden que quieras."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: 6.1 Insertar datos",
+      "url": "https://www.postgresql.org/docs/18/dml-insert.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: 6.2 Actualizar datos",
+      "url": "https://www.postgresql.org/docs/18/dml-update.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: 6.3 Borrar datos",
+      "url": "https://www.postgresql.org/docs/18/dml-delete.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: 6.4 Devolver datos de las filas modificadas (RETURNING, old/new)",
+      "url": "https://www.postgresql.org/docs/18/dml-returning.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: INSERT (ON CONFLICT, OVERRIDING, RETURNING)",
+      "url": "https://www.postgresql.org/docs/18/sql-insert.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: UPDATE (FROM, RETURNING)",
+      "url": "https://www.postgresql.org/docs/18/sql-update.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: DELETE (USING, RETURNING)",
+      "url": "https://www.postgresql.org/docs/18/sql-delete.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: TRUNCATE",
+      "url": "https://www.postgresql.org/docs/18/sql-truncate.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: MERGE",
+      "url": "https://www.postgresql.org/docs/18/sql-merge.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: COPY (ON_ERROR, REJECT_LIMIT, LOG_VERBOSITY, CSV)",
+      "url": "https://www.postgresql.org/docs/18/sql-copy.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: psql, meta-comando \\copy",
+      "url": "https://www.postgresql.org/docs/18/app-psql.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: 14.4 Cargar una base de datos (buenas prácticas)",
+      "url": "https://www.postgresql.org/docs/18/populate.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: funciones que devuelven conjuntos (generate_series)",
+      "url": "https://www.postgresql.org/docs/18/functions-srf.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: 13.2 Aislamiento de transacciones (MERGE y ON CONFLICT en READ COMMITTED)",
+      "url": "https://www.postgresql.org/docs/18/transaction-iso.html"
+    },
+    {
+      "title": "Notas de la versión 17 (MERGE RETURNING, WHEN NOT MATCHED BY SOURCE, COPY ON_ERROR)",
+      "url": "https://www.postgresql.org/docs/18/release-17.html"
+    },
+    {
+      "title": "Notas de la versión 18 (RETURNING old/new, COPY REJECT_LIMIT y LOG_VERBOSITY silent)",
+      "url": "https://www.postgresql.org/docs/18/release-18.html"
+    }
+  ]
+}

@@ -1,0 +1,1849 @@
+{
+ "id": "s09",
+ "order": 9,
+ "title": "Extracción de información con Content Understanding",
+ "domain": "implement",
+ "summary": "Aprendes a convertir contenido no estructurado (documentos, imágenes, audio y video) en datos estructurados con Azure Content Understanding in Foundry Tools: analizadores prebuilt, analizadores personalizados con esquemas de campos, confianza y grounding, y una app Python con el SDK `azure-ai-contentunderstanding`. Es el núcleo del bloque «Implement AI solutions for information extraction» y una fuente segura de preguntas de escenario → analizador.",
+ "goal": "Elegir el analizador de Content Understanding adecuado para documentos, imágenes, audio y video, definir un esquema de campos y procesar archivos desde Python, con al menos un 80 % en el test.",
+ "objectives": [
+  "Identificar técnicas para extraer información de texto, imágenes, audio y video (Identify techniques to extract information from text, images, audio, and videos)",
+  "Extraer información de documentos y formularios con Azure Content Understanding in Foundry Tools (Extract information from documents and forms by using Azure Content Understanding in Foundry Tools)",
+  "Extraer información de imágenes con Content Understanding (Extract information from images by using Content Understanding)",
+  "Extraer información de audio y video con Content Understanding (Extract information from audio and video by using Content Understanding)",
+  "Crear una aplicación ligera con capacidades de extracción de información usando Content Understanding (Build a lightweight application with information extraction capabilities by using Content Understanding)"
+ ],
+ "lessons": [
+  {
+   "id": "s09-l1",
+   "title": "De contenido no estructurado a datos: técnicas de extracción",
+   "minutes": 14,
+   "goals": [
+    "Identificar qué técnica de extracción (OCR, análisis de layout, pares clave-valor, extracción de campos, clasificación, transcripción o segmentación) resuelve un escenario de texto, imagen, audio o video.",
+    "Distinguir el OCR, que solo lee caracteres, de la extracción de campos basada en esquema, que asigna a cada valor su significado de negocio.",
+    "Comparar la detección por plantillas, por machine learning y por IA generativa con esquema, y situar Content Understanding en este último enfoque."
+   ],
+   "takeaways": [
+    "**OCR** (*optical character recognition*) convierte en texto lo que aparece en una imagen, pero no sabe qué significa cada valor ni a qué campo pertenece.",
+    "**Layout analysis** detecta la estructura (párrafos, secciones, tablas, figuras, marcas de selección); la **extracción de campos** (*schema-based field extraction*) lleva cada valor a un campo como `InvoiceNumber` aunque la etiqueta cambie o falte.",
+    "En audio y video, las técnicas clave son la **transcripción** (*speech to text*, con marcas de tiempo y hablantes) y la **segmentación** en escenas o cambios de tema.",
+    "Trampa típica: la **normalización** (`15/11/2019` → `2019-11-15`) y la **validación cruzada** (suma de líneas = total) no las hace el OCR, sino la extracción de campos y el posprocesamiento.",
+    "Content Understanding usa **IA generativa con esquema**: rellena los campos sin ejemplos etiquetados (*zero-shot*), frente a las plantillas (frágiles ante variaciones) o el ML entrenado con ejemplos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La mayor parte de la información de una empresa vive en **contenido no estructurado** (*unstructured content*): PDFs de facturas, fotos de recibos, contratos escaneados, grabaciones de llamadas, videos de reuniones. Un ERP, una base de datos o un agente necesitan, en cambio, **datos estructurados**: `InvoiceNumber = \"INV-100\"`, `Total = 1585.98`, `Sentiment = \"Negative\"`. La **extracción de información** (*information extraction*) es el conjunto de técnicas de IA que cierra ese hueco."
+    },
+    {
+     "type": "p",
+     "text": "Procesarlo a mano es lento, caro y propenso a errores. Automatizarlo permite el **procesamiento directo** (*straight-through processing*, STP): los documentos fluyen de principio a fin sin intervención humana salvo cuando la IA no está segura."
+    },
+    {
+     "type": "diagram",
+     "title": "El problema: contenido no estructurado → datos estructurados",
+     "mermaid": "flowchart LR\n  A[\"Factura PDF\"] --> X[\"Extracción de información (IA)\"]\n  B[\"Foto de recibo\"] --> X\n  C[\"Llamada grabada\"] --> X\n  D[\"Video de reunión\"] --> X\n  X --> J[\"JSON con campos (clave-valor)\"]\n  X --> M[\"Markdown con el contenido\"]\n  J --> E[\"ERP, base de datos, RPA\"]\n  M --> S[\"Búsqueda, RAG, agentes\"]",
+     "caption": "Entradas multimodales se convierten en salida estructurada que otras aplicaciones pueden consumir."
+    },
+    {
+     "type": "h",
+     "text": "Técnicas clave por tipo de contenido"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Técnica",
+      "Qué hace",
+      "Modalidad típica",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "OCR (*optical character recognition*, reconocimiento óptico de caracteres)",
+       "Convierte texto impreso o manuscrito de una imagen en texto digital",
+       "Documentos escaneados, fotos",
+       "Leer el texto de un recibo fotografiado"
+      ],
+      [
+       "Análisis de layout (*layout analysis*)",
+       "Detecta estructura: párrafos, títulos, secciones, tablas, figuras, marcas de selección",
+       "Documentos",
+       "Reconstruir la tabla de líneas de una factura"
+      ],
+      [
+       "Extracción de pares clave-valor (*key-value pairs*)",
+       "Asocia una etiqueta con su valor",
+       "Formularios",
+       "\"Invoice #:\" → \"INV-100\""
+      ],
+      [
+       "Extracción de tablas",
+       "Recupera filas y columnas con sus celdas",
+       "Documentos",
+       "Líneas de pedido con cantidad y precio"
+      ],
+      [
+       "Extracción de campos basada en esquema (*schema-based field extraction*)",
+       "Mapea el contenido a campos definidos, aunque las etiquetas cambien o falten",
+       "Todas",
+       "`VendorName`, `DueDate`, `LineItems`"
+      ],
+      [
+       "Clasificación de documentos (*classification*)",
+       "Asigna una categoría a un archivo o a un segmento",
+       "Documentos, video",
+       "¿Es factura, recibo o contrato?"
+      ],
+      [
+       "Transcripción (*speech to text*)",
+       "Convierte voz en texto con marcas de tiempo y hablantes",
+       "Audio, video",
+       "Transcribir una llamada de soporte"
+      ],
+      [
+       "Descripción de escenas y segmentación de video",
+       "Divide el video en segmentos (escenas, cambios de tema) y describe lo que ocurre",
+       "Video",
+       "Separar anuncios del contenido deportivo"
+      ],
+      [
+       "Descripción de imágenes / figuras",
+       "Genera texto que describe una imagen, gráfico o diagrama",
+       "Imágenes, figuras en PDFs",
+       "Describir un gráfico circular para indexarlo"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El objetivo «Identify techniques to extract information from text, images, audio, and videos» es conceptual: te darán un escenario y debes reconocer la técnica. **OCR** = leer texto de una imagen; **layout** = estructura (tablas, secciones); **field extraction** = significado de negocio de cada valor; **transcription** = audio a texto; **segmentation** = dividir contenido (escenas de video, documentos concatenados)."
+    },
+    {
+     "type": "h",
+     "text": "OCR no es lo mismo que extracción de campos"
+    },
+    {
+     "type": "p",
+     "text": "El OCR básico te dice **qué texto existe** y dónde está, pero no entiende su significado ni las relaciones entre palabras. La **extracción de campos** (*field extraction*) te dice **qué significa** ese texto y **a qué campo de negocio pertenece**. Por eso \"Invoice No.\", \"Invoice #\" o un número sin etiqueta pueden terminar en el mismo campo `InvoiceNumber`: el esquema se aplica **semánticamente**."
+    },
+    {
+     "type": "diagram",
+     "title": "Canal clásico de extracción de campos (módulo de Microsoft Learn)",
+     "mermaid": "flowchart LR\n  A[\"1. Ingesta de salida OCR (texto, posiciones, confianza)\"] --> B[\"2. Detección de candidatos (plantillas, ML o LLM)\"]\n  B --> C[\"3. Mapeo y asociación (clave-valor, tablas)\"]\n  C --> D[\"4. Normalización y validación (fechas ISO, importes)\"]\n  D --> E[\"5. Integración con sistemas de negocio\"]",
+     "caption": "Content Understanding automatiza todas estas etapas dentro de un analizador."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Detección basada en plantillas**: reglas, posiciones fijas, expresiones regulares. Precisa y explicable para un único formato, frágil ante variaciones.",
+      "**Detección con machine learning**: modelos entrenados con ejemplos etiquetados (por ejemplo, modelos personalizados de Document Intelligence).",
+      "**IA generativa con esquema**: un LLM recibe el contenido y el esquema y rellena los campos, incluso sin ejemplos (*zero-shot*). Es el enfoque de Content Understanding."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa típica: pensar que la **validación cruzada** (que la suma de líneas coincida con el total) o la **normalización** (convertir \"15/11/2019\" en `2019-11-15`) las hace el OCR. El OCR solo lee caracteres; esas tareas pertenecen a la etapa de extracción de campos y posprocesamiento."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Contenido no estructurado",
+       "en": "Unstructured content",
+       "def": "Información sin un esquema fijo: documentos, imágenes, audio, video."
+      },
+      {
+       "term": "OCR",
+       "en": "Optical character recognition",
+       "def": "Técnica que convierte texto de imágenes en texto digital editable."
+      },
+      {
+       "term": "Análisis de layout",
+       "en": "Layout analysis",
+       "def": "Detección de la estructura del documento: párrafos, secciones, tablas, figuras."
+      },
+      {
+       "term": "Par clave-valor",
+       "en": "Key-value pair",
+       "def": "Etiqueta asociada a su valor, p. ej. \"Total\" → 1585.98."
+      },
+      {
+       "term": "Procesamiento directo",
+       "en": "Straight-through processing (STP)",
+       "def": "Proporción de documentos que se procesan sin revisión humana."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l2",
+   "title": "Cómo funciona Azure Content Understanding",
+   "minutes": 16,
+   "goals": [
+    "Describir el recorrido de un análisis (entrada → analizador → extracción de contenido → segmentación opcional → extracción de campos → salida) y el papel central del analizador.",
+    "Identificar qué analizadores necesitan despliegues de modelos de Foundry (chat completion y embeddings) y cómo fijarlos como valores por defecto del recurso.",
+    "Interpretar un resultado: `contents` con `markdown` y `fields`, más las propiedades propias de documentos (`pages`, `tables`) y de audio/video (`transcriptPhrases`, tiempos en ms).",
+    "Elegir entre Content Understanding Studio, el playground de Foundry y la REST API o los SDK según haya que probar prebuilt, crear analizadores personalizados o integrar en una app."
+   ],
+   "takeaways": [
+    "El **analizador** (*analyzer*) es el componente que define cómo se procesa el contenido y qué campos se extraen: reúne configuración de extracción, esquema de campos y modelos.",
+    "La salida estructurada es doble: **markdown** (ideal para búsqueda y RAG) y **JSON** alineado con tu esquema (ideal para automatización).",
+    "`prebuilt-read` y `prebuilt-layout` **no necesitan** modelos; los analizadores RAG (`prebuilt-*Search`) y los de dominio (`prebuilt-invoice`…) usan tus despliegues de chat completion y embeddings, cuyos tokens se facturan aparte.",
+    "Los **analizadores personalizados** se crean en **Content Understanding Studio** (o por API); el playground de Foundry solo permite probar Read, Layout y un subconjunto de prebuilt."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "**Azure Content Understanding in Foundry Tools** es una herramienta de Foundry (*Foundry Tool*) que forma parte del recurso **Microsoft Foundry** en Azure. Usa IA generativa para procesar documentos, imágenes, audio y video y devolverlos en un formato de salida definido por ti. La versión de API **GA es `2025-11-01`** (recomendada para producción); `2026-06-01-preview` añade funciones en preview (modo agéntico, segmentación dentro de página, detección de firmas)."
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo de Content Understanding",
+     "mermaid": "flowchart LR\n  I[\"Entrada: documento, imagen, audio o video\"] --> A[\"Analizador (analyzer)\"]\n  A --> CE[\"Extracción de contenido: OCR, layout, transcripción\"]\n  CE --> SG[\"Segmentación y clasificación (opcional)\"]\n  SG --> FE[\"Extracción de campos según el esquema\"]\n  FE --> CG[\"Confianza y grounding\"]\n  CG --> O[\"Salida: JSON con fields + markdown\"]\n  FM[\"Modelos de Foundry (completion + embeddings)\"] -.-> FE",
+     "caption": "El analizador aplica siempre la misma configuración y el mismo esquema a todo el contenido que recibe."
+    },
+    {
+     "type": "h",
+     "text": "Componentes"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Componente",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "**Inputs** (entradas)",
+       "Documentos (PDF, imágenes, Office, texto, email), imágenes, audio y video."
+      ],
+      [
+       "**Analyzer** (analizador)",
+       "Núcleo del servicio: define configuración de extracción de contenido, esquema de campos y despliegues de modelos. Puede ser prebuilt o personalizado."
+      ],
+      [
+       "**Content extraction** (extracción de contenido)",
+       "OCR, marcas de selección, códigos de barras, fórmulas, layout (párrafos, secciones, tablas). En audio/video: transcripción y elementos visuales clave."
+      ],
+      [
+       "**Segmentation** (segmentación)",
+       "Divide documentos o videos en secciones lógicas (`enableSegment`), p. ej. separar varios documentos concatenados o dividir un video en escenas."
+      ],
+      [
+       "**Field extraction** (extracción de campos)",
+       "Genera pares clave-valor según tu esquema con tres métodos: `extract`, `generate`, `classify`."
+      ],
+      [
+       "**Confidence scores** (confianza)",
+       "Estimación de fiabilidad de 0 a 1 por campo. Se activa con `estimateFieldSourceAndConfidence`."
+      ],
+      [
+       "**Grounding** (anclaje en la fuente)",
+       "Indica la región exacta del contenido de la que sale cada valor, para verificarlo rápido."
+      ],
+      [
+       "**Contextualization**",
+       "Capa que prepara el contexto para los modelos generativos y posprocesa su salida (normalización, confianza, grounding)."
+      ],
+      [
+       "**Foundry models**",
+       "Tus propios despliegues de un modelo de *chat completion* (p. ej. GPT-5.2, GPT-4.1) y uno de *embeddings* (p. ej. text-embedding-3-large)."
+      ],
+      [
+       "**Structured output**",
+       "Markdown (ideal para búsqueda/RAG) y JSON alineado con tu esquema (ideal para automatización)."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda el orden: **Input → Analyzer → Content extraction → (Segmentation) → Field extraction → Output JSON + markdown**. Si una pregunta dice «qué componente define cómo se procesa el contenido y qué campos se extraen», la respuesta es el **analizador**."
+    },
+    {
+     "type": "h",
+     "text": "Modelos de Foundry: lo que hay que configurar antes"
+    },
+    {
+     "type": "p",
+     "text": "Content Understanding **usa tus despliegues de modelos de Foundry** para todo lo generativo (extracción de campos, descripciones de figuras, resúmenes). Necesitas un modelo de chat completion y uno de embeddings. Puedes fijarlos como **valores por defecto del recurso** (`PATCH /contentunderstanding/defaults`, o `client.update_defaults(...)` en Python, o en *Settings* de Content Understanding Studio con autodespliegue) o pasarlos en cada petición con `modelDeployments`. Los tokens de esos despliegues se facturan aparte de los medidores propios de Content Understanding."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`prebuilt-read` y `prebuilt-layout` **no requieren** modelo de lenguaje ni de embeddings. Los analizadores RAG (`prebuilt-*Search`) y los de dominio (`prebuilt-invoice`, etc.) sí. Si tu análisis de factura falla con un error de modelo, revisa los despliegues por defecto."
+    },
+    {
+     "type": "h",
+     "text": "Dónde se usa: portales y API"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Experiencia",
+      "Para qué",
+      "Notas 2026"
+     ],
+     "rows": [
+      [
+       "**Content Understanding Studio** (contentunderstanding.ai.azure.com)",
+       "Catálogo completo de prebuilt, crear analizadores personalizados, clasificación, aprendizaje en contexto con etiquetado",
+       "Soporta API GA `2025-11-01` y `2026-06-01-preview`"
+      ],
+      [
+       "**Content Understanding playground** en Microsoft Foundry (new)",
+       "Probar Read, Layout y un subconjunto de prebuilt (documento, imagen, audio, video)",
+       "Usa `2026-06-01-preview`. No crea analizadores personalizados"
+      ],
+      [
+       "**REST API / SDKs**",
+       "Integrar en aplicaciones",
+       "Python: `azure-ai-contentunderstanding` 1.1.0 (GA), API por defecto `2025-11-01`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Foundry (classic) dejó de estar disponible para Content Understanding el 15 de julio de 2026. Si un tutorial antiguo habla de «Content Understanding project» en el portal clásico, hoy ese flujo está en Content Understanding Studio."
+    },
+    {
+     "type": "h",
+     "text": "Estructura de la salida"
+    },
+    {
+     "type": "p",
+     "text": "Una llamada de análisis es **asíncrona** (operación de larga duración, *long-running operation*): el POST devuelve `202 Accepted` con una cabecera `Operation-Location` y tú (o el SDK) consultas el resultado hasta que `status` sea `Succeeded`. El resultado contiene `contents`, una lista de objetos de contenido."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "{\n  \"id\": \"ce05fb5a-...\",\n  \"status\": \"Succeeded\",\n  \"result\": {\n    \"analyzerId\": \"prebuilt-invoice\",\n    \"apiVersion\": \"2025-11-01\",\n    \"contents\": [\n      {\n        \"kind\": \"document\",\n        \"markdown\": \"# INVOICE\\n\\nCONTOSO LTD. ...\",\n        \"startPageNumber\": 1,\n        \"endPageNumber\": 1,\n        \"fields\": {\n          \"CustomerName\": { \"type\": \"string\", \"valueString\": \"MICROSOFT CORPORATION\", \"confidence\": 0.95 },\n          \"InvoiceDate\":  { \"type\": \"date\",   \"valueDate\": \"2019-11-15\",            \"confidence\": 0.994 }\n        },\n        \"pages\": [], \"paragraphs\": [], \"sections\": [], \"tables\": [], \"figures\": []\n      }\n    ]\n  }\n}",
+     "caption": "Respuesta simplificada. En audio/video `kind` es audioVisual y aparecen transcriptPhrases (con startTimeMs, endTimeMs, speaker y text) y keyFrameTimesMs."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Propiedad",
+      "Documento (`DocumentContent`)",
+      "Audio/Video (`AudioVisualContent`)"
+     ],
+     "rows": [
+      [
+       "`markdown`",
+       "Texto con estructura (títulos, tablas)",
+       "Transcripción y descripciones en markdown"
+      ],
+      [
+       "`fields`",
+       "Campos del esquema",
+       "Campos del esquema (resumen, temas, sentimiento...)"
+      ],
+      [
+       "Estructura",
+       "`pages`, `paragraphs`, `sections`, `tables`, `figures`",
+       "`transcript_phrases`, `key_frame_times_ms`, `camera_shot_times_ms`"
+      ],
+      [
+       "Posición",
+       "`start_page_number`, `end_page_number`",
+       "`start_time_ms`, `end_time_ms`"
+      ]
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Analizador",
+       "en": "Analyzer",
+       "def": "Unidad que recibe contenido, aplica configuración y esquema, y devuelve resultados estructurados."
+      },
+      {
+       "term": "Operación de larga duración",
+       "en": "Long-running operation (LRO)",
+       "def": "Llamada asíncrona: se inicia, se sondea y se obtiene el resultado al terminar."
+      },
+      {
+       "term": "Grounding",
+       "en": "Source grounding",
+       "def": "Referencia a la región de origen de cada valor extraído."
+      },
+      {
+       "term": "Despliegues por defecto",
+       "en": "Default model deployments",
+       "def": "Mapeo a nivel de recurso entre nombres de modelo/alias y tus despliegues de Foundry."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l3",
+   "title": "Analizadores prebuilt: qué usar en cada escenario",
+   "minutes": 16,
+   "goals": [
+    "Elegir el analizador prebuilt adecuado para un escenario de documentos, imágenes, audio o video dentro de sus familias: extracción de contenido, base, RAG, dominio y utilidad.",
+    "Distinguir los pares que más confunde el examen: `prebuilt-read` frente a `prebuilt-layout`, `prebuilt-invoice` frente a `prebuilt-receipt` y `prebuilt-audioSearch` frente a `prebuilt-callCenter`.",
+    "Identificar los analizadores base como único padre (`baseAnalyzerId`) de un analizador personalizado y explicar por qué en producción conviene copiar un prebuilt en lugar de usarlo directamente."
+   ],
+   "takeaways": [
+    "Todos los prebuilt se invocan igual (`POST .../analyzers/{analyzerId}:analyze`); solo cambia el `analyzerId`.",
+    "**read vs layout**: `prebuilt-read` es solo OCR (texto sin estructura); si necesitas tablas, secciones o figuras, usa `prebuilt-layout`.",
+    "**invoice vs receipt**: `prebuilt-invoice` para facturas de proveedores (cuentas a pagar), `prebuilt-receipt` para tickets de tiendas y restaurantes y `prebuilt-idDocument` para pasaportes y documentos de identidad.",
+    "**audioSearch vs callCenter**: `prebuilt-audioSearch` transcribe y resume para búsqueda; `prebuilt-callCenter` añade temas, sentimiento e insights de la llamada. Los `*Search` (como `prebuilt-videoSearch`, que segmenta el video) están pensados para **RAG**.",
+    "Un analizador personalizado **solo** puede derivar (`baseAnalyzerId`) de `prebuilt-document`, `prebuilt-image`, `prebuilt-audio` o `prebuilt-video`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Content Understanding ofrece varias familias de **analizadores prebuilt** (preconstruidos). Todos se invocan igual: `POST /contentunderstanding/analyzers/{analyzerId}:analyze`. Solo cambia el `analyzerId`."
+    },
+    {
+     "type": "diagram",
+     "title": "Familias de analizadores",
+     "mermaid": "mindmap\n  root((\"Analizadores\"))\n    Content extraction\n      prebuilt-read\n      prebuilt-layout\n      prebuilt-digitalParse\n    Base\n      prebuilt-document\n      prebuilt-image\n      prebuilt-audio\n      prebuilt-video\n    RAG\n      prebuilt-documentSearch\n      prebuilt-imageSearch\n      prebuilt-audioSearch\n      prebuilt-videoSearch\n    Domain specific\n      prebuilt-invoice\n      prebuilt-receipt\n      prebuilt-idDocument\n      prebuilt-callCenter\n    Utility\n      prebuilt-documentFieldSchema\n      prebuilt-documentFields",
+     "caption": "Solo se muestran los más representativos de la familia de dominio."
+    },
+    {
+     "type": "h",
+     "text": "1. Content extraction (OCR y layout)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Analizador",
+      "Qué extrae",
+      "¿Necesita LLM?"
+     ],
+     "rows": [
+      [
+       "`prebuilt-read`",
+       "OCR básico: palabras, párrafos, fórmulas, códigos de barras. Sin análisis de layout",
+       "No"
+      ],
+      [
+       "`prebuilt-layout`",
+       "Texto + estructura: tablas, figuras, secciones, formato, hipervínculos, anotaciones",
+       "No"
+      ],
+      [
+       "`prebuilt-digitalParse`",
+       "Contenido legible por máquina leyendo la estructura interna del archivo (no para escaneados)",
+       "No"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "2. Base analyzers"
+    },
+    {
+     "type": "p",
+     "text": "`prebuilt-document`, `prebuilt-image`, `prebuilt-audio` y `prebuilt-video` son el procesamiento fundamental de cada modalidad. Se usan sobre todo como **padre** (`baseAnalyzerId`) al crear analizadores personalizados. **Solo** se puede derivar un analizador personalizado de uno de estos cuatro."
+    },
+    {
+     "type": "h",
+     "text": "3. RAG analyzers (búsqueda y RAG)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Analizador",
+      "Qué produce"
+     ],
+     "rows": [
+      [
+       "`prebuilt-documentSearch`",
+       "Markdown con layout, descripciones de figuras (gráficos como chart.js, diagramas como mermaid), anotaciones manuscritas, resumen de un párrafo, salida troceada (*chunked*) lista para embeddings. Recomendado para ingesta RAG de documentos"
+      ],
+      [
+       "`prebuilt-imageSearch`",
+       "Descripción de un párrafo e insights de la imagen para búsqueda"
+      ],
+      [
+       "`prebuilt-audioSearch`",
+       "Transcripción de conversaciones (audio y video) y resumen de un párrafo, multilocale"
+      ],
+      [
+       "`prebuilt-videoSearch`",
+       "Segmenta el video por cambios de tema/escena y da transcripción + descripción y resumen por segmento"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "4. Domain-specific analyzers (verticales)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Analizador",
+      "Documentos"
+     ],
+     "rows": [
+      [
+       "`prebuilt-invoice`",
+       "Facturas, facturas de suministros, pedidos de venta y de compra"
+      ],
+      [
+       "`prebuilt-receipt` (y `.generic`, `.hotel`)",
+       "Recibos de tiendas y restaurantes; recibos genéricos; folios de hotel"
+      ],
+      [
+       "`prebuilt-procurement`",
+       "Analizador compuesto: clasifica y enruta documentos de compras al analizador correcto"
+      ],
+      [
+       "`prebuilt-idDocument` (y `.passport`, `.generic`)",
+       "Permisos de conducir, DNIs/IDs, pasaportes, permisos de residencia"
+      ],
+      [
+       "`prebuilt-utilityBill`",
+       "Facturas de luz, agua, gas, internet, teléfono"
+      ],
+      [
+       "`prebuilt-contract`",
+       "Contratos y acuerdos comerciales"
+      ],
+      [
+       "`prebuilt-creditCard`, `prebuilt-bankStatement.us`, `prebuilt-check.us`",
+       "Extractos de tarjeta, extractos bancarios (EE. UU.), cheques (EE. UU.)"
+      ],
+      [
+       "`prebuilt-tax.us` (y `.w2`, `.1040`, `.1099...`)",
+       "Formularios fiscales de EE. UU.; `prebuilt-tax.us` clasifica y enruta"
+      ],
+      [
+       "`prebuilt-mortgage.us`",
+       "Documentos hipotecarios de EE. UU. (compuesto)"
+      ],
+      [
+       "`prebuilt-payStub.us`, `prebuilt-healthInsuranceCard.us`",
+       "Nóminas y tarjetas de seguro médico de EE. UU."
+      ],
+      [
+       "`prebuilt-callCenter`",
+       "Grabaciones de llamadas: temas, sentimiento e insights clave"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "5. Utility analyzers"
+    },
+    {
+     "type": "p",
+     "text": "`prebuilt-documentFieldSchema` **propone un esquema** analizando un documento nuevo; `prebuilt-documentFields` extrae pares clave-valor genéricos (lo usan internamente los analizadores de dominio cuando el documento no encaja en su esquema)."
+    },
+    {
+     "type": "h",
+     "text": "Tabla escenario → analizador"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escenario",
+      "Analizador"
+     ],
+     "rows": [
+      [
+       "Digitalizar el texto de documentos escaneados, sin estructura",
+       "`prebuilt-read`"
+      ],
+      [
+       "Extraer tablas y secciones de informes PDF",
+       "`prebuilt-layout`"
+      ],
+      [
+       "Automatizar cuentas a pagar con facturas de muchos proveedores",
+       "`prebuilt-invoice`"
+      ],
+      [
+       "Gastos de viaje con fotos de tickets de restaurante",
+       "`prebuilt-receipt`"
+      ],
+      [
+       "Verificar identidad en el alta de un cliente (pasaporte, carné)",
+       "`prebuilt-idDocument`"
+      ],
+      [
+       "Indexar manuales con gráficos para un chatbot RAG",
+       "`prebuilt-documentSearch`"
+      ],
+      [
+       "Hacer buscables fotos de un catálogo por su descripción",
+       "`prebuilt-imageSearch`"
+      ],
+      [
+       "Transcribir y resumir grabaciones de podcasts para búsqueda",
+       "`prebuilt-audioSearch`"
+      ],
+      [
+       "Temas y sentimiento de llamadas de soporte",
+       "`prebuilt-callCenter`"
+      ],
+      [
+       "Dividir webinars grabados en capítulos con resumen",
+       "`prebuilt-videoSearch`"
+      ],
+      [
+       "Extraer partes, fechas y obligaciones de contratos",
+       "`prebuilt-contract`"
+      ],
+      [
+       "Campos propios que ningún prebuilt cubre (p. ej. partes de siniestro)",
+       "Analizador personalizado sobre `prebuilt-document`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Las preguntas de escenario suelen jugar con **read vs layout** (¿necesitas tablas? → layout), **invoice vs receipt** (proveedor que te factura vs ticket de compra) y **audioSearch vs callCenter** (transcripción/resumen genérico vs analítica de llamadas con sentimiento y temas). Los analizadores `*Search` están pensados para **RAG y búsqueda**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Las definiciones de los prebuilt pueden cambiar entre versiones de API. En producción, Microsoft recomienda **copiar** el prebuilt (GET de su definición y PUT como analizador propio) en lugar de depender directamente del prebuilt."
+    },
+    {
+     "type": "h",
+     "text": "Ejemplos por modalidad"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Factura (documento)** con `prebuilt-invoice`: `VendorName`, `InvoiceId`, `InvoiceDate`, `TotalAmount` (objeto con `Amount` y `CurrencyCode`), `LineItems` (array de objetos con `Description`, `Quantity`...).",
+      "**Recibo (imagen)** con `prebuilt-receipt`: comercio, fecha, artículos, total, aunque la foto esté torcida (OCR + layout + campos).",
+      "**ID (imagen)** con `prebuilt-idDocument`: nombre, fecha de nacimiento, número de documento, caducidad.",
+      "**Llamada de call center (audio)** con `prebuilt-callCenter`: transcripción por hablante, temas, sentimiento. Con un esquema propio podrías extraer también «motivo de la llamada» o «acción solicitada».",
+      "**Video de reunión** con `prebuilt-videoSearch`: segmentos con marcas de tiempo, transcripción y descripción de cada segmento; con un esquema propio, asistentes, acuerdos y tareas asignadas."
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Analizador prebuilt",
+       "en": "Prebuilt analyzer",
+       "def": "Analizador listo para usar, mantenido por Microsoft, para un escenario común."
+      },
+      {
+       "term": "Analizador base",
+       "en": "Base analyzer",
+       "def": "prebuilt-document/image/audio/video: padre obligatorio de un analizador personalizado."
+      },
+      {
+       "term": "Analizador compuesto",
+       "en": "Composed analyzer",
+       "def": "Prebuilt que clasifica y enruta al analizador específico (p. ej. prebuilt-tax.us, prebuilt-procurement)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l4",
+   "title": "Analizadores personalizados: esquemas, confianza y clasificación",
+   "minutes": 18,
+   "goals": [
+    "Diseñar un esquema de campos (*field schema*) con los tipos adecuados, incluidos grupos (`object`) y listas o tablas (`array`), y una descripción precisa para cada campo.",
+    "Elegir el método de generación de cada campo (`extract`, `generate` o `classify`) según la modalidad del contenido y el valor que se necesita.",
+    "Configurar la confianza y el grounding (`estimateFieldSourceAndConfidence`) para enviar a revisión humana los campos que queden por debajo de un umbral.",
+    "Distinguir el método `classify` de un campo de la clasificación y segmentación del contenido con `contentCategories` y `enableSegment`."
+   ],
+   "takeaways": [
+    "La `description` de cada campo funciona como su prompt: ser específico (formato, dónde suele aparecer, qué hacer si falta) mejora la precisión más que añadir campos.",
+    "**`extract` solo está soportado en documentos**; en imagen, audio y video solo existen `generate` (resumir, inferir) y `classify` (elegir un valor de una lista `enum`).",
+    "Una *table field* es un `array` de `object`: p. ej. `LineItems`, con descripción, cantidad y precio de cada línea.",
+    "Con `estimateFieldSourceAndConfidence`, cada campo trae `confidence` (0–1) y `source`; por debajo del umbral va a revisión **human-in-the-loop**. La confianza es una estimación, no una garantía.",
+    "No confundas el **método `classify`** (etiqueta un valor dentro del esquema, p. ej. sentimiento) con **`contentCategories`** (clasifica o segmenta el archivo y puede enrutar cada parte a otro analizador)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cuando ningún prebuilt cubre tus campos, creas un **analizador personalizado** (*custom analyzer*): eliges un analizador base, configuras la extracción de contenido y defines un **esquema de campos** (*field schema*). No necesitas datos etiquetados para empezar: describes cada campo en lenguaje natural (*zero-shot*). Opcionalmente, en documentos, puedes añadir ejemplos etiquetados como base de conocimiento (*in-context learning*) para mejorar la precisión."
+    },
+    {
+     "type": "h",
+     "text": "Tipos de campo"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo",
+      "Uso",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`string`",
+       "Texto",
+       "`VendorName`"
+      ],
+      [
+       "`date` / `time`",
+       "Fecha / hora normalizadas",
+       "`InvoiceDate` = 2019-11-15"
+      ],
+      [
+       "`number` / `integer`",
+       "Decimales / enteros",
+       "`Total` = 1585.98, `Quantity` = 2"
+      ],
+      [
+       "`boolean`",
+       "Sí/no",
+       "`IsSigned`"
+      ],
+      [
+       "`array` (*list field* o *table field*)",
+       "Colección de elementos del mismo tipo (con `items`)",
+       "`LineItems`"
+      ],
+      [
+       "`object` (*group field*)",
+       "Grupo de subcampos relacionados (con `properties`)",
+       "`TotalAmount` {Amount, CurrencyCode}"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Combinando `array` y `object` modelas **campos anidados** y **colecciones**: una *table field* es un array de objetos (cada línea de factura con descripción, cantidad, precio unitario y total)."
+    },
+    {
+     "type": "h",
+     "text": "Métodos de generación: extract, generate, classify"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método",
+      "Qué hace",
+      "Modalidades",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`extract`",
+       "Extrae el valor **tal como aparece** en el contenido",
+       "**Solo documentos**",
+       "Fecha de un recibo, número de pedido"
+      ],
+      [
+       "`generate`",
+       "**Genera** el valor libremente a partir del contenido (resumir, inferir)",
+       "Todas",
+       "Resumen de una llamada, descripción de una escena"
+      ],
+      [
+       "`classify`",
+       "Elige un valor de una **lista cerrada** (`enum`)",
+       "Todas",
+       "Sentimiento: Positive/Neutral/Negative; tipo de gráfico"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Dato muy preguntable: el método **`extract` solo está soportado en documentos**. Para imagen, audio y video solo existen **`generate` y `classify`**. Si te piden «resumir una llamada» → `generate`; «asignar una categoría de una lista» → `classify` con `enum`."
+    },
+    {
+     "type": "diagram",
+     "title": "Esquema de un analizador de pedidos (clases)",
+     "mermaid": "classDiagram\n  class Pedido {\n    string NumeroPedido extract\n    date FechaPedido extract\n    string Urgencia classify\n    string Resumen generate\n    array Lineas extract\n  }\n  class Linea {\n    string Producto\n    integer Cantidad\n    number PrecioUnitario\n  }\n  Pedido \"1\" --> \"*\" Linea : items",
+     "caption": "Lineas es una colección (array) de objetos Linea."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "{\n  \"description\": \"Analizador de pedidos de compra de Contoso\",\n  \"baseAnalyzerId\": \"prebuilt-document\",\n  \"models\": { \"completion\": \"gpt-5.2\", \"embedding\": \"text-embedding-3-large\" },\n  \"config\": {\n    \"enableOcr\": true,\n    \"enableLayout\": true,\n    \"returnDetails\": true,\n    \"estimateFieldSourceAndConfidence\": true\n  },\n  \"fieldSchema\": {\n    \"fields\": {\n      \"NumeroPedido\": { \"type\": \"string\", \"method\": \"extract\", \"description\": \"Número del pedido de compra\" },\n      \"FechaPedido\":  { \"type\": \"date\",   \"method\": \"extract\", \"description\": \"Fecha de emisión del pedido\" },\n      \"Urgencia\": {\n        \"type\": \"string\", \"method\": \"classify\",\n        \"description\": \"Urgencia según las fechas de entrega solicitadas\",\n        \"enum\": [\"alta\", \"media\", \"baja\"]\n      },\n      \"Resumen\": { \"type\": \"string\", \"method\": \"generate\", \"description\": \"Resumen de una frase del pedido\" },\n      \"Lineas\": {\n        \"type\": \"array\", \"method\": \"extract\", \"description\": \"Líneas del pedido\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"Producto\":       { \"type\": \"string\",  \"description\": \"Nombre del producto\" },\n            \"Cantidad\":       { \"type\": \"integer\", \"description\": \"Unidades pedidas\" },\n            \"PrecioUnitario\": { \"type\": \"number\",  \"description\": \"Precio por unidad\" }\n          }\n        }\n      }\n    }\n  }\n}",
+     "caption": "Se crea con PUT {endpoint}/contentunderstanding/analyzers/{analyzerId}?api-version=2025-11-01 y se usa como cualquier prebuilt."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "La `description` de cada campo es tu «prompt»: sé específico (formato, dónde suele aparecer, qué hacer si falta). Una buena descripción mejora más la precisión que añadir campos."
+    },
+    {
+     "type": "h",
+     "text": "Confianza, grounding y revisión humana"
+    },
+    {
+     "type": "p",
+     "text": "Con `estimateFieldSourceAndConfidence` (en `config` o por campo con `estimateSourceAndConfidence`) cada valor incluye `confidence` (0 a 1) y `source`, una expresión de posición del tipo `D(página,x1,y1,...)`, más `spans` con la posición en el markdown. Con esto diseñas un flujo **human-in-the-loop** (humano en el bucle)."
+    },
+    {
+     "type": "diagram",
+     "title": "Enrutado por umbral de confianza",
+     "mermaid": "flowchart TD\n  R[\"Resultado del análisis\"] --> C{\"¿Todos los campos críticos con confianza >= umbral?\"}\n  C -->|\"Sí\"| A[\"Procesamiento directo (STP) al ERP\"]\n  C -->|\"No\"| H[\"Cola de revisión humana\"]\n  H --> G[\"El revisor usa el grounding para ver el origen\"]\n  G --> F[\"Corrige y aprueba\"]\n  F --> A",
+     "caption": "El umbral lo decide el negocio: más alto = menos errores pero más revisión manual."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "La confianza es una **estimación**, no una garantía. Fija umbrales por campo según el riesgo (un IBAN exige más que un nombre de comercio) y mide la tasa real de errores con una muestra etiquetada. Esto conecta con los principios de IA responsable de **fiabilidad** y **responsabilidad** (*accountability*)."
+    },
+    {
+     "type": "h",
+     "text": "Clasificación y segmentación"
+    },
+    {
+     "type": "p",
+     "text": "Un analizador puede **clasificar** el archivo completo o **dividirlo** en segmentos con `contentCategories` y `enableSegment`. Cada categoría tiene nombre y descripción y puede enlazar un `analyzerId` para enrutar ese segmento a otro analizador (clasificar + segmentar + analizar en una sola llamada). No requiere datos de entrenamiento."
+    },
+    {
+     "type": "diagram",
+     "title": "Clasificar, segmentar y enrutar un paquete de préstamo",
+     "mermaid": "flowchart LR\n  P[\"PDF con solicitud, nómina y extracto\"] --> K[\"Analizador clasificador (enableSegment = true)\"]\n  K -->|\"Solicitud\"| A1[\"Analizador personalizado de solicitudes\"]\n  K -->|\"Nómina\"| A2[\"prebuilt-payStub.us\"]\n  K -->|\"Extracto\"| A3[\"prebuilt-bankStatement.us\"]\n  K -->|\"other\"| A4[\"Sin análisis\"]\n  A1 --> O[\"Un resultado con varios contents\"]\n  A2 --> O\n  A3 --> O",
+     "caption": "En la GA debes incluir la categoría other si quieres que haya contenido sin clasificar."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Documentos**: hasta 200 categorías por analizador; la unidad mínima es la página (la segmentación dentro de una página es preview en `2026-06-01-preview`).",
+      "**Video**: solo segmentación; se define **una** `contentCategories` con `enableSegment = true` y la `description` indica el criterio (p. ej. separar juego, anuncios y comentarios).",
+      "Clasificación jerárquica: hasta 5 niveles en documentos, 2 en video."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "No confundas el **método `classify` de un campo** (etiqueta un valor dentro del esquema, p. ej. sentimiento) con la **clasificación de contenido** (`contentCategories`, decide el tipo de documento o segmento y puede enrutar a otro analizador)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Esquema de campos",
+       "en": "Field schema",
+       "def": "Definición de qué campos extraer, su tipo, método y descripción."
+      },
+      {
+       "term": "Método de generación",
+       "en": "Generation method",
+       "def": "extract, generate o classify: cómo se obtiene el valor del campo."
+      },
+      {
+       "term": "Puntuación de confianza",
+       "en": "Confidence score",
+       "def": "Valor 0–1 que estima la fiabilidad de un campo extraído."
+      },
+      {
+       "term": "Humano en el bucle",
+       "en": "Human-in-the-loop",
+       "def": "Revisión manual de los resultados con baja confianza."
+      },
+      {
+       "term": "Categorías de contenido",
+       "en": "contentCategories",
+       "def": "Definición de clases para clasificar o segmentar un archivo y enrutar a analizadores."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l5",
+   "title": "Construir la app: SDK de Python, REST, comparación y RAG",
+   "minutes": 18,
+   "goals": [
+    "Escribir una app en Python que analice un archivo con `ContentUnderstandingClient`, `begin_analyze` y `poller.result()`, y recorra los campos del resultado.",
+    "Identificar los pasos de la llamada REST equivalente: POST a `...:analyze`, respuesta `202` con `Operation-Location` y sondeo con GET hasta `Succeeded`.",
+    "Elegir entre Content Understanding, Document Intelligence y un LLM multimodal según la modalidad, el tipo de documento y la necesidad de ejecución local.",
+    "Explicar cómo los analizadores `*Search` preparan el contenido para RAG y agentes con markdown estructurado, descripciones de figuras y resúmenes."
+   ],
+   "takeaways": [
+    "Patrón del SDK: `ContentUnderstandingClient(endpoint, credential)` → `begin_analyze(analyzer_id, inputs)` devuelve un **poller** → `poller.result()` espera → `result.contents[0].markdown` y `.fields`.",
+    "Cada campo expone `.value` y `.confidence`; los archivos locales se envían con `begin_analyze_binary`, y en video hay que recorrer todos los `contents` (uno por segmento).",
+    "En REST el análisis es una **operación de larga duración** (LRO): POST `...:analyze` → **202 Accepted** + cabecera `Operation-Location` → GET hasta `status = Succeeded`.",
+    "Si un prebuilt cubre tu documento, empieza por él. **Document Intelligence** no está obsoleto y es la opción para entornos locales o desconectados (contenedores); Content Understanding, para contenido multimodal o no estructurado.",
+    "Un **LLM multimodal** usado directamente no ofrece confianza ni grounding y requiere preproceso (OCR, troceado de archivos grandes); Content Understanding incluye todo eso de serie."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "Preparación"
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "Crear un recurso **Microsoft Foundry** en una región soportada.",
+      "Desplegar un modelo de chat completion y uno de embeddings, y configurarlos como **defaults** (Studio con autodespliegue, `PATCH /contentunderstanding/defaults` o `client.update_defaults`).",
+      "Copiar el **endpoint** (`https://<recurso>.services.ai.azure.com/`) y la **clave**, o usar Microsoft Entra ID con `DefaultAzureCredential` (recomendado).",
+      "`pip install azure-ai-contentunderstanding azure-identity`"
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Analizar una factura con Python"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nfrom azure.ai.contentunderstanding import ContentUnderstandingClient\nfrom azure.ai.contentunderstanding.models import AnalysisInput, ArrayField, ObjectField\nfrom azure.core.credentials import AzureKeyCredential\n\nendpoint = os.environ[\"CONTENTUNDERSTANDING_ENDPOINT\"]  # https://<recurso>.services.ai.azure.com/\nkey = os.environ[\"CONTENTUNDERSTANDING_KEY\"]\n\nclient = ContentUnderstandingClient(endpoint=endpoint, credential=AzureKeyCredential(key))\n\ninvoice_url = \"https://raw.githubusercontent.com/Azure-Samples/azure-ai-content-understanding-assets/main/document/invoice.pdf\"\n\n# 1) Inicia la operación de larga duración (LRO)\npoller = client.begin_analyze(\n    analyzer_id=\"prebuilt-invoice\",\n    inputs=[AnalysisInput(url=invoice_url)],\n)\n# 2) Espera el resultado (el SDK hace el sondeo)\nresult = poller.result()\n\n# 3) Lee markdown y campos\ncontent = result.contents[0]\nprint(content.markdown[:300])\n\ncustomer = content.fields.get(\"CustomerName\")\nif customer:\n    print(\"Cliente:\", customer.value, \"confianza:\", customer.confidence)\n\ntotal = content.fields.get(\"TotalAmount\")\nif isinstance(total, ObjectField) and total.value:\n    print(\"Total:\", total.value[\"Amount\"].value, total.value[\"CurrencyCode\"].value)\n\nitems = content.fields.get(\"LineItems\")\nif isinstance(items, ArrayField) and items.value:\n    for item in items.value:\n        if isinstance(item, ObjectField) and item.value:\n            desc = item.value.get(\"Description\")\n            print(\"-\", desc.value if desc else \"N/A\")",
+     "caption": "Patrón verificado con el SDK 1.1.0: begin_analyze → poller.result() → result.contents → markdown y fields."
+    },
+    {
+     "type": "p",
+     "text": "Cada campo es un `ContentField` (`StringField`, `NumberField`, `DateField`, `ObjectField`, `ArrayField`...) con `.value`, `.confidence`, `.source` y `.spans`. Para archivos locales usa `client.begin_analyze_binary(analyzer_id=..., binary_input=bytes)`; el parámetro opcional `content_range` limita páginas (\"1-3,5\") o milisegundos en audio/video. Con `result.as_dict()` obtienes un diccionario serializable a JSON."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Audio: transcripción por hablante\npoller = client.begin_analyze(\n    analyzer_id=\"prebuilt-audioSearch\",\n    inputs=[AnalysisInput(url=\"https://raw.githubusercontent.com/Azure-Samples/azure-ai-content-understanding-assets/main/audio/callCenterRecording.mp3\")],\n)\naudio = poller.result().contents[0]\nfor phrase in (audio.transcript_phrases or [])[:5]:\n    print(f\"[{phrase.speaker}] {phrase.start_time_ms} ms: {phrase.text}\")\n\n# Video: puede devolver varios contents (uno por segmento)\npoller = client.begin_analyze(\n    analyzer_id=\"prebuilt-videoSearch\",\n    inputs=[AnalysisInput(url=\"https://raw.githubusercontent.com/Azure-Samples/azure-ai-content-understanding-assets/main/videos/sdk_samples/FlightSimulator.mp4\")],\n)\nfor segment in poller.result().contents:\n    print(segment.start_time_ms, \"-\", segment.end_time_ms, \"ms\")\n    print(segment.markdown[:200])",
+     "caption": "En video itera todos los contents: prebuilt-videoSearch devuelve un content por segmento."
+    },
+    {
+     "type": "h",
+     "text": "Lo mismo con REST"
+    },
+    {
+     "type": "diagram",
+     "title": "Secuencia asíncrona de la API REST",
+     "mermaid": "sequenceDiagram\n  participant App\n  participant CU as Content Understanding\n  App->>CU: POST analyzers/prebuilt-invoice analyze con inputs url\n  CU-->>App: 202 Accepted con cabecera Operation-Location\n  loop Cada 1 a 2 segundos\n    App->>CU: GET analyzerResults id\n    CU-->>App: status Running\n  end\n  App->>CU: GET analyzerResults id\n  CU-->>App: 200 OK status Succeeded con contents",
+     "caption": "El SDK encapsula este sondeo dentro de poller.result()."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# 1) Iniciar el análisis\ncurl -i -X POST \"{endpoint}/contentunderstanding/analyzers/prebuilt-invoice:analyze?api-version=2025-11-01\" \\\n  -H \"Ocp-Apim-Subscription-Key: {key}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"inputs\":[{\"url\":\"https://github.com/Azure-Samples/azure-ai-content-understanding-python/raw/refs/heads/main/data/invoice.pdf\"}]}'\n\n# 2) Sondear la URL de Operation-Location hasta status = Succeeded\ncurl -X GET \"{endpoint}/contentunderstanding/analyzerResults/{request-id}?api-version=2025-11-01\" \\\n  -H \"Ocp-Apim-Subscription-Key: {key}\"",
+     "caption": "Autenticación con clave (Ocp-Apim-Subscription-Key) o token de Microsoft Entra ID."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Reconoce el patrón en el código: **`ContentUnderstandingClient`** (endpoint + credencial), **`begin_analyze`** (analyzer_id + inputs) devuelve un **poller**, **`poller.result()`** espera, y el resultado tiene **`contents`** con **`markdown`** y **`fields`**. En REST: POST `...:analyze` → **202 + Operation-Location** → GET hasta `Succeeded`."
+    },
+    {
+     "type": "h",
+     "text": "Content Understanding vs Document Intelligence vs un LLM multimodal"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Criterio",
+      "Content Understanding",
+      "Document Intelligence",
+      "LLM multimodal (p. ej. GPT en Foundry)"
+     ],
+     "rows": [
+      [
+       "Modalidades",
+       "Documento, imagen, audio, video",
+       "Documentos (y formularios en imagen)",
+       "Texto e imagen (según modelo); audio/video requieren preproceso"
+      ],
+      [
+       "Enfoque",
+       "IA generativa + esquema, zero-shot",
+       "Modelos especializados entrenados para documentos",
+       "Prompt libre"
+      ],
+      [
+       "Mejor para",
+       "Documentos variados o no estructurados, campos inferidos, multimodal, RAG",
+       "Formularios estructurados con plantillas comunes; modelos custom con ~5 muestras etiquetadas; baja latencia",
+       "Flujos a medida con control total de modelo y prompts"
+      ],
+      [
+       "Confianza y grounding",
+       "Sí",
+       "Sí",
+       "No (hay que construirlo)"
+      ],
+      [
+       "OCR y layout",
+       "Integrado",
+       "Integrado",
+       "Requiere preproceso"
+      ],
+      [
+       "Archivos grandes",
+       "Gestionado",
+       "Gestionado",
+       "Requiere trocear (chunking)"
+      ],
+      [
+       "Local/desconectado",
+       "No",
+       "Sí, con contenedores",
+       "No"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla de Microsoft: si hay un prebuilt que cubre tu tipo de documento, **empieza por él**. Solo OCR/layout → `prebuilt-read`/`prebuilt-layout` de Content Understanding (más barato y rico). Contratos y documentos no estructurados → Content Understanding. Formularios muy estandarizados → Document Intelligence también es válido. Instalaciones on-premises o air-gapped → contenedores de Document Intelligence."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Document Intelligence **no** está obsoleto: sus APIs y SDKs siguen funcionando sin migración. Content Understanding lo complementa para cargas nuevas multimodales o no estructuradas."
+    },
+    {
+     "type": "h",
+     "text": "Content Understanding en RAG y agentes"
+    },
+    {
+     "type": "diagram",
+     "title": "Ingesta RAG multimodal",
+     "mermaid": "flowchart LR\n  D[\"PDFs, imágenes, audio, video\"] --> CU[\"prebuilt-documentSearch / imageSearch / audioSearch / videoSearch\"]\n  CU --> MD[\"Markdown + descripciones de figuras + resumen\"]\n  MD --> CH[\"Trozos (chunks)\"]\n  CH --> EM[\"Embeddings\"]\n  EM --> IX[\"Índice de búsqueda (p. ej. Azure AI Search)\"]\n  Q[\"Pregunta del usuario\"] --> IX\n  IX --> LLM[\"LLM genera respuesta fundamentada\"]",
+     "caption": "Las descripciones de figuras hacen buscable lo que está en gráficos y diagramas."
+    },
+    {
+     "type": "p",
+     "text": "En RAG (*retrieval-augmented generation*, generación aumentada por recuperación) lo difícil es preparar bien el contenido. Los analizadores `*Search` devuelven markdown que conserva tablas y jerarquía, describen figuras y resumen el contenido, lo que mejora la recuperación. En agentes, Content Understanding convierte archivos heterogéneos en entradas predecibles (markdown + campos con confianza). El SDK de Python incluye `to_llm_input(result)`, que empaqueta campos y markdown en un único bloque de texto listo para un LLM."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "ContentUnderstandingClient",
+       "en": "ContentUnderstandingClient",
+       "def": "Cliente del SDK de Python; se crea con endpoint y credencial."
+      },
+      {
+       "term": "Poller",
+       "en": "LROPoller",
+       "def": "Objeto devuelto por begin_analyze; result() espera y devuelve el AnalysisResult."
+      },
+      {
+       "term": "Operation-Location",
+       "en": "Operation-Location header",
+       "def": "Cabecera con la URL para consultar el estado de un análisis REST."
+      },
+      {
+       "term": "Document Intelligence",
+       "en": "Azure Document Intelligence in Foundry Tools",
+       "def": "Servicio de modelos especializados para documentos (prebuilt y custom), también disponible en contenedores."
+      },
+      {
+       "term": "RAG",
+       "en": "Retrieval-augmented generation",
+       "def": "Patrón que recupera contenido relevante de un índice y lo pasa al LLM para responder."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "¿Qué hace Azure Content Understanding in Foundry Tools?",
+   "back": "Convierte documentos, imágenes, audio y video en salida estructurada (JSON con campos + markdown) usando IA generativa y analizadores."
+  },
+  {
+   "front": "Flujo de Content Understanding",
+   "back": "Input → Analyzer → Content extraction → (Segmentation) → Field extraction → Output JSON + markdown."
+  },
+  {
+   "front": "¿Qué es un analizador?",
+   "back": "La unidad que define cómo se procesa el contenido: configuración de extracción, esquema de campos y modelos. Puede ser prebuilt o personalizado."
+  },
+  {
+   "front": "prebuilt-read vs prebuilt-layout",
+   "back": "read: OCR básico sin layout. layout: texto + estructura (tablas, secciones, figuras). Ninguno necesita LLM."
+  },
+  {
+   "front": "Los 4 analizadores base",
+   "back": "prebuilt-document, prebuilt-image, prebuilt-audio, prebuilt-video. Son los únicos padres válidos (baseAnalyzerId) de un analizador personalizado."
+  },
+  {
+   "front": "Analizadores RAG",
+   "back": "prebuilt-documentSearch, prebuilt-imageSearch, prebuilt-audioSearch, prebuilt-videoSearch."
+  },
+  {
+   "front": "Analizador para llamadas de soporte con temas y sentimiento",
+   "back": "prebuilt-callCenter."
+  },
+  {
+   "front": "Analizador para pasaportes y carnés",
+   "back": "prebuilt-idDocument (variantes .passport y .generic)."
+  },
+  {
+   "front": "Métodos de un campo",
+   "back": "extract (literal, solo documentos), generate (valor generado/inferido), classify (elige de un enum)."
+  },
+  {
+   "front": "¿Qué método NO está disponible para audio, video e imagen?",
+   "back": "extract. Solo generate y classify."
+  },
+  {
+   "front": "¿Cómo se modela una colección de líneas de factura?",
+   "back": "Campo type array con items de type object y sus properties (descripción, cantidad, precio...)."
+  },
+  {
+   "front": "Rango y activación de la confianza",
+   "back": "De 0 a 1 por campo; se activa con estimateFieldSourceAndConfidence."
+  },
+  {
+   "front": "¿Qué es grounding?",
+   "back": "La referencia a la región del contenido de donde sale cada valor, para verificarlo rápidamente."
+  },
+  {
+   "front": "Propiedades para clasificar y dividir un archivo",
+   "back": "contentCategories (con nombre, descripción y analyzerId opcional) y enableSegment."
+  },
+  {
+   "front": "Versión GA de la API de Content Understanding",
+   "back": "2025-11-01 (la 2026-06-01-preview es preview)."
+  },
+  {
+   "front": "Patrón del SDK de Python",
+   "back": "client.begin_analyze(analyzer_id, inputs) → poller.result() → result.contents[i].markdown / .fields."
+  },
+  {
+   "front": "Patrón REST",
+   "back": "POST analyzers/{id}:analyze → 202 + Operation-Location → GET analyzerResults/{id} hasta status Succeeded."
+  },
+  {
+   "front": "¿Dónde se crean analizadores personalizados con interfaz gráfica en 2026?",
+   "back": "En Content Understanding Studio (el playground de Foundry new no crea analizadores personalizados)."
+  },
+  {
+   "front": "¿Cuándo preferir Document Intelligence?",
+   "back": "Formularios muy estructurados con plantillas comunes, modelos custom entrenados con pocas muestras etiquetadas, baja latencia, o despliegue on-premises con contenedores."
+  },
+  {
+   "front": "¿Qué necesita Content Understanding para campos generativos?",
+   "back": "Despliegues propios de un modelo de chat completion y uno de embeddings en Foundry (defaults o modelDeployments por petición)."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s09-lab1",
+   "title": "Probar analizadores prebuilt con una factura en el portal",
+   "goal": "Analizar una factura con Layout y con el analizador de facturas en el playground de Content Understanding, comparar la salida y revisar campos, confianza y JSON.",
+   "minutes": 30,
+   "cost": "Céntimos (páginas analizadas + tokens del modelo desplegado). Requiere suscripción de Azure.",
+   "prereqs": [
+    "Suscripción de Azure",
+    "Permiso para crear un recurso Microsoft Foundry",
+    "Una factura en PDF o imagen (o usar la muestra del portal)"
+   ],
+   "steps": [
+    {
+     "title": "Crear el recurso Foundry",
+     "detail": "En el portal de Azure busca **Microsoft Foundry** y crea un recurso Foundry en una región soportada por Content Understanding (consulta *Language and region support*). Crea también un proyecto cuando te lo pida el portal de Foundry."
+    },
+    {
+     "title": "Abrir el playground",
+     "detail": "Entra en https://ai.azure.com (Foundry new), abre tu proyecto, selecciona **Build** en el menú superior derecho, luego **Models** en el panel izquierdo, la pestaña **AI Services** y **Content Understanding Playground**."
+    },
+    {
+     "title": "Configurar los modelos",
+     "detail": "Pulsa el icono de engranaje para abrir el panel **Configure** y selecciona (o despliega desde ahí) un modelo de chat completion soportado y un modelo de embeddings (p. ej. text-embedding-3-large). Sin esto, los analizadores de dominio no pueden generar campos."
+    },
+    {
+     "title": "Ejecutar Layout",
+     "detail": "En el desplegable de analizadores elige el analizador **Layout** y ejecútalo sobre la factura de muestra o sube la tuya. Observa en el resultado el markdown, los párrafos y la tabla de líneas reconstruida. Fíjate en que no hay campos de negocio: solo contenido y estructura."
+    },
+    {
+     "title": "Ejecutar el analizador de facturas",
+     "detail": "Cambia al analizador de facturas (`prebuilt-invoice`) y analiza el mismo archivo. Revisa los campos extraídos (proveedor, cliente, fecha, total, líneas) y pasa el cursor por cada uno para ver dónde se encontró en el documento (grounding) y su confianza. Si tu desplegable no muestra el analizador de facturas (Foundry new expone un subconjunto), repite el paso en Content Understanding Studio: https://contentunderstanding.ai.azure.com → ver todos los prebuilt → Invoice → prueba con la muestra o con tu archivo."
+    },
+    {
+     "title": "Ver el JSON",
+     "detail": "Abre la vista **JSON** del resultado. Localiza `result.contents[0].markdown`, `fields.CustomerName` (tipo, valor y `confidence`) y el campo `LineItems` como array de objetos.",
+     "code": "\"CustomerName\": { \"type\": \"string\", \"valueString\": \"MICROSOFT CORPORATION\", \"confidence\": 0.95 }",
+     "lang": "json"
+    },
+    {
+     "title": "Probar un recibo",
+     "detail": "Opcional: analiza la foto de un ticket con el analizador de recibos (`prebuilt-receipt`) y compara qué campos devuelve frente a la factura."
+    }
+   ],
+   "verify": [
+    "Layout devuelve markdown y tablas pero ningún campo de negocio",
+    "prebuilt-invoice devuelve campos como CustomerName, InvoiceDate, TotalAmount y LineItems con confianza",
+    "Puedes localizar en el JSON la confianza de al menos tres campos"
+   ],
+   "cleanup": "Si no vas a hacer los otros labs, elimina el grupo de recursos (incluye el recurso Foundry y los despliegues de modelos). Si continúas, consérvalo.",
+   "challenge": "Analiza una factura en otro idioma o con un formato muy distinto y compara la confianza de TotalAmount. ¿Qué campos bajarían del 0.8?"
+  },
+  {
+   "id": "s09-lab2",
+   "title": "Crear un analizador personalizado con esquema de campos",
+   "goal": "Definir en Content Understanding Studio un analizador con campos extract, generate y classify (incluida una colección), probarlo y construirlo; y ver el equivalente en REST.",
+   "minutes": 45,
+   "cost": "Céntimos. Requiere suscripción de Azure y el recurso del lab 1.",
+   "prereqs": [
+    "Recurso Microsoft Foundry del lab 1",
+    "2–3 documentos de ejemplo del mismo tipo (p. ej. pedidos de compra o partes de siniestro en PDF)"
+   ],
+   "steps": [
+    {
+     "title": "Conectar el recurso en Studio",
+     "detail": "Abre https://contentunderstanding.ai.azure.com/settings, pulsa **+ Add resource**, selecciona tu recurso Foundry y pulsa **Next** > **Save**. Deja marcada la casilla **Enable autodeployment for required models if no defaults are available**."
+    },
+    {
+     "title": "Crear el proyecto",
+     "detail": "En la página de inicio pulsa **Create project**, elige **Extract content and fields with a custom schema**, pon un nombre (p. ej. `pedidos-contoso`) y pulsa **Create**."
+    },
+    {
+     "title": "Subir una muestra",
+     "detail": "Sube un documento de ejemplo. Studio lo clasifica y sugiere plantillas; elige la que más se parezca o empieza vacío."
+    },
+    {
+     "title": "Definir el esquema",
+     "detail": "Usa la sugerencia de campos con IA y quédate solo con lo útil. Asegúrate de tener: `NumeroPedido` (string, extract), `FechaPedido` (date, extract), `Lineas` (tabla/array de objetos con Producto, Cantidad, PrecioUnitario), `Urgencia` (string, classify con valores alta/media/baja) y `Resumen` (string, generate). Escribe descripciones concretas para cada campo y pulsa **Save**."
+    },
+    {
+     "title": "Probar",
+     "detail": "Pulsa **Run analysis**. Revisa valores, confianza y la región resaltada de cada campo. Sube otro ejemplo y vuelve a ejecutar. Ajusta descripciones si algún campo sale vacío o mal."
+    },
+    {
+     "title": "Construir el analizador",
+     "detail": "Pulsa **Build analyzer**, pon un ID (solo letras, números, punto y guion bajo, p. ej. `pedidos_contoso`) y pulsa **Build**. Luego **Jump to analyzer list**, abre tu analizador y copia el ejemplo de código con endpoint."
+    },
+    {
+     "title": "Equivalente REST (opcional)",
+     "detail": "Guarda la definición de la lección 4 como `analyzer.json` y créala por API. El PUT devuelve 201 y una Operation-Location para seguir la creación.",
+     "code": "curl -i -X PUT \"{endpoint}/contentunderstanding/analyzers/pedidos_rest?api-version=2025-11-01\" \\\n  -H \"Ocp-Apim-Subscription-Key: {key}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d @analyzer.json",
+     "lang": "bash"
+    },
+    {
+     "title": "Usarlo",
+     "detail": "Analiza un documento nuevo con tu analizador igual que con un prebuilt.",
+     "code": "curl -i -X POST \"{endpoint}/contentunderstanding/analyzers/pedidos_contoso:analyze?api-version=2025-11-01\" \\\n  -H \"Ocp-Apim-Subscription-Key: {key}\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"inputs\":[{\"url\":\"<URL de tu PDF>\"}]}'",
+     "lang": "bash"
+    }
+   ],
+   "verify": [
+    "El analizador aparece en la lista de Studio con estado listo",
+    "El análisis devuelve Lineas como array de objetos",
+    "Urgencia solo toma valores de la lista definida",
+    "Resumen contiene texto generado que no aparece literal en el documento"
+   ],
+   "cleanup": "Borra el analizador (en Studio o con DELETE {endpoint}/contentunderstanding/analyzers/{id}?api-version=2025-11-01). Si has terminado todos los labs, elimina el grupo de recursos.",
+   "challenge": "Crea un analizador clasificador con contentCategories (pedido, factura, other) y enableSegment = true, enlazando la categoría pedido a tu analizador personalizado, y pruébalo con un PDF que concatene varios documentos."
+  },
+  {
+   "id": "s09-lab3",
+   "title": "App Python que procesa un lote de documentos y guarda JSON",
+   "goal": "Construir un script que recorre una carpeta, analiza cada archivo con un analizador, guarda el JSON completo y un resumen de campos, y marca para revisión los que tengan baja confianza.",
+   "minutes": 40,
+   "cost": "Céntimos por documento. Requiere suscripción de Azure.",
+   "prereqs": [
+    "Recurso Microsoft Foundry con modelos por defecto configurados (labs 1 o 2)",
+    "Python 3.10+",
+    "Una carpeta `entrada/` con 3–5 facturas PDF o imágenes"
+   ],
+   "steps": [
+    {
+     "title": "Entorno",
+     "detail": "Crea un entorno virtual e instala el SDK.",
+     "code": "python -m venv .venv\nsource .venv/bin/activate   # En Windows: .venv\\Scripts\\activate\npip install azure-ai-contentunderstanding azure-identity",
+     "lang": "bash"
+    },
+    {
+     "title": "Variables de entorno",
+     "detail": "Copia endpoint y clave desde el recurso Foundry (Azure portal > tu recurso > Keys and Endpoint). Para producción, usa Microsoft Entra ID con DefaultAzureCredential en lugar de clave.",
+     "code": "export CONTENTUNDERSTANDING_ENDPOINT=\"https://<recurso>.services.ai.azure.com/\"\nexport CONTENTUNDERSTANDING_KEY=\"<clave>\"\nexport CU_ANALYZER_ID=\"prebuilt-invoice\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Escribir lote.py",
+     "detail": "El script usa begin_analyze_binary para archivos locales, convierte el resultado a diccionario con as_dict() y simplifica los campos (valor + confianza), recorriendo objetos y arrays.",
+     "code": "import json\nimport os\nimport pathlib\n\nfrom azure.ai.contentunderstanding import ContentUnderstandingClient\nfrom azure.ai.contentunderstanding.models import ArrayField, ObjectField\nfrom azure.core.credentials import AzureKeyCredential\n\nUMBRAL = 0.80\nEXTENSIONES = {\".pdf\", \".jpg\", \".jpeg\", \".png\", \".tiff\"}\n\nclient = ContentUnderstandingClient(\n    endpoint=os.environ[\"CONTENTUNDERSTANDING_ENDPOINT\"],\n    credential=AzureKeyCredential(os.environ[\"CONTENTUNDERSTANDING_KEY\"]),\n)\nanalyzer_id = os.getenv(\"CU_ANALYZER_ID\", \"prebuilt-invoice\")\n\n\ndef simplificar(campo):\n    \"\"\"Devuelve valor y confianza, recorriendo objetos y arrays.\"\"\"\n    if campo is None:\n        return None\n    if isinstance(campo, ObjectField):\n        return {k: simplificar(v) for k, v in (campo.value or {}).items()}\n    if isinstance(campo, ArrayField):\n        return [simplificar(v) for v in (campo.value or [])]\n    return {\"valor\": campo.value, \"confianza\": campo.confidence}\n\n\ndef confianzas(nodo):\n    \"\"\"Lista plana de confianzas presentes en el resumen.\"\"\"\n    if isinstance(nodo, dict) and \"confianza\" in nodo:\n        return [nodo[\"confianza\"]] if nodo[\"confianza\"] is not None else []\n    if isinstance(nodo, dict):\n        return [c for v in nodo.values() for c in confianzas(v)]\n    if isinstance(nodo, list):\n        return [c for v in nodo for c in confianzas(v)]\n    return []\n\n\nentrada = pathlib.Path(\"entrada\")\nsalida = pathlib.Path(\"salida\")\nsalida.mkdir(exist_ok=True)\nrevision = []\n\nfor archivo in sorted(entrada.iterdir()):\n    if archivo.suffix.lower() not in EXTENSIONES:\n        continue\n    print(f\"Analizando {archivo.name} con {analyzer_id}...\")\n    try:\n        poller = client.begin_analyze_binary(\n            analyzer_id=analyzer_id,\n            binary_input=archivo.read_bytes(),\n        )\n        result = poller.result()\n    except Exception as err:  # errores de red, cuota o modelo\n        print(f\"  ERROR: {err}\")\n        continue\n\n    # JSON completo del servicio\n    (salida / f\"{archivo.stem}.raw.json\").write_text(\n        json.dumps(result.as_dict(), indent=2, ensure_ascii=False, default=str),\n        encoding=\"utf-8\",\n    )\n\n    content = result.contents[0]\n    resumen = {n: simplificar(f) for n, f in (content.fields or {}).items()}\n    (salida / f\"{archivo.stem}.campos.json\").write_text(\n        json.dumps(resumen, indent=2, ensure_ascii=False, default=str),\n        encoding=\"utf-8\",\n    )\n\n    minima = min(confianzas(resumen), default=0.0)\n    if minima < UMBRAL:\n        revision.append({\"archivo\": archivo.name, \"confianza_minima\": minima})\n    print(f\"  OK - {len(resumen)} campos, confianza mínima {minima:.2f}\")\n\n(salida / \"revision_humana.json\").write_text(\n    json.dumps(revision, indent=2, ensure_ascii=False), encoding=\"utf-8\"\n)\nprint(f\"Documentos para revisión humana: {len(revision)}\")",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar",
+     "detail": "Lanza el script y revisa la carpeta `salida/`.",
+     "code": "python lote.py",
+     "lang": "bash"
+    },
+    {
+     "title": "Probar con tu analizador",
+     "detail": "Cambia `CU_ANALYZER_ID` al ID del analizador del lab 2 (p. ej. `pedidos_contoso`) y repite con documentos de ese tipo."
+    }
+   ],
+   "verify": [
+    "Por cada archivo hay un .raw.json y un .campos.json en salida/",
+    "Los campos de fecha aparecen como texto ISO gracias a default=str",
+    "revision_humana.json lista los documentos con alguna confianza < 0.80"
+   ],
+   "cleanup": "Elimina el grupo de recursos desde Azure portal (Resource groups > tu grupo > Delete resource group) para detener cualquier coste de despliegues de modelos.",
+   "challenge": "Paraleliza el lote lanzando todos los begin_analyze_binary primero y esperando los pollers después, o añade `markdown` a un índice de búsqueda para un mini-RAG con `prebuilt-documentSearch`."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s09-q1",
+   "type": "single",
+   "q": "Una empresa quiere digitalizar miles de cartas escaneadas para poder buscar su texto. No necesita tablas ni campos. ¿Qué analizador de Content Understanding es el más adecuado y económico?",
+   "options": [
+    "prebuilt-layout",
+    "prebuilt-read",
+    "prebuilt-documentSearch",
+    "prebuilt-invoice"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "prebuilt-read ofrece OCR básico sin análisis de layout y no necesita LLM, justo lo pedido. prebuilt-layout añade estructura (tablas, secciones) que no hace falta; prebuilt-documentSearch genera descripciones y resúmenes con LLM (más coste); prebuilt-invoice extrae campos de facturas."
+  },
+  {
+   "id": "s09-q2",
+   "type": "single",
+   "q": "Necesitas extraer las tablas de datos financieros y la jerarquía de secciones de informes anuales en PDF, sin campos de negocio. ¿Qué analizador usas?",
+   "options": [
+    "prebuilt-read",
+    "prebuilt-layout",
+    "prebuilt-receipt",
+    "prebuilt-audioSearch"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "prebuilt-layout extrae texto más estructura: tablas, secciones, figuras y formato. prebuilt-read no analiza layout; prebuilt-receipt es para tickets; prebuilt-audioSearch es para audio."
+  },
+  {
+   "id": "s09-q3",
+   "type": "single",
+   "q": "Un departamento de cuentas a pagar recibe facturas de cientos de proveedores con formatos distintos y quiere proveedor, fecha, total y líneas de detalle. ¿Qué analizador debe probar primero?",
+   "options": [
+    "prebuilt-invoice",
+    "prebuilt-layout",
+    "prebuilt-idDocument",
+    "prebuilt-callCenter"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "prebuilt-invoice está preconfigurado con el esquema de facturas (incluidas LineItems) y generaliza entre plantillas. Layout no da campos de negocio; idDocument es para documentos de identidad; callCenter para llamadas."
+  },
+  {
+   "id": "s09-q4",
+   "type": "single",
+   "q": "Un banco necesita extraer nombre, fecha de nacimiento y número de documento de pasaportes y carnés de conducir durante el alta de clientes. ¿Qué analizador corresponde?",
+   "options": [
+    "prebuilt-contract",
+    "prebuilt-receipt",
+    "prebuilt-idDocument",
+    "prebuilt-imageSearch"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "prebuilt-idDocument cubre pasaportes, permisos de conducir, IDs y permisos de residencia. contract es para acuerdos; receipt para tickets; imageSearch genera descripciones de imágenes para búsqueda, no campos de identidad."
+  },
+  {
+   "id": "s09-q5",
+   "type": "single",
+   "q": "Un centro de contacto quiere obtener automáticamente los temas tratados y el sentimiento de cada llamada grabada. ¿Qué analizador prebuilt encaja mejor?",
+   "options": [
+    "prebuilt-audio",
+    "prebuilt-callCenter",
+    "prebuilt-videoSearch",
+    "prebuilt-read"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "prebuilt-callCenter extrae de grabaciones de llamadas temas, sentimiento e insights clave. prebuilt-audio es un analizador base pensado como padre de analizadores personalizados; videoSearch es para video; read es OCR."
+  },
+  {
+   "id": "s09-q6",
+   "type": "single",
+   "q": "Quieres preparar manuales técnicos en PDF, llenos de gráficos y diagramas, para un chatbot con RAG. ¿Qué analizador recomienda Microsoft para la ingesta?",
+   "options": [
+    "prebuilt-read",
+    "prebuilt-documentSearch",
+    "prebuilt-document",
+    "prebuilt-documentFields"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "prebuilt-documentSearch está optimizado para RAG: markdown con layout, descripciones de figuras, resumen y salida troceada. read no describe figuras; prebuilt-document es un analizador base; documentFields extrae pares clave-valor genéricos."
+  },
+  {
+   "id": "s09-q7",
+   "type": "multi",
+   "q": "¿Qué DOS analizadores son analizadores base que pueden usarse como `baseAnalyzerId` de un analizador personalizado? (Selecciona DOS.)",
+   "options": [
+    "prebuilt-document",
+    "prebuilt-invoice",
+    "prebuilt-video",
+    "prebuilt-layout",
+    "prebuilt-documentSearch"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Los analizadores personalizados solo pueden derivar de los cuatro base: prebuilt-document, prebuilt-image, prebuilt-audio y prebuilt-video. invoice es de dominio, layout de extracción de contenido y documentSearch es RAG."
+  },
+  {
+   "id": "s09-q8",
+   "type": "single",
+   "q": "En Content Understanding, ¿qué componente define la configuración de extracción, el esquema de campos y los modelos que se aplican de forma consistente a todo el contenido?",
+   "options": [
+    "El índice de búsqueda",
+    "El analizador",
+    "El despliegue de modelo",
+    "El proyecto de Foundry"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El analizador es el núcleo: configura la extracción de contenido, el esquema de campos y los despliegues de modelos. El despliegue de modelo solo aporta capacidad generativa; el proyecto y el índice no definen el procesamiento."
+  },
+  {
+   "id": "s09-q9",
+   "type": "single",
+   "q": "Estás creando un analizador personalizado para grabaciones de audio y quieres un campo con un resumen de la conversación. ¿Qué método debe tener el campo?",
+   "options": [
+    "extract",
+    "generate",
+    "classify",
+    "segment"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "generate produce valores libres a partir del contenido, como resúmenes. extract solo está soportado en documentos y extrae valores literales; classify elige de una lista cerrada; segment no es un método de campo."
+  },
+  {
+   "id": "s09-q10",
+   "type": "single",
+   "q": "Quieres que un campo `Sentimiento` solo pueda valer Positive, Neutral o Negative. ¿Cómo lo defines?",
+   "options": [
+    "type string, method extract",
+    "type string, method classify con enum",
+    "type array, method generate",
+    "type boolean, method classify"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "classify con una lista enum restringe el valor a categorías predefinidas. extract toma el texto literal (y solo en documentos); un array es una colección; boolean solo admite dos valores."
+  },
+  {
+   "id": "s09-q11",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre los métodos de campo, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El método extract está disponible para documentos.",
+     "answer": true
+    },
+    {
+     "text": "El método extract está disponible para video.",
+     "answer": false
+    },
+    {
+     "text": "El método classify está disponible para imágenes, audio y video.",
+     "answer": true
+    },
+    {
+     "text": "El método generate puede producir valores que no aparecen literalmente en el contenido.",
+     "answer": true
+    }
+   ],
+   "explain": "Según los límites del servicio, documentos admiten extract, generate y classify; imagen, audio y video solo generate y classify. generate crea valores (resúmenes, inferencias) que no tienen por qué estar literalmente en la fuente."
+  },
+  {
+   "id": "s09-q12",
+   "type": "single",
+   "q": "Una factura tiene un número variable de líneas, cada una con descripción, cantidad y precio unitario. ¿Cómo modelas `LineItems` en el esquema?",
+   "options": [
+    "Un campo string con todas las líneas concatenadas",
+    "Un campo object con properties Descripcion, Cantidad y Precio",
+    "Un campo array cuyos items son objects con properties Descripcion, Cantidad y Precio",
+    "Tres campos array independientes"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Una colección de elementos con subcampos fijos es un array de objetos (table field). Un object solo representaría una línea; un string pierde la estructura; tres arrays separados pierden la relación entre valores de una misma línea."
+  },
+  {
+   "id": "s09-q13",
+   "type": "single",
+   "q": "¿Qué ajuste del analizador hace que cada campo devuelva una puntuación de confianza y la región de origen?",
+   "options": [
+    "enableOcr",
+    "returnDetails",
+    "estimateFieldSourceAndConfidence",
+    "enableSegment"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "estimateFieldSourceAndConfidence activa confianza (0–1) y grounding. enableOcr activa el OCR; returnDetails incluye detalles de extracción; enableSegment divide el contenido en segmentos."
+  },
+  {
+   "id": "s09-q14",
+   "type": "yesno",
+   "q": "Sobre confianza y grounding, indica Sí o No.",
+   "statements": [
+    {
+     "text": "La confianza de un campo es un valor entre 0 y 1.",
+     "answer": true
+    },
+    {
+     "text": "Una confianza de 0.99 garantiza que el valor es correcto.",
+     "answer": false
+    },
+    {
+     "text": "El grounding permite a un revisor ver de qué parte del documento salió el valor.",
+     "answer": true
+    },
+    {
+     "text": "Los umbrales de confianza para enviar a revisión humana los fija el servicio y no se pueden cambiar.",
+     "answer": false
+    }
+   ],
+   "explain": "La confianza es una estimación 0–1, no una garantía. El grounding identifica la región de origen para verificar rápido. El umbral de revisión lo decide tu aplicación según el riesgo de negocio."
+  },
+  {
+   "id": "s09-q15",
+   "type": "single",
+   "q": "Recibes PDFs que contienen varios documentos concatenados (solicitud, nómina y extracto bancario) y quieres que cada parte vaya a su analizador en una sola llamada. ¿Qué configuras?",
+   "options": [
+    "Tres llamadas con content_range distinto",
+    "contentCategories con analyzerId por categoría y enableSegment = true",
+    "Un campo classify con enum en el esquema",
+    "prebuilt-layout con returnDetails = true"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La clasificación de contenido con contentCategories y enableSegment divide el archivo, clasifica cada segmento y lo enruta al analyzerId enlazado. Un campo classify solo etiqueta un valor; content_range requiere saber las páginas de antemano; layout no clasifica."
+  },
+  {
+   "id": "s09-q16",
+   "type": "single",
+   "q": "Con la API GA, defines contentCategories \"factura\" y \"recibo\". ¿Qué debes añadir para que un documento que no sea ninguno de los dos no se fuerce a una de ellas?",
+   "options": [
+    "Una categoría other",
+    "enableOcr = false",
+    "Un campo generate llamado Tipo",
+    "Nada, el servicio lo hace solo"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Desde la GA hay que incluir la categoría other en contentCategories; si no, todos los archivos se asignan a una de tus categorías. Las otras opciones no afectan a la clasificación."
+  },
+  {
+   "id": "s09-q17",
+   "type": "single",
+   "q": "En el SDK de Python, ¿qué devuelve `client.begin_analyze(analyzer_id=..., inputs=[...])`?",
+   "options": [
+    "Directamente el AnalysisResult",
+    "Un poller de operación de larga duración; result() espera y devuelve el AnalysisResult",
+    "Una cadena JSON",
+    "El ID del analizador creado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El análisis es asíncrono: begin_analyze devuelve un poller y poller.result() espera y devuelve el resultado con contents. No devuelve el resultado directamente, ni JSON en texto, ni crea analizadores (eso es begin_create_analyzer)."
+  },
+  {
+   "id": "s09-q18",
+   "type": "single",
+   "q": "Completa el código: `for content in result.contents: print(content.____)` para mostrar el texto del documento con su estructura en markdown.",
+   "options": [
+    "text",
+    "markdown",
+    "fields",
+    "pages"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Cada elemento de contents tiene markdown con el contenido estructurado. fields contiene los campos del esquema; pages los datos por página; text no es la propiedad del SDK."
+  },
+  {
+   "id": "s09-q19",
+   "type": "single",
+   "q": "Quieres analizar un PDF que está en tu disco local con el SDK de Python. ¿Qué método usas?",
+   "options": [
+    "begin_analyze con inputs=[AnalysisInput(url=...)]",
+    "begin_analyze_binary con binary_input=bytes",
+    "begin_create_analyzer",
+    "update_defaults"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "begin_analyze_binary envía los bytes del archivo. begin_analyze con url requiere que el archivo sea accesible por URL; begin_create_analyzer crea analizadores; update_defaults configura los modelos por defecto."
+  },
+  {
+   "id": "s09-q20",
+   "type": "yesno",
+   "q": "Sobre la API REST de Content Understanding, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El POST a analyzers/{id}:analyze devuelve 202 Accepted con una cabecera Operation-Location.",
+     "answer": true
+    },
+    {
+     "text": "Para obtener el resultado se consulta analyzerResults/{id} hasta que status sea Succeeded.",
+     "answer": true
+    },
+    {
+     "text": "La versión de API GA es 2025-11-01.",
+     "answer": true
+    },
+    {
+     "text": "La versión 2026-06-01-preview está recomendada para producción.",
+     "answer": false
+    }
+   ],
+   "explain": "El análisis es asíncrono: 202 + Operation-Location y sondeo de analyzerResults. 2025-11-01 es la GA recomendada para producción; 2026-06-01-preview es preview sin SLA."
+  },
+  {
+   "id": "s09-q21",
+   "type": "multi",
+   "q": "¿Qué DOS elementos contiene cada objeto de `contents` en el resultado de un análisis de documento con prebuilt-invoice? (Selecciona DOS.)",
+   "options": [
+    "markdown",
+    "fields",
+    "transcript_phrases",
+    "key_frame_times_ms",
+    "modelDeployments"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Un DocumentContent incluye markdown y fields (además de pages, tables, etc.). transcript_phrases y key_frame_times_ms son de AudioVisualContent; modelDeployments es configuración de la petición, no del resultado."
+  },
+  {
+   "id": "s09-q22",
+   "type": "single",
+   "q": "Analizas un webinar de una hora con prebuilt-videoSearch en Python. ¿Por qué debes iterar sobre todos los elementos de `result.contents`?",
+   "options": [
+    "Porque cada página del vídeo es un content",
+    "Porque el analizador segmenta el vídeo y puede devolver un content por segmento",
+    "Porque cada hablante genera un content",
+    "No hace falta, siempre hay uno"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "prebuilt-videoSearch segmenta el vídeo por cambios de tema o escena y puede devolver varios contents, cada uno con start_time_ms, end_time_ms, markdown y campos. No hay páginas en vídeo y los hablantes aparecen en transcript_phrases."
+  },
+  {
+   "id": "s09-q23",
+   "type": "single",
+   "q": "Tu analizador de facturas falla indicando que falta un despliegue de modelo, pero prebuilt-layout funciona. ¿Cuál es la causa más probable?",
+   "options": [
+    "La factura está en un formato no soportado",
+    "No se han configurado los despliegues de chat completion y embeddings (defaults o modelDeployments)",
+    "Falta activar enableOcr",
+    "El recurso no está en la región correcta para OCR"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los analizadores de dominio usan tus despliegues de modelos de Foundry; read y layout no los necesitan, por eso layout funciona. La solución es fijar defaults (PATCH defaults, update_defaults o Studio) o pasar modelDeployments."
+  },
+  {
+   "id": "s09-q24",
+   "type": "single",
+   "q": "Una aseguradora debe procesar formularios de siniestro en una red aislada sin conexión a la nube. ¿Qué opción es la adecuada?",
+   "options": [
+    "Content Understanding con prebuilt-documentSearch",
+    "Contenedores de Azure Document Intelligence",
+    "Un LLM multimodal desplegado en Foundry",
+    "Content Understanding Studio"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Para on-premises o air-gapped, Microsoft indica que los contenedores de Document Intelligence son hoy la única opción. Content Understanding, Studio y los modelos de Foundry son servicios en la nube."
+  },
+  {
+   "id": "s09-q25",
+   "type": "yesno",
+   "q": "Compara Content Understanding con construir tu propia solución con un LLM multimodal. Indica Sí o No.",
+   "statements": [
+    {
+     "text": "Content Understanding ofrece confianza y grounding integrados.",
+     "answer": true
+    },
+    {
+     "text": "Con un LLM directo tienes confianza por campo sin trabajo adicional.",
+     "answer": false
+    },
+    {
+     "text": "Un LLM directo tiene sentido si necesitas control total del modelo y los prompts.",
+     "answer": true
+    },
+    {
+     "text": "Content Understanding requiere etiquetar ejemplos antes de poder extraer campos personalizados.",
+     "answer": false
+    }
+   ],
+   "explain": "Content Understanding incluye OCR, layout, confianza y grounding, y permite extracción zero-shot describiendo campos. Con un LLM propio debes construir la confianza tú mismo; es apropiado cuando necesitas control total de modelos y prompts."
+  },
+  {
+   "id": "s09-q26",
+   "type": "single",
+   "q": "Tienes contratos largos y sin plantilla, y quieres extraer partes, obligaciones e inferir la fecha de fin a partir de la fecha de inicio y la duración. ¿Qué opción recomienda Microsoft?",
+   "options": [
+    "prebuilt-read",
+    "Modelo prebuilt de Document Intelligence para facturas",
+    "prebuilt-contract de Content Understanding",
+    "prebuilt-layout"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Para documentos no estructurados como contratos, la guía recomienda Content Understanding (prebuilt-contract), que puede inferir campos no explícitos. read y layout solo extraen contenido/estructura; el modelo de facturas no aplica."
+  },
+  {
+   "id": "s09-q27",
+   "type": "multi",
+   "q": "¿Qué DOS técnicas forman parte de la extracción de contenido (content extraction) de Content Understanding antes de la extracción de campos? (Selecciona DOS.)",
+   "options": [
+    "OCR y reconocimiento de layout en documentos",
+    "Transcripción de voz en audio y video",
+    "Generar un resumen con el método generate",
+    "Asignar una categoría con classify",
+    "Crear embeddings para un índice"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "La extracción de contenido normaliza la entrada: OCR, layout, marcas de selección y códigos de barras en documentos; transcripción y elementos visuales en audio/video. generate y classify son métodos de extracción de campos; los embeddings pertenecen al pipeline de búsqueda."
+  },
+  {
+   "id": "s09-q28",
+   "type": "single",
+   "q": "Quieres crear gráficamente un analizador personalizado con esquema, probarlo y construirlo en 2026. ¿Qué experiencia usas?",
+   "options": [
+    "Playground de Content Understanding en Foundry (new)",
+    "Content Understanding Studio",
+    "Foundry (classic)",
+    "Azure Machine Learning designer"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Content Understanding Studio permite crear analizadores personalizados, etiquetar y construirlos. El playground de Foundry (new) solo ejecuta analizadores disponibles; Foundry (classic) se retiró para Content Understanding en julio de 2026; AML designer no tiene relación."
+  },
+  {
+   "id": "s09-q29",
+   "type": "yesno",
+   "q": "Sobre técnicas de extracción de información, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El OCR por sí solo entiende que \"Invoice #\" y \"Invoice No.\" representan el mismo campo.",
+     "answer": false
+    },
+    {
+     "text": "La segmentación de video divide el contenido en escenas o secciones lógicas.",
+     "answer": true
+    },
+    {
+     "text": "El análisis de layout identifica tablas, secciones y párrafos.",
+     "answer": true
+    },
+    {
+     "text": "La normalización de fechas a formato ISO es parte de la extracción de campos, no del OCR.",
+     "answer": true
+    }
+   ],
+   "explain": "El OCR solo lee caracteres y posiciones; la asignación semántica a campos la hace la extracción de campos, que también normaliza valores. Layout detecta estructura y la segmentación divide contenido (p. ej. escenas de video)."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "Course AI-901T00-A: Introduction to AI in Azure",
+   "url": "https://learn.microsoft.com/en-us/training/courses/ai-901t00"
+  },
+  {
+   "title": "Get started with AI-powered information extraction in Azure (módulo)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-information-extraction/"
+  },
+  {
+   "title": "Extract information from documents (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-information-extraction/2-documents"
+  },
+  {
+   "title": "Extract information from audio and video (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-information-extraction/3-audio-video"
+  },
+  {
+   "title": "Introduction to AI-powered information extraction concepts (módulo)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-information-extraction/"
+  },
+  {
+   "title": "Field extraction and mapping (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-information-extraction/4-form-extraction"
+  },
+  {
+   "title": "What is Azure Content Understanding in Foundry Tools?",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/overview"
+  },
+  {
+   "title": "Content Understanding prebuilt analyzers",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/prebuilt-analyzers"
+  },
+  {
+   "title": "Create a custom analyzer (tutorial)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/tutorial/create-custom-analyzer"
+  },
+  {
+   "title": "Model deployment options for Content Understanding analyzers",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/models-deployments"
+  },
+  {
+   "title": "Service quotas and limits - Content Understanding",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/service-limits"
+  },
+  {
+   "title": "Content Understanding classifier overview",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/classifier"
+  },
+  {
+   "title": "Choose the right Azure AI tool for document processing",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/choosing-right-ai-tool"
+  },
+  {
+   "title": "Quickstart: REST API and SDKs",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/quickstart/use-rest-api"
+  },
+  {
+   "title": "Quickstart: Try Content Understanding Studio or Microsoft Foundry",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/quickstart/content-understanding-studio"
+  },
+  {
+   "title": "Content Understanding Studio and Microsoft Foundry (comparación)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/foundry-vs-content-understanding-studio"
+  },
+  {
+   "title": "Create and improve your custom analyzer in Content Understanding Studio",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/customize-analyzer-content-understanding-studio"
+  },
+  {
+   "title": "azure-ai-contentunderstanding (PyPI)",
+   "url": "https://pypi.org/project/azure-ai-contentunderstanding/"
+  },
+  {
+   "title": "Azure SDK for Python - Content Understanding samples",
+   "url": "https://github.com/Azure/azure-sdk-for-python/tree/main/sdk/contentunderstanding/azure-ai-contentunderstanding/samples"
+  }
+ ]
+}

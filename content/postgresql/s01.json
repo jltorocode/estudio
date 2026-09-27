@@ -1,0 +1,2548 @@
+{
+  "id": "s01",
+  "order": 1,
+  "title": "Primeros pasos con PostgreSQL y psql",
+  "domain": "fundamentos",
+  "summary": "Qué es una base de datos relacional, de dónde viene PostgreSQL y cómo está organizado por dentro: servidor, un proceso por conexión, clúster, bases, esquemas y tablas. Aprendes a moverte con soltura en psql (prompts, meta-comandos, `\\c`, `\\d`, `\\x`, `\\timing`), escribes tus primeras consultas `SELECT` y te acostumbras a leer los errores y a buscar ayuda como lo hace un profesional.",
+  "goal": "Conectarte a PostgreSQL con psql, orientarte en cualquier base con meta-comandos y escribir consultas SELECT simples, corrigiendo tú mismo los errores a partir del mensaje, el SQLSTATE y la documentación oficial.",
+  "objectives": [
+    "Explicar qué es una base de datos relacional (tablas, filas, columnas, claves primarias y foráneas) y qué problemas resuelve frente a una planilla compartida.",
+    "Describir la arquitectura cliente-servidor de PostgreSQL: postmaster, un proceso backend por conexión, puerto 5432 y la jerarquía clúster → base → esquema → tabla.",
+    "Interpretar el prompt de psql (`=#`, `=>`, `-#`, `'#`, `(#`, `=*#`, `=!#`) y actuar según el estado que indica.",
+    "Explorar una base con `\\l`, `\\c`, `\\conninfo`, `\\dn`, `\\dt`, `\\d` y `\\d+`, y ajustar la salida con `\\x` y `\\timing`.",
+    "Crear una base con `CREATE DATABASE`, conectarte a ella con `\\c` y crear en ella una tabla sencilla.",
+    "Escribir consultas `SELECT` con columnas elegidas y `LIMIT`, respetando las reglas de mayúsculas, comillas y comentarios.",
+    "Diagnosticar errores leyendo `ERROR`, `LINE`, `^` y `HINT`, obtener su SQLSTATE con `\\errverbose` y encontrar la respuesta en `\\h` y en la documentación oficial."
+  ],
+  "lessons": [
+    {
+      "id": "s01-l1",
+      "title": "Bases de datos relacionales y PostgreSQL",
+      "minutes": 20,
+      "goals": [
+        "Identificar tablas, filas, columnas, claves primarias y claves foráneas en la base `tienda`.",
+        "Explicar qué problemas de una planilla compartida resuelve un sistema de gestión de bases de datos.",
+        "Distinguir una instrucción declarativa (SQL) de un procedimiento paso a paso.",
+        "Ubicar los hitos de la historia de PostgreSQL, desde POSTGRES (Berkeley, 1986) hasta la versión 18."
+      ],
+      "takeaways": [
+        "Una base relacional guarda los datos en tablas: cada fila es un hecho, cada columna un atributo con un tipo fijo, y las tablas se relacionan por valores de claves.",
+        "El SGBD (aquí, PostgreSQL) es un servidor que custodia los datos: coordina a muchos usuarios a la vez, hace cumplir las reglas y no pierde lo confirmado.",
+        "SQL es declarativo: describes el resultado que quieres y el planificador decide cómo obtenerlo.",
+        "PostgreSQL nace del proyecto POSTGRES de Michael Stonebraker en Berkeley (1986); desde 1996 se llama PostgreSQL y lo desarrolla una comunidad global con una licencia libre.",
+        "Una versión mayor al año (la 18 salió en 2025) con 5 años de soporte; las versiones menores (18.1, 18.2, 18.3…) solo corrigen errores."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Imagina el almacén de barrio que empezó anotando todo en un cuaderno y después pasó a una planilla de Excel compartida: una hoja de productos, otra de clientes, otra de ventas. Funciona… hasta que dos personas editan la misma celda a la vez, alguien escribe «Palta Hass» en una hoja y «palta hass» en otra, se borra una fila sin querer o el archivo llega al millón de filas y demora minutos en abrir. Una **base de datos** administrada por un **SGBD** (sistema de gestión de bases de datos) resuelve justamente eso: los datos viven en un **servidor** que los custodia, deja que muchas personas y programas trabajen al mismo tiempo sin pisarse, hace cumplir reglas (un precio no puede ser negativo, un pedido debe pertenecer a un cliente que existe) y no pierde lo que confirmaste aunque se corte la luz."
+        },
+        {
+          "type": "h",
+          "text": "El modelo relacional: todo son tablas"
+        },
+        {
+          "type": "p",
+          "text": "En 1970 Edgar F. Codd, investigador de IBM, propuso guardar los datos como **relaciones**, que en la práctica son tablas. Cada **fila** representa un hecho (un producto, un cliente, un pedido) y cada **columna** es un atributo con un **tipo de dato** fijo (`integer`, `text`, `date`…). Las tablas no se enlazan con punteros ni con «hipervínculos»: se relacionan por **valores**. Un pedido guarda el `cliente_id` de quien lo hizo; para saber su nombre, se busca en `clientes` la fila con ese `id`. Esa idea tan simple —relacionar por valores— es la que permite hacer preguntas que nadie previó al diseñar el sistema."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Tabla",
+              "en": "table / relation",
+              "def": "Conjunto de filas que tienen las mismas columnas. PostgreSQL también la llama *relación*: por eso sus mensajes dicen `relation \"x\" does not exist`."
+            },
+            {
+              "term": "Fila",
+              "en": "row / tuple",
+              "def": "Un registro: un producto, un cliente, un pedido. Las filas de una tabla **no tienen un orden garantizado**."
+            },
+            {
+              "term": "Columna",
+              "en": "column / attribute",
+              "def": "Un atributo con nombre y tipo de dato fijo; todas las filas la tienen, aunque su valor puede faltar (NULL)."
+            },
+            {
+              "term": "Clave primaria",
+              "en": "primary key",
+              "def": "Columna (o columnas) que identifica cada fila sin repetirse ni quedar vacía, como `productos.id`."
+            },
+            {
+              "term": "Clave foránea",
+              "en": "foreign key",
+              "def": "Columna que guarda la clave primaria de otra tabla; el SGBD verifica que ese valor exista. Ejemplo: `pedidos.cliente_id` → `clientes.id`."
+            },
+            {
+              "term": "SGBD",
+              "en": "DBMS, database management system",
+              "def": "El programa servidor que guarda, protege y consulta los datos: PostgreSQL, MySQL, Oracle, SQL Server…"
+            },
+            {
+              "term": "SQL",
+              "en": "Structured Query Language",
+              "def": "Lenguaje estándar (ISO/IEC 9075) para definir, consultar y modificar datos relacionales. La versión vigente del estándar es SQL:2023."
+            }
+          ]
+        },
+        {
+          "type": "diagram",
+          "title": "La base tienda: seis tablas unidas por claves",
+          "mermaid": "erDiagram\n  categorias ||--o{ productos : \"agrupa\"\n  categorias |o--o{ categorias : \"es padre de\"\n  clientes ||--o{ pedidos : \"hace\"\n  pedidos ||--|{ pedido_items : \"contiene\"\n  productos ||--o{ pedido_items : \"aparece en\"\n  productos ||--o{ resenas : \"recibe\"\n  clientes ||--o{ resenas : \"escribe\"\n  categorias {\n    int id PK\n    text nombre\n    int padre_id FK\n  }\n  productos {\n    int id PK\n    text sku\n    text nombre\n    int categoria_id FK\n    int precio\n    int stock\n  }\n  clientes {\n    int id PK\n    text rut\n    text nombre\n    text comuna\n  }\n  pedidos {\n    int id PK\n    int cliente_id FK\n    timestamptz fecha\n    text estado\n  }\n  pedido_items {\n    int pedido_id PK\n    int producto_id PK\n    int cantidad\n    int precio_unitario\n  }\n  resenas {\n    int id PK\n    int producto_id FK\n    int cliente_id FK\n    smallint nota\n  }",
+          "caption": "Cada caja es una tabla (solo algunas columnas). Las líneas se leen así: «un cliente hace cero o muchos pedidos», «un pedido contiene uno o muchos ítems». En `pedido_items`, la clave primaria es el par (`pedido_id`, `producto_id`), y cada una de esas columnas es a la vez clave foránea."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Una tabla completa: todas las columnas (*) y todas las filas\nSELECT * FROM categorias;\n-- La «ficha técnica» de una tabla: columnas, tipos, claves y reglas\n\\d pedidos",
+          "caption": "Pulsa «Ejecutar en psql». La primera orden es SQL; la segunda, `\\d`, es un meta-comando de psql (lección 3)."
+        },
+        {
+          "type": "p",
+          "text": "Lee el resultado como lo haría una persona experta. En `categorias`, `padre_id` vacío significa **NULL** (la categoría no tiene padre): «Tecnología» es raíz y «Computación» cuelga de ella porque su `padre_id` vale 1. En `\\d pedidos`, la sección *Foreign-key constraints* es la línea del diagrama `clientes → pedidos`, y *Check constraints* son reglas que el servidor hace cumplir siempre: un pedido no puede tener un estado inventado. Esas reglas viven **en la base**, no en cada programa que la usa."
+        },
+        {
+          "type": "h",
+          "text": "SQL: dices qué, no cómo"
+        },
+        {
+          "type": "p",
+          "text": "Cuando pides un completo italiano en la picada, no le explicas a la cocina cómo cortar el tomate ni en qué orden poner la palta: dices **qué** quieres y ellos deciden **cómo**. SQL funciona igual. Un programa imperativo recorre los datos paso a paso; en SQL describes el resultado y el **planificador** de PostgreSQL elige el camino: leer la tabla entera, usar un índice, en qué orden unir tablas (lo verás a fondo en las secciones 14 y 15)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "Imperativo (paso a paso)",
+            "Declarativo (SQL)"
+          ],
+          "rows": [
+            [
+              "Qué escribes",
+              "Un algoritmo: abre el archivo, recorre cada línea, compara, acumula",
+              "El resultado: `SELECT nombre FROM clientes WHERE comuna = 'Ñuñoa';`"
+            ],
+            [
+              "Quién decide el cómo",
+              "Tú",
+              "El planificador de PostgreSQL"
+            ],
+            [
+              "Si mañana se crea un índice",
+              "Tienes que reescribir tu código para aprovecharlo",
+              "La misma consulta se vuelve más rápida sola"
+            ],
+            [
+              "Si los datos crecen mil veces",
+              "Tu bucle recorre mil veces más filas",
+              "El planificador puede cambiar de estrategia"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- No te preocupes aún por la sintaxis: se lee casi como una oración\nSELECT nombre, comuna, region\nFROM clientes\nLIMIT 5;",
+          "caption": "«Selecciona nombre, comuna y región de clientes, y dame 5 filas». En la lección 4 la desarmamos pieza por pieza."
+        },
+        {
+          "type": "h",
+          "text": "PostgreSQL: de un laboratorio de Berkeley a tu computador"
+        },
+        {
+          "type": "p",
+          "text": "La historia empieza en la Universidad de California en Berkeley. En los años 70, Michael Stonebraker y Eugene Wong crearon **Ingres**, uno de los primeros sistemas relacionales. En **1986** Stonebraker comenzó su sucesor, **POSTGRES** («post-Ingres»), para ir más allá del modelo relacional puro: tipos de datos definidos por el usuario, reglas, extensibilidad. En 1994 Andrew Yu y Jolly Chen reemplazaron su lenguaje original (PostQUEL) por **SQL** y lo publicaron como software libre con el nombre **Postgres95**; con ese cambio llegó un programa nuevo para consultas interactivas: **psql**. En 1996 pasó a llamarse **PostgreSQL** y la numeración siguió desde la 6.0. Desde entonces lo desarrolla el *PostgreSQL Global Development Group*, una comunidad de personas y empresas: no hay un dueño que pueda cerrarlo o cambiarle la licencia. Stonebraker recibió el Premio Turing correspondiente a 2014, el «Nobel de la computación», por sus aportes a los sistemas de bases de datos modernos."
+        },
+        {
+          "type": "diagram",
+          "title": "Línea de tiempo",
+          "mermaid": "timeline\n  title De POSTGRES a PostgreSQL 18\n  1970 : Codd publica el modelo relacional\n  Años 70 : Ingres en Berkeley (Stonebraker y Wong)\n  1986 : Comienza la implementación de POSTGRES\n  1989 : POSTGRES versión 1 llega a los primeros usuarios\n  1994 : Postgres95 adopta SQL y trae psql\n  1996 : Pasa a llamarse PostgreSQL (versión 6.0)\n  2010 : 9.0 con replicación en streaming\n  2014 : 9.4 incorpora jsonb\n  2017 : 10 con particionamiento declarativo y replicación lógica\n  2025 : 18 con E/S asíncrona, uuidv7() y columnas generadas virtuales",
+          "caption": "Algunos hitos. Todos los detalles técnicos de la versión 18 aparecen a lo largo del curso, marcados como «nuevo en 18»."
+        },
+        {
+          "type": "list",
+          "items": [
+            "**Libre de verdad**: la licencia PostgreSQL (del estilo BSD/MIT) permite usarlo, modificarlo y distribuirlo gratis para cualquier fin, privado, comercial o académico.",
+            "**Correcto y confiable**: transacciones, control de concurrencia multiversión (MVCC), claves foráneas, restricciones; si te confirma una escritura, está guardada.",
+            "**Muy apegado al estándar**: de las 177 características obligatorias del núcleo de SQL:2023, PostgreSQL cumple al menos 170.",
+            "**Extensible**: se le pueden agregar tipos de datos, funciones, operadores, métodos de índice y lenguajes; así nacen extensiones como PostGIS (mapas) o pgvector (búsqueda por similitud para IA).",
+            "**Popular**: desde la encuesta de Stack Overflow de 2023 aparece como la base de datos más usada por quienes programan."
+          ]
+        },
+        {
+          "type": "table",
+          "head": [
+            "Versión",
+            "Qué trae",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "Mayor: 18",
+              "Funcionalidades nuevas; sale una al año y recibe soporte durante 5 años",
+              "PostgreSQL 18 (septiembre de 2025)"
+            ],
+            [
+              "Menor: 18.3",
+              "Solo correcciones de errores y de seguridad; salen al menos cada tres meses",
+              "18.1 → 18.2 → 18.3"
+            ],
+            [
+              "Antes de la 10",
+              "La versión mayor eran los **dos** primeros números",
+              "Pasar de 9.5 a 9.6 era un cambio mayor"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Actualizar a una versión **menor** (18.2 → 18.3) es instalar los binarios nuevos y reiniciar el servidor. Pasar a una versión **mayor** (17 → 18) cambia el formato interno de los archivos: requiere volcar y restaurar (`pg_dump`) o usar `pg_upgrade`. Verlo al revés es un error caro."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "¿Cómo se pronuncia? «post-gres-cu-ele» (en inglés, *post-gress-Q-L*). Decirle simplemente **Postgres** es totalmente aceptado: la documentación lo considera un nombre oficial del proyecto."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Preguntas típicas de entrevista: ¿qué es un SGBD relacional? (datos en tablas relacionadas por valores de claves) · ¿PostgreSQL es relacional u objeto-relacional? (su documentación lo define como **objeto-relacional**, ORDBMS) · ¿qué significa que SQL sea declarativo? (describes el qué; el planificador decide el cómo) · ¿quién es dueño de PostgreSQL? (nadie: lo desarrolla una comunidad, con licencia libre)."
+        }
+      ]
+    },
+    {
+      "id": "s01-l2",
+      "title": "Arquitectura en 10 minutos: servidor, clúster, bases y esquemas",
+      "minutes": 25,
+      "goals": [
+        "Describir qué ocurre cuando un cliente se conecta: postmaster, proceso backend dedicado y puerto 5432.",
+        "Ubicar cualquier objeto en la jerarquía clúster → base de datos → esquema → tabla y escribir su nombre calificado.",
+        "Averiguar a qué servidor, base, usuario y puerto estás conectado con `\\conninfo`, `SELECT version()` y las funciones de sesión.",
+        "Reconocer cómo se instala PostgreSQL y cómo se conecta uno a él en macOS, Linux y Docker."
+      ],
+      "takeaways": [
+        "PostgreSQL es cliente-servidor: el servidor custodia los archivos de datos; psql, pgAdmin o tu aplicación solo le envían SQL y reciben resultados.",
+        "El postmaster escucha (por defecto en el puerto 5432) y crea un proceso backend dedicado para cada conexión.",
+        "Un clúster es UNA instancia del servidor con su directorio de datos; trae las bases postgres, template0 y template1, y ahí creas las tuyas.",
+        "Cada conexión es a una sola base; dentro de ella, los esquemas (public, pg_catalog…) agrupan tablas. `base.esquema.tabla` solo acepta la base actual.",
+        "Roles y bases de datos son objetos de todo el clúster; esquemas y tablas pertenecen a una base."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "PostgreSQL no es un programa que abres como una planilla: es un **servidor**, un programa que corre todo el tiempo en segundo plano (en tu notebook, en un servidor de la empresa o en la nube) y custodia los archivos de datos. Nadie toca esos archivos directamente. Los **clientes** —psql, pgAdmin, DBeaver, la aplicación web de la tienda escrita en Python o JavaScript— se conectan al servidor, le envían SQL y reciben resultados. Piensa en la caja de un banco: tú no entras a la bóveda; le pides a la cajera, ella trae el dinero, anota el movimiento y cuida que nadie más retire de tu cuenta al mismo tiempo."
+        },
+        {
+          "type": "p",
+          "text": "¿Cómo atiende a muchos a la vez? Un proceso supervisor, el **postmaster**, escucha en un puerto TCP (por defecto el **5432**) y en un socket Unix local. Cada vez que llega una conexión, crea (*fork*) un **proceso backend** dedicado solo a ese cliente; desde ese momento, cliente y backend conversan directamente hasta que el cliente se desconecta. La documentación lo llama modelo de «un proceso por usuario». Además hay procesos auxiliares que trabajan para todos —el *checkpointer*, el *background writer*, el *walwriter*, el lanzador de *autovacuum*…— y una zona de **memoria compartida** donde viven las páginas de datos en uso. Los verás en detalle en la sección 21."
+        },
+        {
+          "type": "diagram",
+          "title": "Un proceso por conexión",
+          "mermaid": "flowchart LR\n  subgraph Clientes\n    A[\"psql\"]\n    B[\"pgAdmin\"]\n    C[\"App de la tienda\"]\n  end\n  subgraph Servidor[\"Servidor PostgreSQL (una instancia)\"]\n    PM[\"postmaster<br/>escucha en el puerto 5432\"]\n    B1[\"backend de psql\"]\n    B2[\"backend de pgAdmin\"]\n    B3[\"backend de la app\"]\n    AUX[\"procesos auxiliares<br/>checkpointer, walwriter, autovacuum\"]\n    M[\"memoria compartida<br/>(shared_buffers)\"]\n  end\n  D[(\"directorio de datos<br/>tablas y WAL\")]\n  A -. \"1: pide conexión\" .-> PM\n  PM -- \"2: fork\" --> B1\n  PM --> B2\n  PM --> B3\n  A <-- \"3: SQL y resultados\" --> B1\n  B <--> B2\n  C <--> B3\n  B1 --- M\n  B2 --- M\n  B3 --- M\n  AUX --- M\n  M --- D",
+          "caption": "Cada cliente conversa con su propio proceso backend. Todos comparten la misma memoria y los mismos archivos de datos."
+        },
+        {
+          "type": "sessions",
+          "title": "Dos conexiones, dos procesos (grabado en un PostgreSQL 18 real)",
+          "sessions": [
+            "A",
+            "B",
+            "T"
+          ],
+          "labels": [
+            "Tu psql",
+            "App de la tienda",
+            "Terminal del sistema"
+          ],
+          "shells": [
+            "T"
+          ],
+          "dataset": "tienda",
+          "steps": [
+            {
+              "s": "A",
+              "in": "SELECT pg_backend_pid();",
+              "note": "`pg_backend_pid()` devuelve el número de proceso (PID) del backend que atiende **a esta conexión**.",
+              "prompt": "tienda=# ",
+              "out": " pg_backend_pid \n----------------\n          10884\n(1 row)\n\n"
+            },
+            {
+              "s": "B",
+              "in": "SELECT pg_backend_pid();",
+              "ask": "La app de la tienda se conectó al mismo servidor y a la misma base. ¿Tendrá el mismo PID que tu psql?",
+              "note": "Otro número: el postmaster creó un backend distinto para esta conexión. Dos clientes, dos procesos.",
+              "prompt": "tienda=# ",
+              "out": " pg_backend_pid \n----------------\n          10886\n(1 row)\n\n"
+            },
+            {
+              "s": "A",
+              "in": "SELECT pid, backend_type, datname, state\nFROM pg_stat_activity;",
+              "ask": "`pg_stat_activity` lista los procesos del servidor. ¿Cuántos serán de tipo `client backend`?",
+              "note": "Dos `client backend`: tu psql (`active`, porque está ejecutando esta misma consulta) y la app (`idle`, esperando órdenes). El resto son procesos auxiliares sin base (`datname` vacío): los lanzadores de autovacuum y de replicación lógica, el *checkpointer*, el *background writer*, el *walwriter* y tres *io worker*, que en PostgreSQL 18 hacen la lectura y escritura asíncrona.",
+              "prompt": "tienda=# ",
+              "out": "  pid  |         backend_type         | datname | state  \n-------+------------------------------+---------+--------\n 10884 | client backend               | tienda  | active\n 10886 | client backend               | tienda  | idle\n 10875 | autovacuum launcher          |         | \n 10876 | logical replication launcher |         | \n 10868 | io worker                    |         | \n 10869 | io worker                    |         | \n 10870 | io worker                    |         | \n 10871 | checkpointer                 |         | \n 10872 | background writer            |         | \n 10874 | walwriter                    |         | \n(10 rows)\n\n"
+            },
+            {
+              "s": "B",
+              "in": "\\conninfo",
+              "note": "`Backend PID` coincide con el `pg_backend_pid()` de B. `Socket Directory` indica que la conexión fue por socket Unix local, sin pasar por la red; el puerto sigue siendo 5432.",
+              "prompt": "tienda=# ",
+              "out": "           Connection Information\n      Parameter       |        Value         \n----------------------+----------------------\n Database             | tienda\n Client User          | postgres\n Socket Directory     | /tmp\n Server Port          | 5432\n Options              | \n Protocol Version     | 3.0\n Password Used        | false\n GSSAPI Authenticated | false\n Backend PID          | 10886\n SSL Connection       | false\n Superuser            | on\n Hot Standby          | off\n(12 rows)\n\n"
+            },
+            {
+              "s": "T",
+              "in": "pg_isready",
+              "note": "En una terminal del sistema: `pg_isready` pregunta si el servidor acepta conexiones.",
+              "prompt": "$ ",
+              "out": "/tmp:5432 - accepting connections\n"
+            },
+            {
+              "s": "T",
+              "in": "psql -d tienda -c \"SELECT version();\"",
+              "note": "`psql -c` abre una conexión, ejecuta una sola orden y se desconecta: un cliente que viene y se va, con un backend que vivió milisegundos. La versión muestra la plataforma real del servidor donde se grabó esta simulación (un Mac con procesador ARM).",
+              "prompt": "$ ",
+              "out": "                                                           version                                                           \n-----------------------------------------------------------------------------------------------------------------------------\n PostgreSQL 18.3 (Homebrew) on aarch64-apple-darwin25.2.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit\n(1 row)\n\n"
+            },
+            {
+              "s": "T",
+              "in": "psql -l",
+              "note": "`psql -l` lista las bases del clúster sin entrar a la consola, igual que `\\l` dentro de psql.",
+              "prompt": "$ ",
+              "out": "                                                List of databases\n   Name    |  Owner   | Encoding | Locale Provider | Collate | Ctype | Locale | ICU Rules |   Access privileges   \n-----------+----------+----------+-----------------+---------+-------+--------+-----------+-----------------------\n postgres  | postgres | UTF8     | libc            | C       | C     |        |           | \n template0 | postgres | UTF8     | libc            | C       | C     |        |           | =c/postgres          +\n           |          |          |                 |         |       |        |           | postgres=CTc/postgres\n template1 | postgres | UTF8     | libc            | C       | C     |        |           | =c/postgres          +\n           |          |          |                 |         |       |        |           | postgres=CTc/postgres\n tienda    | postgres | UTF8     | libc            | C       | C     |        |           | \n(4 rows)\n\n"
+            }
+          ],
+          "recorded": "2026-09-27"
+        },
+        {
+          "type": "h",
+          "text": "Clúster, bases de datos y esquemas"
+        },
+        {
+          "type": "p",
+          "text": "Un **clúster de bases de datos** (*database cluster*) —ojo: no es un grupo de servidores— es el conjunto de bases que administra **una** instancia del servidor: un directorio de datos, un puerto, un postmaster. Se crea con el programa `initdb` y nace con tres bases: **postgres** (la base por defecto para conectarse y para herramientas), **template1** (la plantilla que se copia cada vez que ejecutas `CREATE DATABASE`) y **template0** (una plantilla pura que nunca se modifica). Dentro de cada base hay **esquemas**, que funcionan como carpetas: `public` (donde van tus tablas si no dices otra cosa), `pg_catalog` (el catálogo del sistema: tablas que describen todo lo demás) e `information_schema` (vistas estándar sobre ese catálogo). Y dentro de los esquemas viven las tablas, vistas, funciones, etc."
+        },
+        {
+          "type": "diagram",
+          "title": "La jerarquía de objetos",
+          "mermaid": "flowchart TB\n  CL[\"Clúster: una instancia, un puerto (5432), un directorio de datos\"]\n  CL --> R[\"Roles: postgres, ana… (valen en todo el clúster)\"]\n  CL --> DB1[\"Base postgres\"]\n  CL --> DB2[\"Base template0\"]\n  CL --> DB3[\"Base template1\"]\n  CL --> DB4[\"Base tienda\"]\n  DB4 --> S1[\"Esquema public\"]\n  DB4 --> S2[\"Esquema pg_catalog\"]\n  DB4 --> S3[\"Esquema information_schema\"]\n  S1 --> T1[\"Tabla productos\"]\n  S1 --> T2[\"Tabla clientes\"]\n  S1 --> T3[\"Tabla pedidos y otras\"]\n  S2 --> T4[\"Catálogo: pg_class, pg_database…\"]",
+          "caption": "La documentación lo resume así: clúster → base de datos → esquema → tabla (u otro objeto). Unos pocos objetos, como los roles y las propias bases, son de todo el clúster."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Nivel",
+            "Qué es",
+            "Cómo verlo en psql",
+            "Ejemplo en el curso"
+          ],
+          "rows": [
+            [
+              "Clúster",
+              "Una instancia del servidor con su directorio de datos y su puerto",
+              "`\\conninfo`, `SHOW port;`, `SHOW data_directory;`, `SELECT version();`",
+              "El servidor simulado, puerto 5432"
+            ],
+            [
+              "Base de datos",
+              "Conjunto aislado de esquemas; cada conexión es a UNA base",
+              "`\\l`, `SELECT current_database();`",
+              "`postgres`, `template1`, `tienda`"
+            ],
+            [
+              "Esquema",
+              "Espacio de nombres dentro de una base",
+              "`\\dn` (`\\dnS` incluye los del sistema), `SELECT current_schema();`",
+              "`public`, `pg_catalog`"
+            ],
+            [
+              "Tabla",
+              "Filas y columnas",
+              "`\\dt`, `\\d tabla`",
+              "`public.productos`"
+            ],
+            [
+              "Rol",
+              "Usuario o grupo; vale en todo el clúster",
+              "`\\du`, `SELECT current_user;`",
+              "`postgres`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\conninfo\nSELECT version();\nSELECT current_database(), current_user, current_schema();\nSHOW port;\nSHOW data_directory;\n\\l\n\\dn",
+          "caption": "Dónde estás parado: servidor, base, usuario, esquema, puerto, bases del clúster y esquemas de la base."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "En el curso, `SELECT version()` dice `PostgreSQL 18.3 (PGlite …) on wasm32-unknown-emscripten`: es PostgreSQL 18.3 de verdad, pero compilado a WebAssembly para correr dentro de tu navegador. En un servidor real verás la plataforma, por ejemplo `on x86_64-pc-linux-gnu, compiled by gcc` en Linux. Por la misma razón, en la simulación el PID del backend (`\\conninfo`, `pg_backend_pid()`) siempre es el mismo (aquí no hay procesos del sistema operativo) y `SHOW data_directory;` muestra una carpeta virtual, `/pglite/data`; en un servidor Debian o Ubuntu verías `/var/lib/postgresql/18/main` y con Homebrew `/opt/homebrew/var/postgresql@18`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "-- Nombre simple: PostgreSQL busca la tabla en los esquemas del search_path (aquí, public)\nSELECT nombre FROM categorias LIMIT 2;\n-- Nombre calificado con el esquema\nSELECT nombre FROM public.categorias LIMIT 2;\n-- base.esquema.tabla solo se acepta si la base es la actual…\nSELECT nombre FROM tienda.public.categorias LIMIT 2;\n-- …porque una conexión no puede ver otra base\nSELECT nombre FROM postgres.public.categorias LIMIT 2;",
+          "caption": "El último error es a propósito: `cross-database references are not implemented`."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«Clúster» en PostgreSQL = el conjunto de bases de UNA instancia, no un grupo de servidores. Puerto por defecto: **5432**. Modelo: **un proceso por conexión** (no hilos). Una conexión = una base: para consultar otra hay que reconectarse (`\\c`); si dos conjuntos de datos deben poder cruzarse en una consulta, van en la misma base, en esquemas distintos (sección 5)."
+        },
+        {
+          "type": "h",
+          "text": "Cómo se instala en la vida real"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "En este curso **no instalas nada**: PostgreSQL 18.3 y psql corren simulados aquí mismo, en tu navegador, y todo lo practicas en la consola del curso. Los comandos que siguen son para cuando quieras tenerlo en tu computador o en un servidor: léelos para reconocerlos; no necesitas ejecutarlos ahora."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# macOS con Homebrew (en Mac con Intel, el prefijo es /usr/local en vez de /opt/homebrew)\nbrew install postgresql@18\nbrew services start postgresql@18      # lo deja corriendo en segundo plano\necho 'export PATH=\"/opt/homebrew/opt/postgresql@18/bin:$PATH\"' >> ~/.zshrc\npsql postgres                          # te conectas con tu usuario de macOS",
+          "caption": "Homebrew crea el clúster con tu usuario de macOS como superusuario; por eso no hace falta `-U postgres`."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# macOS con Postgres.app: descárgala de postgresapp.com, muévela a Aplicaciones,\n# ábrela y pulsa «Initialize». Luego agrega sus herramientas al PATH:\nsudo mkdir -p /etc/paths.d &&\necho /Applications/Postgres.app/Contents/Versions/latest/bin | sudo tee /etc/paths.d/postgresapp\npsql                                   # usuario y base = tu usuario de macOS"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# Ubuntu o Debian con el repositorio oficial de PostgreSQL (PGDG)\nsudo apt install -y postgresql-common\nsudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh\nsudo apt update\nsudo apt install postgresql-18\nsudo -u postgres psql                  # el superusuario inicial se llama postgres",
+          "caption": "En Linux el servidor queda como servicio del sistema y el rol `postgres` entra sin contraseña solo desde el usuario `postgres` del sistema (autenticación *peer*)."
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# Docker (cualquier sistema). Desde la imagen 18 el volumen se monta en /var/lib/postgresql\ndocker run --name pg18 -e POSTGRES_PASSWORD=secreto -p 5432:5432 \\\n  -v pgdatos:/var/lib/postgresql -d postgres:18\ndocker exec -it pg18 psql -U postgres"
+        },
+        {
+          "type": "code",
+          "lang": "bash",
+          "code": "# Conectarse indicando todo: servidor (-h), puerto (-p), usuario (-U) y base (-d)\npsql -h localhost -p 5432 -U postgres -d tienda\n# Lo mismo como URI de conexión (así lo piden muchas aplicaciones)\npsql \"postgresql://postgres@localhost:5432/tienda\"\n# Crear una base desde la terminal: createdb es un envoltorio de CREATE DATABASE\ncreatedb feria",
+          "caption": "En Windows se usa el instalador interactivo de EDB, enlazado desde la página de descargas de postgresql.org. Clientes gráficos populares: pgAdmin y DBeaver."
+        }
+      ]
+    },
+    {
+      "id": "s01-l3",
+      "title": "psql, tu consola",
+      "minutes": 25,
+      "goals": [
+        "Interpretar el prompt de psql para saber si estás listo, a medio escribir, dentro de una transacción o en una transacción fallida.",
+        "Distinguir sentencias SQL (terminan en `;` y van al servidor) de meta-comandos (empiezan con `\\` y los resuelve psql).",
+        "Explorar una base con `\\l`, `\\c`, `\\dn`, `\\dt`, `\\d` y `\\d+`, y ajustar la salida con `\\x` y `\\timing`.",
+        "Crear una base con `CREATE DATABASE`, conectarte con `\\c` y crear en ella una tabla sencilla."
+      ],
+      "takeaways": [
+        "Lo que empieza con `\\` es un meta-comando: lo ejecuta psql, no lleva `;` y termina con la línea.",
+        "Una sentencia SQL no se envía hasta el `;`: si el prompt cambia a `-#` (o `'#`, `(#`), psql espera que termines.",
+        "`=#` superusuario, `=>` usuario normal, `=*#` transacción abierta, `=!#` transacción fallida: de esta última se sale con `ROLLBACK`.",
+        "Los `\\d` son consultas al catálogo del sistema; con `\\set ECHO_HIDDEN on` ves el SQL que ejecutan.",
+        "`\\c base` cierra la conexión y abre otra: todo lo que crees después queda en la nueva base. Mira el prompt antes de crear."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "psql es un **cliente** de texto, y todo lo que escribes pasa primero por él. Si la línea empieza con una barra invertida (`\\`), es un **meta-comando**: lo resuelve psql mismo (listar tablas, cambiar de base, activar el cronómetro…). Si no, es **SQL**: psql lo va acumulando en un *búfer de consulta* y, cuando encuentra un `;` fuera de comillas, lo envía al servidor y te muestra la respuesta. Es como hablarle a un garzón: «¿me trae la carta?» lo resuelve él (meta-comando); «un lomo a lo pobre» lo lleva a la cocina (SQL) y vuelve con el plato."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué hace psql con cada línea",
+          "mermaid": "flowchart TD\n  L[\"Escribes una línea y presionas Enter\"] --> Q{\"¿Empieza con barra invertida?\"}\n  Q -- \"Sí\" --> MC[\"Meta-comando: lo ejecuta psql<br/>(un \\d consulta el catálogo por ti)\"]\n  MC --> R2[\"Muestra el resultado\"]\n  Q -- \"No\" --> BUF[\"Se agrega al búfer de consulta\"]\n  BUF --> P{\"¿Hay un punto y coma fuera de comillas?\"}\n  P -- \"No\" --> W[\"Prompt de continuación: tienda-#<br/>espera más líneas\"]\n  W --> L\n  P -- \"Sí\" --> S[\"Envía la sentencia al servidor\"]\n  S --> R[\"Muestra filas y (N rows), o un ERROR\"]",
+          "caption": "Los meta-comandos solo existen en psql: no funcionan desde tu aplicación ni en pgAdmin."
+        },
+        {
+          "type": "h",
+          "text": "El prompt te dice en qué estado estás"
+        },
+        {
+          "type": "p",
+          "text": "El prompt por defecto se arma con `%/%R%x%# `: el nombre de la base, un carácter que dice por qué psql espera (o `=` si está listo), el estado de la transacción y al final `#` si eres superusuario o `>` si no. Aprende a leerlo y nunca estarás perdido:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Prompt",
+            "Qué significa",
+            "Qué hacer"
+          ],
+          "rows": [
+            [
+              "`tienda=#`",
+              "Listo para una orden nueva; eres superusuario (`#`)",
+              "Escribir"
+            ],
+            [
+              "`tienda=>`",
+              "Listo; eres un usuario normal",
+              "Escribir (con los permisos que tengas)"
+            ],
+            [
+              "`tienda-#`",
+              "La sentencia sigue abierta: aún no escribes el `;`",
+              "Terminarla con `;` o borrarla con `\\r`"
+            ],
+            [
+              "`tienda'#`",
+              "Hay una comilla simple sin cerrar",
+              "Cerrar la comilla `'` y luego el `;`"
+            ],
+            [
+              "`tienda\"#`",
+              "Hay una comilla doble sin cerrar",
+              "Cerrar la comilla `\"`"
+            ],
+            [
+              "`tienda(#`",
+              "Hay un paréntesis sin cerrar",
+              "Cerrar el `)`"
+            ],
+            [
+              "`tienda*#`",
+              "Hay un comentario `/*` sin cerrar",
+              "Cerrarlo con `*/`"
+            ],
+            [
+              "`tienda=*#`",
+              "Estás dentro de una transacción (`BEGIN`)",
+              "Terminar con `COMMIT` o `ROLLBACK`"
+            ],
+            [
+              "`tienda-*#`",
+              "Sentencia a medio escribir dentro de una transacción",
+              "Terminar la sentencia"
+            ],
+            [
+              "`tienda=!#`",
+              "La transacción falló: todo se ignora hasta cerrarla",
+              "`ROLLBACK;`"
+            ]
+          ]
+        },
+        {
+          "type": "diagram",
+          "title": "Estados del prompt",
+          "mermaid": "stateDiagram-v2\n  [*] --> Listo\n  Listo --> Continuando : línea sin punto y coma\n  Continuando --> Continuando : más líneas\n  Continuando --> Listo : llega el punto y coma\n  Listo --> EnTransaccion : BEGIN\n  EnTransaccion --> EnTransaccion : sentencias sin error\n  EnTransaccion --> Listo : COMMIT o ROLLBACK\n  EnTransaccion --> Fallida : una sentencia da ERROR\n  Fallida --> Fallida : todo se ignora\n  Fallida --> Listo : ROLLBACK",
+          "caption": "Listo = `tienda=#` · Continuando = `tienda-#` · EnTransaccion = `tienda=*#` · Fallida = `tienda=!#`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT nombre,\n       precio\nFROM productos\nLIMIT 3;\nSELECT 'Tienda\nAndes';\nBEGIN;\nSELECT nombre FROM categorias LIMIT 1;\nSELECT 1/0;\nSELECT nombre FROM categorias LIMIT 1;\nROLLBACK;",
+          "caption": "Observa cómo cambia el prompt en cada línea. `BEGIN`/`ROLLBACK` abren y cierran una transacción (tema de la sección 13); aquí solo nos interesan los prompts `=*#` y `=!#`."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Lo más común del primer día: escribes una consulta, presionas Enter y **no pasa nada**. Mira el prompt: si dice `tienda-#`, falta el `;`; escríbelo solo en la línea siguiente y se ejecuta. Si te enredaste, `\\r` borra el búfer (en un psql real, Ctrl+C también descarta lo que llevas). Y si ves `=!#`, nada funcionará hasta que escribas `ROLLBACK;`: ahí incluso `COMMIT` responde `ROLLBACK`."
+        },
+        {
+          "type": "h",
+          "text": "Meta-comandos para orientarte"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Meta-comando",
+            "Qué hace"
+          ],
+          "rows": [
+            [
+              "`\\l`",
+              "Lista las bases del clúster (`\\l+` agrega tamaño y descripción)"
+            ],
+            [
+              "`\\c tienda`",
+              "Se conecta a otra base (cierra la conexión actual); `\\c - ana` cambia de usuario"
+            ],
+            [
+              "`\\conninfo`",
+              "Base, usuario, socket o servidor, puerto y PID del backend"
+            ],
+            [
+              "`\\dn`",
+              "Esquemas de la base (`\\dnS` incluye los del sistema)"
+            ],
+            [
+              "`\\dt`",
+              "Tablas (`\\dt+` agrega tamaño y descripción; `\\dt public.p*` filtra por patrón)"
+            ],
+            [
+              "`\\d`",
+              "Sin nombre: tablas, vistas y secuencias. Con nombre: describe el objeto (`\\d productos`)"
+            ],
+            [
+              "`\\d+ productos`",
+              "Descripción extendida: almacenamiento, comentarios, método de acceso y, desde la 18, las restricciones NOT NULL con nombre"
+            ],
+            [
+              "`\\du`",
+              "Roles (usuarios y grupos)"
+            ],
+            [
+              "`\\x`",
+              "Alterna la vista expandida: una columna por línea, ideal para filas anchas"
+            ],
+            [
+              "`\\timing`",
+              "Muestra cuánto demoró cada sentencia"
+            ],
+            [
+              "`\\?` y `\\h`",
+              "Ayuda de meta-comandos y de comandos SQL (lección 5)"
+            ],
+            [
+              "`\\p` y `\\r`",
+              "Muestra o borra el búfer de consulta"
+            ],
+            [
+              "`\\q`",
+              "Sale de psql (también `quit` o `exit`)"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\dt\n\\d productos\n\\dt+ productos\n\\dnS",
+          "caption": "Explora sin miedo: los meta-comandos de listado solo leen el catálogo, no cambian nada."
+        },
+        {
+          "type": "p",
+          "text": "Lee `\\d productos` de izquierda a derecha: cada columna con su tipo (`integer`, `text`, `boolean`, `date`), si admite vacíos (*Nullable*: `not null` significa obligatoria) y su valor por defecto (*Default*: `stock` parte en 0, `id` lo genera el sistema). Debajo, índices, reglas (*Check constraints*), claves foráneas y qué tablas apuntan a esta (*Referenced by*). En `\\dt+`, la columna *Description* muestra el comentario que dejó quien diseñó la tabla. Y `\\dnS` confirma que, además de `public`, cada base tiene `pg_catalog`, `information_schema` y `pg_toast` (donde PostgreSQL guarda los valores muy largos)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT * FROM clientes LIMIT 2;\n\\x\nSELECT * FROM clientes LIMIT 2;\n\\x\n\\timing\nSELECT nombre, precio FROM productos LIMIT 3;\n\\timing",
+          "caption": "`\\x` y `\\timing` son interruptores: la primera vez se activan y la segunda se desactivan. El tiempo que verás es el del motor simulado en tu navegador."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`\\dt p*` no muestra solo tus tablas que empiezan con p: la documentación de psql dice que, al dar un patrón, también se incluyen los objetos del sistema, así que aparecerán decenas de tablas `pg_…` del esquema `pg_catalog`. Para quedarte con las tuyas, califica el patrón con el esquema: `\\dt public.p*`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\set ECHO_HIDDEN on\n\\dt\n\\set ECHO_HIDDEN off\n\\dt public.p*",
+          "caption": "Con `ECHO_HIDDEN` psql te muestra la consulta que ejecuta por detrás (entre las líneas `QUERY`)."
+        },
+        {
+          "type": "p",
+          "text": "Los meta-comandos no son magia: `\\dt` es una consulta a las tablas del catálogo (`pg_class`, `pg_namespace`) que psql escribe por ti. Mirar esas consultas es una forma excelente de aprender cómo PostgreSQL se describe a sí mismo, y te servirá cuando quieras obtener la misma información desde un programa, donde los meta-comandos no existen."
+        },
+        {
+          "type": "h",
+          "text": "Crear una base, conectarse y crear una tabla"
+        },
+        {
+          "type": "p",
+          "text": "`CREATE DATABASE` es SQL (lleva `;`) y crea la base copiando la plantilla `template1`. `\\c` es un meta-comando: cierra la conexión actual y abre una nueva a la base indicada, y el prompt cambia de nombre para recordártelo. Todo lo que crees después vive en esa base. Dos adelantos que usaremos en los ejercicios: `CREATE TABLE nombre (columna tipo, …)` crea una tabla (sección 5) e `INSERT INTO tabla VALUES (…), (…)` le agrega filas (sección 6)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "CREATE DATABASE feria;\n\\l feria\n\\c feria\n\\dt\nCREATE TABLE frutas (nombre text, precio_kilo integer);\nINSERT INTO frutas VALUES ('Palta Hass', 4990), ('Frutilla', 3500);\nSELECT * FROM frutas;\n\\c tienda\n\\dt frutas",
+          "caption": "Al volver a `tienda`, psql no encuentra `frutas`: quedó en la base `feria`. Cada base es un mundo aparte."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El error más típico: crear la base, **olvidar el `\\c`** y crear la tabla en la base anterior. Antes de un `CREATE TABLE`, mira el nombre en el prompt. Otro detalle: `CREATE DATABASE` no puede ejecutarse dentro de una transacción; tras un `BEGIN` responde `ERROR:  CREATE DATABASE cannot run inside a transaction block`."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Escribe menos: en la consola del curso, igual que en un psql real, las flechas ↑ y ↓ recorren lo que ya escribiste y **Tab** autocompleta palabras clave, meta-comandos, tablas y columnas. `\\s` muestra el historial; en un psql real, además, queda guardado en `~/.psql_history` y sobrevive de una sesión a otra."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Los meta-comandos no llevan `;`, los procesa psql y **no son SQL**: no los puedes enviar desde Python ni desde pgAdmin. Memoriza el núcleo: `\\l` bases, `\\c` conectar, `\\dn` esquemas, `\\dt` tablas, `\\d` describir, `\\du` roles, `\\x` expandido, `\\timing` tiempos, `\\q` salir."
+        }
+      ]
+    },
+    {
+      "id": "s01-l4",
+      "title": "Tu primera consulta y cómo leer los errores",
+      "minutes": 20,
+      "goals": [
+        "Escribir consultas `SELECT` que devuelvan todas las columnas (`*`) o solo las pedidas, en el orden indicado.",
+        "Acotar filas con `LIMIT` y justificar por qué, sin `ORDER BY`, el resultado no tiene un orden garantizado.",
+        "Aplicar las reglas de mayúsculas, comillas simples y dobles, y comentarios (`--` y `/* */`).",
+        "Localizar la causa de un error con `ERROR`, `LINE`, el `^` y el `HINT`, y corregir la consulta."
+      ],
+      "takeaways": [
+        "`SELECT columnas FROM tabla` devuelve una tabla nueva de resultados; la tabla original no cambia.",
+        "`SELECT *` sirve para explorar; en programas y reportes nombra las columnas que necesitas.",
+        "`LIMIT n` corta el resultado a n filas, pero sin `ORDER BY` son n filas cualquiera.",
+        "Palabras clave y nombres sin comillas no distinguen mayúsculas (los nombres se pasan a minúsculas); `'texto'` es un valor y `\"Nombre\"` un identificador exacto.",
+        "Un error se lee de arriba abajo: qué pasó (`ERROR`), dónde (`LINE` y `^`) y una sugerencia (`HINT`). Cuidado con los errores silenciosos, como la coma olvidada."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Una consulta `SELECT` es una pregunta: «tráeme estas columnas de esta tabla». La respuesta es **otra tabla** —el resultado— que psql dibuja con encabezados, filas y el total `(N rows)`. La tabla original no cambia. PostgreSQL la procesa en un orden lógico que no es el orden en que la escribes: primero `FROM` (de dónde), luego `SELECT` (qué columnas) y al final `LIMIT` (cuántas filas). En la sección 2 completarás el cuadro con `WHERE` y `ORDER BY`."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo se arma el resultado",
+          "mermaid": "flowchart LR\n  F[\"FROM productos<br/>49 filas × 9 columnas\"] --> S[\"SELECT nombre, precio<br/>49 filas × 2 columnas\"]\n  S --> L[\"LIMIT 3<br/>3 filas × 2 columnas\"]\n  L --> R[\"psql dibuja la tabla<br/>y escribe (3 rows)\"]",
+          "caption": "Se escribe `SELECT … FROM … LIMIT …`, pero se evalúa FROM → SELECT → LIMIT."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Todas las columnas de una tabla chica\nSELECT * FROM categorias;\n-- Solo las columnas que te interesan, en el orden que quieras\nSELECT nombre, precio, stock FROM productos LIMIT 5;\nSELECT stock, nombre FROM productos LIMIT 5;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`SELECT *` es perfecto para mirar una tabla chica, pero en una aplicación es mala idea: trae columnas que no usas (más datos por la red) y, si alguien agrega o reordena columnas, tu código puede romperse. En programas y reportes, **nombra siempre las columnas**."
+        },
+        {
+          "type": "h",
+          "text": "LIMIT y el orden que no existe"
+        },
+        {
+          "type": "p",
+          "text": "Las filas de una tabla no tienen un orden propio: el modelo relacional las trata como un conjunto. `LIMIT 5` significa «dame 5 filas», no «las 5 primeras». Hoy te salen los productos 1 a 5 porque así quedaron guardados, pero después de actualizaciones, de un `VACUUM` o de un plan de ejecución distinto el orden puede cambiar. La documentación lo dice sin rodeos: si usas `LIMIT` sin un `ORDER BY` que fije un orden único, obtienes «un subconjunto impredecible» de las filas. Adelanto de la sección 2: `ORDER BY columna` fija el orden."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, nombre FROM productos LIMIT 5;\n-- Adelanto de la sección 2: con ORDER BY el orden queda garantizado\nSELECT id, nombre FROM productos ORDER BY id LIMIT 5;\n-- SELECT también funciona sin tabla: como calculadora o para llamar funciones\nSELECT 2 + 3 * 4, 'Tienda Andes', now();"
+        },
+        {
+          "type": "p",
+          "text": "Cuando una columna del resultado no viene de una tabla, PostgreSQL la titula `?column?` (o con el nombre de la función, como `now`). En la sección 2 aprenderás a ponerle nombre con `AS`. Fíjate también en que `now()` muestra la hora con `-03` o `-04`: el servidor del curso usa la zona horaria `America/Santiago`."
+        },
+        {
+          "type": "h",
+          "text": "Mayúsculas, comillas y comentarios"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Escribes",
+            "PostgreSQL entiende",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`SELECT`, `select`, `SeLeCt`",
+              "La misma palabra clave",
+              "Da lo mismo; la convención es escribirlas en MAYÚSCULAS"
+            ],
+            [
+              "`productos`, `Productos`, `PRODUCTOS`",
+              "`productos`: los nombres sin comillas se pasan a minúsculas",
+              "Funcionan los tres"
+            ],
+            [
+              "`\"Productos\"`",
+              "Exactamente `Productos`, con P mayúscula",
+              "`ERROR:  relation \"Productos\" does not exist`"
+            ],
+            [
+              "`'nombre'`",
+              "Un **texto** constante, no una columna",
+              "La palabra *nombre* repetida en cada fila"
+            ],
+            [
+              "`\"nombre\"`",
+              "El identificador `nombre`",
+              "La columna nombre"
+            ],
+            [
+              "`-- comentario`",
+              "Comentario hasta el final de la línea",
+              "Se ignora"
+            ],
+            [
+              "`/* comentario */`",
+              "Comentario de bloque: puede ocupar varias líneas y anidarse",
+              "Se ignora"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "select NOMBRE, Precio from PRODUCTOS limit 2;\nSELECT 'nombre' FROM productos LIMIT 2;\nSELECT \"Nombre\" FROM productos LIMIT 2;\n/* Comentario de bloque:\n   puede ocupar varias líneas */\nSELECT nombre -- y este llega hasta el final de la línea\nFROM categorias LIMIT 2;",
+          "caption": "La primera funciona aunque esté escrita «a lo loco»; la tercera falla a propósito, pero mira el `HINT`."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Convención de este curso (y de la mayoría de los equipos): palabras clave en MAYÚSCULAS; tablas y columnas en minúsculas, en español y con guion bajo (`fecha_registro`), sin comillas dobles. Si nunca creas nombres con mayúsculas, tildes o espacios, nunca vas a necesitar comillas dobles. Los nombres pueden tener hasta 63 bytes; si escribes uno más largo, PostgreSQL lo trunca."
+        },
+        {
+          "type": "h",
+          "text": "Cómo leer un error"
+        },
+        {
+          "type": "code",
+          "lang": "text",
+          "code": "tienda=# SELECT nombres FROM productos;\nERROR:  column \"nombres\" does not exist\nLINE 1: SELECT nombres FROM productos;\n               ^\nHINT:  Perhaps you meant to reference the column \"productos.nombre\".",
+          "caption": "Anatomía de un error: qué, dónde y una sugerencia."
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`ERROR:` qué pasó, en inglés y sin rodeos. Otros niveles que verás: `WARNING`, `NOTICE` (avisos que no detienen nada) y `FATAL` (se corta la conexión).",
+            "`LINE 1:` la línea de la sentencia donde se detectó el problema; en consultas de varias líneas puede ser `LINE 3:`.",
+            "`^` apunta al carácter donde el analizador **se dio cuenta**. A veces la causa está justo antes: una coma de más, un paréntesis sin cerrar.",
+            "`HINT:` una sugerencia; en errores de tipeo en nombres de columna suele adivinar lo que quisiste escribir. También puedes ver `DETAIL:` (más información) y `CONTEXT:` (dónde, por ejemplo dentro de una función)."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELEC nombre FROM productos;\nSELECT nombre, FROM productos;\nSELECT nombre FROM producto;\nSELECT nombre FROM productos LIMIT 'cinco';",
+          "caption": "Cuatro errores clásicos: palabra clave mal escrita, coma de más, tabla inexistente y un valor del tipo equivocado. Para cada uno, ubica el `^` antes de leer el mensaje."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El error más peligroso es el que **no aparece**. Si olvidas una coma, `SELECT nombre precio FROM productos` no falla: PostgreSQL entiende «la columna nombre, con el alias precio» y te muestra los nombres bajo el encabezado *precio*. Si un resultado tiene menos columnas de las que pediste o encabezados raros, revisa las comas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre precio FROM productos LIMIT 3;\nSELECT nombre, precio FROM productos LIMIT 3;",
+          "caption": "Misma consulta con y sin coma: la primera «funciona» y está mal."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Clásicos de entrevista: ¿`'x'` o `\"x\"`? Comillas simples = valores de texto; dobles = nombres (identificadores). ¿`SELECT * FROM Clientes` funciona si la tabla se llama `clientes`? Sí, porque sin comillas se convierte a minúsculas. ¿Y `\"Clientes\"`? No. ¿`LIMIT` sin `ORDER BY` devuelve las primeras filas? No hay «primeras»: el orden no está definido."
+        }
+      ]
+    },
+    {
+      "id": "s01-l5",
+      "title": "Aprender a pedir ayuda: \\h, SQLSTATE y la documentación",
+      "minutes": 20,
+      "goals": [
+        "Consultar la sintaxis de cualquier comando SQL con `\\h` e interpretar la notación `[ ]`, `{ | }` y `[, ...]`.",
+        "Obtener el SQLSTATE de un error con `\\errverbose` o `\\set VERBOSITY verbose` y deducir su clase por los dos primeros caracteres.",
+        "Encontrar en la documentación oficial de PostgreSQL 18 la página de un comando, la de psql y la de los códigos de error."
+      ],
+      "takeaways": [
+        "`\\h COMANDO` muestra la sinopsis oficial y el enlace a su página; `\\?` lista los meta-comandos.",
+        "En una sinopsis: `[ ]` es opcional, `{ a | b }` obliga a elegir una, `[, ...]` permite repetir; lo que está en MAYÚSCULAS se escribe tal cual y lo que está en minúsculas lo reemplazas tú.",
+        "Cada error trae un SQLSTATE de 5 caracteres: los 2 primeros son la clase (42 sintaxis o acceso, 22 dato inválido, 23 restricción violada, 25 estado de la transacción).",
+        "`\\errverbose` repite el último error con su SQLSTATE y el lugar del código fuente donde se produjo; `VERBOSITY` cambia el detalle de los errores siguientes.",
+        "La documentación oficial (`postgresql.org/docs/18/`) es la fuente de verdad: revisa siempre que el número de la URL sea el de tu versión."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Nadie se sabe PostgreSQL de memoria, ni siquiera quienes lo programan. Lo que distingue a una persona experta es que sabe **dónde mirar**, y hay tres lugares a mano: la ayuda de psql (`\\h`, `\\?`), el propio mensaje de error (con su código SQLSTATE) y la documentación oficial. Es como el manual del auto en la guantera: no lo lees entero, pero sabes buscar qué significa la luz que se encendió en el tablero."
+        },
+        {
+          "type": "diagram",
+          "title": "Dónde buscar ayuda",
+          "mermaid": "mindmap\n  root((Tengo una duda))\n    En psql\n      \\h COMANDO\n      \\?\n      help\n    En el error\n      ERROR y LINE\n      HINT y DETAIL\n      SQLSTATE con \\errverbose\n    En la documentación\n      Referencia de comandos SQL\n      Página de psql\n      Apéndice A códigos de error\n      Funciones y operadores\n    En la comunidad\n      Lista de correo pgsql-general\n      Wiki de PostgreSQL",
+          "caption": "Tres lugares siempre a mano, y la comunidad para cuando nada de eso alcanza."
+        },
+        {
+          "type": "h",
+          "text": "\\h: la sintaxis oficial sin salir de psql"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "help\n\\h CREATE DATABASE\n\\h DROP DATABASE",
+          "caption": "`help` (sin barra) te recuerda los comandos de ayuda. Al final de cada `\\h` está la URL de la página oficial."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Notación",
+            "Significa",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "MAYÚSCULAS",
+              "Palabra clave: se escribe tal cual (en mayúsculas o minúsculas)",
+              "`CREATE DATABASE`"
+            ],
+            [
+              "minúsculas",
+              "Algo que reemplazas por tu valor",
+              "`name` → `feria`"
+            ],
+            [
+              "`[ … ]`",
+              "Opcional",
+              "`[ WITH ]`, `[ IF EXISTS ]`"
+            ],
+            [
+              "`{ a | b }`",
+              "Elige exactamente una de las alternativas",
+              "`LIMIT { count | ALL }`"
+            ],
+            [
+              "`[, ...]`",
+              "Puedes repetir el elemento anterior, separado por comas",
+              "`expression [, ...]`"
+            ],
+            [
+              "`[=]`",
+              "El signo igual es opcional",
+              "`OWNER [=] user_name`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- ¿Cómo era LIMIT? Búscalo en la sinopsis de SELECT y pruébalo\n\\h SELECT\nSELECT nombre FROM categorias LIMIT ALL;",
+          "caption": "La sinopsis dice `LIMIT { count | ALL }`: `LIMIT ALL` equivale a no poner límite (devuelve las 13 categorías)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`\\h` sin argumentos lista todos los comandos con ayuda y `\\h *` muestra todas las sinopsis. `\\?` hace lo mismo con los meta-comandos de psql, agrupados por tema (*General*, *Query Buffer*, *Informational*, *Formatting*…)."
+        },
+        {
+          "type": "h",
+          "text": "El SQLSTATE: el código de cada error"
+        },
+        {
+          "type": "p",
+          "text": "El texto de un error puede cambiar entre versiones o venir traducido; el **SQLSTATE** no. Es un código de 5 caracteres definido por el estándar SQL (y ampliado por PostgreSQL): según el estándar, los **dos primeros** indican la **clase** y los tres últimos la condición específica. Las aplicaciones reaccionan al código, no al texto: ante un `23505` («ya existe ese valor único») una app puede mostrar «Ese RUT ya está registrado», y ante un `40001` reintentar la transacción. psql guarda el último código en la variable `SQLSTATE` (`\\echo :SQLSTATE`)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "SQLSTATE",
+            "Nombre",
+            "Cuándo lo verás"
+          ],
+          "rows": [
+            [
+              "`42601`",
+              "syntax_error",
+              "`SELEC nombre FROM productos;`"
+            ],
+            [
+              "`42703`",
+              "undefined_column",
+              "Columna mal escrita: `SELECT nombres …`"
+            ],
+            [
+              "`42P01`",
+              "undefined_table",
+              "Tabla que no existe: `FROM producto`"
+            ],
+            [
+              "`42883`",
+              "undefined_function",
+              "Función inexistente o con argumentos de otro tipo"
+            ],
+            [
+              "`42P04`",
+              "duplicate_database",
+              "`CREATE DATABASE tienda;` cuando ya existe"
+            ],
+            [
+              "`3D000`",
+              "invalid_catalog_name",
+              "Conectarse a una base que no existe"
+            ],
+            [
+              "`22012`",
+              "division_by_zero",
+              "`SELECT 1/0;`"
+            ],
+            [
+              "`23505`",
+              "unique_violation",
+              "Repetir un valor en una columna UNIQUE (sección 5)"
+            ],
+            [
+              "`25001`",
+              "active_sql_transaction",
+              "`CREATE DATABASE` dentro de un `BEGIN`"
+            ],
+            [
+              "`25P02`",
+              "in_failed_sql_transaction",
+              "Seguir escribiendo en una transacción fallida (`=!#`)"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT nombres FROM productos;\n\\errverbose\nCREATE DATABASE tienda;\n\\errverbose\n\\echo :SQLSTATE\n\\set VERBOSITY verbose\nSELECT 1/0;\n\\set VERBOSITY default",
+          "caption": "`\\errverbose` repite el último error con máximo detalle; `\\set VERBOSITY verbose` deja activado ese detalle para los errores siguientes."
+        },
+        {
+          "type": "p",
+          "text": "La línea `LOCATION:` indica la función y el archivo del código fuente de PostgreSQL (escrito en C) que lanzó el error, por ejemplo `errorMissingColumn, parse_relation.c`. Rara vez la necesitas, pero es oro si alguna vez reportas un bug. `VERBOSITY` acepta `default`, `verbose`, `terse` (una sola línea) y `sqlstate` (solo el código)."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "SQLSTATE = 5 caracteres; clase = los 2 primeros. Las clases que más aparecen: **22** (dato inválido), **23** (violación de integridad: `23505` único, `23503` clave foránea, `23502` NOT NULL, `23514` CHECK), **25** (estado de la transacción), **40** (transacción revertida: `40001` serialización, `40P01` deadlock) y **42** (sintaxis o regla de acceso: `42601`, `42703`, `42P01`, `42501` sin privilegios)."
+        },
+        {
+          "type": "h",
+          "text": "Navegar la documentación oficial"
+        },
+        {
+          "type": "p",
+          "text": "La documentación de PostgreSQL es excepcionalmente buena y está completa en https://www.postgresql.org/docs/18/ (en inglés). Fíjate en el número de la URL: `/docs/18/` es la de tu versión, `/docs/current/` apunta siempre a la última, y un buscador puede llevarte a páginas antiguas como `/docs/9.6/`. Así está organizada:"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Parte",
+            "Para qué la usarás"
+          ],
+          "rows": [
+            [
+              "I. Tutorial",
+              "Un primer recorrido guiado: crear una base, consultas básicas"
+            ],
+            [
+              "II. The SQL Language",
+              "Sintaxis, tipos de datos, funciones y operadores, índices, concurrencia"
+            ],
+            [
+              "III. Server Administration",
+              "Instalación, configuración, autenticación, respaldos, replicación, monitoreo"
+            ],
+            [
+              "IV. Client Interfaces",
+              "libpq y otras formas de conectarse desde programas"
+            ],
+            [
+              "V. Server Programming",
+              "Funciones, triggers, PL/pgSQL, extensiones"
+            ],
+            [
+              "VI. Reference",
+              "Una página por comando SQL (`CREATE DATABASE`, `SELECT`…) y por programa (`psql`, `pg_dump`…)"
+            ],
+            [
+              "VII. Internals",
+              "Cómo funciona por dentro: planificador, almacenamiento, WAL"
+            ],
+            [
+              "VIII. Appendixes",
+              "Códigos de error (apéndice A), fechas y horas, notas de cada versión"
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "items": [
+            "**Un comando SQL**: la URL que muestra `\\h`, o el índice *SQL Commands* (`sql-commands.html`).",
+            "**Un meta-comando de psql**: la página de psql (`app-psql.html`), sección *Meta-Commands*.",
+            "**Un error**: busca el SQLSTATE en el apéndice A (`errcodes-appendix.html`).",
+            "**Una función** (`now()`, `version()`…): el capítulo *Functions and Operators* (`functions.html`).",
+            "**Qué cambió en una versión**: las notas de versión (*Release Notes*), por ejemplo las de la 18.",
+            "**Si nada de eso basta**: la lista de correo pgsql-general y el wiki (`wiki.postgresql.org`)."
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Desconfía de las respuestas de foros o de asistentes de IA que no dicen la versión: PostgreSQL cambia cada año. Si algo no te funciona, compáralo con la página de la documentación **de tu versión**. En este curso, cuando algo es reciente lo indicamos («desde PostgreSQL 17», «nuevo en 18»)."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s01-e1",
+      "title": "La vitrina de categorías",
+      "level": "facil",
+      "minutes": 5,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "La tienda quiere revisar su árbol de categorías completo. Escribe una consulta que devuelva **todas las columnas y todas las filas** de la tabla `categorias`.",
+        "No importa el orden de las filas."
+      ],
+      "starter": "-- Escribe tu consulta\n",
+      "solution": "SELECT * FROM categorias;",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "El asterisco `*` significa «todas las columnas».",
+        "La forma es `SELECT * FROM nombre_de_la_tabla;`."
+      ],
+      "explain": "`SELECT *` trae las columnas en el orden en que se definieron (`id`, `nombre`, `padre_id`) y, sin más cláusulas, todas las filas (13). Las categorías raíz tienen `padre_id` vacío: es NULL, no tienen categoría padre. Equivalentes: la versión explícita `SELECT id, nombre, padre_id FROM categorias;` (la recomendada en programas) y la forma abreviada del estándar `TABLE categorias;`, que aparece al final de la sinopsis de `\\h SELECT`."
+    },
+    {
+      "id": "s01-e2",
+      "title": "Directorio de clientes",
+      "level": "facil",
+      "minutes": 5,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing necesita el nombre, el apellido y la comuna de **todos** los clientes, con las columnas en este orden: `nombre`, `apellido`, `comuna`.",
+        "No importa el orden de las filas. Algunos clientes no tienen comuna registrada: deben aparecer igual."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT\n",
+      "solution": "SELECT nombre, apellido, comuna\nFROM clientes;",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "Separa las columnas con comas, en el orden pedido.",
+        "`SELECT col1, col2, col3 FROM tabla;`. Si dudas de los nombres exactos, revisa `\\d clientes`."
+      ],
+      "explain": "El orden de las columnas del resultado es el que escribes en el `SELECT`, no el de la tabla. Las comunas vacías son NULL: `SELECT` sin `WHERE` no descarta filas, así que salen los 60 clientes. Trampa clásica: si olvidas una coma (`nombre apellido`), no hay error, pero `apellido` pasa a ser el *alias* de `nombre` y te quedan dos columnas con encabezados engañosos."
+    },
+    {
+      "id": "s01-e3",
+      "title": "Tarjeta de identidad de la conexión",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Escribe **una sola** consulta, sin tabla, que devuelva en este orden: el nombre de la base de datos actual, el usuario actual y la versión completa del servidor.",
+        "Usa las funciones de la lección 2 y deja que PostgreSQL ponga los nombres de columna por defecto (`current_database`, `current_user`, `version`)."
+      ],
+      "starter": "-- Escribe tu consulta\n",
+      "solution": "SELECT current_database(), current_user, version();",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "`SELECT` puede evaluar funciones sin `FROM`, separadas por comas.",
+        "`current_database()` y `version()` llevan paréntesis; `current_user` no."
+      ],
+      "explain": "`current_user` se escribe **sin paréntesis** porque el estándar SQL la define como una función especial (igual que `session_user` o `current_date`); `current_user()` da `syntax error at or near \"(\"`. En el curso, `version()` menciona PGlite y `wasm32` porque el servidor está compilado a WebAssembly dentro de tu navegador; en un servidor real verás su plataforma y compilador. Atajos desde psql: `\\conninfo` para los datos de la conexión y `SHOW server_version;` para el número de versión solo."
+    },
+    {
+      "id": "s01-e4",
+      "title": "Tu primera base de datos",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "psql",
+      "prompt": [
+        "Estás conectado a la base `postgres` (mira el prompt). Crea una base de datos nueva llamada `feria`, en minúsculas, y verifica con `\\l` que aparezca en la lista.",
+        "Después conéctate a ella con `\\c`: el prompt debería cambiar a `feria=#`. Confirma dónde estás con `SELECT current_database();`."
+      ],
+      "solution": [
+        "CREATE DATABASE feria;",
+        "\\l",
+        "\\c feria",
+        "SELECT current_database();"
+      ],
+      "checks": [
+        {
+          "name": "Existe la base feria",
+          "sql": "SELECT existe_base('feria')",
+          "fail": "No encuentro la base feria. ¿Terminaste el CREATE DATABASE con punto y coma? Revisa con \\l."
+        },
+        {
+          "name": "El nombre está en minúsculas",
+          "sql": "SELECT NOT EXISTS (SELECT 1 FROM pg_database WHERE lower(datname) = 'feria' AND datname <> 'feria')",
+          "fail": "Hay una base «Feria» con mayúsculas: las comillas dobles respetan mayúsculas. Bórrala con DROP DATABASE y créala sin comillas."
+        },
+        {
+          "name": "Heredó la codificación UTF8 de template1",
+          "sql": "SELECT coalesce((SELECT pg_encoding_to_char(encoding) = 'UTF8' FROM pg_database WHERE datname = 'feria'), false)",
+          "fail": "La base feria no existe o no quedó con codificación UTF8. Créala con CREATE DATABASE feria; sin opciones extra."
+        }
+      ],
+      "hints": [
+        "`CREATE DATABASE` es SQL: termina en `;`. `\\l` y `\\c` son meta-comandos: sin `;`.",
+        "Primero `CREATE DATABASE feria;` y luego `\\c feria`."
+      ],
+      "explain": "`CREATE DATABASE feria;` copia la plantilla `template1`, y por eso hereda su codificación (UTF8) y todo lo que tenga. `\\c feria` cierra la conexión a `postgres` y abre una nueva: el prompt lo refleja. `CREATE DATABASE Feria;` también crea `feria` (sin comillas, el nombre se pasa a minúsculas), pero `\"Feria\"` crearía otra base distinta. Si la base ya existe verás `ERROR:  database \"feria\" already exists` (SQLSTATE `42P04`). Desde la terminal del sistema, `createdb feria` hace lo mismo."
+    },
+    {
+      "id": "s01-e5",
+      "title": "Los cinco primeros del catálogo",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Muestra los **5 productos de menor `id`** con las columnas `id`, `sku`, `nombre` y `precio`, en ese orden, ordenados por `id` de menor a mayor.",
+        "Como viste en la lección 4, `LIMIT` sin `ORDER BY` no garantiza cuáles filas llegan: usa el adelanto `ORDER BY id` antes del `LIMIT`."
+      ],
+      "starter": "-- Escribe tu consulta\n",
+      "solution": "SELECT id, sku, nombre, precio\nFROM productos\nORDER BY id\nLIMIT 5;",
+      "ordered": true,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\blimit\\s+5\\b",
+          "msg": "Limita el resultado con LIMIT 5",
+          "name": "Usa LIMIT 5"
+        }
+      ],
+      "hints": [
+        "El orden de escritura es `SELECT … FROM … ORDER BY … LIMIT …`.",
+        "`ORDER BY id LIMIT 5` va al final, después del `FROM productos`."
+      ],
+      "explain": "`ORDER BY id` ordena de menor a mayor (por defecto es ascendente) y recién después `LIMIT 5` corta. Sin el `ORDER BY` probablemente te habrían llegado las mismas filas —porque así están guardadas—, pero sería casualidad, no una garantía. El estándar SQL tiene una forma equivalente, `FETCH FIRST 5 ROWS ONLY`, que verás en la sección 2 junto con `OFFSET`."
+    },
+    {
+      "id": "s01-e6",
+      "title": "Tres errores, tres mensajes",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Un colega dejó esta consulta en el editor. Debería mostrar el `nombre`, el `precio` y el `stock` (en ese orden) de los 4 productos de menor `id`, pero tiene **tres errores**.",
+        "Ejecútala, lee cada mensaje de PostgreSQL (el `^`, el `HINT`) y corrígela paso a paso. Ojo: uno de los errores no produce ningún mensaje."
+      ],
+      "starter": "-- Esta consulta tiene 3 errores. Ejecútala, lee cada mensaje y corrígela.\nSELEC nombre precio, stok\nFROM Productos\nORDER BY id\nLIMIT 4;",
+      "solution": "SELECT nombre, precio, stock\nFROM productos\nORDER BY id\nLIMIT 4;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Primer mensaje: `syntax error at or near \"SELEC\"`. ¿Qué palabra clave querías escribir?",
+        "Segundo mensaje: el `HINT` te sugiere el nombre correcto de una columna.",
+        "Si ya no hay error pero el resultado tiene 2 columnas en vez de 3, cuenta las comas del `SELECT`."
+      ],
+      "explain": "Los tres errores: `SELEC` (error de sintaxis, `42601`), `stok` (columna inexistente, `42703`, con un `HINT` que sugiere `stock`) y la coma que falta entre `nombre` y `precio`, que es silenciosa: `nombre precio` significa «columna nombre con alias precio». `FROM Productos` **no** era un error: sin comillas el nombre se pasa a minúsculas. Moraleja: corrige un error a la vez, en orden, y cuando desaparezcan los mensajes compara el resultado con lo que pediste."
+    },
+    {
+      "id": "s01-e7",
+      "title": "La planilla importada",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE \"Reporte Ventas\" (\"Mes\" text, \"Total $\" integer, canal text);\nINSERT INTO \"Reporte Ventas\" VALUES\n  ('2026-01', 12500990, 'web'),\n  ('2026-02', 9870500, 'web'),\n  ('2026-03', 11020000, 'tienda física');",
+      "prompt": [
+        "Alguien importó una planilla de Excel y PostgreSQL quedó con una tabla nueva cuyo nombre tiene **mayúsculas y un espacio**. Descúbrela con `\\dt` (puedes ejecutarlo en el editor) y mira sus columnas con `\\d`.",
+        "Escribe una consulta que devuelva las columnas `Mes` y `Total $` (en ese orden, con esos nombres exactos) de todas sus filas."
+      ],
+      "starter": "-- Explora primero\n\\dt\n",
+      "solution": "SELECT \"Mes\", \"Total $\"\nFROM \"Reporte Ventas\";",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "Si un nombre tiene mayúsculas, espacios o símbolos, hay que escribirlo **exactamente igual y entre comillas dobles**.",
+        "Para describirla también necesitas comillas: `\\d \"Reporte Ventas\"`.",
+        "Las columnas también van entre comillas dobles: `\"Mes\"` y `\"Total $\"`."
+      ],
+      "explain": "Sin comillas, `Reporte Ventas` son dos palabras y `Mes` se convierte en `mes`, que no existe. Con comillas dobles el identificador se toma literal, con mayúsculas, espacios y el `$`. Cuidado con confundirlas con las simples: `SELECT 'Mes' …` devuelve la palabra *Mes* en cada fila. Es un buen ejemplo de por qué conviene nombrar todo en minúsculas y sin espacios: con `ALTER TABLE … RENAME` (sección 5) se puede dejar como `reporte_ventas`."
+    },
+    {
+      "id": "s01-e8",
+      "title": "Copia la estructura",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "script",
+      "dataset": "tienda",
+      "prompt": [
+        "El equipo de inventario quiere una tabla de trabajo. Primero mira la estructura de `productos` con `\\d productos` (puedes dejarlo en tu script).",
+        "Luego crea la tabla `productos_resumen` con **exactamente cuatro columnas**, en este orden: `sku`, `nombre`, `precio` y `stock`, cada una con el **mismo tipo de dato** que tiene en `productos`.",
+        "No agregues restricciones (`NOT NULL`, claves…): eso es tema de la sección 5. La forma general es `CREATE TABLE nombre (columna tipo, columna tipo, …);`."
+      ],
+      "starter": "-- Explora y luego crea la tabla\n\\d productos\n",
+      "solution": "\\d productos\nCREATE TABLE productos_resumen (\n  sku    text,\n  nombre text,\n  precio integer,\n  stock  integer\n);",
+      "checks": [
+        {
+          "name": "Existe la tabla productos_resumen",
+          "sql": "SELECT existe_tabla('productos_resumen')",
+          "fail": "No encuentro la tabla productos_resumen. Revisa el nombre y que el CREATE TABLE termine en punto y coma."
+        },
+        {
+          "name": "Tiene exactamente 4 columnas",
+          "sql": "SELECT count(*) = 4, 'La tabla tiene ' || count(*) || ' columnas; se esperaban 4' FROM pg_attribute WHERE attrelid = to_regclass('productos_resumen') AND attnum > 0 AND NOT attisdropped"
+        },
+        {
+          "name": "Las columnas están en el orden pedido",
+          "sql": "SELECT coalesce(string_agg(attname, ',' ORDER BY attnum), '') = 'sku,nombre,precio,stock', 'Orden actual: ' || coalesce(string_agg(attname, ', ' ORDER BY attnum), '(sin columnas)') FROM pg_attribute WHERE attrelid = to_regclass('productos_resumen') AND attnum > 0 AND NOT attisdropped"
+        },
+        {
+          "name": "sku y nombre tienen el tipo de productos",
+          "sql": "SELECT coalesce(tipo_columna('productos_resumen', 'sku') = tipo_columna('productos', 'sku') AND tipo_columna('productos_resumen', 'nombre') = tipo_columna('productos', 'nombre'), false), 'En tu tabla, sku es ' || coalesce(tipo_columna('productos_resumen', 'sku'), '(no existe)') || ' y nombre es ' || coalesce(tipo_columna('productos_resumen', 'nombre'), '(no existe)') || '. Compáralos con la columna Type de \\d productos.'"
+        },
+        {
+          "name": "precio y stock tienen el tipo de productos",
+          "sql": "SELECT coalesce(tipo_columna('productos_resumen', 'precio') = tipo_columna('productos', 'precio') AND tipo_columna('productos_resumen', 'stock') = tipo_columna('productos', 'stock'), false), 'En tu tabla, precio es ' || coalesce(tipo_columna('productos_resumen', 'precio'), '(no existe)') || ' y stock es ' || coalesce(tipo_columna('productos_resumen', 'stock'), '(no existe)') || '. Compáralos con la columna Type de \\d productos.'"
+        }
+      ],
+      "hints": [
+        "En `\\d productos`, la columna *Type* dice el tipo de cada columna.",
+        "Dos columnas son `text` y dos son `integer`.",
+        "`CREATE TABLE productos_resumen (sku text, nombre text, precio integer, stock integer);`"
+      ],
+      "explain": "`\\d` es tu fuente de verdad sobre los tipos. `int` e `int4` son sinónimos de `integer` y también pasan, pero `varchar` es un tipo distinto de `text` (en la sección 3 verás cuándo conviene cada uno). Si te equivocaste, `DROP TABLE productos_resumen;` la borra y puedes volver a crearla. Adelanto de otra forma de hacerlo: `CREATE TABLE productos_resumen AS SELECT sku, nombre, precio, stock FROM productos;` crea la tabla con los mismos tipos **y además copia los datos**."
+    },
+    {
+      "id": "s01-e9",
+      "title": "Los esquemas que \\dn no muestra",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "En `tienda`, `\\dn` muestra un solo esquema, `public`, pero `\\dnS` revela más. Los esquemas se registran en la tabla del catálogo `pg_namespace` (esquema `pg_catalog`).",
+        "Escribe una consulta a `pg_namespace` que devuelva el nombre de **todos** los esquemas de la base: una sola columna, `nspname`."
+      ],
+      "starter": "-- Escribe tu consulta\n",
+      "solution": "SELECT nspname\nFROM pg_namespace;",
+      "ordered": false,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\bpg_namespace\\b",
+          "msg": "Consulta la tabla del catálogo pg_namespace",
+          "name": "Lee el catálogo pg_namespace"
+        }
+      ],
+      "hints": [
+        "Mira las columnas del catálogo con `\\d pg_namespace`.",
+        "El nombre del esquema está en la columna `nspname`: `SELECT nspname FROM pg_namespace;`."
+      ],
+      "explain": "Son cuatro: `public`, `pg_catalog`, `information_schema` y `pg_toast`. `\\dn` oculta los del sistema; `\\dnS` o un patrón los incluyen. Puedes escribir `pg_namespace` o `pg_catalog.pg_namespace`: el esquema `pg_catalog` siempre se busca primero, aunque no esté en el `search_path`. Aprender a leer el catálogo (`pg_namespace`, `pg_class`, `pg_database`…) es lo que te permite hacer desde un programa lo que psql hace con los meta-comandos."
+    },
+    {
+      "id": "s01-e10",
+      "title": "Detective de meta-comandos",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "psql",
+      "dataset": "tienda",
+      "prompt": [
+        "Explora la base `tienda` con meta-comandos y responde cuatro preguntas:",
+        "1. ¿Qué valor por defecto (*Default*) tiene la columna `stock` de `productos`?\n2. ¿Qué tipo de dato tiene la columna `fecha` de `pedidos`?\n3. ¿Quién es el dueño (*Owner*) del esquema `public`?\n4. ¿Qué codificación (*Encoding*) tiene la base `tienda`?",
+        "Guarda tus respuestas en una tabla nueva `respuestas` con dos columnas, `numero` (integer) y `respuesta` (text), y una fila por pregunta. Por ejemplo, si la respuesta 1 fuera «42»: `INSERT INTO respuestas VALUES (1, '42');`. Escribe los valores tal como los muestra psql."
+      ],
+      "solution": [
+        "\\d productos",
+        "\\d pedidos",
+        "\\dn",
+        "\\l tienda",
+        "CREATE TABLE respuestas (numero integer, respuesta text);",
+        "INSERT INTO respuestas VALUES (1, '0'), (2, 'timestamp with time zone'), (3, 'pg_database_owner'), (4, 'UTF8');",
+        "SELECT * FROM respuestas;"
+      ],
+      "checks": [
+        {
+          "name": "Existe la tabla respuestas con las columnas numero y respuesta",
+          "sql": "SELECT existe_tabla('respuestas') AND existe_columna('respuestas', 'numero') AND existe_columna('respuestas', 'respuesta')",
+          "fail": "Crea la tabla con CREATE TABLE respuestas (numero integer, respuesta text); (y confírmala si abriste una transacción)."
+        },
+        {
+          "name": "Respuesta 1: el Default de productos.stock",
+          "sql": "SELECT CASE WHEN existe_columna('respuestas', 'respuesta') THEN coalesce(lower(trim(valor($$SELECT respuesta FROM respuestas WHERE numero::text = '1'$$))) = '0', false) ELSE false END",
+          "fail": "Revisa la columna Default de stock en \\d productos (y que exista la fila con numero 1)."
+        },
+        {
+          "name": "Respuesta 2: el tipo de pedidos.fecha",
+          "sql": "SELECT CASE WHEN existe_columna('respuestas', 'respuesta') THEN coalesce(lower(trim(valor($$SELECT respuesta FROM respuestas WHERE numero::text = '2'$$))) IN ('timestamp with time zone', 'timestamptz'), false) ELSE false END",
+          "fail": "Revisa la columna Type de fecha en \\d pedidos y cópiala completa."
+        },
+        {
+          "name": "Respuesta 3: el dueño del esquema public",
+          "sql": "SELECT CASE WHEN existe_columna('respuestas', 'respuesta') THEN coalesce(lower(trim(valor($$SELECT respuesta FROM respuestas WHERE numero::text = '3'$$))) = 'pg_database_owner', false) ELSE false END",
+          "fail": "Revisa la columna Owner de \\dn: el dueño de public no es un usuario común."
+        },
+        {
+          "name": "Respuesta 4: la codificación de tienda",
+          "sql": "SELECT CASE WHEN existe_columna('respuestas', 'respuesta') THEN coalesce(replace(lower(trim(valor($$SELECT respuesta FROM respuestas WHERE numero::text = '4'$$))), '-', '') = 'utf8', false) ELSE false END",
+          "fail": "Revisa la columna Encoding de \\l para la base tienda."
+        }
+      ],
+      "hints": [
+        "Cada pregunta se responde con un meta-comando distinto: `\\d productos`, `\\d pedidos`, `\\dn` y `\\l`.",
+        "Copia el texto tal cual aparece en psql, entre comillas simples: `INSERT INTO respuestas VALUES (1, '…'), (2, '…'), (3, '…'), (4, '…');`.",
+        "Si te equivocas en una respuesta, lo más simple es `DROP TABLE respuestas;` y volver a crearla."
+      ],
+      "explain": "Respuestas: `0` (el stock parte en cero si no se indica), `timestamp with time zone` (el nombre completo de `timestamptz`, tema clave de la sección 3), `pg_database_owner` (desde PostgreSQL 15, `public` pertenece a este rol predefinido, que representa al dueño de cada base) y `UTF8`. Todo esto se puede consultar también desde SQL puro en el catálogo: con `\\set ECHO_HIDDEN on` ves exactamente qué consulta ejecuta cada meta-comando."
+    },
+    {
+      "id": "s01-e11",
+      "title": "Una base para la verdulería",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "psql",
+      "prompt": [
+        "Estás en la base `postgres`. La verdulería del barrio quiere su propia base de datos, separada de todo lo demás:",
+        "1. Crea la base `verduleria`.\n2. Conéctate a ella (el prompt debe decir `verduleria=#`).\n3. Crea allí la tabla `verduras` con dos columnas: `nombre` (text) y `precio_kilo` (integer).\n4. Verifica con `\\dt` y `\\d verduras`."
+      ],
+      "solution": [
+        "CREATE DATABASE verduleria;",
+        "\\c verduleria",
+        "CREATE TABLE verduras (nombre text, precio_kilo integer);",
+        "\\dt",
+        "\\d verduras"
+      ],
+      "checks": [
+        {
+          "name": "Existe la base verduleria",
+          "sql": "SELECT existe_base('verduleria')",
+          "fail": "No encuentro la base verduleria. Créala con CREATE DATABASE (y revisa el nombre, sin tilde)."
+        },
+        {
+          "name": "La tabla no quedó en la base postgres",
+          "sql": "SELECT NOT existe_tabla('verduras')",
+          "fail": "La tabla verduras quedó en la base postgres: la creaste antes de conectarte con \\c verduleria. Bórrala allí con DROP TABLE verduras; y créala en la base correcta."
+        },
+        {
+          "name": "La tabla verduras está en la base verduleria",
+          "database": "verduleria",
+          "sql": "SELECT existe_tabla('verduras')",
+          "fail": "La base verduleria no tiene una tabla verduras. Conéctate con \\c verduleria (el prompt debe decir verduleria=#) y créala ahí."
+        },
+        {
+          "name": "Las columnas son nombre (text) y precio_kilo (integer)",
+          "database": "verduleria",
+          "sql": "SELECT coalesce(tipo_columna('verduras', 'nombre') = 'text' AND tipo_columna('verduras', 'precio_kilo') = 'integer', false), 'En la base verduleria, verduras tiene: ' || coalesce((SELECT string_agg(attname || ' ' || format_type(atttypid, atttypmod), ', ' ORDER BY attnum) FROM pg_attribute WHERE attrelid = to_regclass('verduras') AND attnum > 0 AND NOT attisdropped), '(la tabla no existe)') || '. Revísala con \\d verduras.'",
+          "fail": "La base verduleria no existe todavía."
+        }
+      ],
+      "hints": [
+        "Son tres órdenes: `CREATE DATABASE …;`, `\\c …` y `CREATE TABLE …;`. El orden importa.",
+        "Antes del `CREATE TABLE`, mira el prompt: debe decir `verduleria=#`.",
+        "`CREATE TABLE verduras (nombre text, precio_kilo integer);`"
+      ],
+      "explain": "El orden importa: `CREATE DATABASE` crea la base, pero **no te conecta** a ella. Si ejecutas el `CREATE TABLE` sin el `\\c`, la tabla queda en `postgres`, el error más común del primer día. Cada base guarda su propio catálogo: por eso, estando en `postgres`, `\\dt` no ve las tablas de `verduleria`, y una consulta no puede mezclar tablas de dos bases. Si dos grupos de tablas deben cruzarse en consultas, van en la misma base (quizás en esquemas distintos)."
+    },
+    {
+      "id": "s01-e12",
+      "title": "El error silencioso",
+      "level": "dificil",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Esta consulta **no da ningún error**, pero el resultado está mal. Debería mostrar el `sku`, el `nombre` y el `precio` (en ese orden y con esos nombres de columna) de los 3 productos de menor `id`.",
+        "Ejecútala, compara el resultado con el esperado y encuentra los dos problemas."
+      ],
+      "starter": "-- No da error, pero el resultado está mal.\nSELECT 'sku', nombre precio\nFROM productos\nORDER BY id\nLIMIT 3;",
+      "solution": "SELECT sku, nombre, precio\nFROM productos\nORDER BY id\nLIMIT 3;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Mira los encabezados del resultado: ¿por qué una columna se llama `?column?` y muestra siempre lo mismo?",
+        "Comillas simples = texto; los nombres de columna van sin comillas (o con comillas dobles).",
+        "¿Cuántas columnas pediste y cuántas comas hay en el `SELECT`?"
+      ],
+      "explain": "Dos errores silenciosos: `'sku'` entre comillas simples es un **texto constante** (por eso la columna se llama `?column?` y repite «sku»), y `nombre precio` sin coma convierte `precio` en el alias de `nombre`. PostgreSQL no puede saber que te equivocaste: ambas cosas son SQL válido. Por eso, más allá de «no dio error», revisa siempre que el número de columnas, los encabezados y los valores tengan sentido."
+    },
+    {
+      "id": "s01-e13",
+      "title": "\\l hecho a mano",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Los meta-comandos solo existen en psql. Si un programa necesita la lista de bases del clúster, tiene que consultar el catálogo como lo hace psql por dentro.",
+        "Activa `\\set ECHO_HIDDEN on`, ejecuta `\\l` y estudia la consulta que aparece. Luego escribe una consulta que devuelva, para **cada base del clúster**, tres columnas en este orden: el nombre de la base, el nombre de su dueño y su codificación (como texto, por ejemplo `UTF8`), usando las mismas funciones que usa psql.",
+        "No hace falta ordenar ni poner alias."
+      ],
+      "starter": "-- Descubre la consulta de \\l\n\\set ECHO_HIDDEN on\n\\l\n\\set ECHO_HIDDEN off\n",
+      "solution": "SELECT datname, pg_get_userbyid(datdba), pg_encoding_to_char(encoding)\nFROM pg_database;",
+      "ordered": false,
+      "columns": false,
+      "requires": [
+        {
+          "pattern": "\\bpg_database\\b",
+          "msg": "Consulta el catálogo pg_database",
+          "name": "Lee el catálogo pg_database"
+        }
+      ],
+      "hints": [
+        "En la consulta de `\\l` fíjate en la línea `FROM pg_catalog.pg_database d`.",
+        "El dueño sale de `pg_get_userbyid(d.datdba)` y la codificación de `pg_encoding_to_char(d.encoding)`.",
+        "No necesitas el `CASE`, el alias `d` ni el `ORDER BY`: basta con tres expresiones en el `SELECT` y `FROM pg_database`."
+      ],
+      "explain": "`pg_database` es un catálogo **compartido por todo el clúster**: por eso, conectado a `tienda`, ves también `postgres`, `template0` y `template1`. `datdba` guarda el OID (identificador interno) del rol dueño, que `pg_get_userbyid()` traduce a nombre, y `encoding` es un número que `pg_encoding_to_char()` convierte en `UTF8`. Los `as \"Name\"` de psql son alias de columna (sección 2). La documentación propone el mínimo, `SELECT datname FROM pg_database;`, para listar las bases."
+    },
+    {
+      "id": "s01-e14",
+      "title": "Rescate de una transacción fallida",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "psql",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE turnos (cajero text, caja integer);",
+      "prompt": [
+        "La tabla `turnos` (vacía) registra qué cajero atiende cada caja. Escribe **una línea a la vez** y observa el prompt después de cada una:",
+        "```sql\nBEGIN;\nINSERT INTO turnos VALUES ('Camila', 1);\nINSERT INTO turno VALUES ('Diego', 2);\nINSERT INTO turnos VALUES ('Diego', 2);\n```",
+        "El tercer comando tiene un error de tipeo a propósito. Sal del estado de error y deja la tabla con **exactamente** los dos turnos, `('Camila', 1)` y `('Diego', 2)`, **confirmados**. Al final, revisa con `SELECT * FROM turnos;`."
+      ],
+      "solution": [
+        "BEGIN;",
+        "INSERT INTO turnos VALUES ('Camila', 1);",
+        "INSERT INTO turno VALUES ('Diego', 2);",
+        "INSERT INTO turnos VALUES ('Diego', 2);",
+        "ROLLBACK;",
+        "BEGIN;",
+        "INSERT INTO turnos VALUES ('Camila', 1);",
+        "INSERT INTO turnos VALUES ('Diego', 2);",
+        "COMMIT;",
+        "SELECT * FROM turnos;"
+      ],
+      "solutionErrors": true,
+      "checks": [
+        {
+          "name": "Hay exactamente 2 turnos confirmados",
+          "sql": "SELECT count(*) = 2, 'La tabla turnos tiene ' || count(*) || ' filas confirmadas; se esperaban 2.' FROM turnos"
+        },
+        {
+          "name": "Está el turno de Camila en la caja 1",
+          "sql": "SELECT EXISTS (SELECT 1 FROM turnos WHERE cajero = 'Camila' AND caja = 1)",
+          "fail": "Falta ('Camila', 1). Recuerda que el ROLLBACK deshace TODA la transacción, también los INSERT que sí habían funcionado."
+        },
+        {
+          "name": "Está el turno de Diego en la caja 2",
+          "sql": "SELECT EXISTS (SELECT 1 FROM turnos WHERE cajero = 'Diego' AND caja = 2)",
+          "fail": "Falta ('Diego', 2)."
+        },
+        {
+          "name": "No hay turnos repetidos",
+          "sql": "SELECT count(*) = count(DISTINCT (cajero, caja)) FROM turnos",
+          "fail": "Hay filas repetidas. Bórralas con DELETE FROM turnos; y vuelve a insertar los dos turnos."
+        }
+      ],
+      "hints": [
+        "Después del error el prompt es `tienda=!#`: todo lo que escribas se ignora hasta cerrar la transacción.",
+        "Prueba `COMMIT;` en ese estado y mira qué responde psql. ¿Quedó guardado el turno de Camila?",
+        "La salida es `ROLLBACK;` y luego repetir la transacción completa, sin el error, terminando con `COMMIT;`."
+      ],
+      "explain": "Cuando una sentencia falla dentro de una transacción, PostgreSQL la marca como abortada (`=!#`): cualquier orden responde `current transaction is aborted, commands ignored until end of transaction block` (SQLSTATE `25P02`). Ni siquiera `COMMIT` la salva: psql responde `ROLLBACK`. Al deshacerse, también se pierde el `INSERT` de Camila que había funcionado, así que hay que repetir **ambos**. Es la garantía de atomicidad: todo o nada (sección 13). Adelanto útil: `\\set ON_ERROR_ROLLBACK on` hace que psql proteja cada sentencia con un punto de guardado, y un error ya no arruina toda la transacción."
+    },
+    {
+      "id": "s01-e15",
+      "title": "Proyecto: la picada de la tía Juana",
+      "level": "proyecto",
+      "minutes": 20,
+      "mode": "psql",
+      "prompt": [
+        "La tía Juana abrirá una picada en Valparaíso y te pidió armar su primera base de datos. Partes conectado a `postgres`:",
+        "1. Crea la base `picada` y conéctate a ella.\n2. Crea la tabla `platos` con las columnas `nombre` (text), `precio` (integer, en pesos) y `vegetariano` (boolean).\n3. Agrega estos cuatro platos con **un solo** `INSERT`: Completo italiano, $3.500, no vegetariano · Pastel de choclo, $7.990, no vegetariano · Humitas, $4.500, vegetariano · Ensalada chilena, $2.500, vegetariana.\n4. Revisa con `SELECT * FROM platos;` y describe la tabla con `\\d platos`.\n5. Vuelve a `postgres` con `\\c postgres` y confirma con `\\l` que la base `picada` existe.",
+        "Los precios van como números enteros, sin punto de miles ni signo peso (`3500`), y los booleanos se escriben `true` o `false`. Escribe los nombres de los platos exactamente como aparecen arriba."
+      ],
+      "solution": [
+        "CREATE DATABASE picada;",
+        "\\c picada",
+        "CREATE TABLE platos (nombre text, precio integer, vegetariano boolean);",
+        "INSERT INTO platos VALUES ('Completo italiano', 3500, false), ('Pastel de choclo', 7990, false), ('Humitas', 4500, true), ('Ensalada chilena', 2500, true);",
+        "SELECT * FROM platos;",
+        "\\d platos",
+        "\\c postgres",
+        "\\l"
+      ],
+      "checks": [
+        {
+          "name": "Existe la base picada",
+          "sql": "SELECT existe_base('picada')",
+          "fail": "No encuentro la base picada. Créala con CREATE DATABASE picada;"
+        },
+        {
+          "name": "La tabla no quedó en la base postgres",
+          "sql": "SELECT NOT existe_tabla('platos')",
+          "fail": "La tabla platos quedó en la base postgres: faltó el \\c picada antes del CREATE TABLE. Bórrala de postgres con DROP TABLE platos;"
+        },
+        {
+          "name": "La tabla platos está en la base picada",
+          "database": "picada",
+          "sql": "SELECT existe_tabla('platos')",
+          "fail": "La base picada no tiene una tabla platos. Conéctate con \\c picada antes del CREATE TABLE."
+        },
+        {
+          "name": "Columnas nombre (text), precio (integer) y vegetariano (boolean)",
+          "database": "picada",
+          "sql": "SELECT coalesce(tipo_columna('platos', 'nombre') = 'text' AND tipo_columna('platos', 'precio') = 'integer' AND tipo_columna('platos', 'vegetariano') = 'boolean', false), 'En la base picada, platos tiene: ' || coalesce((SELECT string_agg(attname || ' ' || format_type(atttypid, atttypmod), ', ' ORDER BY attnum) FROM pg_attribute WHERE attrelid = to_regclass('platos') AND attnum > 0 AND NOT attisdropped), '(la tabla no existe)') || '. Revísala con \\d platos.'",
+          "fail": "No encuentro la base picada: créala con CREATE DATABASE picada;"
+        },
+        {
+          "name": "Están los cuatro platos",
+          "database": "picada",
+          "sql": "SELECT CASE WHEN hay_tabla THEN faltan = '' ELSE false END,\n  CASE WHEN hay_tabla THEN 'Faltan en platos: ' || faltan || ' (revisa que los nombres estén escritos exactamente igual y que el INSERT esté confirmado).'\n       ELSE 'Primero crea en la base picada la tabla platos con su columna nombre.' END\nFROM (SELECT existe_columna('platos', 'nombre') AS hay_tabla,\n  CASE WHEN existe_columna('platos', 'nombre')\n    THEN coalesce(valor($$SELECT string_agg(n, ', ') FROM (VALUES ('Completo italiano'), ('Pastel de choclo'), ('Humitas'), ('Ensalada chilena')) AS v(n) WHERE NOT EXISTS (SELECT 1 FROM platos p WHERE p.nombre = v.n)$$), '')\n    ELSE '' END AS faltan) AS x",
+          "fail": "No pude revisar los platos: ¿existen la base picada y su tabla platos?"
+        },
+        {
+          "name": "Precios y vegetariano correctos, sin filas de más",
+          "database": "picada",
+          "sql": "SELECT CASE WHEN tipos_ok THEN mismas_filas($$SELECT nombre, precio, vegetariano FROM platos$$, $$VALUES ('Completo italiano', 3500, false), ('Pastel de choclo', 7990, false), ('Humitas', 4500, true), ('Ensalada chilena', 2500, true)$$) ELSE false END,\n  CASE WHEN tipos_ok THEN 'La tabla tiene ' || filas('platos') || ' filas; revisa con SELECT * FROM platos; que haya exactamente 4, con los precios en pesos sin punto (3500) y true/false bien puestos.'\n       ELSE 'Primero deja la tabla platos con sus tres columnas y los tipos pedidos (text, integer, boolean).' END\nFROM (SELECT coalesce(tipo_columna('platos', 'nombre') = 'text' AND tipo_columna('platos', 'precio') = 'integer' AND tipo_columna('platos', 'vegetariano') = 'boolean', false) AS tipos_ok) AS x",
+          "fail": "No pude revisar los platos: ¿existen la base picada y su tabla platos?"
+        }
+      ],
+      "hints": [
+        "Orden: `CREATE DATABASE` → `\\c picada` → `CREATE TABLE` → `INSERT` → `SELECT`.",
+        "Un solo `INSERT` con varias filas: `INSERT INTO platos VALUES ('…', 3500, false), ('…', 7990, false), …;` (textos entre comillas simples, números y booleanos sin comillas).",
+        "Si te equivocaste en un dato, lo más simple a esta altura es `DROP TABLE platos;` y volver a crearla y llenarla."
+      ],
+      "explain": "Integraste todo lo de la sección: SQL que va al servidor (`CREATE DATABASE`, `CREATE TABLE`, `INSERT`, `SELECT`), meta-comandos de psql (`\\c`, `\\d`, `\\l`) y la regla de oro de mirar el prompt antes de crear objetos. Detalles finos: `$7.990` se guarda como `7990` (el formato con punto y signo peso se aplica al mostrar, sección 4); `true`/`false` son los literales de `boolean`, y psql los muestra como `t`/`f`. En las secciones 5 y 6 le agregarás a esta tabla una clave primaria, `NOT NULL`, un `CHECK (precio > 0)` y aprenderás a modificar sus datos."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "¿Qué es un **clúster de bases de datos** en PostgreSQL?",
+      "back": "El conjunto de bases que administra UNA instancia del servidor: un directorio de datos, un puerto (5432 por defecto) y un postmaster. No es un grupo de servidores."
+    },
+    {
+      "front": "¿Qué bases trae un clúster recién creado con `initdb`?",
+      "back": "`postgres` (base por defecto para conectarse), `template1` (plantilla que copia `CREATE DATABASE`) y `template0` (plantilla pura que nunca se modifica)."
+    },
+    {
+      "front": "Puerto TCP por defecto de PostgreSQL",
+      "back": "**5432** (parámetro `port`)."
+    },
+    {
+      "front": "Modelo de procesos de PostgreSQL",
+      "back": "Un proceso por conexión: el **postmaster** escucha y crea (*fork*) un **backend** dedicado para cada cliente. Además hay procesos auxiliares (checkpointer, walwriter, autovacuum…)."
+    },
+    {
+      "front": "Jerarquía de objetos de PostgreSQL",
+      "back": "Clúster → base de datos → esquema → tabla (u otro objeto). Roles y bases son de todo el clúster; esquemas y tablas, de una base."
+    },
+    {
+      "front": "Conectado a `tienda`: `SELECT * FROM postgres.public.x;`",
+      "back": "`ERROR:  cross-database references are not implemented`. Una conexión solo ve su base; `base.esquema.tabla` solo acepta la base actual."
+    },
+    {
+      "front": "Prompt `tienda=#` vs `tienda=>`",
+      "back": "`#`: el usuario de la sesión es superusuario. `>`: usuario normal."
+    },
+    {
+      "front": "Prompt `tienda-#`",
+      "back": "La sentencia sigue abierta: psql espera más líneas porque aún no llega el `;`."
+    },
+    {
+      "front": "Prompts `tienda'#`, `tienda\"#` y `tienda(#`",
+      "back": "Comilla simple sin cerrar, comilla doble sin cerrar y paréntesis sin cerrar, respectivamente."
+    },
+    {
+      "front": "Prompts `tienda=*#` y `tienda=!#`",
+      "back": "`=*#`: dentro de una transacción (`BEGIN`). `=!#`: transacción fallida; todo se ignora hasta `ROLLBACK` (incluso `COMMIT` responde `ROLLBACK`)."
+    },
+    {
+      "front": "Meta-comando vs sentencia SQL",
+      "back": "Meta-comando: empieza con `\\`, lo ejecuta psql, no lleva `;` y termina con la línea. SQL: va al servidor y se envía al llegar el `;`."
+    },
+    {
+      "front": "`\\l` y `\\l+`",
+      "back": "Lista las bases del clúster; `+` agrega tamaño, tablespace y descripción."
+    },
+    {
+      "front": "`\\c feria` y `\\c - ana`",
+      "back": "Conectarse a la base `feria` (cierra la conexión actual) / misma base, pero como el usuario `ana`. Si falla, psql interactivo conserva la conexión anterior."
+    },
+    {
+      "front": "`\\d` sin nombre, `\\d productos` y `\\d+ productos`",
+      "back": "Lista tablas, vistas y secuencias / describe la tabla (columnas, tipos, NOT NULL, defaults, índices, restricciones) / lo mismo más almacenamiento, descripciones y método de acceso."
+    },
+    {
+      "front": "`\\dn` vs `\\dnS`",
+      "back": "`\\dn` lista los esquemas de usuario (`public`); con `S` incluye los del sistema (`pg_catalog`, `information_schema`, `pg_toast`)."
+    },
+    {
+      "front": "¿Por qué `\\dt p*` muestra tablas `pg_…`?",
+      "back": "Al dar un patrón, psql también incluye objetos del sistema. Para ver solo las tuyas: `\\dt public.p*`."
+    },
+    {
+      "front": "`\\x`",
+      "back": "Alterna la vista expandida: cada columna en su propia línea (`-[ RECORD 1 ]`). Ideal para filas anchas."
+    },
+    {
+      "front": "`\\timing`",
+      "back": "Alterna la medición: después de cada sentencia muestra `Time: … ms` (servidor + envío del resultado)."
+    },
+    {
+      "front": "`\\conninfo` (psql 18)",
+      "back": "Muestra en forma de tabla la base, el usuario, el socket o servidor, el puerto, el PID del backend, si hay SSL y si eres superusuario."
+    },
+    {
+      "front": "`\\h CREATE DATABASE`",
+      "back": "La sinopsis oficial del comando y la URL de su página en la documentación. `\\h` solo lista los comandos; `\\h *` muestra todas las sinopsis."
+    },
+    {
+      "front": "`\\?`",
+      "back": "Ayuda de los meta-comandos de psql, agrupados por tema."
+    },
+    {
+      "front": "`\\errverbose`",
+      "back": "Repite el último error del servidor con máximo detalle: SQLSTATE y `LOCATION` (función y archivo fuente)."
+    },
+    {
+      "front": "`\\set ECHO_HIDDEN on`",
+      "back": "psql muestra las consultas al catálogo que ejecutan los meta-comandos como `\\dt` o `\\l`."
+    },
+    {
+      "front": "`\\p` y `\\r`",
+      "back": "Muestra el búfer de consulta / lo borra (útil si te enredaste en una sentencia de varias líneas)."
+    },
+    {
+      "front": "¿Cómo se sale de psql?",
+      "back": "`\\q` (o `quit`, `exit`; en un psql real también Ctrl+D)."
+    },
+    {
+      "front": "`'Ñuñoa'` vs `\"Ñuñoa\"`",
+      "back": "Comillas simples: un valor de texto. Comillas dobles: un identificador (nombre de tabla o columna) exacto, que respeta mayúsculas."
+    },
+    {
+      "front": "¿`SELECT * FROM Productos;` funciona si la tabla es `productos`?",
+      "back": "Sí: los nombres sin comillas se pasan a minúsculas. `\"Productos\"` en cambio busca una tabla con P mayúscula y falla."
+    },
+    {
+      "front": "Comentarios en SQL",
+      "back": "`-- hasta el final de la línea` y `/* de bloque */`, que en PostgreSQL se pueden anidar."
+    },
+    {
+      "front": "`LIMIT 5` sin `ORDER BY`",
+      "back": "Devuelve 5 filas cualquiera: sin `ORDER BY` el orden no está definido y puede cambiar de una ejecución a otra."
+    },
+    {
+      "front": "¿Qué devuelve `SELECT nombre precio FROM productos;`?",
+      "back": "Una sola columna titulada `precio` con los nombres: sin la coma, `precio` es un alias de `nombre`. Es SQL válido, así que no hay error."
+    },
+    {
+      "front": "SQLSTATE",
+      "back": "Código de error de 5 caracteres; los 2 primeros son la clase: 22 dato inválido, 23 integridad, 25 estado de la transacción, 40 transacción revertida, 42 sintaxis o acceso."
+    },
+    {
+      "front": "`42601`, `42703`, `42P01`",
+      "back": "syntax_error / undefined_column / undefined_table."
+    },
+    {
+      "front": "`CREATE DATABASE` después de un `BEGIN`",
+      "back": "`ERROR:  CREATE DATABASE cannot run inside a transaction block` (SQLSTATE `25001`)."
+    },
+    {
+      "front": "Versión mayor vs menor",
+      "back": "18 = mayor: funciones nuevas, una al año, 5 años de soporte; pasar de 17 a 18 requiere `pg_dump`/restauración o `pg_upgrade`. 18.3 = menor: solo correcciones; basta cambiar binarios y reiniciar."
+    },
+    {
+      "front": "Origen de PostgreSQL",
+      "back": "POSTGRES (Berkeley, Michael Stonebraker, desde 1986) → Postgres95 (1994, SQL y psql, Andrew Yu y Jolly Chen) → PostgreSQL (1996, versión 6.0). Licencia libre tipo BSD/MIT."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s01-q1",
+      "type": "single",
+      "q": "¿Cómo define PostgreSQL su propia documentación?",
+      "options": [
+        "Un sistema de gestión de bases de datos objeto-relacional (ORDBMS) de código abierto",
+        "Una base de datos NoSQL de documentos",
+        "Un lenguaje de programación para consultas",
+        "Un producto comercial con una edición gratuita limitada"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La primera línea de «What Is PostgreSQL?» lo llama *object-relational database management system*, derivado de POSTGRES 4.2 de Berkeley. Es relacional con extras de orientación a objetos (tipos definidos por el usuario, herencia de tablas), y su licencia es libre, sin ediciones pagadas."
+    },
+    {
+      "id": "s01-q2",
+      "type": "single",
+      "q": "En la base `tienda`, `pedidos.cliente_id` guarda el `id` de un cliente y PostgreSQL verifica que ese cliente exista. ¿Cómo se llama esa columna?",
+      "options": [
+        "Clave primaria",
+        "Clave foránea",
+        "Índice único",
+        "Columna calculada"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Una clave foránea (*foreign key*) apunta a la clave primaria de otra tabla y el SGBD impide que quede «colgando». `\\d pedidos` la muestra en *Foreign-key constraints*: `FOREIGN KEY (cliente_id) REFERENCES clientes(id)`."
+    },
+    {
+      "id": "s01-q3",
+      "type": "yesno",
+      "q": "Sobre la historia de PostgreSQL, indica si cada afirmación es verdadera.",
+      "statements": [
+        {
+          "text": "La implementación de POSTGRES empezó en 1986 en Berkeley, dirigida por Michael Stonebraker.",
+          "answer": true
+        },
+        {
+          "text": "Postgres95 reemplazó el lenguaje PostQUEL por SQL.",
+          "answer": true
+        },
+        {
+          "text": "El nombre PostgreSQL se adoptó en 1996 y la numeración continuó desde la versión 6.0.",
+          "answer": true
+        },
+        {
+          "text": "PostgreSQL pertenece a una empresa que vende licencias para uso comercial.",
+          "answer": false
+        }
+      ],
+      "explain": "Todo lo anterior sale del capítulo «A Brief History of PostgreSQL». PostgreSQL no tiene dueño: lo desarrolla el PostgreSQL Global Development Group y su licencia permite uso comercial gratuito."
+    },
+    {
+      "id": "s01-q4",
+      "type": "single",
+      "q": "¿Qué significa que SQL sea un lenguaje **declarativo**?",
+      "options": [
+        "Describes el resultado que quieres y el SGBD decide cómo obtenerlo",
+        "Debes declarar todas las variables antes de usarlas",
+        "La consulta se ejecuta siempre paso a paso, en el orden en que la escribiste",
+        "Solo sirve para declarar tablas, no para consultarlas"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En SQL dices *qué* quieres; el planificador elige *cómo* (qué índices usar, en qué orden unir tablas). Por eso una misma consulta puede volverse más rápida al crear un índice sin cambiar una letra. Además, el orden de evaluación (FROM → SELECT → LIMIT) no coincide con el orden de escritura."
+    },
+    {
+      "id": "s01-q5",
+      "type": "single",
+      "q": "Tu servidor tiene PostgreSQL 18.3 y quieres actualizarlo a la 18.4. ¿Qué implica?",
+      "options": [
+        "Es una versión menor: solo correcciones; se instalan los binarios nuevos y se reinicia, sin volcar ni restaurar datos",
+        "Es una versión mayor: requiere pg_dump y restaurar, o pg_upgrade",
+        "Hay que esperar 5 años a que termine el soporte de la 18.3",
+        "No se puede: las versiones menores solo se instalan en servidores nuevos"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Desde la versión 10, el primer número es la versión mayor y el segundo la menor. Las menores (al menos cada tres meses) solo traen correcciones y mantienen el formato de los archivos, así que basta reemplazar binarios y reiniciar. Pasar de 17 a 18 sí exige `pg_dump`/restauración o `pg_upgrade`."
+    },
+    {
+      "id": "s01-q6",
+      "type": "multi",
+      "q": "¿Cuáles afirmaciones sobre las versiones de PostgreSQL son correctas? (Selecciona TRES.)",
+      "options": [
+        "Sale una versión mayor aproximadamente una vez al año",
+        "Cada versión mayor recibe soporte durante 5 años",
+        "Las versiones menores salen al menos cada tres meses",
+        "En «18.3», el 3 indica la versión mayor",
+        "Pasar de la 17 a la 18 no requiere ningún procedimiento especial"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Así lo describe la política de versiones oficial. En 18.3, la mayor es 18 y la menor 3. El salto 17 → 18 cambia el formato interno de los datos y requiere `pg_dump`/restauración o `pg_upgrade`."
+    },
+    {
+      "id": "s01-q7",
+      "type": "single",
+      "q": "¿Qué hace el **postmaster** cuando llega una conexión nueva?",
+      "options": [
+        "Crea (fork) un proceso backend dedicado a ese cliente",
+        "Atiende la consulta él mismo, en un hilo compartido",
+        "La pone en cola hasta que termine la conexión anterior",
+        "Levanta una nueva instancia del servidor con su propio directorio de datos"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "PostgreSQL usa el modelo «un proceso por usuario»: el postmaster (proceso supervisor) solo escucha y delega; cada conexión obtiene su propio backend, que conversa directamente con el cliente hasta que se desconecta."
+    },
+    {
+      "id": "s01-q8",
+      "type": "single",
+      "q": "Conectas psql y una aplicación a la misma base y ejecutas `SELECT pg_backend_pid();` en ambas. ¿Qué verás en un servidor real?",
+      "options": [
+        "Dos números distintos: cada conexión tiene su propio proceso",
+        "El mismo número: comparten el backend porque usan la misma base",
+        "El PID del postmaster en ambas",
+        "Un error: solo se permite una conexión por base"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Cada conexión tiene su backend y por lo tanto su PID. La simulación grabada de la lección 2 lo muestra, junto con `pg_stat_activity`, donde aparecen dos `client backend`. (En la consola del curso el PID es fijo porque no hay procesos reales del sistema operativo.)"
+    },
+    {
+      "id": "s01-q9",
+      "type": "yesno",
+      "q": "Sobre el clúster de bases de datos, indica si cada afirmación es verdadera.",
+      "statements": [
+        {
+          "text": "Un clúster es el conjunto de bases que administra una sola instancia del servidor.",
+          "answer": true
+        },
+        {
+          "text": "initdb crea las bases postgres, template0 y template1.",
+          "answer": true
+        },
+        {
+          "text": "Un clúster de PostgreSQL es necesariamente un grupo de varios servidores trabajando juntos.",
+          "answer": false
+        },
+        {
+          "text": "Los roles (usuarios) se definen por separado dentro de cada base de datos.",
+          "answer": false
+        }
+      ],
+      "explain": "«Database cluster» es el término de PostgreSQL (el estándar SQL dice *catalog cluster*) para las bases de una instancia. Los roles, igual que las bases y los tablespaces, son objetos de todo el clúster: un mismo rol puede conectarse a varias bases."
+    },
+    {
+      "id": "s01-q10",
+      "type": "single",
+      "q": "Estás conectado a `tienda` y ejecutas:\n```sql\nSELECT * FROM postgres.public.clientes;\n```\n¿Qué pasa?",
+      "options": [
+        "ERROR: cross-database references are not implemented",
+        "Devuelve los clientes que haya en la base postgres",
+        "Ignora el nombre de la base y devuelve los clientes de tienda",
+        "psql se reconecta automáticamente a la base postgres"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Una conexión solo puede acceder a una base. PostgreSQL acepta la forma `base.esquema.tabla` únicamente si la base es la actual (`tienda.public.clientes` funciona); con otra base, da ese error. Para consultar otra base hay que conectarse a ella (`\\c`)."
+    },
+    {
+      "id": "s01-q11",
+      "type": "single",
+      "q": "¿Qué base copia `CREATE DATABASE feria;` si no indicas una plantilla?",
+      "options": [
+        "template1",
+        "template0",
+        "postgres",
+        "La base a la que estás conectado"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Por defecto se clona `template1`; con `TEMPLATE template0` se obtiene una base «pura», sin nada agregado localmente (útil al restaurar respaldos). La base a la que estás conectado no influye."
+    },
+    {
+      "id": "s01-q12",
+      "type": "single",
+      "q": "¿En qué puerto TCP escucha PostgreSQL por defecto?",
+      "options": [
+        "3306",
+        "5432",
+        "1521",
+        "8080"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "5432 (parámetro `port`). 3306 es el de MySQL, 1521 el del listener de Oracle y 8080 es un puerto HTTP alternativo."
+    },
+    {
+      "id": "s01-q13",
+      "type": "multi",
+      "q": "¿Qué objetos existen a nivel de **todo el clúster** y no dentro de una base en particular? (Selecciona DOS.)",
+      "options": [
+        "Roles",
+        "Bases de datos",
+        "Esquemas",
+        "Tablas"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "La documentación lo dice: roles, bases de datos y tablespaces se definen a nivel de clúster. Los esquemas viven dentro de una base y las tablas dentro de un esquema."
+    },
+    {
+      "id": "s01-q14",
+      "type": "single",
+      "q": "¿Qué te dice el prompt `tienda-#`?",
+      "options": [
+        "Que psql espera más líneas: la sentencia aún no termina con ;",
+        "Que estás en una transacción fallida",
+        "Que no eres superusuario",
+        "Que se perdió la conexión con el servidor"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El `-` es el carácter de continuación: el búfer tiene una sentencia sin terminar. Escribe `;` para enviarla o `\\r` para borrarla. La transacción fallida es `=!#` y el usuario normal se ve como `=>`."
+    },
+    {
+      "id": "s01-q15",
+      "type": "single",
+      "q": "Ves el prompt `tienda=!#`. ¿Qué haces?",
+      "options": [
+        "ROLLBACK; para cerrar la transacción fallida y volver a empezar",
+        "COMMIT; para guardar lo que alcanzó a funcionar",
+        "Seguir escribiendo: el siguiente comando limpia el error",
+        "Cerrar psql con \\q; es la única salida"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En una transacción abortada, todo responde `current transaction is aborted…` (`25P02`). `COMMIT` no guarda nada: psql responde `ROLLBACK`. Salir con `\\q` también descarta la transacción, pero es innecesario: `ROLLBACK;` basta."
+    },
+    {
+      "id": "s01-q16",
+      "type": "yesno",
+      "q": "¿Qué indica cada prompt? Marca verdadero o falso.",
+      "statements": [
+        {
+          "text": "`tienda=>` indica que el usuario de la sesión no es superusuario.",
+          "answer": true
+        },
+        {
+          "text": "`tienda=*#` indica que estás dentro de una transacción abierta.",
+          "answer": true
+        },
+        {
+          "text": "`tienda'#` indica que hay una comilla simple sin cerrar.",
+          "answer": true
+        },
+        {
+          "text": "`tienda(#` indica que la base se llama «tienda(».",
+          "answer": false
+        }
+      ],
+      "explain": "El prompt por defecto es `%/%R%x%# `: nombre de la base, carácter de estado (`=`, `-`, `'`, `\"`, `(`, `*`), estado de la transacción (`*` o `!`) y `#`/`>`. El `(` significa paréntesis sin cerrar."
+    },
+    {
+      "id": "s01-q17",
+      "type": "single",
+      "q": "Escribes `\\dt` y presionas Enter. ¿Por qué no hace falta el `;`?",
+      "options": [
+        "Porque es un meta-comando: lo procesa psql y termina con la línea",
+        "Porque psql agrega el ; automáticamente a todas las órdenes cortas",
+        "Porque \\dt es una sentencia SQL especial",
+        "Sí hace falta: sin ; queda esperando"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Todo lo que empieza con una barra invertida lo interpreta psql y termina al final de la línea. Por dentro, `\\dt` ejecuta una consulta SQL al catálogo, pero la escribe psql por ti (míralo con `\\set ECHO_HIDDEN on`)."
+    },
+    {
+      "id": "s01-q18",
+      "type": "multi",
+      "q": "¿Cuáles de estas órdenes son meta-comandos de psql y no SQL? (Selecciona TRES.)",
+      "options": [
+        "\\c tienda",
+        "\\x",
+        "\\l",
+        "SELECT version();",
+        "CREATE DATABASE feria;"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Los que empiezan con `\\` son de psql y no existen fuera de él. `SELECT version();` y `CREATE DATABASE feria;` son SQL: los ejecuta el servidor y funcionan desde cualquier cliente."
+    },
+    {
+      "id": "s01-q19",
+      "type": "single",
+      "q": "Quieres leer una fila de `clientes` con nueve columnas y la tabla se sale de la pantalla. ¿Qué usas?",
+      "options": [
+        "\\x",
+        "\\timing",
+        "\\d+",
+        "\\dt"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`\\x` activa la vista expandida: cada columna en su propia línea, con un encabezado `-[ RECORD 1 ]` por fila. Vuelve a escribir `\\x` para desactivarla."
+    },
+    {
+      "id": "s01-q20",
+      "type": "single",
+      "q": "¿Qué hace `\\c feria`?",
+      "options": [
+        "Cierra la conexión actual y abre una nueva a la base feria",
+        "Crea la base feria si no existe",
+        "Copia las tablas de la base actual a feria",
+        "Abre una segunda conexión y deja ambas activas en la misma consola"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`\\c` reemplaza la conexión (el prompt cambia a `feria=#`). Si la base no existe, falla con `FATAL:  database \"feria\" does not exist` y, en modo interactivo, psql conserva la conexión anterior (`Previous connection kept`)."
+    },
+    {
+      "id": "s01-q21",
+      "type": "single",
+      "q": "Escribes `\\dt p*` en `tienda` y aparecen decenas de tablas `pg_…`. ¿Por qué?",
+      "options": [
+        "Al dar un patrón, psql incluye también los objetos del sistema que coinciden (pg_catalog)",
+        "Porque la base tienda está dañada",
+        "Porque \\dt siempre muestra las tablas del sistema",
+        "Porque p* es una expresión regular que coincide con cualquier nombre"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación de psql: «By default, only user-created objects are shown; supply a pattern or the S modifier to include system objects». Para ver solo las tuyas, califica el patrón: `\\dt public.p*`."
+    },
+    {
+      "id": "s01-q22",
+      "type": "single",
+      "q": "¿Cómo ves la consulta al catálogo que ejecuta psql cuando escribes `\\d productos`?",
+      "options": [
+        "\\set ECHO_HIDDEN on",
+        "\\timing",
+        "\\errverbose",
+        "\\set VERBOSITY verbose"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`ECHO_HIDDEN` (equivalente a la opción `-E` de la línea de comandos) imprime entre marcas `QUERY` el SQL que genera cada meta-comando. Las otras opciones tienen que ver con tiempos y con errores."
+    },
+    {
+      "id": "s01-q23",
+      "type": "single",
+      "q": "¿Qué ocurre al ejecutar esto?\n```sql\nBEGIN;\nCREATE DATABASE prueba;\n```",
+      "options": [
+        "ERROR: CREATE DATABASE cannot run inside a transaction block",
+        "Se crea la base, pero solo será visible después del COMMIT",
+        "Se crea la base y el BEGIN se ignora",
+        "psql pide confirmación antes de crearla"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación de `CREATE DATABASE` lo dice en sus notas: no puede ejecutarse dentro de un bloque de transacción (SQLSTATE `25001`). Además, la transacción queda fallida (`=!#`) hasta el `ROLLBACK`."
+    },
+    {
+      "id": "s01-q24",
+      "type": "single",
+      "q": "Estás en `postgres`, creas la base `feria`, **olvidas** `\\c feria` y ejecutas `CREATE TABLE frutas (…);`. ¿Dónde queda la tabla?",
+      "options": [
+        "En postgres, la base a la que seguías conectado",
+        "En feria, porque es la última base creada",
+        "En template1",
+        "En ninguna: da error"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`CREATE DATABASE` no cambia la conexión. Todo lo que crees queda en la base del prompt. Por eso conviene mirar el prompt antes de cada `CREATE TABLE`."
+    },
+    {
+      "id": "s01-q25",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT nombre precio FROM productos LIMIT 2;\n```",
+      "options": [
+        "Una sola columna titulada precio con los nombres de dos productos",
+        "Dos columnas: nombre y precio",
+        "ERROR: syntax error at or near \"precio\"",
+        "Una columna nombre y otra precio vacía"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Sin coma, `precio` es un alias de columna (la palabra `AS` es opcional). Es SQL válido, así que no hay error: el resultado solo «se ve raro». Es el error silencioso más común."
+    },
+    {
+      "id": "s01-q26",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 'nombre' FROM productos LIMIT 2;\n```",
+      "options": [
+        "Dos filas con la palabra nombre, en una columna titulada ?column?",
+        "Los nombres de dos productos",
+        "ERROR: column \"nombre\" does not exist",
+        "Una sola fila con el nombre de la tabla"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Las comillas simples crean un texto constante, que se repite en cada fila leída. Para la columna se escribe `nombre` (o `\"nombre\"`, con comillas dobles)."
+    },
+    {
+      "id": "s01-q27",
+      "type": "yesno",
+      "q": "Mayúsculas y comillas en PostgreSQL: indica si cada afirmación es verdadera.",
+      "statements": [
+        {
+          "text": "`SELECT * FROM PRODUCTOS;` funciona si la tabla se llama productos.",
+          "answer": true
+        },
+        {
+          "text": "`SELECT * FROM \"Productos\";` funciona si la tabla se llama productos.",
+          "answer": false
+        },
+        {
+          "text": "`select`, `SELECT` y `Select` son la misma palabra clave.",
+          "answer": true
+        },
+        {
+          "text": "Las comillas dobles delimitan textos, como en `comuna = \"Ñuñoa\"`.",
+          "answer": false
+        }
+      ],
+      "explain": "Palabras clave e identificadores sin comillas no distinguen mayúsculas (los identificadores se pasan a minúsculas). Con comillas dobles, el nombre se toma exacto. Los textos van con comillas simples: `comuna = 'Ñuñoa'`; con dobles, PostgreSQL buscaría una columna llamada Ñuñoa."
+    },
+    {
+      "id": "s01-q28",
+      "type": "single",
+      "q": "¿Por qué `SELECT id, nombre FROM productos LIMIT 5;` **no garantiza** los 5 productos de menor id?",
+      "options": [
+        "Porque sin ORDER BY el orden de las filas no está definido",
+        "Porque LIMIT siempre elige filas al azar",
+        "Porque LIMIT cuenta desde el final de la tabla",
+        "Sí lo garantiza: las filas se guardan ordenadas por la clave primaria"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación: sin un `ORDER BY` que fije un orden único obtienes «un subconjunto impredecible» de filas. Que hoy salgan las de id 1 a 5 es casualidad del orden físico, que cambia con actualizaciones o con otro plan."
+    },
+    {
+      "id": "s01-q29",
+      "type": "multi",
+      "q": "¿Cuáles son comentarios válidos en SQL de PostgreSQL? (Selecciona DOS.)",
+      "options": [
+        "-- desde aquí hasta el final de la línea",
+        "/* de bloque, incluso con /* otro anidado */ dentro */",
+        "# como en la terminal",
+        "// como en C++"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "SQL usa `--` y `/* */`. En PostgreSQL, como pide el estándar (y a diferencia de C), los comentarios de bloque se anidan, lo que permite comentar trozos que ya tienen comentarios."
+    },
+    {
+      "id": "s01-q30",
+      "type": "single",
+      "q": "En este error, ¿qué indica el `^`?\n```\nERROR:  syntax error at or near \"FROM\"\nLINE 1: SELECT nombre, FROM productos;\n                       ^\n```",
+      "options": [
+        "Dónde el analizador se dio cuenta del problema; la causa real es la coma sobrante justo antes",
+        "Que la palabra FROM está mal escrita",
+        "Que falta el nombre de la tabla después de FROM",
+        "La columna que no existe"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Tras la coma, PostgreSQL esperaba otra columna y encontró `FROM`: ahí se dio cuenta. El `^` marca dónde se detecta el problema, que muchas veces está justo antes."
+    },
+    {
+      "id": "s01-q31",
+      "type": "single",
+      "q": "¿Qué hace `\\errverbose`?",
+      "options": [
+        "Repite el último error del servidor con el máximo detalle, incluido su SQLSTATE",
+        "Activa el modo detallado para todos los errores futuros",
+        "Muestra todos los errores ocurridos en la sesión",
+        "Traduce el último error al español"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`\\errverbose` actúa sobre el error más reciente, como si `VERBOSITY` fuera `verbose`. Para que todos los errores siguientes salgan detallados se usa `\\set VERBOSITY verbose`."
+    },
+    {
+      "id": "s01-q32",
+      "type": "single",
+      "q": "Un error tiene SQLSTATE `42P01`. ¿De qué clase es?",
+      "options": [
+        "Clase 42: error de sintaxis o de regla de acceso (aquí, tabla inexistente)",
+        "Clase 23: violación de una restricción de integridad",
+        "Clase 22: dato inválido",
+        "Clase 08: problema de conexión"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Los dos primeros caracteres son la clase. `42P01` es *undefined_table*, de la clase 42 (*Syntax Error or Access Rule Violation*), la misma de `42601` (sintaxis) y `42703` (columna inexistente)."
+    },
+    {
+      "id": "s01-q33",
+      "type": "multi",
+      "q": "¿Cuáles pares SQLSTATE → significado son correctos? (Selecciona TRES.)",
+      "options": [
+        "42703 → la columna no existe (undefined_column)",
+        "22012 → división por cero",
+        "42P04 → la base ya existe (duplicate_database)",
+        "23505 → error de sintaxis",
+        "42601 → la tabla no existe"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "`23505` es *unique_violation* (valor repetido en una columna única) y `42601` es *syntax_error*; la tabla inexistente es `42P01`. Todos están en el apéndice A de la documentación."
+    },
+    {
+      "id": "s01-q34",
+      "type": "single",
+      "q": "En una sinopsis de `\\h`, ¿qué indica `[, ...]`?",
+      "options": [
+        "Que el elemento anterior se puede repetir, separado por comas",
+        "Que el elemento es obligatorio",
+        "Que debes elegir una de las opciones",
+        "Que la sintaxis continúa en otra página"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Por ejemplo, `expression [, ...]` en `SELECT` significa «una o más expresiones separadas por comas». Los corchetes solos (`[ WITH ]`) indican algo opcional."
+    },
+    {
+      "id": "s01-q35",
+      "type": "single",
+      "q": "La sinopsis de `SELECT` dice `LIMIT { count | ALL }`. ¿Cómo se lee?",
+      "options": [
+        "Tras LIMIT va exactamente una de las alternativas: un número o la palabra ALL",
+        "count y ALL son opcionales y se pueden combinar",
+        "Hay que escribir las llaves literalmente",
+        "count y ALL deben ir juntos"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Las llaves con barras indican una elección obligatoria. `LIMIT 10` o `LIMIT ALL`; este último equivale a no poner límite."
+    },
+    {
+      "id": "s01-q36",
+      "type": "yesno",
+      "q": "Sobre la documentación oficial, indica si cada afirmación es verdadera.",
+      "statements": [
+        {
+          "text": "Una URL con /docs/18/ corresponde a PostgreSQL 18.",
+          "answer": true
+        },
+        {
+          "text": "/docs/current/ apunta siempre a la versión más reciente.",
+          "answer": true
+        },
+        {
+          "text": "La parte VI (Reference) tiene una página por comando SQL y por programa, como psql.",
+          "answer": true
+        },
+        {
+          "text": "Los códigos de error (SQLSTATE) están en el Tutorial.",
+          "answer": false
+        }
+      ],
+      "explain": "Los códigos de error están en el apéndice A (*PostgreSQL Error Codes*). Mira siempre el número de versión en la URL: un buscador puede llevarte a documentación de versiones antiguas."
+    },
+    {
+      "id": "s01-q37",
+      "type": "single",
+      "q": "En la consola del curso, `SELECT version();` menciona PGlite y `wasm32-unknown-emscripten`. ¿Qué significa?",
+      "options": [
+        "Que es PostgreSQL 18.3 real, compilado a WebAssembly para correr en tu navegador",
+        "Que la simulación no es PostgreSQL, sino una imitación",
+        "Que es MySQL con otro nombre",
+        "Que es una versión antigua de PostgreSQL"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El servidor del curso es PostgreSQL 18.3 compilado a WebAssembly (PGlite): mismo analizador, mismo planificador, mismos mensajes. En un servidor real, `version()` muestra la plataforma, por ejemplo `x86_64-pc-linux-gnu`."
+    },
+    {
+      "id": "s01-q38",
+      "type": "single",
+      "q": "¿Cuál de estas consultas devuelve el usuario actual sin error?",
+      "options": [
+        "SELECT current_user;",
+        "SELECT current_user();",
+        "SELECT user();",
+        "SELECT current_user FROM;"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`current_user` es una función especial del estándar SQL que se escribe **sin** paréntesis (igual que `user`, `session_user` o `current_date`). Con paréntesis da `syntax error at or near \"(\"`."
+    },
+    {
+      "id": "s01-q39",
+      "type": "multi",
+      "q": "Acabas de instalar PostgreSQL 18 en Ubuntu con el repositorio oficial (apt). ¿Cuáles afirmaciones son ciertas? (Selecciona DOS.)",
+      "options": [
+        "El superusuario inicial se llama postgres y te conectas con sudo -u postgres psql",
+        "El servidor escucha por defecto en el puerto 5432",
+        "Se crea automáticamente la base tienda",
+        "Hay que compilar psql por separado"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "El paquete crea el clúster con el rol `postgres`, al que se entra desde el usuario del sistema del mismo nombre (autenticación *peer*), y usa el puerto 5432. Solo existen `postgres`, `template0` y `template1`; psql viene incluido."
+    },
+    {
+      "id": "s01-q40",
+      "type": "single",
+      "q": "Una aplicación debe conectarse a la base `tienda` del servidor `db.andes.cl`, puerto 5432, con el usuario `app`. ¿Qué URI de conexión es correcta?",
+      "options": [
+        "postgresql://app@db.andes.cl:5432/tienda",
+        "postgres:tienda@app/db.andes.cl",
+        "http://db.andes.cl:5432/app/tienda",
+        "tienda://app@5432/db.andes.cl"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La forma es `postgresql://usuario@servidor:puerto/base` (también se acepta el prefijo `postgres://`). La contraseña, si hace falta, va como `usuario:clave@…` o mejor en un archivo `.pgpass`, nunca escrita en el código."
+    },
+    {
+      "id": "s01-q41",
+      "type": "single",
+      "q": "Escribiste tres líneas de una consulta mal pensada (el prompt dice `tienda-#`) y quieres descartarlas sin ejecutarlas. ¿Qué haces?",
+      "options": [
+        "\\r",
+        "\\q",
+        "Escribir ; para que se descarte",
+        "\\p"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`\\r` (*reset*) borra el búfer de consulta. `\\p` solo lo muestra, `;` lo **ejecutaría** y `\\q` cierra psql."
+    },
+    {
+      "id": "s01-q42",
+      "type": "yesno",
+      "q": "¿Qué hace cada meta-comando? Indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`\\dn` lista los esquemas de la base actual.",
+          "answer": true
+        },
+        {
+          "text": "`\\l` lista las tablas de la base actual.",
+          "answer": false
+        },
+        {
+          "text": "`\\conninfo` muestra a qué base y con qué usuario estás conectado.",
+          "answer": true
+        },
+        {
+          "text": "`\\timing` muestra cuánto demora cada sentencia.",
+          "answer": true
+        }
+      ],
+      "explain": "`\\l` lista las **bases** del clúster; las tablas se listan con `\\dt`."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: What Is PostgreSQL?",
+      "url": "https://www.postgresql.org/docs/18/intro-whatis.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: A Brief History of PostgreSQL",
+      "url": "https://www.postgresql.org/docs/18/history.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Architectural Fundamentals",
+      "url": "https://www.postgresql.org/docs/18/tutorial-arch.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: How Connections Are Established",
+      "url": "https://www.postgresql.org/docs/18/connect-estab.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Creating a Database Cluster",
+      "url": "https://www.postgresql.org/docs/18/creating-cluster.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Managing Databases, Overview",
+      "url": "https://www.postgresql.org/docs/18/manage-ag-overview.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Template Databases",
+      "url": "https://www.postgresql.org/docs/18/manage-ag-templatedbs.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Schemas",
+      "url": "https://www.postgresql.org/docs/18/ddl-schemas.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: psql",
+      "url": "https://www.postgresql.org/docs/18/app-psql.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: CREATE DATABASE",
+      "url": "https://www.postgresql.org/docs/18/sql-createdatabase.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: LIMIT and OFFSET",
+      "url": "https://www.postgresql.org/docs/18/queries-limit.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Lexical Structure",
+      "url": "https://www.postgresql.org/docs/18/sql-syntax-lexical.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: PostgreSQL Error Codes (apéndice A)",
+      "url": "https://www.postgresql.org/docs/18/errcodes-appendix.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SQL Conformance",
+      "url": "https://www.postgresql.org/docs/18/features.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Connections and Authentication (port)",
+      "url": "https://www.postgresql.org/docs/18/runtime-config-connection.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Connection Strings (URI)",
+      "url": "https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNSTRING"
+    },
+    {
+      "title": "PostgreSQL: Versioning Policy",
+      "url": "https://www.postgresql.org/support/versioning/"
+    }
+  ]
+}

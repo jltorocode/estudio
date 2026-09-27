@@ -1,0 +1,2325 @@
+{
+  "id": "s02",
+  "order": 2,
+  "title": "SELECT: consultar y filtrar datos",
+  "domain": "fundamentos",
+  "summary": "Aprendes a hacerle preguntas precisas a una tabla: qué columnas mostrar y calcular, qué filas conservar y en qué orden entregarlas. Dominas los filtros de `WHERE`, la lógica de tres valores de NULL, la paginación y dos herramientas muy propias de PostgreSQL: `FETCH … WITH TIES` y `DISTINCT ON`. Todo sobre los datos reales de Tienda Andes, el colegio y la biblioteca.",
+  "goal": "Escribir sin ayuda una consulta sobre una tabla que filtre, trate bien los NULL, ordene y pagine con un orden único, y explicar en qué orden lógico la evalúa PostgreSQL.",
+  "objectives": [
+    "Escribir consultas `SELECT … FROM` que elijan columnas, calculen expresiones y nombren el resultado con alias.",
+    "Filtrar filas con `WHERE` combinando comparaciones, `AND`/`OR`/`NOT` con paréntesis, `BETWEEN`, `IN` y `LIKE`/`ILIKE`.",
+    "Tratar correctamente los NULL con `IS NULL`, `IS DISTINCT FROM` y `COALESCE`, prediciendo los efectos de la lógica de tres valores.",
+    "Ordenar resultados con `ORDER BY` (varias columnas, `NULLS FIRST/LAST`) y paginar con `LIMIT`/`OFFSET` usando un orden único.",
+    "Obtener un top-N con empates mediante `FETCH FIRST … WITH TIES`.",
+    "Seleccionar una fila por grupo con `DISTINCT ON`.",
+    "Explicar el orden lógico de evaluación de una consulta y usarlo para diagnosticar errores de alias."
+  ],
+  "lessons": [
+    {
+      "id": "s02-l1",
+      "title": "SELECT y FROM: columnas, expresiones, alias y DISTINCT",
+      "minutes": 20,
+      "goals": [
+        "Escribir consultas que elijan columnas concretas y calculen columnas nuevas con expresiones aritméticas (precio − costo, costo × stock).",
+        "Nombrar las columnas del resultado con `AS`, usando comillas dobles cuando el nombre lleva mayúsculas o espacios.",
+        "Eliminar filas repetidas del resultado con `DISTINCT` sobre una o varias columnas.",
+        "Predecir el nombre y el valor de una columna calculada (`?column?`, división entera)."
+      ],
+      "takeaways": [
+        "`SELECT` no modifica nada: construye una tabla nueva y temporal (el resultado) fila por fila a partir de lo que entrega `FROM`.",
+        "Cada elemento de la lista del `SELECT` es una expresión (columna, literal o cálculo); un cálculo sin alias se llama `?column?`.",
+        "Comillas simples = texto (`'Santiago'`); comillas dobles = identificador (`\"Margen bruto\"`). Sin comillas, los nombres se pasan a minúsculas.",
+        "`DISTINCT` compara la fila completa del resultado (todas las columnas elegidas) y, para ese fin, trata los NULL como iguales.",
+        "Entre enteros, `/` es división entera: `7 / 2` da `3`."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Una consulta `SELECT` es una **pregunta** que le haces a la base de datos, y la respuesta siempre es **una tabla nueva**: el *resultado*. Esa tabla no se guarda en ninguna parte; existe mientras psql te la muestra. Piensa en el cuaderno de ventas de un almacén de barrio: `FROM` es abrir el cuaderno en la página correcta (la tabla `productos`) y `SELECT` es decidir qué columnas copias a una hoja en blanco y qué cálculos anotas al margen. El cuaderno original queda intacto."
+        },
+        {
+          "type": "p",
+          "text": "Por eso se dice que SQL es **declarativo**: describes *qué* quieres (qué columnas, de qué tabla, con qué condiciones) y PostgreSQL decide *cómo* obtenerlo. En esta lección trabajas con dos piezas: `FROM`, que dice de dónde salen las filas, y la **lista de selección**, que dice qué columnas tendrá cada fila del resultado."
+        },
+        {
+          "type": "diagram",
+          "title": "De la tabla al resultado",
+          "mermaid": "flowchart LR\n  T[\"Tabla productos<br/>49 filas × 9 columnas\"] --> F[\"FROM productos<br/>entrega las filas una a una\"]\n  F --> S[\"Lista del SELECT<br/>sku, nombre, precio - costo AS margen\"]\n  S --> R[\"Resultado<br/>49 filas × 3 columnas\"]\n  S -.-> D[\"DISTINCT (opcional)<br/>quita filas repetidas\"]\n  D -.-> R",
+          "caption": "La lista del SELECT se evalúa una vez por cada fila que entrega FROM: el resultado tiene tantas filas como la tabla (salvo que filtres o uses DISTINCT) y tantas columnas como expresiones escribiste."
+        },
+        {
+          "type": "h",
+          "text": "Elegir columnas y calcular expresiones"
+        },
+        {
+          "type": "p",
+          "text": "Antes de escribir una consulta, mira qué columnas existen: `\\d productos` te lo dice. Después, en vez de `SELECT *` (todas las columnas, en el orden en que se crearon), nombra solo las que necesitas: el resultado es más legible, viaja menos información por la red y tu consulta no cambia de forma si mañana alguien agrega una columna a la tabla. Recuerda de la sección 1 que `LIMIT` corta el resultado; aquí lo usamos solo para no llenar la pantalla."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\d productos\nSELECT nombre, precio\nFROM productos\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "Cada elemento de la lista es una **expresión**, no solo un nombre de columna: puedes usar los operadores `+`, `-`, `*`, `/` y `%` (resto), mezclar columnas con literales y ponerle nombre al resultado con `AS`. PostgreSQL evalúa esas expresiones **una vez por fila**, con los valores de esa fila. El margen de un producto es `precio - costo`, y el dinero inmovilizado en bodega es `costo * stock`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku,\n       nombre,\n       precio,\n       costo,\n       precio - costo AS margen,\n       costo * stock  AS valor_stock,\n       'CLP'          AS moneda\nFROM productos\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "`SELECT` ni siquiera necesita una tabla: en PostgreSQL `SELECT 7 / 2;` funciona como calculadora. Úsalo para probar expresiones antes de meterlas en una consulta grande. Fíjate también en el nombre que recibe una expresión sin alias."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT 7 / 2 AS division, 7 % 2 AS resto, 7.0 / 2 AS con_decimales;\nSELECT precio - costo\nFROM productos\nLIMIT 2;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**División entera.** `precio`, `costo` y `stock` son `integer`, y entre enteros `/` descarta los decimales (trunca hacia cero): `7 / 2` da `3` y `-7 / 2` da `-3`. Basta con que un operando tenga decimales para obtener decimales: `7.0 / 2` da `3.5000000000000000`. Lo verás a fondo en la sección 4; por ahora, desconfía de cualquier división entre columnas enteras (por ejemplo, un porcentaje de margen)."
+        },
+        {
+          "type": "h",
+          "text": "Alias: el nombre de cada columna del resultado"
+        },
+        {
+          "type": "p",
+          "text": "Si no pones alias, PostgreSQL elige un nombre: para una columna usa su nombre, y para un cálculo usa `?column?` (poco útil). Con `AS nombre` eliges el encabezado. Aquí aparece una regla de SQL que conviene aprender desde el primer día: **los identificadores sin comillas se pasan a minúsculas**, así que `AS Producto` se muestra como `producto`. Si quieres mayúsculas, espacios o símbolos tal cual, encierra el alias entre **comillas dobles**: `AS \"Precio CLP\"`. Las **comillas simples** son otra cosa: delimitan *textos* (`'Santiago'`), por eso `AS 'Producto'` es un error de sintaxis."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre AS Producto,\n       precio AS \"Precio CLP\",\n       precio - costo AS \"Margen $\"\nFROM productos\nLIMIT 3;\nSELECT nombre AS 'Producto' FROM productos LIMIT 1;",
+          "errors": true
+        },
+        {
+          "type": "table",
+          "head": [
+            "Escribes",
+            "Nombre de la columna",
+            "Comentario"
+          ],
+          "rows": [
+            [
+              "`precio - costo`",
+              "`?column?`",
+              "Sin alias: nombre genérico"
+            ],
+            [
+              "`precio - costo AS margen`",
+              "`margen`",
+              "Lo recomendado: minúsculas y guion bajo"
+            ],
+            [
+              "`precio - costo AS Margen`",
+              "`margen`",
+              "Sin comillas se pasa a minúsculas"
+            ],
+            [
+              "`precio - costo AS \"Margen\"`",
+              "`Margen`",
+              "Comillas dobles: respeta mayúsculas"
+            ],
+            [
+              "`precio - costo AS \"margen bruto\"`",
+              "`margen bruto`",
+              "Comillas dobles: permite espacios"
+            ],
+            [
+              "`precio - costo AS 'margen'`",
+              "—",
+              "`ERROR:  syntax error at or near \"'margen'\"`"
+            ],
+            [
+              "`precio - costo margen`",
+              "`margen`",
+              "`AS` es opcional… pero peligroso (mira el aviso)"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**La coma que falta.** Como `AS` es opcional, `SELECT nombre precio FROM productos;` no da error: devuelve **una sola columna** llamada `precio` que contiene… los nombres. PostgreSQL entendió «la columna `nombre` con el alias `precio`». Escribe siempre `AS`: deja clara la intención y evita este tropiezo. Además, `AS` es obligatorio cuando el alias es una palabra clave: `SELECT 5 AS order;` funciona, pero `SELECT 5 order;` es un error de sintaxis."
+        },
+        {
+          "type": "h",
+          "text": "DISTINCT: quitar filas repetidas"
+        },
+        {
+          "type": "p",
+          "text": "`SELECT DISTINCT` elimina del resultado las filas **duplicadas**. La comparación se hace sobre **la fila completa del resultado**: con una columna obtienes sus valores distintos; con dos columnas, las *combinaciones* distintas. Para `DISTINCT` dos NULL cuentan como iguales, así que el cliente sin región aparece como **una** fila con la región vacía. Lo contrario de `DISTINCT` es `ALL`, que es el comportamiento por defecto (`SELECT ALL` = `SELECT`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT DISTINCT estado FROM pedidos;\nSELECT DISTINCT region FROM clientes;\nSELECT DISTINCT region, comuna FROM clientes;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**`DISTINCT` no es una función.** `SELECT DISTINCT(region), comuna` parece aplicar DISTINCT solo a `region`, pero los paréntesis solo agrupan la expresión `region`: el DISTINCT sigue afectando a la fila completa (`region, comuna`). Tampoco garantiza ningún orden (fíjate en el desorden de los ejemplos): para ordenar necesitas `ORDER BY` (lección 4). Y para quedarte con «una fila por grupo» existe `DISTINCT ON` (lección 5)."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "La diferencia entre comillas simples (textos) y dobles (identificadores); por qué evitar `SELECT *` en el código de una aplicación; qué compara `DISTINCT` (todas las columnas del resultado, con NULL igual a NULL); qué nombre recibe una expresión sin alias (`?column?`); y que `7 / 2` es `3` entre enteros."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Proyección",
+              "en": "projection",
+              "def": "Elegir qué columnas (o expresiones) tendrá el resultado."
+            },
+            {
+              "term": "Expresión",
+              "en": "value expression",
+              "def": "Todo lo que produce un valor: una columna, un literal (`'CLP'`, `100`) o un cálculo (`precio - costo`)."
+            },
+            {
+              "term": "Alias de columna",
+              "en": "column label",
+              "def": "Nombre que le das a una columna del resultado con `AS`; no cambia la tabla."
+            },
+            {
+              "term": "Identificador entre comillas",
+              "en": "quoted identifier",
+              "def": "Nombre entre comillas dobles: respeta mayúsculas y permite espacios (`\"Precio CLP\"`)."
+            },
+            {
+              "term": "DISTINCT",
+              "def": "Elimina las filas duplicadas del resultado comparando todas sus columnas."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s02-l2",
+      "title": "WHERE: filtrar filas con condiciones",
+      "minutes": 25,
+      "goals": [
+        "Filtrar filas con los operadores de comparación (`=`, `<>`, `<`, `>=`…) sobre números, textos, booleanos y fechas.",
+        "Combinar condiciones con `AND`, `OR` y `NOT`, usando paréntesis para imponer la precedencia correcta.",
+        "Reescribir cadenas de `OR` y rangos con `IN`, `NOT IN` y `BETWEEN`, y elegir un intervalo semiabierto para fechas con hora.",
+        "Buscar texto por patrones con `LIKE` e `ILIKE` y los comodines `%` y `_`."
+      ],
+      "takeaways": [
+        "`WHERE` evalúa una condición por cada fila de `FROM`; solo pasan las filas en que la condición es **verdadera**.",
+        "`NOT` se evalúa antes que `AND`, y `AND` antes que `OR`: si mezclas `AND` y `OR`, pon paréntesis siempre.",
+        "`BETWEEN a AND b` incluye ambos extremos; para fechas con hora usa `>= inicio AND < día_siguiente_al_fin`.",
+        "`LIKE` distingue mayúsculas y debe calzar con el texto completo: `%` = cualquier secuencia, `_` = exactamente un carácter; `ILIKE` ignora mayúsculas (pero no tildes).",
+        "Los textos se comparan tal cual: `'las condes'` no es igual a `'Las Condes'`, y una comilla dentro de un texto se escribe doble (`'O''Higgins'`)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Si la lista del `SELECT` decide las **columnas**, `WHERE` decide las **filas**. Imagina al guardia de la puerta de un evento con una lista de invitados: a cada fila que llega desde `FROM` le hace una pregunta de sí o no (la condición). Solo entran al resultado las filas para las que la respuesta es **verdadera** (`true`). Las que responden `false` —y, como verás en la próxima lección, las que responden «no sé» (NULL)— se quedan afuera."
+        },
+        {
+          "type": "diagram",
+          "title": "WHERE como filtro de tres salidas",
+          "mermaid": "flowchart LR\n  A[\"Fila que entrega FROM\"] --> B{\"Condición del WHERE\"}\n  B -->|\"true\"| C[\"Pasa al SELECT\"]\n  B -->|\"false\"| D[\"Descartada\"]\n  B -->|\"NULL (desconocido)\"| D",
+          "caption": "Solo true deja pasar la fila. La salida NULL es la protagonista de la lección 3."
+        },
+        {
+          "type": "h",
+          "text": "Comparaciones"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Operador",
+            "Significado",
+            "Ejemplo en tienda"
+          ],
+          "rows": [
+            [
+              "`=`",
+              "igual",
+              "`estado = 'pagado'`"
+            ],
+            [
+              "`<>` (o `!=`)",
+              "distinto",
+              "`estado <> 'cancelado'`"
+            ],
+            [
+              "`<` `<=`",
+              "menor / menor o igual",
+              "`stock <= 10`"
+            ],
+            [
+              "`>` `>=`",
+              "mayor / mayor o igual",
+              "`precio >= 100000`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre, precio\nFROM productos\nWHERE precio >= 100000;\n\nSELECT nombre, apellido, comuna\nFROM clientes\nWHERE comuna = 'Las Condes';\n\nSELECT nombre, apellido\nFROM clientes\nWHERE comuna = 'las condes';"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en la tercera consulta: 0 filas y ningún error. Los textos se comparan **carácter a carácter**, así que `'las condes'` y `'Las Condes'` son distintos. Los literales de texto van entre comillas simples; si el texto contiene una comilla simple, se escribe **dos veces**: `'O''Higgins'`. Las columnas `boolean` ya son una condición: `WHERE activo` equivale a `WHERE activo = true`, y `WHERE NOT activo` a `WHERE activo = false`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre, apellido, comuna, region\nFROM clientes\nWHERE region = 'O''Higgins';\n\nSELECT sku, nombre, stock\nFROM productos\nWHERE NOT activo;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Si olvidas doblar la comilla (`'O'Higgins'`), psql no ejecuta nada: cambia el prompt a `tienda'#` para avisarte que hay un texto sin cerrar y sigue esperando. Mira siempre el prompt antes de pensar que la consulta «se colgó»."
+        },
+        {
+          "type": "p",
+          "text": "Con fechas, escribe el literal en formato ISO (`'2026-01-01'`) y PostgreSQL lo convierte al tipo de la columna. `clientes.fecha_registro` es `date` (solo día), pero `pedidos.fecha` es `timestamptz`: fecha **y hora** con zona horaria, así que `'2026-06-21'` significa *el 21 de junio a las 00:00 en Santiago*. Ese detalle importa muchísimo con `BETWEEN`, como verás en unos minutos (y a fondo en la sección 3)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre, apellido, fecha_registro\nFROM clientes\nWHERE fecha_registro >= '2026-01-01';"
+        },
+        {
+          "type": "h",
+          "text": "AND, OR, NOT… y los paréntesis"
+        },
+        {
+          "type": "p",
+          "text": "`AND` exige que se cumplan ambas condiciones; `OR`, al menos una; `NOT` invierte. El problema es la **precedencia**: igual que en matemática la multiplicación va antes que la suma, en SQL `NOT` se aplica antes que `AND`, y `AND` antes que `OR`. Mira este pedido del área comercial: *«productos de Audio (categoría 3) o de Accesorios (categoría 4) que cuesten menos de $20.000»*."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Sin paréntesis: el AND se evalúa primero\nSELECT sku, nombre, categoria_id, precio\nFROM productos\nWHERE categoria_id = 3 OR categoria_id = 4 AND precio < 20000;\n\n-- Con paréntesis: lo que se pidió\nSELECT sku, nombre, categoria_id, precio\nFROM productos\nWHERE (categoria_id = 3 OR categoria_id = 4) AND precio < 20000;"
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo agrupa PostgreSQL cada versión",
+          "mermaid": "flowchart TB\n  subgraph SIN[\"Sin paréntesis: 7 filas\"]\n    O1[\"OR\"] --> X1[\"categoria_id = 3\"]\n    O1 --> A1[\"AND\"]\n    A1 --> X2[\"categoria_id = 4\"]\n    A1 --> X3[\"precio < 20000\"]\n  end\n  subgraph CON[\"Con paréntesis: 3 filas\"]\n    A2[\"AND\"] --> O2[\"OR\"]\n    A2 --> X6[\"precio < 20000\"]\n    O2 --> X4[\"categoria_id = 3\"]\n    O2 --> X5[\"categoria_id = 4\"]\n  end",
+          "caption": "Sin paréntesis, el límite de precio quedó amarrado solo a Accesorios: todo Audio pasa, incluidos los audífonos de $149.990."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Precedencia (de mayor a menor)",
+            "Operadores"
+          ],
+          "rows": [
+            [
+              "1",
+              "`*` `/` `%`"
+            ],
+            [
+              "2",
+              "`+` `-`"
+            ],
+            [
+              "3",
+              "`BETWEEN`, `IN`, `LIKE`, `ILIKE`"
+            ],
+            [
+              "4",
+              "`<` `>` `=` `<=` `>=` `<>`"
+            ],
+            [
+              "5",
+              "`IS` (`IS NULL`, `IS DISTINCT FROM`…)"
+            ],
+            [
+              "6",
+              "`NOT`"
+            ],
+            [
+              "7",
+              "`AND`"
+            ],
+            [
+              "8",
+              "`OR`"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Regla práctica:** cada vez que un `WHERE` mezcle `AND` y `OR`, pon paréntesis aunque creas que no hacen falta. No cuestan nada y quien lea la consulta (quizás tú en seis meses) no tendrá que recordar la tabla de precedencia. La tabla de arriba es una versión simplificada de la que trae la documentación (sección 4.1.6)."
+        },
+        {
+          "type": "h",
+          "text": "BETWEEN e IN: rangos y listas"
+        },
+        {
+          "type": "p",
+          "text": "`x BETWEEN a AND b` equivale a `x >= a AND x <= b`: **incluye ambos extremos**. El orden importa: `BETWEEN 15000 AND 10000` no devuelve nada (si no sabes cuál es el menor, usa `BETWEEN SYMMETRIC`). `x IN (v1, v2, v3)` equivale a `x = v1 OR x = v2 OR x = v3`, pero se lee mucho mejor y no tiene problemas de precedencia. `NOT BETWEEN` y `NOT IN` los niegan."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre, precio\nFROM productos\nWHERE precio BETWEEN 10000 AND 15000;\n\nSELECT id, estado, metodo_pago\nFROM pedidos\nWHERE estado NOT IN ('entregado', 'cancelado');"
+        },
+        {
+          "type": "p",
+          "text": "Ahora la trampa de las fechas: *pedidos del 21 al 25 de junio de 2026*. Como `fecha` tiene hora, `BETWEEN '2026-06-21' AND '2026-06-25'` termina el 25 **a las 00:00:00** y deja fuera todo lo que se compró ese día. La forma robusta es un **intervalo semiabierto**: desde el inicio (incluido) hasta el día siguiente al último (excluido). Funciona igual con `date`, `timestamp` y `timestamptz`, sin importar la precisión de la hora."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Pierde los pedidos del 25 de junio\nSELECT id, fecha, estado\nFROM pedidos\nWHERE fecha BETWEEN '2026-06-21' AND '2026-06-25';\n\n-- Intervalo semiabierto: [21 de junio, 26 de junio)\nSELECT id, fecha, estado\nFROM pedidos\nWHERE fecha >= '2026-06-21' AND fecha < '2026-06-26';"
+        },
+        {
+          "type": "h",
+          "text": "LIKE e ILIKE: buscar por patrones"
+        },
+        {
+          "type": "p",
+          "text": "`LIKE` compara un texto con un **patrón** que puede tener dos comodines: `%` (cualquier secuencia de caracteres, incluso vacía) y `_` (exactamente un carácter). El patrón debe calzar con el texto **completo**: `'Hola' LIKE 'Hol'` es falso y `'Hola' LIKE 'Hol%'` es verdadero; sin comodines, `LIKE` se comporta como `=`. `LIKE` distingue mayúsculas; `ILIKE` (una extensión de PostgreSQL, no es SQL estándar) las ignora. Los operadores `~~` y `~~*` son sinónimos de `LIKE` e `ILIKE`, y `NOT LIKE` / `NOT ILIKE` los niegan."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Patrón",
+            "Significa",
+            "Calza en tienda"
+          ],
+          "rows": [
+            [
+              "`nombre LIKE 'Café%'`",
+              "empieza con «Café»",
+              "Café en grano 1 kg, Café molido 500 g"
+            ],
+            [
+              "`nombre LIKE '%bicicleta%'`",
+              "contiene «bicicleta» (en minúsculas)",
+              "Luces LED para bicicleta"
+            ],
+            [
+              "`nombre ILIKE '%bicicleta%'`",
+              "contiene «bicicleta», sin importar mayúsculas",
+              "Bicicleta urbana aro 28, Luces LED para bicicleta"
+            ],
+            [
+              "`sku LIKE 'C__-%'`",
+              "C + dos caracteres cualesquiera + guion + lo que sea",
+              "COC-…, CIC-…, CAF-… (no COMP-…)"
+            ],
+            [
+              "`nombre LIKE '%\\%%'`",
+              "contiene un `%` literal",
+              "Chocolate amargo 70 %"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre FROM productos WHERE nombre LIKE '%bicicleta%';\nSELECT sku, nombre FROM productos WHERE nombre ILIKE '%bicicleta%';\nSELECT sku, nombre FROM productos WHERE sku LIKE 'C__-%';\nSELECT sku, nombre FROM productos WHERE nombre LIKE '%\\%%';"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**`ILIKE` no ignora tildes.** `nombre ILIKE '%cafe%'` encuentra «Cafetera italiana» pero **no** «Café en grano 1 kg»: `e` y `é` son caracteres distintos. Para buscar sin tildes existe la extensión `unaccent` (sección 18). Y para encontrar un `%` o un `_` literal, antepón el carácter de escape, que por defecto es la barra invertida (`LIKE '%\\%%'`), o elige otro con `ESCAPE`: `LIKE '%!%%' ESCAPE '!'`."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "La precedencia `NOT` > `AND` > `OR`; que `BETWEEN` es inclusivo en ambos extremos (y la trampa con fechas que tienen hora); la diferencia entre `%` y `_`; que `ILIKE` es propio de PostgreSQL; y que un patrón con comodín al inicio (`LIKE '%texto'`) no puede aprovechar un índice B-tree normal, así que en tablas grandes obliga a revisar todas las filas (sección 14)."
+        }
+      ]
+    },
+    {
+      "id": "s02-l3",
+      "title": "NULL y la lógica de tres valores",
+      "minutes": 20,
+      "goals": [
+        "Encontrar valores ausentes con `IS NULL` / `IS NOT NULL` y explicar por qué `= NULL` nunca devuelve filas.",
+        "Predecir el resultado de `AND`, `OR` y `NOT` cuando una condición vale NULL, usando la tabla de verdad de tres valores.",
+        "Comparar columnas que admiten NULL con `IS DISTINCT FROM` sin perder filas por el camino.",
+        "Mostrar un valor de reemplazo para los NULL con `COALESCE`."
+      ],
+      "takeaways": [
+        "NULL significa «desconocido» o «no aplica»: no es 0, ni el texto vacío `''`, ni `false`.",
+        "Casi cualquier operación con NULL da NULL: `1 = NULL`, `NULL = NULL`, `100 + NULL`.",
+        "`WHERE` solo deja pasar `true`: una condición que vale NULL descarta la fila, y su `NOT` también (NOT NULL sigue siendo NULL).",
+        "Pregunta por NULL con `IS NULL` / `IS NOT NULL`; compara sin sorpresas con `IS [NOT] DISTINCT FROM`.",
+        "`NOT IN` con un NULL en la lista nunca es verdadero: devuelve 0 filas sin avisar."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "En la tabla `clientes`, 5 personas no tienen email y 11 no tienen teléfono. Esa casilla vacía es **NULL**: un marcador que significa «no sabemos» o «no aplica». No es un 0, ni un texto vacío `''`, ni `false`. Piensa en una ficha médica con la casilla «grupo sanguíneo» en blanco: no significa que la persona no tenga grupo sanguíneo, sino que **no lo sabemos**."
+        },
+        {
+          "type": "p",
+          "text": "De ahí sale la regla que lo explica todo: si comparas algo con un valor desconocido, el resultado también es desconocido. ¿`1 = NULL`? No se sabe. ¿`NULL = NULL`? Tampoco: dos desconocidos no tienen por qué ser iguales. Por eso SQL usa una **lógica de tres valores**: `true`, `false` y NULL (también llamado *unknown*). psql muestra NULL como una casilla vacía; con el meta-comando `\\pset null '(null)'` lo hace visible."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT NULL = NULL  AS igual,\n       1 = NULL     AS uno_igual_null,\n       NULL <> NULL AS distinto,\n       100 + NULL   AS suma,\n       NULL IS NULL AS es_null;"
+        },
+        {
+          "type": "h",
+          "text": "IS NULL: la única forma correcta de preguntar"
+        },
+        {
+          "type": "p",
+          "text": "Como `email = NULL` vale NULL en *todas* las filas, `WHERE email = NULL` no devuelve nada, y tampoco da error: es el bug silencioso más clásico de SQL. Para preguntar si un valor falta se usan los predicados `IS NULL` e `IS NOT NULL`, que siempre responden `true` o `false`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\n-- Mal: 0 filas, sin error\nSELECT id, nombre, apellido, email\nFROM clientes\nWHERE email = NULL;\n\n-- Bien\nSELECT id, nombre, apellido, email\nFROM clientes\nWHERE email IS NULL;"
+        },
+        {
+          "type": "h",
+          "text": "La tabla de verdad de tres valores"
+        },
+        {
+          "type": "table",
+          "head": [
+            "a",
+            "b",
+            "a AND b",
+            "a OR b"
+          ],
+          "rows": [
+            [
+              "true",
+              "true",
+              "true",
+              "true"
+            ],
+            [
+              "true",
+              "false",
+              "false",
+              "true"
+            ],
+            [
+              "true",
+              "NULL",
+              "**NULL**",
+              "true"
+            ],
+            [
+              "false",
+              "false",
+              "false",
+              "false"
+            ],
+            [
+              "false",
+              "NULL",
+              "false",
+              "**NULL**"
+            ],
+            [
+              "NULL",
+              "NULL",
+              "NULL",
+              "NULL"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Léela así: `false AND lo-que-sea` es `false` (ya se sabe que no se cumple) y `true OR lo-que-sea` es `true` (ya se sabe que se cumple); en los demás casos, si una parte es desconocida el resultado es desconocido. Y `NOT NULL` es NULL: negar lo desconocido sigue siendo desconocido."
+        },
+        {
+          "type": "p",
+          "text": "Esa última regla produce un efecto que aparece en todas las entrevistas: **filas que no salen ni con `WHERE condición` ni con `WHERE NOT condición`**. Hay 60 clientes y 43 son de la Región Metropolitana… pero `NOT (region = 'Metropolitana')` devuelve 16, no 17. (`count(*)` cuenta las filas del resultado; lo verás a fondo en la sección 7.) Si quieres que lo desconocido cuente del lado del «no», usa los predicados `IS TRUE`, `IS NOT TRUE`, `IS FALSE`, `IS NOT FALSE` e `IS UNKNOWN`, que nunca devuelven NULL."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT count(*) AS total FROM clientes;\nSELECT count(*) AS de_la_rm FROM clientes WHERE region = 'Metropolitana';\nSELECT count(*) AS no_rm FROM clientes WHERE NOT (region = 'Metropolitana');\nSELECT count(*) AS no_rm_o_desconocida FROM clientes WHERE (region = 'Metropolitana') IS NOT TRUE;\nSELECT id, nombre, comuna, region FROM clientes WHERE region IS NULL;"
+        },
+        {
+          "type": "diagram",
+          "title": "La fila que no está en ningún lado",
+          "mermaid": "flowchart LR\n  F[\"Cliente 5<br/>region = NULL\"] --> C1{\"region = 'Metropolitana'\"}\n  C1 -->|\"NULL\"| X1[\"No pasa el WHERE\"]\n  F --> C2{\"NOT (region = 'Metropolitana')\"}\n  C2 -->|\"NOT NULL = NULL\"| X2[\"Tampoco pasa\"]\n  F --> C3{\"(region = 'Metropolitana') IS NOT TRUE\"}\n  C3 -->|\"true\"| X3[\"Pasa\"]",
+          "caption": "La fila con región desconocida queda fuera de ambos lados: 43 + 16 = 59, no 60. IS NOT TRUE la recupera."
+        },
+        {
+          "type": "h",
+          "text": "IS DISTINCT FROM: comparar sin perder filas"
+        },
+        {
+          "type": "p",
+          "text": "Pregunta de negocio: *«pedidos recientes que **no** se pagaron con crédito»*. Los pedidos `pendiente` todavía no tienen método de pago (NULL). Con `metodo_pago <> 'credito'` esos pedidos desaparecen, porque `NULL <> 'credito'` es NULL. `IS DISTINCT FROM` trata NULL como un valor comparable más: dos NULL son «no distintos» y un NULL es distinto de cualquier valor. Nunca devuelve NULL."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT id, estado, metodo_pago\nFROM pedidos\nWHERE id >= 413 AND metodo_pago <> 'credito';\n\nSELECT id, estado, metodo_pago\nFROM pedidos\nWHERE id >= 413 AND metodo_pago IS DISTINCT FROM 'credito';"
+        },
+        {
+          "type": "table",
+          "head": [
+            "a",
+            "b",
+            "a = b",
+            "a <> b",
+            "a IS DISTINCT FROM b",
+            "a IS NOT DISTINCT FROM b"
+          ],
+          "rows": [
+            [
+              "1",
+              "1",
+              "true",
+              "false",
+              "false",
+              "true"
+            ],
+            [
+              "1",
+              "2",
+              "false",
+              "true",
+              "true",
+              "false"
+            ],
+            [
+              "1",
+              "NULL",
+              "NULL",
+              "NULL",
+              "true",
+              "false"
+            ],
+            [
+              "NULL",
+              "NULL",
+              "NULL",
+              "NULL",
+              "false",
+              "true"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**`NOT IN` y los NULL.** `x NOT IN ('credito', NULL)` significa `x <> 'credito' AND x <> NULL`; la segunda parte siempre es NULL, así que la condición completa nunca llega a `true`: **0 filas**, sin error. Con `IN` el efecto es más suave: `3 IN (1, NULL)` es NULL en vez de `false`. Volverás a esta trampa en la sección 8, donde el NULL se cuela desde una subconsulta y es mucho más difícil de ver."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, estado, metodo_pago\nFROM pedidos\nWHERE id >= 413 AND metodo_pago NOT IN ('credito', NULL);"
+        },
+        {
+          "type": "h",
+          "text": "COALESCE: un valor de reemplazo (adelanto)"
+        },
+        {
+          "type": "p",
+          "text": "`COALESCE(a, b, c, …)` devuelve el **primer argumento que no sea NULL** (y NULL si todos lo son). Es ideal para presentar datos: mostrar «sin email» en vez de una casilla vacía, o elegir el primer medio de contacto disponible. Solo evalúa los argumentos que necesita (se detiene en el primero no NULL). Todos los argumentos deben ser de tipos compatibles: `COALESCE(telefono, 0)` falla con `COALESCE types text and integer cannot be matched`. En la sección 4 lo verás junto a `NULLIF` y `CASE`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id,\n       nombre,\n       COALESCE(email, 'sin email')              AS email,\n       COALESCE(telefono, email, 'sin contacto') AS contacto\nFROM clientes\nWHERE id IN (1, 10, 11, 19, 24);"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`\\pset null '(null)'` solo cambia cómo psql *muestra* los NULL; los datos no cambian. `COALESCE`, en cambio, cambia el valor de esa columna en el resultado (tampoco toca la tabla). Existe un parámetro, `transform_null_equals`, que convierte `x = NULL` en `x IS NULL` por compatibilidad con Microsoft Access; está desactivado por defecto y no deberías depender de él."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Por qué `WHERE x = NULL` no devuelve filas; cuánto valen `NULL AND false` (`false`) y `NULL OR true` (`true`); qué hace `IS DISTINCT FROM`; por qué `NOT IN` con un NULL en la lista devuelve 0 filas; y la diferencia entre NULL, `''` y `0`."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "NULL",
+              "def": "Marcador de valor desconocido o que no aplica. No es un valor: no es igual ni distinto de nada."
+            },
+            {
+              "term": "Lógica de tres valores",
+              "en": "three-valued logic",
+              "def": "Las condiciones pueden valer `true`, `false` o NULL (desconocido)."
+            },
+            {
+              "term": "IS DISTINCT FROM",
+              "def": "Comparación «segura con NULL»: trata NULL como un valor más y siempre responde `true` o `false`."
+            },
+            {
+              "term": "COALESCE",
+              "def": "Devuelve el primer argumento no NULL; sirve para mostrar un valor de reemplazo."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s02-l4",
+      "title": "ORDER BY, LIMIT/OFFSET y FETCH FIRST … WITH TIES",
+      "minutes": 20,
+      "goals": [
+        "Ordenar resultados por una o varias columnas con `ASC`/`DESC`, y por alias, posición o expresión.",
+        "Decidir dónde quedan los NULL al ordenar con `NULLS FIRST` / `NULLS LAST`.",
+        "Paginar con `LIMIT` y `OFFSET` agregando un desempate que haga el orden único.",
+        "Obtener un top-N que respete los empates con `FETCH FIRST n ROWS WITH TIES`."
+      ],
+      "takeaways": [
+        "Sin `ORDER BY` no hay orden garantizado: PostgreSQL entrega las filas como le resulte más barato.",
+        "Por defecto los NULL se ordenan como si fueran mayores que todo: al final con `ASC` y **al principio con `DESC`**.",
+        "`LIMIT`/`OFFSET` solo tiene sentido con un `ORDER BY` que defina un orden único (agrega el `id` como desempate).",
+        "`FETCH FIRST n ROWS WITH TIES` agrega las filas empatadas con la última según **todas** las columnas del `ORDER BY`; exige `ORDER BY`.",
+        "En `ORDER BY` puedes usar un alias del `SELECT`, pero solo, no dentro de una expresión."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Una tabla es un **conjunto** de filas, no una lista: no tiene «primera» ni «última» fila. Es como una sala de clases donde cada alumno se sienta donde quiere; si necesitas la lista por apellido, alguien tiene que ordenarla. Sin `ORDER BY`, PostgreSQL devuelve las filas en el orden que le resulte más barato (el orden físico en disco, el de un índice, el de una tabla hash…), y ese orden puede cambiar de un día para otro sin aviso: tras un `UPDATE`, un `VACUUM` o un cambio de plan. **Si el orden importa, escribe `ORDER BY`.**"
+        },
+        {
+          "type": "h",
+          "text": "ORDER BY: una o varias columnas"
+        },
+        {
+          "type": "p",
+          "text": "`ORDER BY col` ordena de menor a mayor (`ASC`, el valor por defecto); `DESC` invierte. Con varias columnas, la segunda solo se usa para desempatar dentro de la primera, la tercera dentro de las dos anteriores, y así. Cada columna lleva su propia dirección: `ORDER BY categoria_id, precio DESC` es «categoría ascendente y, dentro de cada categoría, precio descendente»."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre, categoria_id, precio\nFROM productos\nWHERE categoria_id IN (9, 10)\nORDER BY categoria_id, precio DESC;"
+        },
+        {
+          "type": "p",
+          "text": "Además de columnas puedes ordenar por una **expresión** (`ORDER BY precio - costo DESC`), por un **alias** del `SELECT` (`ORDER BY margen DESC`) o por la **posición** de la columna en el resultado (`ORDER BY 3 DESC`). El alias funciona porque `ORDER BY` se evalúa *después* del `SELECT` (lección 5), pero debe ir **solo**: `ORDER BY margen * 2` falla. También puedes ordenar por una columna que no está en el `SELECT`… salvo si usaste `DISTINCT`, porque entonces PostgreSQL no sabría qué valor usar para cada fila ya fusionada."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, nombre, precio - costo AS margen\nFROM productos\nORDER BY margen DESC\nLIMIT 5;\n\nSELECT sku, nombre, precio - costo AS margen\nFROM productos\nORDER BY 3 DESC\nLIMIT 5;\n\nSELECT sku, nombre, precio - costo AS margen\nFROM productos\nORDER BY margen * 2 DESC;\n\nSELECT DISTINCT region\nFROM clientes\nORDER BY comuna;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "**¿Posición o nombre?** `ORDER BY 3` es cómodo en la consola, pero frágil en código guardado: si alguien agrega una columna al `SELECT`, el orden cambia en silencio. En consultas que se guardan, usa el nombre o el alias."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Textos con tildes.** El orden de los textos depende de la *colación* de la base. En este curso la base usa la colación `C`, que ordena por código de carácter: las mayúsculas van antes que las minúsculas y las letras con tilde van **después de la z**, así que «Álvarez» queda después de «Vergara». Un servidor instalado con la configuración regional de Chile (`es_CL.UTF-8`) ordenaría como un diccionario. Lo retomarás en la sección 3."
+        },
+        {
+          "type": "h",
+          "text": "¿Dónde quedan los NULL?"
+        },
+        {
+          "type": "p",
+          "text": "PostgreSQL ordena los NULL **como si fueran mayores que cualquier valor**: con `ASC` quedan al final y con `DESC` quedan **al principio**. Esto último es una trampa clásica. `NULLS FIRST` y `NULLS LAST` fijan su posición de forma explícita. En el ejemplo, el `id` desempata a los dos clientes de Santiago."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT id, nombre, comuna FROM clientes WHERE id <= 8 ORDER BY comuna, id;\nSELECT id, nombre, comuna FROM clientes WHERE id <= 8 ORDER BY comuna DESC, id;\nSELECT id, nombre, comuna FROM clientes WHERE id <= 8 ORDER BY comuna DESC NULLS LAST, id;"
+        },
+        {
+          "type": "p",
+          "text": "Ahora en la base `biblioteca`: *«¿cuál es el libro más largo?»*. Uno de los libros no tiene registrado su número de páginas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "\\pset null '(null)'\nSELECT titulo, paginas FROM libros ORDER BY paginas DESC LIMIT 1;\nSELECT titulo, paginas FROM libros ORDER BY paginas DESC NULLS LAST LIMIT 1;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**El «libro más largo» que no tiene páginas.** «La última niebla» tiene `paginas` NULL, y con `ORDER BY paginas DESC LIMIT 1` gana ella. Cada vez que ordenes de forma descendente una columna que admite NULL, decide dónde quieres esos NULL y escribe `NULLS LAST` (o descártalos con `WHERE paginas IS NOT NULL`)."
+        },
+        {
+          "type": "h",
+          "text": "LIMIT y OFFSET: paginar"
+        },
+        {
+          "type": "p",
+          "text": "`LIMIT n` entrega como máximo n filas y `OFFSET m` se salta las primeras m. Para mostrar la página p con n filas por página: `LIMIT n OFFSET (p − 1) × n`. Dos reglas de oro, sacadas de la documentación: (1) usa **siempre** un `ORDER BY` que produzca un **orden único**; si hay empates, PostgreSQL puede repartir las filas empatadas de forma distinta en cada consulta (el planificador incluso elige planes distintos según el `LIMIT`) y un producto puede aparecer en dos páginas o en ninguna; (2) las filas que salta `OFFSET` **igual se calculan** en el servidor, así que un `OFFSET` grande es lento (en la sección 15 verás la paginación *keyset*). `LIMIT ALL` y `LIMIT NULL` equivalen a no poner límite, y `OFFSET 0` a no saltar nada."
+        },
+        {
+          "type": "diagram",
+          "title": "Página 2 con 5 filas por página",
+          "mermaid": "flowchart LR\n  A[\"Todas las filas<br/>ORDER BY precio DESC, id\"] --> B[\"OFFSET 5<br/>descarta las filas 1 a 5\"]\n  B --> C[\"LIMIT 5<br/>entrega las filas 6 a 10\"]\n  C --> D[\"Página 2\"]",
+          "caption": "OFFSET descarta y LIMIT corta, siempre después de ordenar. El desempate por id hace que cada fila tenga una sola posición posible."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Página 2 del catálogo, 5 productos por página\nSELECT sku, nombre, precio\nFROM productos\nORDER BY precio DESC, id\nLIMIT 5 OFFSET 5;"
+        },
+        {
+          "type": "h",
+          "text": "FETCH FIRST: la forma estándar, y WITH TIES"
+        },
+        {
+          "type": "p",
+          "text": "`LIMIT` y `OFFSET` no son SQL estándar (aunque también los usan MySQL y SQLite). El estándar define `OFFSET m ROWS FETCH FIRST n ROWS ONLY`, que en PostgreSQL hace exactamente lo mismo; `FIRST`/`NEXT` y `ROW`/`ROWS` son intercambiables, y si omites n vale 1. Lo interesante es la variante **`WITH TIES`** (desde PostgreSQL 13): en vez de cortar en seco, agrega todas las filas que **empatan con la última** según el `ORDER BY`. Por eso exige `ORDER BY`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Los 4 productos más baratos... ¿y el empate en $6.990?\nSELECT sku, nombre, precio FROM productos ORDER BY precio FETCH FIRST 4 ROWS ONLY;\nSELECT sku, nombre, precio FROM productos ORDER BY precio FETCH FIRST 4 ROWS WITH TIES;\n-- El empate se calcula con TODAS las columnas del ORDER BY\nSELECT sku, nombre, precio FROM productos ORDER BY precio, sku FETCH FIRST 4 ROWS WITH TIES;\n-- Sin ORDER BY no hay empates que calcular\nSELECT sku, nombre, precio FROM productos FETCH FIRST 4 ROWS WITH TIES;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Mira la primera consulta: de los dos productos de $6.990 (Cable HDMI y Yerba mate) aparece solo uno, y cuál sale es cosa del algoritmo de ordenamiento, no una regla. `WITH TIES` muestra ambos. Y en la tercera, al agregar `sku` al `ORDER BY` ya no hay empate posible (el sku es único), así que `WITH TIES` vuelve a entregar exactamente 4 filas."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Quieres…",
+            "PostgreSQL (LIMIT)",
+            "SQL estándar (FETCH)"
+          ],
+          "rows": [
+            [
+              "las primeras 10 filas",
+              "`LIMIT 10`",
+              "`FETCH FIRST 10 ROWS ONLY`"
+            ],
+            [
+              "saltar 20 y tomar 10",
+              "`LIMIT 10 OFFSET 20`",
+              "`OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY`"
+            ],
+            [
+              "solo la primera fila",
+              "`LIMIT 1`",
+              "`FETCH FIRST ROW ONLY`"
+            ],
+            [
+              "top 3 con empates",
+              "— (no existe)",
+              "`FETCH FIRST 3 ROWS WITH TIES`"
+            ],
+            [
+              "sin límite",
+              "`LIMIT ALL` o `LIMIT NULL`",
+              "(omitir la cláusula)"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Que sin `ORDER BY` el orden no está garantizado (ni siquiera con `LIMIT`); dónde quedan los NULL por defecto con `ASC` y con `DESC`; por qué paginar exige un desempate único; qué hace `WITH TIES` y por qué exige `ORDER BY`; y que un `OFFSET` grande es costoso porque las filas saltadas igual se procesan."
+        }
+      ]
+    },
+    {
+      "id": "s02-l5",
+      "title": "DISTINCT ON y el orden lógico de evaluación",
+      "minutes": 20,
+      "goals": [
+        "Obtener una fila por grupo (la más cara, la más reciente) con `DISTINCT ON` y un `ORDER BY` compatible con desempate.",
+        "Ordenar las cláusulas de una consulta según su evaluación lógica: FROM → WHERE → SELECT → DISTINCT → ORDER BY → OFFSET/LIMIT.",
+        "Predecir en qué cláusulas se puede usar un alias del `SELECT` y corregir el error `column \"…\" does not exist`.",
+        "Reconocer ese orden lógico en un plan sencillo de `EXPLAIN`."
+      ],
+      "takeaways": [
+        "`DISTINCT ON (expr)` conserva la **primera** fila de cada grupo de filas con el mismo `expr`; «primera» según el `ORDER BY`.",
+        "Las expresiones de `DISTINCT ON` deben coincidir con las primeras del `ORDER BY`; después van el criterio que elige la fila ganadora y un desempate.",
+        "Se escribe SELECT → FROM → WHERE → ORDER BY → LIMIT, pero se evalúa FROM → WHERE → SELECT → DISTINCT → ORDER BY → OFFSET/LIMIT.",
+        "Por eso `WHERE` no ve los alias del `SELECT` y `ORDER BY` sí.",
+        "`DISTINCT ON` es una extensión de PostgreSQL; en otros motores se resuelve con funciones de ventana (sección 10)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Un problema que aparece en todas partes: *«el producto más caro de cada categoría»*, *«el último pedido de cada cliente»*, *«la reseña más reciente de cada producto»*. Es decir, **una fila por grupo**, elegida con un criterio. En SQL estándar se resuelve con funciones de ventana (sección 10) o subconsultas (sección 9); PostgreSQL tiene además un atajo muy cómodo: `DISTINCT ON`."
+        },
+        {
+          "type": "p",
+          "text": "El modelo mental: ordena todas las filas por grupo y, dentro de cada grupo, por el criterio (la más cara primero). Luego recorre la lista y **quédate con la primera fila de cada grupo**, descartando las demás. Es como la fila de un banco con varias cajas: de cada caja (grupo) pasa solo el primero de su fila."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo trabaja DISTINCT ON",
+          "mermaid": "flowchart LR\n  A[\"Filas de productos\"] --> B[\"ORDER BY categoria_id, precio DESC, id\"]\n  B --> C[\"Grupos por categoria_id<br/>2: Notebook, Monitor, SSD…<br/>3: Audífonos con cancelación de ruido, Micrófono…\"]\n  C --> D[\"DISTINCT ON (categoria_id)<br/>conserva la primera fila de cada grupo\"]\n  D --> E[\"Una fila por categoría\"]",
+          "caption": "El ORDER BY hace todo el trabajo de elegir; DISTINCT ON solo se queda con la primera fila de cada grupo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT DISTINCT ON (categoria_id)\n       categoria_id, sku, nombre, precio\nFROM productos\nORDER BY categoria_id, precio DESC, id;"
+        },
+        {
+          "type": "p",
+          "text": "Tres reglas: (1) las expresiones de `DISTINCT ON` deben coincidir con las **primeras** del `ORDER BY` (si no, error); (2) lo que sigue en el `ORDER BY` decide **cuál** fila gana; (3) si puede haber empate en ese criterio, agrega un desempate (`id`) para que el resultado sea reproducible. La documentación lo advierte: la «primera fila» de cada grupo es impredecible si el `ORDER BY` no la determina. La columna del `DISTINCT ON` ni siquiera tiene que aparecer en el `SELECT`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Sin criterio: la «primera» fila de cada categoría es cualquiera\nSELECT DISTINCT ON (categoria_id) categoria_id, sku, nombre, precio\nFROM productos\nORDER BY categoria_id;\n\n-- ORDER BY incompatible con DISTINCT ON\nSELECT DISTINCT ON (categoria_id) categoria_id, sku, nombre, precio\nFROM productos\nORDER BY precio DESC;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "En la primera consulta, fíjate en qué producto salió para cada categoría: no es necesariamente el más caro, ni el más barato, ni el de menor `id`. Es el que quedó primero tras un ordenamiento que solo miraba `categoria_id`. El mismo patrón sirve para el último pedido de cada cliente:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT DISTINCT ON (cliente_id)\n       cliente_id, id AS pedido_id, fecha, estado\nFROM pedidos\nORDER BY cliente_id, fecha DESC, id DESC\nLIMIT 8;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**`DISTINCT` ≠ `DISTINCT ON`.** `DISTINCT` compara la fila completa del resultado; `DISTINCT ON (a)` compara solo `a` y conserva una fila entera por cada valor de `a`. Y como el `ORDER BY` quedó «amarrado» a los grupos, el resultado sale ordenado por grupo: si lo quieres, por ejemplo, del más caro al más barato, tendrás que envolver la consulta en una subconsulta (sección 9)."
+        },
+        {
+          "type": "h",
+          "text": "El orden lógico de evaluación"
+        },
+        {
+          "type": "p",
+          "text": "Escribimos `SELECT … FROM … WHERE … ORDER BY … LIMIT`, pero PostgreSQL no lo **evalúa** en ese orden. La página de referencia de `SELECT` describe el procesamiento así: primero `FROM` (de dónde salen las filas), luego `WHERE` (cuáles sobreviven), después se calculan las expresiones del `SELECT`, luego `DISTINCT`, después `ORDER BY` y al final `OFFSET`/`LIMIT`. (`GROUP BY` y `HAVING` van entre `WHERE` y `SELECT`: sección 7.)"
+        },
+        {
+          "type": "diagram",
+          "title": "Orden lógico de una consulta",
+          "mermaid": "flowchart TD\n  F[\"1. FROM<br/>de qué tabla salen las filas\"] --> W[\"2. WHERE<br/>qué filas sobreviven\"]\n  W --> G[\"GROUP BY / HAVING<br/>(sección 7)\"]\n  G --> S[\"3. SELECT<br/>calcula expresiones y alias\"]\n  S --> D[\"4. DISTINCT / DISTINCT ON<br/>quita duplicados o elige una fila por grupo\"]\n  D --> O[\"5. ORDER BY<br/>ordena (ya conoce los alias)\"]\n  O --> L[\"6. OFFSET / LIMIT / FETCH<br/>recorta\"]",
+          "caption": "El orden en que se escribe (SELECT primero) no es el orden en que se evalúa. De aquí salen casi todos los errores de alias."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Cláusula",
+            "Se evalúa",
+            "¿Ve los alias del SELECT?",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "`FROM`",
+              "1.º",
+              "No (aún no existen)",
+              "`FROM productos`"
+            ],
+            [
+              "`WHERE`",
+              "2.º",
+              "**No**",
+              "`WHERE precio - costo > 100000`"
+            ],
+            [
+              "`SELECT`",
+              "3.º",
+              "Los define",
+              "`precio - costo AS margen`"
+            ],
+            [
+              "`DISTINCT ON`",
+              "4.º",
+              "Sí (mismas reglas que `ORDER BY`)",
+              "`DISTINCT ON (margen)`"
+            ],
+            [
+              "`ORDER BY`",
+              "5.º",
+              "Sí, pero solo (no dentro de una expresión)",
+              "`ORDER BY margen DESC`"
+            ],
+            [
+              "`OFFSET` / `LIMIT`",
+              "6.º",
+              "No aplica (reciben números)",
+              "`LIMIT 5`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- WHERE se evalúa antes que el SELECT: el alias todavía no existe\nSELECT sku, precio - costo AS margen\nFROM productos\nWHERE margen > 100000;\n\n-- Solución: repetir la expresión en el WHERE (el ORDER BY sí puede usar el alias)\nSELECT sku, precio - costo AS margen\nFROM productos\nWHERE precio - costo > 100000\nORDER BY margen DESC;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "Ojo: el orden **lógico** define qué significa la consulta, no cómo se ejecuta físicamente. El planificador puede, por ejemplo, leer un índice ya ordenado y detenerse apenas tiene las filas del `LIMIT`; lo único que garantiza es que el resultado sea *el mismo que* si hubiera seguido el orden lógico. Aun así, en un plan sencillo se ve casi tal cual. `EXPLAIN` (sección 15) muestra el plan como un árbol que se lee **de abajo hacia arriba**:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "EXPLAIN (COSTS OFF)\nSELECT DISTINCT ON (categoria_id) categoria_id, nombre, precio\nFROM productos\nWHERE activo\nORDER BY categoria_id, precio DESC\nLIMIT 3;"
+        },
+        {
+          "type": "p",
+          "text": "De abajo hacia arriba: `Seq Scan on productos` con `Filter: activo` (FROM y WHERE), `Sort` (el `ORDER BY` que `DISTINCT ON` necesita), `Unique` (el `DISTINCT ON`) y `Limit`. Las expresiones del `SELECT` se calculan al leer cada fila, sin un nodo propio."
+        },
+        {
+          "type": "p",
+          "text": "Todo junto: *«la reseña positiva (nota 4 o 5) más reciente de cada uno de los productos 1 a 10, con un texto de reemplazo si no tiene comentario»*. Léela en orden lógico: FROM → WHERE → SELECT → DISTINCT ON → ORDER BY."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT DISTINCT ON (producto_id)\n       producto_id,\n       fecha,\n       nota,\n       COALESCE(comentario, '(sin comentario)') AS comentario\nFROM resenas\nWHERE nota >= 4 AND producto_id BETWEEN 1 AND 10\nORDER BY producto_id, fecha DESC, id DESC;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "La pregunta de entrevista por excelencia: «¿en qué orden se ejecuta una consulta SQL?». Respuesta: FROM (y JOIN) → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → OFFSET/LIMIT. De ahí se deduce por qué `WHERE` no puede usar alias del `SELECT` (ni funciones de agregación) y por qué `ORDER BY` sí puede usar alias. También preguntan por `DISTINCT ON`: qué hace, que no es estándar y la regla del `ORDER BY`."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "**Lee las consultas en orden lógico.** Ante una consulta ajena, empieza por `FROM` (¿de qué tabla?), sigue con `WHERE` (¿qué filas?), luego `SELECT` (¿qué columnas?) y termina con `ORDER BY`/`LIMIT`. Y cuando escribas una, piensa en ese mismo orden aunque la tipees empezando por `SELECT`."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s02-e1",
+      "title": "Margen y valor del inventario",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El área de finanzas quiere saber, para **cada producto**, cuánto gana por unidad vendida y cuánto dinero tiene inmovilizado en bodega.",
+        "Escribe una consulta sobre `productos` que devuelva 4 columnas con **estos nombres exactos**: `sku`, `nombre`, `margen` (precio − costo) y `valor_stock` (costo × stock). No importa el orden de las filas."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre\nFROM productos;",
+      "solution": "SELECT sku,\n       nombre,\n       precio - costo AS margen,\n       costo * stock  AS valor_stock\nFROM productos;",
+      "ordered": false,
+      "columns": true,
+      "hints": [
+        "Cada columna del resultado puede ser una expresión: `precio - costo`.",
+        "Nombra cada expresión con `AS`: `precio - costo AS margen`.",
+        "Te faltan dos expresiones con alias: `precio - costo AS margen` y `costo * stock AS valor_stock`."
+      ],
+      "explain": "Cada elemento de la lista del `SELECT` se evalúa una vez por fila, con los valores de esa fila. Sin alias, las dos columnas calculadas se llamarían `?column?`, y este ejercicio exige los nombres. Como las tres columnas son `integer`, los resultados son enteros exactos (no hay división). Los productos con `stock = 0` tienen `valor_stock` 0, no NULL, porque `stock` es `NOT NULL`. Trampa típica: olvidar una coma; `SELECT sku nombre` devuelve una sola columna llamada `nombre` con los sku adentro."
+    },
+    {
+      "id": "s02-e2",
+      "title": "Regiones y comunas sin repetir",
+      "level": "facil",
+      "minutes": 5,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing quiere saber en qué lugares tiene clientes. Devuelve las combinaciones **distintas** de `region` y `comuna` de la tabla `clientes` (dos columnas, en ese orden), sin filas repetidas. El orden de las filas da igual.",
+        "Ojo: hay un cliente sin región ni comuna registradas; esa combinación también cuenta como una fila."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT region, comuna\nFROM clientes;",
+      "solution": "SELECT DISTINCT region, comuna\nFROM clientes;",
+      "ordered": false,
+      "requires": [
+        {
+          "pattern": "\\bdistinct\\b",
+          "msg": "Usa DISTINCT para quitar las filas repetidas",
+          "name": "Usa DISTINCT"
+        }
+      ],
+      "hints": [
+        "El código de partida devuelve 60 filas: una por cliente, con muchas combinaciones repetidas.",
+        "Agrega `DISTINCT` justo después de `SELECT`: se aplica a la combinación de todas las columnas elegidas."
+      ],
+      "explain": "`DISTINCT` compara la fila completa del resultado, así que obtienes 22 combinaciones (región, comuna). Para este fin dos NULL se consideran iguales: el cliente sin región ni comuna aparece una sola vez. Trampa: `SELECT DISTINCT(region), comuna` devuelve exactamente lo mismo, porque los paréntesis no limitan el DISTINCT a `region`. Si quisieras una fila por región (y no por combinación), necesitarías `DISTINCT ON (region)` o agrupar (sección 7)."
+    },
+    {
+      "id": "s02-e3",
+      "title": "Lista de precios de Computación",
+      "level": "facil",
+      "minutes": 5,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Muestra `sku`, `nombre` y `precio` de los productos de la categoría **Computación** (`categoria_id = 2`), del más caro al más barato."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre, precio\nFROM productos;",
+      "solution": "SELECT sku, nombre, precio\nFROM productos\nWHERE categoria_id = 2\nORDER BY precio DESC;",
+      "ordered": true,
+      "hints": [
+        "Filtra las filas con `WHERE categoria_id = 2`.",
+        "Ordena con `ORDER BY precio DESC` (DESC = de mayor a menor)."
+      ],
+      "explain": "`WHERE` deja solo las 6 filas de Computación y `ORDER BY precio DESC` las ordena. No hay precios repetidos en esta categoría, así que el orden queda completamente determinado; si los hubiera, convendría agregar un desempate (`ORDER BY precio DESC, sku`). Error común: escribir `ORDER BY precio` y olvidar `DESC` (por defecto el orden es ascendente)."
+    },
+    {
+      "id": "s02-e4",
+      "title": "Clientes sin email",
+      "level": "facil",
+      "minutes": 5,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Soporte quiere llamar por teléfono a los clientes que **no tienen email** registrado para pedírselo.",
+        "El código de partida lo escribió un colega y devuelve 0 filas. Corrígelo: debe mostrar `id`, `nombre`, `apellido` y `telefono` de esos clientes, ordenados por `id`."
+      ],
+      "starter": "SELECT id, nombre, apellido, telefono\nFROM clientes\nWHERE email = NULL\nORDER BY id;",
+      "solution": "SELECT id, nombre, apellido, telefono\nFROM clientes\nWHERE email IS NULL\nORDER BY id;",
+      "ordered": true,
+      "hints": [
+        "`email = NULL` no es `true` en ninguna fila: vale NULL (desconocido) siempre.",
+        "Para preguntar si falta un valor se usa el predicado `IS NULL`."
+      ],
+      "explain": "Cualquier comparación con `=` contra NULL da NULL, y `WHERE` solo deja pasar `true`: por eso el código original devolvía 0 filas **sin error**. `IS NULL` responde siempre `true` o `false`. Son 5 clientes y todos tienen teléfono, así que soporte podrá llamarlos. Alternativa válida (más rebuscada): `WHERE email IS NOT DISTINCT FROM NULL`."
+    },
+    {
+      "id": "s02-e5",
+      "title": "Transporte escolar: Maipú y Pudahuel",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "En la base `colegio`, el liceo organiza un transporte para los alumnos de **Maipú** o **Pudahuel** nacidos en **2008**.",
+        "Muestra `id`, `nombre`, `apellido`, `comuna` y `fecha_nacimiento` de esos alumnos, ordenados por `fecha_nacimiento` y, si dos nacieron el mismo día, por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, comuna, fecha_nacimiento\nFROM alumnos;",
+      "solution": "SELECT id, nombre, apellido, comuna, fecha_nacimiento\nFROM alumnos\nWHERE comuna IN ('Maipú', 'Pudahuel')\n  AND fecha_nacimiento >= '2008-01-01'\n  AND fecha_nacimiento <  '2009-01-01'\nORDER BY fecha_nacimiento, id;",
+      "ordered": true,
+      "hints": [
+        "Dos comunas posibles: `comuna IN ('Maipú', 'Pudahuel')`, con tilde, tal como están en la tabla.",
+        "Nacidos en 2008: `fecha_nacimiento >= '2008-01-01' AND fecha_nacimiento < '2009-01-01'`.",
+        "Si usas `comuna = 'Maipú' OR comuna = 'Pudahuel'`, enciérralo entre paréntesis: va junto a un `AND`."
+      ],
+      "explain": "`IN` evita el problema de precedencia: `comuna = 'Maipú' OR comuna = 'Pudahuel' AND fecha…` se lee `comuna = 'Maipú' OR (comuna = 'Pudahuel' AND fecha…)` y devuelve 41 filas, porque trae a todos los alumnos de Maipú, de cualquier año. Como `fecha_nacimiento` es `date` (sin hora), aquí `BETWEEN '2008-01-01' AND '2008-12-31'` también es correcto; el intervalo semiabierto es el hábito que funciona igual con `timestamptz`. Dos alumnos nacieron el 2008-02-18: el desempate por `id` fija su orden."
+    },
+    {
+      "id": "s02-e6",
+      "title": "Audio o Accesorios bajo $40.000",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El área comercial pide los productos **activos** de las categorías Audio (`categoria_id = 3`) o Accesorios (`categoria_id = 4`) que cuesten **menos de $40.000**.",
+        "El código de partida devuelve productos de $59.990 y $149.990. Corrígelo. Columnas: `sku`, `nombre`, `precio`; orden: por `precio` ascendente y, a igual precio, por `sku`."
+      ],
+      "starter": "SELECT sku, nombre, precio\nFROM productos\nWHERE activo AND categoria_id = 3 OR categoria_id = 4 AND precio < 40000\nORDER BY precio, sku;",
+      "solution": "SELECT sku, nombre, precio\nFROM productos\nWHERE activo\n  AND (categoria_id = 3 OR categoria_id = 4)\n  AND precio < 40000\nORDER BY precio, sku;",
+      "ordered": true,
+      "hints": [
+        "`AND` se evalúa antes que `OR`. ¿Cómo agrupó PostgreSQL las cuatro condiciones del código de partida?",
+        "Se leyó como `(activo AND categoria_id = 3) OR (categoria_id = 4 AND precio < 40000)`: todo Audio activo pasa, sin límite de precio.",
+        "Encierra el `OR` entre paréntesis, o reemplázalo por `categoria_id IN (3, 4)`."
+      ],
+      "explain": "Sin paréntesis la condición es `(activo AND categoria_id = 3) OR (categoria_id = 4 AND precio < 40000)`: los audífonos de $149.990 y el micrófono de $59.990 entran por la primera mitad, y un accesorio inactivo habría entrado por la segunda. Con `(categoria_id = 3 OR categoria_id = 4)` o, más limpio, `categoria_id IN (3, 4)`, las tres condiciones se aplican a todas las filas. El Reproductor MP3 ($19.990) queda fuera porque está inactivo. Hábito: siempre paréntesis cuando mezclas `AND` y `OR`."
+    },
+    {
+      "id": "s02-e7",
+      "title": "El buscador de la tienda",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El buscador de la web recibe lo que escriben los clientes, casi siempre en minúsculas. Hoy buscaron **bicicleta** y **café**.",
+        "Devuelve `sku` y `nombre` de los productos cuyo nombre **contenga** cualquiera de esas dos palabras, **sin importar mayúsculas**, ordenados por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre\nFROM productos\nWHERE nombre LIKE '%bicicleta%'\nORDER BY sku;",
+      "solution": "SELECT sku, nombre\nFROM productos\nWHERE nombre ILIKE '%bicicleta%'\n   OR nombre ILIKE '%café%'\nORDER BY sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bilike\\b|~~\\*",
+          "msg": "Usa ILIKE para no distinguir mayúsculas",
+          "name": "Usa ILIKE"
+        }
+      ],
+      "hints": [
+        "`LIKE` distingue mayúsculas: `'%bicicleta%'` no calza con «Bicicleta urbana aro 28».",
+        "`ILIKE` compara sin distinguir mayúsculas. Para «contiene», pon `%` a ambos lados.",
+        "Dos palabras: `nombre ILIKE '%bicicleta%' OR nombre ILIKE '%café%'`."
+      ],
+      "explain": "`ILIKE '%bicicleta%'` encuentra «Bicicleta urbana aro 28» y «Luces LED para bicicleta»; `ILIKE '%café%'` encuentra «Café en grano 1 kg» y «Café molido 500 g». Fíjate en lo que **no** aparece: «Cafetera italiana» no contiene «café» con tilde, y `ILIKE` no ignora tildes (`'%cafe%'` sí la encontraría, pero perdería los dos cafés). Para búsquedas sin tildes existe `unaccent` (sección 18). Aquí no se mezclan `AND` y `OR`, así que no hacen falta paréntesis; si agregaras `AND activo`, sí."
+    },
+    {
+      "id": "s02-e8",
+      "title": "Pedidos del 21 al 25 de junio",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Logística revisa los pedidos hechos entre el **21 y el 25 de junio de 2026, ambos días incluidos** (hora de Santiago).",
+        "El código de partida parece correcto, pero le faltan pedidos. Corrígelo. Columnas: `id`, `cliente_id`, `fecha` y `estado`, ordenados por `fecha`."
+      ],
+      "starter": "SELECT id, cliente_id, fecha, estado\nFROM pedidos\nWHERE fecha BETWEEN '2026-06-21' AND '2026-06-25'\nORDER BY fecha;",
+      "solution": "SELECT id, cliente_id, fecha, estado\nFROM pedidos\nWHERE fecha >= '2026-06-21'\n  AND fecha <  '2026-06-26'\nORDER BY fecha;",
+      "ordered": true,
+      "hints": [
+        "`pedidos.fecha` es `timestamptz`: tiene fecha **y hora**.",
+        "`'2026-06-25'` significa el 25 de junio a las 00:00:00. ¿Qué pasa con un pedido del 25 a las 13:36?",
+        "Usa un intervalo semiabierto: `fecha >= '2026-06-21' AND fecha < '2026-06-26'`."
+      ],
+      "explain": "El `BETWEEN` del código de partida termina el 25 de junio a las 00:00:00, así que pierde los pedidos 418 y 419, hechos ese día a las 13:36 y a las 17:22 (3 filas en vez de 5). El intervalo semiabierto `[21 de junio, 26 de junio)` incluye el día 25 completo, sin importar la precisión de la hora. Alternativa frágil: `BETWEEN '2026-06-21' AND '2026-06-25 23:59:59'`, que perdería un pedido hecho a las 23:59:59.5. Recuerda que los literales se interpretan en la zona horaria de la sesión (`America/Santiago`)."
+    },
+    {
+      "id": "s02-e9",
+      "title": "Pedidos de junio que no fueron con crédito",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Finanzas quiere los pedidos hechos **desde el 1 de junio de 2026** que **no** se pagaron con tarjeta de crédito (`metodo_pago = 'credito'`). Los pedidos pendientes aún no tienen método de pago (NULL) y **también deben aparecer**, porque tampoco se pagaron con crédito.",
+        "El código de partida devuelve 16 filas y deberían ser 19. Corrígelo. Columnas: `id`, `estado`, `metodo_pago`; ordenados por `id`."
+      ],
+      "starter": "SELECT id, estado, metodo_pago\nFROM pedidos\nWHERE fecha >= '2026-06-01'\n  AND metodo_pago <> 'credito'\nORDER BY id;",
+      "solution": "SELECT id, estado, metodo_pago\nFROM pedidos\nWHERE fecha >= '2026-06-01'\n  AND metodo_pago IS DISTINCT FROM 'credito'\nORDER BY id;",
+      "ordered": true,
+      "hints": [
+        "Faltan justo los 3 pedidos pendientes. ¿Cuánto vale `NULL <> 'credito'`?",
+        "`NULL <> 'credito'` no es `true`, es NULL, y `WHERE` descarta la fila.",
+        "Usa `metodo_pago IS DISTINCT FROM 'credito'`, o bien `(metodo_pago <> 'credito' OR metodo_pago IS NULL)` con paréntesis."
+      ],
+      "explain": "Con `<>`, los pedidos 414, 418 y 420 (pendientes, sin método) desaparecen porque la comparación da NULL. `IS DISTINCT FROM` trata NULL como un valor más: `NULL IS DISTINCT FROM 'credito'` es `true`. La alternativa `(metodo_pago <> 'credito' OR metodo_pago IS NULL)` es equivalente, pero **necesita los paréntesis** porque va junto a un `AND`: sin ellos, `fecha >= … AND metodo_pago <> 'credito' OR metodo_pago IS NULL` traería los pedidos pendientes de cualquier fecha (en estos datos coincide solo porque todos los pendientes son de junio: no confíes en esa casualidad)."
+    },
+    {
+      "id": "s02-e10",
+      "title": "Página 3 del catálogo",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "La web muestra el catálogo de productos **activos** del más caro al más barato, con **6 productos por página**. Como hay precios repetidos, el equipo acordó desempatar por `id` (menor primero) para que ningún producto salte de página.",
+        "Devuelve la **página 3**: columnas `id`, `nombre`, `precio`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, precio\nFROM productos\nWHERE activo;",
+      "solution": "SELECT id, nombre, precio\nFROM productos\nWHERE activo\nORDER BY precio DESC, id\nLIMIT 6 OFFSET 12;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\boffset\\b",
+          "msg": "Salta las páginas anteriores con OFFSET",
+          "name": "Usa OFFSET"
+        }
+      ],
+      "hints": [
+        "Página p con n filas por página: `LIMIT n OFFSET (p - 1) * n`.",
+        "Para la página 3 hay que saltar 12 filas: `LIMIT 6 OFFSET 12`.",
+        "El orden debe ser único: `ORDER BY precio DESC, id`."
+      ],
+      "explain": "`OFFSET 12` descarta las dos primeras páginas y `LIMIT 6` corta la tercera. El desempate es esencial: la página 3 empieza en medio de un empate (dos productos de $39.990, uno queda en la página 2 y otro en la 3) y termina en medio de otro (tres productos de $29.990). Sin `id` en el `ORDER BY`, PostgreSQL puede repartir esas filas de forma distinta en cada consulta y un producto podría verse en dos páginas o en ninguna. Equivalente estándar: `OFFSET 12 ROWS FETCH NEXT 6 ROWS ONLY`. En tablas grandes, un `OFFSET` alto es lento porque las filas saltadas igual se leen y ordenan (sección 15: paginación keyset)."
+    },
+    {
+      "id": "s02-e11",
+      "title": "Los libros más largos, con empates",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "En la base `biblioteca`, la bibliotecaria quiere destacar los **4 libros con más páginas**; si hay libros empatados con el cuarto, quiere mostrarlos todos.",
+        "Devuelve `titulo` y `paginas`. Los libros sin número de páginas registrado no deben aparecer. El orden de las filas da igual."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT titulo, paginas\nFROM libros\nORDER BY paginas DESC\nLIMIT 4;",
+      "solution": "SELECT titulo, paginas\nFROM libros\nORDER BY paginas DESC NULLS LAST\nFETCH FIRST 4 ROWS WITH TIES;",
+      "ordered": false,
+      "requires": [
+        {
+          "pattern": "with\\s+ties",
+          "msg": "Usa FETCH FIRST … WITH TIES para incluir los empates",
+          "name": "Usa WITH TIES"
+        }
+      ],
+      "hints": [
+        "Ejecuta el código de partida: el «libro más largo» no tiene páginas. ¿Dónde quedan los NULL con `DESC`?",
+        "`NULLS LAST` (o `WHERE paginas IS NOT NULL`) resuelve el primer problema.",
+        "Para los empates: `FETCH FIRST 4 ROWS WITH TIES` en lugar de `LIMIT 4`. Y no agregues `titulo` al `ORDER BY`."
+      ],
+      "explain": "Dos trampas en una. (1) Con `DESC` los NULL van primero: «La última niebla», sin páginas registradas, encabezaría la lista. `NULLS LAST` la manda al final, donde el corte ya no la alcanza (también sirve `WHERE paginas IS NOT NULL`). (2) El cuarto lugar está empatado: «Canto general» y «El obsceno pájaro de la noche» tienen 544 páginas, y `WITH TIES` devuelve ambos (5 filas). Detalle fino: el empate se calcula con **todas** las columnas del `ORDER BY`; si agregas `titulo` como desempate, ya no hay empate y vuelves a 4 filas. Por eso el orden entre los empatados no está definido y el ejercicio no lo exige."
+    },
+    {
+      "id": "s02-e12",
+      "title": "Vitrina: el más barato con stock de cada categoría",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para una vitrina de ofertas, marketing quiere **un producto por categoría**: el **más barato** entre los que están **activos y con stock** (`stock > 0`). Si dos empatan en precio, gana el de menor `id`.",
+        "Columnas: `categoria_id`, `sku`, `nombre`, `precio`; ordenado por `categoria_id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT categoria_id, sku, nombre, precio\nFROM productos;",
+      "solution": "SELECT DISTINCT ON (categoria_id)\n       categoria_id, sku, nombre, precio\nFROM productos\nWHERE activo AND stock > 0\nORDER BY categoria_id, precio, id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "distinct\\s+on",
+          "msg": "Usa DISTINCT ON para quedarte con una fila por categoría",
+          "name": "Usa DISTINCT ON"
+        }
+      ],
+      "hints": [
+        "«Una fila por grupo» en PostgreSQL: `DISTINCT ON (categoria_id)`.",
+        "El `ORDER BY` debe empezar por `categoria_id`; lo que sigue decide qué fila gana: `precio` ascendente y luego `id`.",
+        "No olvides filtrar con `WHERE activo AND stock > 0`."
+      ],
+      "explain": "`WHERE` se evalúa antes que `DISTINCT ON`: primero se descartan los inactivos y los sin stock, y recién después se elige la primera fila de cada categoría según `ORDER BY categoria_id, precio, id`. Sin el filtro, en Audio ganaría el Reproductor MP3 (inactivo), en Decoración el Set de velas aromáticas (sin stock) y en Alimentos el Merkén (sin stock). Las categorías padre (Tecnología, Hogar, Deportes) no aparecen porque no tienen productos. Error típico: `ORDER BY precio, id` sin `categoria_id` adelante produce `SELECT DISTINCT ON expressions must match initial ORDER BY expressions`."
+    },
+    {
+      "id": "s02-e13",
+      "title": "La queja más reciente de cada producto",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Calidad revisa las **quejas**: reseñas (`resenas`) con `nota` 1 o 2. Para cada producto que tenga quejas quiere solo la **más reciente** (mayor `fecha`; si hay dos el mismo día, la de mayor `id`).",
+        "Columnas: `producto_id`, `fecha`, `nota` y `comentario`; cuando el comentario sea NULL, muestra el texto `(sin comentario)` en esa columna. Ordena por `producto_id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT producto_id, fecha, nota, comentario\nFROM resenas\nWHERE nota <= 2\nORDER BY producto_id;",
+      "solution": "SELECT DISTINCT ON (producto_id)\n       producto_id,\n       fecha,\n       nota,\n       COALESCE(comentario, '(sin comentario)') AS comentario\nFROM resenas\nWHERE nota <= 2\nORDER BY producto_id, fecha DESC, id DESC;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "distinct\\s+on",
+          "msg": "Usa DISTINCT ON para quedarte con una queja por producto",
+          "name": "Usa DISTINCT ON"
+        }
+      ],
+      "hints": [
+        "El código de partida devuelve 22 filas: los productos 37 y 43 tienen dos quejas cada uno.",
+        "`DISTINCT ON (producto_id)` con `ORDER BY producto_id, fecha DESC, id DESC` se queda con la más reciente.",
+        "Para el texto de reemplazo: `COALESCE(comentario, '(sin comentario)') AS comentario`."
+      ],
+      "explain": "`DISTINCT ON (producto_id)` agrupa por producto y conserva la primera fila según el resto del `ORDER BY`: `fecha DESC` pone la queja más nueva primero y `id DESC` desempata si hay dos el mismo día. `COALESCE` reemplaza el NULL solo en el resultado; la tabla no cambia. Son 20 productos con quejas. Trampa: `ORDER BY producto_id, fecha` (sin `DESC`) devuelve la queja **más antigua**, sin ningún error."
+    },
+    {
+      "id": "s02-e14",
+      "title": "Préstamos atrasados",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "En la base `biblioteca`, el informe de atrasos al **30 de junio de 2026** considera solo los préstamos hechos **desde el 1 de abril de 2026** (`fecha_prestamo`). Un préstamo está atrasado si cumple cualquiera de estas dos condiciones:",
+        "a) se devolvió **después** de su `fecha_limite`; o b) **no se ha devuelto** (`fecha_devolucion` es NULL) y su `fecha_limite` es **anterior** al 30 de junio de 2026.",
+        "Columnas: `id`, `socio_id`, `fecha_limite`, `fecha_devolucion`; orden: por `fecha_limite` y luego por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, socio_id, fecha_limite, fecha_devolucion\nFROM prestamos\nWHERE fecha_prestamo >= '2026-04-01';",
+      "solution": "SELECT id, socio_id, fecha_limite, fecha_devolucion\nFROM prestamos\nWHERE fecha_prestamo >= '2026-04-01'\n  AND (fecha_devolucion > fecha_limite\n       OR (fecha_devolucion IS NULL AND fecha_limite < '2026-06-30'))\nORDER BY fecha_limite, id;",
+      "ordered": true,
+      "hints": [
+        "Hay tres piezas: el filtro por fecha de préstamo y las dos formas de atraso (a o b).",
+        "`fecha_devolucion > fecha_limite` vale NULL cuando no hay devolución: esa fila no entra por (a); necesitas (b) con `IS NULL`.",
+        "Estructura: `fecha_prestamo >= … AND ( (a) OR ( (b1) AND (b2) ) )`. Los paréntesis alrededor del `OR` son obligatorios."
+      ],
+      "explain": "La condición (a) nunca es verdadera para un préstamo sin devolver (comparar con NULL da NULL); por eso hace falta la rama (b) con `IS NULL`. Los paréntesis externos obligan a que el filtro `fecha_prestamo >= '2026-04-01'` se aplique a ambas ramas: sin ellos, `… AND (a) OR (b)` traería préstamos no devueltos de 2025. La condición `fecha_limite < '2026-06-30'` excluye los préstamos de fines de junio que aún están dentro de plazo. Variante tentadora pero incorrecta: `NOT (fecha_devolucion <= fecha_limite)`, que también pierde los NULL, porque `NOT NULL` sigue siendo NULL. Resultado: 11 préstamos, 3 de ellos sin devolver."
+    },
+    {
+      "id": "s02-e15",
+      "title": "Proyecto: campaña «Despacho gratis a regiones»",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing lanza una campaña de despacho gratis para clientes de **regiones**, y el call center los va a llamar. Arma el listado cumpliendo **todas** estas reglas:",
+        "1. Clientes cuya `region` **no** sea `Metropolitana` ni `Valparaíso` (esta última ya tiene otra campaña). Los clientes **sin región registrada** también entran: el call center aprovechará de completar sus datos.",
+        "2. Solo clientes registrados **antes del 1 de marzo de 2026** (`fecha_registro`).",
+        "3. Columnas, con estos nombres exactos y en este orden: `region`, `comuna`, `nombre`, `apellido` y `contacto`. `contacto` es el teléfono; si no tiene teléfono, el email; y si no tiene ninguno de los dos, el texto `sin contacto`.",
+        "4. Orden: primero los clientes sin región; luego por `region`, `comuna`, `apellido` y `nombre`, todo ascendente.",
+        "5. El call center llama a **5 clientes por día** siguiendo ese orden. Devuelve solo la lista del **día 2**."
+      ],
+      "starter": "-- Proyecto: arma la consulta por partes.\n-- Paso 1: el filtro, sin paginar. Revisa que el cliente sin región aparezca.\nSELECT region, comuna, nombre, apellido\nFROM clientes;",
+      "solution": "SELECT region,\n       comuna,\n       nombre,\n       apellido,\n       COALESCE(telefono, email, 'sin contacto') AS contacto\nFROM clientes\nWHERE (region NOT IN ('Metropolitana', 'Valparaíso') OR region IS NULL)\n  AND fecha_registro < '2026-03-01'\nORDER BY region NULLS FIRST, comuna, apellido, nombre\nLIMIT 5 OFFSET 5;",
+      "ordered": true,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\bcoalesce\\b",
+          "msg": "Calcula contacto con COALESCE",
+          "name": "Usa COALESCE"
+        },
+        {
+          "pattern": "\\boffset\\b",
+          "msg": "Salta el día 1 con OFFSET",
+          "name": "Pagina con OFFSET"
+        }
+      ],
+      "hints": [
+        "Arma la consulta por partes: primero el `WHERE` sin paginar (deberían ser 14 clientes), después el `ORDER BY` y al final `LIMIT`/`OFFSET`.",
+        "`region NOT IN ('Metropolitana', 'Valparaíso')` descarta al cliente sin región (NULL). Agrégalo con `OR region IS NULL`… y pon paréntesis, porque va junto a un `AND`.",
+        "Con `ASC` los NULL quedan al final: necesitas `ORDER BY region NULLS FIRST, …`.",
+        "`contacto`: `COALESCE(telefono, email, 'sin contacto') AS contacto`. Día 2 con 5 por día: `LIMIT 5 OFFSET 5`."
+      ],
+      "explain": "Cada regla esconde una trampa de la sección. (1) `NOT IN` con NULL a la izquierda da NULL: la clienta sin región se pierde si no agregas `OR region IS NULL`. (2) Esa rama `OR` debe ir entre paréntesis; si no, `… OR region IS NULL AND fecha_registro < …` se agrupa distinto y deja pasar a una clienta de Los Lagos registrada en abril de 2026. (3) `COALESCE` con tres argumentos devuelve el primero que no sea NULL: Benjamín Contreras (La Serena) no tiene teléfono y aparece con su email. (4) Por defecto `ASC` deja los NULL al final; `NULLS FIRST` los sube. (5) El día 2 son las filas 6 a 10: `LIMIT 5 OFFSET 5` (estándar: `OFFSET 5 ROWS FETCH NEXT 5 ROWS ONLY`). Cualquier error en 1, 2 o 4 corre la lista y cambia a quién se llama el día 2: por eso paginar exige un orden correcto y único (aquí región + comuna + apellido + nombre no se repiten)."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "Comillas simples vs comillas dobles en SQL",
+      "back": "Simples: literales de texto (`'Santiago'`). Dobles: identificadores (`\"Precio CLP\"`), que conservan mayúsculas y espacios. `AS 'x'` es un error de sintaxis."
+    },
+    {
+      "front": "¿Qué nombre recibe la columna de `SELECT precio - costo FROM productos`?",
+      "back": "`?column?`. Ponle un alias con `AS margen`."
+    },
+    {
+      "front": "¿Cómo se llama la columna de `SELECT precio AS Margen`?",
+      "back": "`margen`: los identificadores sin comillas se pasan a minúsculas. Para conservar la M: `AS \"Margen\"`."
+    },
+    {
+      "front": "¿Cuándo es obligatorio escribir `AS`?",
+      "back": "Cuando el alias es una palabra clave (`SELECT 5 AS order`). Conviene usarlo siempre: evita el error de la coma que falta (`SELECT nombre precio`)."
+    },
+    {
+      "front": "¿Qué compara `SELECT DISTINCT a, b`?",
+      "back": "La fila completa del resultado: la combinación (a, b). Para DISTINCT, NULL se considera igual a NULL. `DISTINCT(a), b` es lo mismo."
+    },
+    {
+      "front": "`7 / 2`, `-7 / 2` y `7.0 / 2` en PostgreSQL",
+      "back": "`3`, `-3` y `3.5000000000000000`: entre enteros, `/` trunca hacia cero."
+    },
+    {
+      "front": "Precedencia de `NOT`, `AND` y `OR`",
+      "back": "`NOT` > `AND` > `OR` (y las comparaciones `=`, `<`… van antes que todos). Si mezclas AND y OR: paréntesis."
+    },
+    {
+      "front": "`x BETWEEN a AND b`",
+      "back": "Equivale a `x >= a AND x <= b` (incluye ambos extremos). Si a > b no devuelve nada; `BETWEEN SYMMETRIC` no exige el orden."
+    },
+    {
+      "front": "Rango de fechas con `timestamptz` (todo junio de 2026)",
+      "back": "Semiabierto: `fecha >= '2026-06-01' AND fecha < '2026-07-01'`. `BETWEEN … AND '2026-06-30'` pierde el día 30 después de las 00:00."
+    },
+    {
+      "front": "`x IN (a, b, c)`",
+      "back": "Equivale a `x = a OR x = b OR x = c`. Si no hay coincidencia y la lista tiene un NULL, da NULL (no false)."
+    },
+    {
+      "front": "Comodines de `LIKE`",
+      "back": "`%` = cualquier secuencia (incluso vacía); `_` = exactamente un carácter. El patrón debe calzar con el texto completo."
+    },
+    {
+      "front": "`LIKE` vs `ILIKE`",
+      "back": "`LIKE` distingue mayúsculas; `ILIKE` no (extensión de PostgreSQL). Ninguno ignora tildes. Sinónimos: `~~`, `~~*`, `!~~`, `!~~*`."
+    },
+    {
+      "front": "Buscar un `%` literal con LIKE",
+      "back": "Escápalo: `LIKE '%\\%%'` (el escape por defecto es `\\`) o elige otro: `LIKE '%!%%' ESCAPE '!'`."
+    },
+    {
+      "front": "¿Cómo se escribe el texto O'Higgins en SQL?",
+      "back": "Doblando la comilla: `'O''Higgins'`. Si la dejas simple, psql espera con el prompt `tienda'#` (texto sin cerrar)."
+    },
+    {
+      "front": "¿Qué es NULL?",
+      "back": "Un marcador de «valor desconocido o que no aplica». No es 0, ni `''`, ni `false`, y no es igual ni distinto de nada."
+    },
+    {
+      "front": "¿Por qué `WHERE email = NULL` no devuelve filas?",
+      "back": "`email = NULL` vale NULL en todas las filas y WHERE solo deja pasar `true`. No da error. Se escribe `WHERE email IS NULL`."
+    },
+    {
+      "front": "`NULL AND false` y `NULL OR true`",
+      "back": "`false` y `true`. En los demás casos con NULL, AND y OR dan NULL."
+    },
+    {
+      "front": "¿Por qué una fila con NULL no aparece ni en `WHERE cond` ni en `WHERE NOT cond`?",
+      "back": "Porque `cond` vale NULL y `NOT NULL` también es NULL. Para incluirla del lado del «no»: `WHERE cond IS NOT TRUE`."
+    },
+    {
+      "front": "`a IS DISTINCT FROM b`",
+      "back": "Como `<>`, pero seguro con NULL: `NULL IS DISTINCT FROM NULL` = false; `1 IS DISTINCT FROM NULL` = true. Nunca devuelve NULL."
+    },
+    {
+      "front": "`x NOT IN (1, NULL)`",
+      "back": "Nunca es `true`: equivale a `x <> 1 AND x <> NULL`, que da false o NULL. Resultado: 0 filas, sin error."
+    },
+    {
+      "front": "`COALESCE(a, b, c)`",
+      "back": "Devuelve el primer argumento no NULL (NULL si todos lo son). Evalúa solo lo necesario. Tipos compatibles o error (`COALESCE types text and integer cannot be matched`)."
+    },
+    {
+      "front": "`\\pset null '(null)'`",
+      "back": "Meta-comando de psql: muestra los NULL como `(null)` en vez de una casilla vacía. No cambia los datos."
+    },
+    {
+      "front": "Posición de los NULL por defecto en `ORDER BY`",
+      "back": "Como si fueran el valor más grande: al final con `ASC` y al principio con `DESC`. Se cambia con `NULLS FIRST` / `NULLS LAST`."
+    },
+    {
+      "front": "¿Se puede usar un alias del SELECT en `ORDER BY`?",
+      "back": "Sí, pero solo: `ORDER BY margen` funciona; `ORDER BY margen * 2` da `column \"margen\" does not exist`."
+    },
+    {
+      "front": "`ORDER BY precio` cuando `precio` es a la vez columna de salida (alias) y columna de la tabla",
+      "back": "ORDER BY usa la columna de salida (el alias). GROUP BY haría lo contrario."
+    },
+    {
+      "front": "`SELECT DISTINCT region FROM clientes ORDER BY comuna`",
+      "back": "Error: `for SELECT DISTINCT, ORDER BY expressions must appear in select list`."
+    },
+    {
+      "front": "Paginar: página p con n filas por página",
+      "back": "`ORDER BY <orden único> LIMIT n OFFSET (p - 1) * n`. Sin desempate único, las filas empatadas pueden repetirse o perderse entre páginas."
+    },
+    {
+      "front": "Equivalente estándar de `LIMIT 10 OFFSET 20`",
+      "back": "`OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY` (FIRST/NEXT y ROW/ROWS son intercambiables)."
+    },
+    {
+      "front": "`FETCH FIRST n ROWS WITH TIES`",
+      "back": "n filas más las que empaten con la última según todo el ORDER BY. Exige ORDER BY (`WITH TIES cannot be specified without ORDER BY clause`). Desde PostgreSQL 13."
+    },
+    {
+      "front": "`DISTINCT ON (expr)`",
+      "back": "Conserva la primera fila de cada grupo con igual `expr`, según el ORDER BY, que debe empezar por las mismas expresiones. Extensión de PostgreSQL."
+    },
+    {
+      "front": "Error `SELECT DISTINCT ON expressions must match initial ORDER BY expressions`",
+      "back": "El ORDER BY no empieza por las expresiones del DISTINCT ON. Ejemplo correcto: `DISTINCT ON (categoria_id) … ORDER BY categoria_id, precio DESC`."
+    },
+    {
+      "front": "Orden lógico de evaluación de un SELECT",
+      "back": "FROM → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → OFFSET/LIMIT."
+    },
+    {
+      "front": "¿Por qué `WHERE margen > 0` falla si `margen` es un alias del SELECT?",
+      "back": "WHERE se evalúa antes que el SELECT: el alias aún no existe. Repite la expresión (`WHERE precio - costo > 0`)."
+    },
+    {
+      "front": "Colación de la base en este curso",
+      "back": "`C`: ordena por código de carácter. Mayúsculas antes que minúsculas y letras con tilde después de la z («Álvarez» queda tras «Vergara»)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s02-q1",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n\n```sql\nSELECT nombre precio\nFROM productos\nLIMIT 2;\n```",
+      "options": [
+        "Dos filas con las columnas `nombre` y `precio`",
+        "Un error de sintaxis por la coma que falta",
+        "Dos filas con una sola columna llamada `precio` que contiene los nombres de los productos",
+        "Dos filas con una sola columna llamada `nombre`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Como `AS` es opcional, PostgreSQL interpreta `nombre precio` como «la columna `nombre` con el alias `precio`». No hay error: hay un resultado engañoso. Por eso conviene escribir siempre `AS`."
+    },
+    {
+      "id": "s02-q2",
+      "type": "single",
+      "q": "¿Qué muestra `SELECT 7 / 2, 7 % 2;`?",
+      "options": [
+        "`3.5` y `1`",
+        "`3` y `1`",
+        "`4` y `1`",
+        "`3` y `0.5`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Entre enteros, `/` es división entera y trunca hacia cero: `7 / 2 = 3`. `%` es el resto: `1`. Para obtener `3.5` al menos un operando debe tener decimales (`7.0 / 2`)."
+    },
+    {
+      "id": "s02-q3",
+      "type": "single",
+      "q": "¿Cómo se llama la columna del resultado en `SELECT precio - costo FROM productos;`?",
+      "options": [
+        "`precio - costo`",
+        "`precio`",
+        "`?column?`",
+        "`resultado`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Para una expresión compleja sin alias, PostgreSQL genera el nombre genérico `?column?`. Para una columna simple usaría su nombre, y para una llamada a función, el nombre de la función."
+    },
+    {
+      "id": "s02-q4",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas producen una columna cuyo encabezado es exactamente `Margen` (con M mayúscula)?",
+      "options": [
+        "`SELECT precio - costo AS Margen FROM productos;`",
+        "`SELECT precio - costo AS \"Margen\" FROM productos;`",
+        "`SELECT precio - costo AS 'Margen' FROM productos;`",
+        "`SELECT precio - costo \"Margen\" FROM productos;`"
+      ],
+      "answer": [
+        1,
+        3
+      ],
+      "explain": "Sin comillas, `Margen` se pasa a minúsculas (`margen`). Con comillas dobles se respeta tal cual, con o sin `AS` (que es opcional). Las comillas simples delimitan textos, así que `AS 'Margen'` es un error de sintaxis."
+    },
+    {
+      "id": "s02-q5",
+      "type": "yesno",
+      "q": "Sobre `DISTINCT`, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`SELECT DISTINCT region, comuna` elimina las filas que repiten la misma combinación de región y comuna.",
+          "answer": true
+        },
+        {
+          "text": "`SELECT DISTINCT(region), comuna` aplica DISTINCT solo a `region`.",
+          "answer": false
+        },
+        {
+          "text": "Para `DISTINCT`, dos NULL se consideran iguales.",
+          "answer": true
+        },
+        {
+          "text": "`SELECT DISTINCT` devuelve siempre las filas ordenadas.",
+          "answer": false
+        }
+      ],
+      "explain": "DISTINCT compara la fila completa del resultado; los paréntesis de `DISTINCT(region)` solo agrupan la expresión `region`. Para este fin, NULL = NULL, así que todos los NULL se funden en una fila. Y ninguna cláusula salvo `ORDER BY` garantiza un orden."
+    },
+    {
+      "id": "s02-q6",
+      "type": "single",
+      "q": "La tabla `clientes` tiene 60 filas: 43 de la Región Metropolitana, 16 repartidas en otras 9 regiones y 1 sin región (NULL). ¿Cuántas filas devuelve `SELECT DISTINCT region FROM clientes;`?",
+      "options": [
+        "10",
+        "11",
+        "12",
+        "60"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "10 regiones con nombre (la Metropolitana y otras 9) más una fila con NULL: 11. DISTINCT trata todos los NULL como un mismo valor."
+    },
+    {
+      "id": "s02-q7",
+      "type": "single",
+      "q": "¿Cómo interpreta PostgreSQL `WHERE a = 1 OR b = 2 AND c = 3`?",
+      "options": [
+        "`(a = 1 OR b = 2) AND c = 3`",
+        "`a = 1 OR (b = 2 AND c = 3)`",
+        "Da error: hay que poner paréntesis",
+        "Depende del orden de las columnas en la tabla"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`AND` tiene más precedencia que `OR`, igual que la multiplicación frente a la suma. Si quieres la otra agrupación, tienes que escribir los paréntesis."
+    },
+    {
+      "id": "s02-q8",
+      "type": "single",
+      "q": "En tienda, Audio (categoría 3) tiene 5 productos, de los cuales 1 cuesta menos de $20.000; Accesorios (categoría 4) tiene 2 productos bajo $20.000. ¿Cuántas filas devuelve?\n\n```sql\nSELECT sku FROM productos\nWHERE categoria_id = 3 OR categoria_id = 4 AND precio < 20000;\n```",
+      "options": [
+        "3",
+        "5",
+        "7",
+        "8"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Se lee `categoria_id = 3 OR (categoria_id = 4 AND precio < 20000)`: pasan los 5 de Audio (sin límite de precio) y los 2 accesorios baratos, 7 en total. Con paréntesis alrededor del OR serían 3."
+    },
+    {
+      "id": "s02-q9",
+      "type": "multi",
+      "q": "¿Cuáles condiciones son equivalentes a `precio BETWEEN 10000 AND 15000`?",
+      "options": [
+        "`precio >= 10000 AND precio <= 15000`",
+        "`precio > 10000 AND precio < 15000`",
+        "`precio BETWEEN SYMMETRIC 15000 AND 10000`",
+        "`precio BETWEEN 15000 AND 10000`"
+      ],
+      "answer": [
+        0,
+        2
+      ],
+      "explain": "BETWEEN incluye ambos extremos. Con los límites invertidos, `BETWEEN 15000 AND 10000` no devuelve nada, pero `BETWEEN SYMMETRIC` ordena los límites por ti."
+    },
+    {
+      "id": "s02-q10",
+      "type": "single",
+      "q": "`pedidos.fecha` es `timestamptz`. Un pedido se hizo el `2026-06-25 13:36:54-04`. ¿Lo encuentra `WHERE fecha BETWEEN '2026-06-21' AND '2026-06-25'`?",
+      "options": [
+        "Sí, porque BETWEEN incluye ambos extremos",
+        "No: `'2026-06-25'` equivale al 25 de junio a las 00:00, y el pedido es posterior",
+        "Da error: no se puede comparar un timestamptz con un texto",
+        "Solo si la zona horaria de la sesión es UTC"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El literal se convierte a `timestamptz` como medianoche del 25 de junio en la zona de la sesión. El extremo sí está incluido, pero el pedido de las 13:36 queda después. Solución: intervalo semiabierto `fecha >= '2026-06-21' AND fecha < '2026-06-26'`."
+    },
+    {
+      "id": "s02-q11",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones valen `true`?",
+      "options": [
+        "`'Hola' LIKE 'Hol'`",
+        "`'Hola' LIKE 'H%'`",
+        "`'Hola' LIKE '_ola'`",
+        "`'Hola' LIKE 'hola'`",
+        "`'Hola' ILIKE 'hola'`"
+      ],
+      "answer": [
+        1,
+        2,
+        4
+      ],
+      "explain": "El patrón de LIKE debe calzar con el texto completo: `'Hol'` no alcanza (sin `%`, LIKE es como `=`). `%` cubre «ola» y `_` cubre exactamente la «H». LIKE distingue mayúsculas; ILIKE no."
+    },
+    {
+      "id": "s02-q12",
+      "type": "single",
+      "q": "¿Qué productos encuentra `WHERE sku LIKE 'C__-%'`?",
+      "options": [
+        "Todos los que empiezan con «C»",
+        "Los que tienen «C», dos caracteres cualesquiera y un guion: COC-…, CIC-…, CAF-… (no COMP-…)",
+        "Los que tienen exactamente 4 caracteres",
+        "Ninguno: `_` no es comodín en PostgreSQL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`_` calza con exactamente un carácter, así que `'C__-'` exige un guion en la cuarta posición. En `COMP-001` la cuarta posición es «P», por eso no calza."
+    },
+    {
+      "id": "s02-q13",
+      "type": "single",
+      "q": "¿Cómo buscas los productos cuyo nombre contiene el carácter `%` (como «Chocolate amargo 70 %»)?",
+      "options": [
+        "`nombre LIKE '%%%'`",
+        "`nombre LIKE '%\\%%'`",
+        "`nombre LIKE '%[%]%'`",
+        "`nombre ILIKE '%'`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Para un `%` literal hay que anteponer el carácter de escape, que por defecto es la barra invertida: `'%\\%%'`. `'%%%'` calza con cualquier texto y `[%]` es sintaxis de SQL Server. También puedes elegir otro escape: `LIKE '%!%%' ESCAPE '!'`."
+    },
+    {
+      "id": "s02-q14",
+      "type": "yesno",
+      "q": "Sobre `LIKE` e `ILIKE`, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`ILIKE` es parte del estándar SQL.",
+          "answer": false
+        },
+        {
+          "text": "`nombre ILIKE '%cafe%'` encuentra «Café en grano 1 kg».",
+          "answer": false
+        },
+        {
+          "text": "`~~*` es un operador equivalente a `ILIKE`.",
+          "answer": true
+        },
+        {
+          "text": "Un patrón sin `%` ni `_` hace que `LIKE` se comporte como `=`.",
+          "answer": true
+        }
+      ],
+      "explain": "ILIKE es una extensión de PostgreSQL. Ignora mayúsculas pero no tildes: `e` y `é` son caracteres distintos. `~~`, `~~*`, `!~~` y `!~~*` son los operadores detrás de LIKE, ILIKE, NOT LIKE y NOT ILIKE."
+    },
+    {
+      "id": "s02-q15",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT NULL = NULL;`?",
+      "options": [
+        "`true`",
+        "`false`",
+        "NULL (desconocido)",
+        "Un error"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Comparar con un valor desconocido da un resultado desconocido. Dos NULL no son «iguales»: simplemente no se sabe. Para eso existen `IS NULL` e `IS NOT DISTINCT FROM`."
+    },
+    {
+      "id": "s02-q16",
+      "type": "single",
+      "q": "Hay 5 clientes sin email. ¿Cuántas filas devuelve `SELECT * FROM clientes WHERE email = NULL;`?",
+      "options": [
+        "5",
+        "55",
+        "0",
+        "Ninguna: da error porque no se puede comparar con NULL"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`email = NULL` vale NULL en todas las filas (con y sin email), y WHERE solo deja pasar `true`. No hay error: 0 filas. Lo correcto es `WHERE email IS NULL`."
+    },
+    {
+      "id": "s02-q17",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones valen `false` (no NULL)?",
+      "options": [
+        "`NULL AND false`",
+        "`NULL OR false`",
+        "`NULL IS DISTINCT FROM NULL`",
+        "`1 IS DISTINCT FROM NULL`",
+        "`NULL = NULL`"
+      ],
+      "answer": [
+        0,
+        2
+      ],
+      "explain": "`NULL AND false` es false (basta un false). `NULL OR false` es NULL. `NULL IS DISTINCT FROM NULL` es false (dos NULL «no son distintos»). `1 IS DISTINCT FROM NULL` es true. `NULL = NULL` es NULL."
+    },
+    {
+      "id": "s02-q18",
+      "type": "single",
+      "q": "La tabla `clientes` tiene 60 filas y `WHERE region = 'Metropolitana'` devuelve 43. ¿Cuántas devuelve `WHERE NOT (region = 'Metropolitana')`?",
+      "options": [
+        "17",
+        "16",
+        "60",
+        "0"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El cliente sin región produce NULL en `region = 'Metropolitana'`, y `NOT NULL` sigue siendo NULL: no aparece en ninguno de los dos lados (43 + 16 = 59). `WHERE (region = 'Metropolitana') IS NOT TRUE` sí devuelve 17."
+    },
+    {
+      "id": "s02-q19",
+      "type": "single",
+      "q": "¿Cuántas filas devuelve?\n\n```sql\nSELECT id FROM pedidos\nWHERE metodo_pago NOT IN ('credito', NULL);\n```",
+      "options": [
+        "Todas las que no son de crédito",
+        "Todas las que no son de crédito, más las que tienen NULL",
+        "0 filas",
+        "Un error de sintaxis"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`x NOT IN ('credito', NULL)` equivale a `x <> 'credito' AND x <> NULL`. La segunda parte siempre es NULL, así que el AND nunca llega a `true`. Es la trampa más famosa de NOT IN."
+    },
+    {
+      "id": "s02-q20",
+      "type": "single",
+      "q": "`pedidos.metodo_pago` es NULL en los pedidos pendientes. ¿Qué condición devuelve todos los pedidos que **no** son de crédito, incluidos los pendientes?",
+      "options": [
+        "`metodo_pago <> 'credito'`",
+        "`NOT (metodo_pago = 'credito')`",
+        "`metodo_pago IS DISTINCT FROM 'credito'`",
+        "`metodo_pago NOT IN ('credito')`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Las otras tres dan NULL cuando `metodo_pago` es NULL y pierden los pendientes. `IS DISTINCT FROM` nunca devuelve NULL: `NULL IS DISTINCT FROM 'credito'` es true."
+    },
+    {
+      "id": "s02-q21",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT COALESCE(NULL, NULL, 'x', 'y');`?",
+      "options": [
+        "NULL",
+        "`x`",
+        "`y`",
+        "`xy`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "COALESCE devuelve el primer argumento que no sea NULL y ni siquiera evalúa los que vienen después."
+    },
+    {
+      "id": "s02-q22",
+      "type": "single",
+      "q": "`clientes.telefono` es de tipo `text`. ¿Qué pasa con `SELECT COALESCE(telefono, 0) FROM clientes;`?",
+      "options": [
+        "Muestra 0 donde falta el teléfono",
+        "Muestra el texto '0' donde falta el teléfono",
+        "Error: `COALESCE types text and integer cannot be matched`",
+        "Muestra NULL: COALESCE no mezcla tipos"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Todos los argumentos de COALESCE deben poder convertirse a un tipo común; `text` e `integer` no. Usa un texto de reemplazo: `COALESCE(telefono, 'sin teléfono')`."
+    },
+    {
+      "id": "s02-q23",
+      "type": "yesno",
+      "q": "Sobre NULL, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "NULL es lo mismo que el texto vacío `''`.",
+          "answer": false
+        },
+        {
+          "text": "`100 + NULL` es NULL.",
+          "answer": true
+        },
+        {
+          "text": "`\\pset null '(null)'` cambia los datos guardados en la tabla.",
+          "answer": false
+        },
+        {
+          "text": "`(NULL = 1) IS NOT TRUE` vale `true`.",
+          "answer": true
+        }
+      ],
+      "explain": "`''` es un texto conocido que resulta estar vacío; NULL es un valor desconocido. La aritmética con NULL da NULL. `\\pset null` solo cambia cómo psql muestra los NULL. `IS NOT TRUE` convierte lo desconocido en una respuesta definida."
+    },
+    {
+      "id": "s02-q24",
+      "type": "single",
+      "q": "Sin `ORDER BY`, ¿en qué orden devuelve PostgreSQL las filas?",
+      "options": [
+        "Por la clave primaria",
+        "Siempre en el orden de inserción",
+        "En el orden que le resulte más barato al ejecutar, sin ninguna garantía",
+        "Alfabéticamente por la primera columna"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Una tabla es un conjunto sin orden. El orden visible depende del plan (lectura secuencial, índice, hash…) y puede cambiar tras un UPDATE, un VACUUM o un cambio de plan. Si el orden importa, `ORDER BY`."
+    },
+    {
+      "id": "s02-q25",
+      "type": "single",
+      "q": "En `biblioteca`, «La última niebla» tiene `paginas` NULL. ¿Qué devuelve `SELECT titulo FROM libros ORDER BY paginas DESC LIMIT 1;`?",
+      "options": [
+        "El libro de más páginas (2666)",
+        "«La última niebla»",
+        "Un error: no se puede ordenar por una columna con NULL",
+        "El libro de menos páginas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Por defecto los NULL se ordenan como si fueran mayores que todo, así que con DESC quedan primero. Para el libro realmente más largo: `ORDER BY paginas DESC NULLS LAST`."
+    },
+    {
+      "id": "s02-q26",
+      "type": "multi",
+      "q": "¿Cuáles de estos `ORDER BY` son válidos para `SELECT sku, precio - costo AS margen FROM productos`?",
+      "options": [
+        "`ORDER BY margen DESC`",
+        "`ORDER BY 2 DESC`",
+        "`ORDER BY margen * 2`",
+        "`ORDER BY precio - costo`",
+        "`ORDER BY 3`"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "Se puede ordenar por alias (solo), por posición o por cualquier expresión. `margen * 2` falla (`column \"margen\" does not exist`) porque el alias no puede usarse dentro de una expresión, y `ORDER BY 3` falla porque el resultado tiene 2 columnas (`ORDER BY position 3 is not in select list`)."
+    },
+    {
+      "id": "s02-q27",
+      "type": "single",
+      "q": "¿Qué produce `SELECT DISTINCT region FROM clientes ORDER BY comuna;`?",
+      "options": [
+        "`ERROR:  column \"comuna\" does not exist`",
+        "`ERROR:  for SELECT DISTINCT, ORDER BY expressions must appear in select list`",
+        "Las regiones ordenadas por comuna",
+        "`ERROR:  ORDER BY position 1 is not in select list`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Tras DISTINCT, una fila de región puede venir de varios clientes con comunas distintas: PostgreSQL no sabría qué comuna usar para ordenar. Por eso exige que las expresiones del ORDER BY estén en el SELECT."
+    },
+    {
+      "id": "s02-q28",
+      "type": "single",
+      "q": "¿Por qué columna ordena esta consulta?\n\n```sql\nSELECT nombre AS precio, precio AS nombre\nFROM productos\nORDER BY precio;\n```",
+      "options": [
+        "Por la columna `precio` de la tabla (los números)",
+        "Por la columna de salida `precio`, es decir, por los nombres de los productos",
+        "Da error por nombre ambiguo",
+        "No ordena"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Si un nombre simple del ORDER BY coincide con una columna de salida y con una de entrada, ORDER BY usa la de **salida**. (GROUP BY hace lo contrario.) Moraleja: no uses como alias el nombre de otra columna."
+    },
+    {
+      "id": "s02-q29",
+      "type": "single",
+      "q": "Quieres la página 4 de un listado con 20 filas por página. ¿Qué escribes después del `ORDER BY`?",
+      "options": [
+        "`LIMIT 20 OFFSET 80`",
+        "`LIMIT 20 OFFSET 60`",
+        "`LIMIT 80 OFFSET 20`",
+        "`OFFSET 4 LIMIT 20`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Hay que saltar las 3 páginas anteriores: (4 − 1) × 20 = 60 filas, y luego tomar 20."
+    },
+    {
+      "id": "s02-q30",
+      "type": "yesno",
+      "q": "Sobre `LIMIT` y `OFFSET`, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "Las filas que salta `OFFSET` igual se calculan en el servidor.",
+          "answer": true
+        },
+        {
+          "text": "`LIMIT` sin `ORDER BY` puede devolver un subconjunto distinto de filas en cada ejecución.",
+          "answer": true
+        },
+        {
+          "text": "`LIMIT ALL` devuelve 0 filas.",
+          "answer": false
+        },
+        {
+          "text": "`OFFSET 0` es lo mismo que no poner OFFSET.",
+          "answer": true
+        }
+      ],
+      "explain": "OFFSET no es gratis: por eso la paginación con OFFSET grande es lenta. Sin ORDER BY, el subconjunto depende del plan. `LIMIT ALL` (y `LIMIT NULL`) significa «sin límite»."
+    },
+    {
+      "id": "s02-q31",
+      "type": "single",
+      "q": "Los precios más bajos de tienda son 2.990, 3.490, 5.990, 6.990, 6.990 y 7.990. ¿Cuántas filas devuelve `SELECT sku FROM productos ORDER BY precio FETCH FIRST 4 ROWS WITH TIES;`?",
+      "options": [
+        "4",
+        "5",
+        "6",
+        "Un error"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La cuarta fila vale 6.990 y hay otra fila empatada en 6.990: WITH TIES la agrega. Son 5."
+    },
+    {
+      "id": "s02-q32",
+      "type": "single",
+      "q": "¿Y cuántas devuelve `SELECT sku FROM productos ORDER BY precio, sku FETCH FIRST 4 ROWS WITH TIES;`?",
+      "options": [
+        "4: con `sku` en el ORDER BY ya no hay empates",
+        "5, igual que antes",
+        "6",
+        "Error: WITH TIES solo admite una columna en el ORDER BY"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El empate se calcula con **todas** las columnas del ORDER BY. Como el sku es único, ninguna fila empata con la cuarta. Si quieres empates por precio, no agregues desempates después."
+    },
+    {
+      "id": "s02-q33",
+      "type": "single",
+      "q": "¿Qué pasa con `SELECT sku FROM productos FETCH FIRST 4 ROWS WITH TIES;`?",
+      "options": [
+        "Devuelve 4 filas cualesquiera",
+        "Error: `WITH TIES cannot be specified without ORDER BY clause`",
+        "Devuelve todas las filas",
+        "Devuelve 4 filas ordenadas por la clave primaria"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin ORDER BY no existe la noción de «empatar con la última», así que PostgreSQL lo rechaza. `FETCH FIRST 4 ROWS ONLY` sí funcionaría (con filas arbitrarias)."
+    },
+    {
+      "id": "s02-q34",
+      "type": "multi",
+      "q": "¿Cuáles son equivalentes a `LIMIT 10 OFFSET 20`?",
+      "options": [
+        "`OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY`",
+        "`OFFSET 20 FETCH FIRST 10 ROW ONLY`",
+        "`FETCH FIRST 10 ROWS OFFSET 20`",
+        "`OFFSET 20 LIMIT 10`"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "FIRST/NEXT y ROW/ROWS son intercambiables, y la palabra ROWS después de OFFSET es opcional. PostgreSQL acepta LIMIT y OFFSET en cualquier orden. En cambio FETCH va después de OFFSET y termina en ONLY o WITH TIES: `FETCH FIRST 10 ROWS OFFSET 20` es un error de sintaxis."
+    },
+    {
+      "id": "s02-q35",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n\n```sql\nSELECT DISTINCT ON (categoria_id) categoria_id, nombre, precio\nFROM productos\nORDER BY categoria_id, precio DESC, id;\n```",
+      "options": [
+        "Todas las filas, sin duplicados",
+        "El producto más caro de cada categoría",
+        "El producto más barato de cada categoría",
+        "Un error: DISTINCT ON exige GROUP BY"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Dentro de cada categoría las filas quedan ordenadas de mayor a menor precio (y por id si empatan); DISTINCT ON conserva la primera de cada grupo: la más cara."
+    },
+    {
+      "id": "s02-q36",
+      "type": "single",
+      "q": "¿Qué pasa con `SELECT DISTINCT ON (categoria_id) nombre FROM productos ORDER BY precio DESC;`?",
+      "options": [
+        "Devuelve el más caro de cada categoría",
+        "Error: `SELECT DISTINCT ON expressions must match initial ORDER BY expressions`",
+        "Devuelve una fila cualquiera por categoría",
+        "Error: `categoria_id` debe estar en la lista del SELECT"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El ORDER BY debe empezar por las expresiones del DISTINCT ON: `ORDER BY categoria_id, precio DESC`. La columna del DISTINCT ON no necesita aparecer en el SELECT."
+    },
+    {
+      "id": "s02-q37",
+      "type": "yesno",
+      "q": "Sobre `DISTINCT ON`, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`DISTINCT ON` es parte del estándar SQL.",
+          "answer": false
+        },
+        {
+          "text": "Sin un `ORDER BY` que la determine, la fila que conserva `DISTINCT ON` en cada grupo es impredecible.",
+          "answer": true
+        },
+        {
+          "text": "La expresión de `DISTINCT ON` debe aparecer en la lista del `SELECT`.",
+          "answer": false
+        },
+        {
+          "text": "`WHERE` se aplica antes de que `DISTINCT ON` elija la fila de cada grupo.",
+          "answer": true
+        }
+      ],
+      "explain": "DISTINCT ON es una extensión de PostgreSQL (en otros motores se usan funciones de ventana). Solo el ORDER BY decide qué fila es la «primera». WHERE filtra antes, en el paso 2 del orden lógico."
+    },
+    {
+      "id": "s02-q38",
+      "type": "single",
+      "q": "¿Cuál es el orden lógico de evaluación de una consulta?",
+      "options": [
+        "SELECT → FROM → WHERE → ORDER BY → LIMIT",
+        "FROM → WHERE → SELECT → DISTINCT → ORDER BY → LIMIT",
+        "FROM → SELECT → WHERE → ORDER BY → DISTINCT → LIMIT",
+        "WHERE → FROM → SELECT → LIMIT → ORDER BY"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Primero se decide de dónde salen las filas (FROM), cuáles sobreviven (WHERE), qué columnas se calculan (SELECT), se quitan duplicados (DISTINCT), se ordena (ORDER BY) y se recorta (OFFSET/LIMIT). GROUP BY y HAVING van entre WHERE y SELECT."
+    },
+    {
+      "id": "s02-q39",
+      "type": "single",
+      "q": "¿Por qué falla `SELECT precio - costo AS margen FROM productos WHERE margen > 100000;`?",
+      "options": [
+        "Porque los alias no pueden compararse con números",
+        "Porque WHERE se evalúa antes que el SELECT, cuando el alias `margen` aún no existe",
+        "Porque falta un GROUP BY",
+        "Porque hay que escribir `\"margen\"` entre comillas dobles"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El error es `column \"margen\" does not exist`. Solución: repetir la expresión (`WHERE precio - costo > 100000`) o, más adelante, usar una subconsulta o CTE (sección 9)."
+    },
+    {
+      "id": "s02-q40",
+      "type": "multi",
+      "q": "¿En qué cláusulas puedes usar tal cual el alias `margen` definido en el SELECT?",
+      "options": [
+        "`WHERE`",
+        "`ORDER BY`",
+        "`DISTINCT ON`",
+        "`FROM`"
+      ],
+      "answer": [
+        1,
+        2
+      ],
+      "explain": "ORDER BY se evalúa después del SELECT y acepta alias; DISTINCT ON interpreta sus expresiones con las mismas reglas que ORDER BY. WHERE y FROM se evalúan antes de que el alias exista."
+    },
+    {
+      "id": "s02-q41",
+      "type": "single",
+      "q": "En este plan de `EXPLAIN (COSTS OFF)`, ¿qué nodo corresponde al `DISTINCT ON`?\n\n```\nLimit\n  ->  Unique\n        ->  Sort\n              Sort Key: categoria_id, precio DESC\n              ->  Seq Scan on productos\n                    Filter: activo\n```",
+      "options": [
+        "Limit",
+        "Unique",
+        "Sort",
+        "Seq Scan"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El plan se lee de abajo hacia arriba: Seq Scan + Filter (FROM y WHERE), Sort (el ORDER BY que necesita DISTINCT ON), Unique (DISTINCT ON: se queda con la primera fila de cada categoría) y Limit."
+    },
+    {
+      "id": "s02-q42",
+      "type": "yesno",
+      "q": "Varios detalles de sintaxis: indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "En PostgreSQL, `SELECT` sin `FROM` es válido (por ejemplo `SELECT 7 / 2;`).",
+          "answer": true
+        },
+        {
+          "text": "Para una columna boolean NOT NULL, `WHERE activo` equivale a `WHERE activo = true`.",
+          "answer": true
+        },
+        {
+          "text": "`'O'Higgins'` es la forma correcta de escribir ese texto en SQL.",
+          "answer": false
+        },
+        {
+          "text": "`!=` es un sinónimo de `<>`.",
+          "answer": true
+        }
+      ],
+      "explain": "SELECT sin FROM es una extensión práctica de PostgreSQL. Una columna boolean ya es una condición. Una comilla dentro de un texto se dobla: `'O''Higgins'`. Y `!=` se traduce a `<>` al analizar la consulta."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT (referencia, orden de procesamiento, DISTINCT ON, LIMIT y FETCH)",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Listas de selección (alias y DISTINCT)",
+      "url": "https://www.postgresql.org/docs/18/queries-select-lists.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Expresiones de tabla (FROM y WHERE)",
+      "url": "https://www.postgresql.org/docs/18/queries-table-expressions.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Ordenar filas (ORDER BY, NULLS FIRST/LAST)",
+      "url": "https://www.postgresql.org/docs/18/queries-order.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: LIMIT y OFFSET",
+      "url": "https://www.postgresql.org/docs/18/queries-limit.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Operadores lógicos (tablas de verdad)",
+      "url": "https://www.postgresql.org/docs/18/functions-logical.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Funciones y operadores de comparación (BETWEEN, IS NULL, IS DISTINCT FROM)",
+      "url": "https://www.postgresql.org/docs/18/functions-comparison.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Búsqueda de patrones (LIKE e ILIKE)",
+      "url": "https://www.postgresql.org/docs/18/functions-matching.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Comparaciones de filas y arreglos (IN y NOT IN)",
+      "url": "https://www.postgresql.org/docs/18/functions-comparisons.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Expresiones condicionales (COALESCE)",
+      "url": "https://www.postgresql.org/docs/18/functions-conditional.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Estructura léxica (identificadores, constantes y precedencia de operadores)",
+      "url": "https://www.postgresql.org/docs/18/sql-syntax-lexical.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Expresiones de valor",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: psql (\\pset null)",
+      "url": "https://www.postgresql.org/docs/18/app-psql.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Compatibilidad de versiones y plataformas (transform_null_equals)",
+      "url": "https://www.postgresql.org/docs/18/runtime-config-compatible.html"
+    }
+  ]
+}

@@ -1,0 +1,2573 @@
+{
+  "id": "s04",
+  "order": 4,
+  "title": "Funciones y expresiones",
+  "domain": "fundamentos",
+  "summary": "Las funciones transforman los datos fila a fila sin modificarlos: texto, números, fechas, condiciones y expresiones regulares. Aprenderás a limpiar nombres y emails, formatear pesos chilenos, calcular antigüedades, clasificar notas de 1.0 a 7.0 y validar un RUT completo, formato y dígito verificador, con SQL puro.",
+  "goal": "Transformar, formatear, clasificar y validar datos con funciones y expresiones de PostgreSQL dentro de una sola consulta SELECT.",
+  "objectives": [
+    "Construir y limpiar textos con `||`, `concat`, `concat_ws`, `trim`, `initcap`, `split_part`, `lpad` y `format`, anticipando el efecto de NULL.",
+    "Calcular con enteros y `numeric` evitando la división entera, y redondear con `round`, `trunc`, `ceil` y `floor`.",
+    "Formatear montos en pesos chilenos y fechas con `to_char`, identificando qué depende de la configuración regional (`lc_numeric`, `lc_time`).",
+    "Operar con fechas e intervalos: `extract`, `date_trunc`, `age`, aritmética de `date` e `interval` y calendarios con `generate_series`.",
+    "Clasificar filas con `CASE` y resolver NULL y divisiones por cero con `COALESCE`, `NULLIF`, `GREATEST` y `LEAST`.",
+    "Validar, extraer y reemplazar patrones con `~`, `~*`, `SIMILAR TO`, `regexp_replace`, `regexp_match` y `regexp_split_to_table`.",
+    "Validar un RUT chileno completo: formato con expresión regular y dígito verificador con módulo 11."
+  ],
+  "lessons": [
+    {
+      "id": "s04-l1",
+      "title": "Funciones de texto: unir, cortar y limpiar",
+      "minutes": 22,
+      "goals": [
+        "Concatenar columnas con `||`, `concat` y `concat_ws` y predecir el resultado cuando alguna es NULL.",
+        "Extraer partes de un texto con `split_part`, `substr`, `left`, `right` y `strpos`.",
+        "Normalizar textos escritos por personas con `trim`, `lower`, `upper`, `initcap` y `lpad`.",
+        "Armar mensajes alineados con `format()` usando `%s`, `%L`, `%I` y anchos de campo."
+      ],
+      "takeaways": [
+        "Una función escalar se evalúa una vez por fila y devuelve un valor nuevo; nunca modifica la tabla.",
+        "`'a' || NULL` es NULL; `concat` y `concat_ws` ignoran los NULL. Úsalos cuando alguna columna puede faltar.",
+        "`length` cuenta caracteres y `octet_length` cuenta bytes: en UTF-8, «Ñuñoa» tiene 5 caracteres y 7 bytes.",
+        "`lpad` y `rpad` también **cortan**: `lpad('123456', 3, '0')` devuelve `'123'` sin avisar.",
+        "`split_part(texto, separador, n)` es la navaja suiza para emails, SKU y RUT; con `n` negativo cuenta desde el final (desde PostgreSQL 14)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Hasta ahora tus consultas mostraban las columnas tal como están guardadas. Una **función** es una pequeña máquina: recibe valores (sus *argumentos*) y devuelve un valor nuevo. Cuando la escribes en el `SELECT`, PostgreSQL la ejecuta **una vez por cada fila** que pasó el `WHERE` y muestra el resultado como una columna calculada. La tabla no cambia: es como la cajera del supermercado que lee el precio de la etiqueta y te dice el total sin reescribir la etiqueta."
+        },
+        {
+          "type": "diagram",
+          "title": "Una función escalar se evalúa fila por fila",
+          "mermaid": "flowchart LR\n  T[\"Tabla clientes (no cambia)\"] --> F1[\"Fila 1: apellido = Castro Núñez\"]\n  T --> F2[\"Fila 2: apellido = Contreras Bravo\"]\n  F1 --> U1[\"upper(apellido)\"]\n  F2 --> U2[\"upper(apellido)\"]\n  U1 --> R1[\"CASTRO NÚÑEZ\"]\n  U2 --> R2[\"CONTRERAS BRAVO\"]\n  R1 --> S[\"Columna calculada del resultado\"]\n  R2 --> S",
+          "caption": "Una fila entra, un valor sale. Las funciones de agregado (`count`, `sum`), que resumen muchas filas en una sola, llegan en la sección 7."
+        },
+        {
+          "type": "diagram",
+          "title": "Mapa de la sección",
+          "mermaid": "mindmap\n  root((Funciones y expresiones))\n    Texto\n      concat y concat_ws\n      split_part y substr\n      trim, initcap y lpad\n      format\n    Números\n      división entera\n      round, trunc, ceil y floor\n      to_char en pesos\n    Fechas\n      extract y date_trunc\n      age e interval\n      generate_series\n    Condicionales\n      CASE\n      COALESCE y NULLIF\n      GREATEST y LEAST\n    Patrones\n      operadores POSIX\n      regexp_replace y regexp_match\n      RUT y módulo 11",
+          "caption": "Las cinco familias de funciones de esta sección, una por lección."
+        },
+        {
+          "type": "p",
+          "text": "Tres ideas que usarás en toda la sección. Las funciones se **anidan** y se leen de adentro hacia afuera: `upper(left(nombre, 1))` primero corta y después pasa a mayúsculas. Se pueden usar en `SELECT`, `WHERE` y `ORDER BY`. Y un operador como `||` o `+` es, por dentro, una función con otra sintaxis. Para ver las variantes de una función en psql escribe `\\df nombre_funcion` (por ejemplo `\\df split_part`)."
+        },
+        {
+          "type": "h",
+          "text": "Concatenar: `||`, `concat` y `concat_ws`"
+        },
+        {
+          "type": "p",
+          "text": "`||` es el operador estándar de SQL para unir textos, y su regla con NULL es estricta: si cualquiera de los dos lados es NULL, el resultado es NULL. Tiene lógica: NULL significa «no sé», y «Correo: » seguido de «no sé» sigue siendo «no sé». `concat(a, b, …)` es más tolerante y trata los NULL como texto vacío. `concat_ws(separador, a, b, …)` (*with separator*) pone el separador **solo entre los valores que no son NULL**, así que nunca deja separadores dobles ni colgando."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT id,\n       nombre || ' ' || apellido                 AS nombre_completo,\n       'Correo: ' || email                       AS con_operador,\n       concat('Correo: ', email)                 AS con_concat,\n       concat_ws(' | ', email, telefono, comuna) AS contacto\nFROM clientes\nWHERE id IN (1, 5, 10, 11)\nORDER BY id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Por defecto psql muestra NULL como un espacio en blanco, idéntico a un texto vacío `''`. Con `\\pset null '(null)'` los distingues a simple vista (es solo una opción de visualización de psql; los datos no cambian). Fíjate en el cliente 10, que no tiene email: `con_operador` es NULL, pero `con_concat` es `Correo: ` a secas. Y un detalle de `concat_ws`: si **todos** los valores son NULL devuelve un texto vacío `''`, no NULL."
+        },
+        {
+          "type": "p",
+          "text": "`||` acepta un valor que no es texto si el otro lado sí lo es (`'Pedido N° ' || 42` convierte el 42 en texto). Pero entre dos números no existe el operador: PostgreSQL responde `operator does not exist: integer || integer` y el `HINT` te sugiere convertir con un *cast* explícito."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT 'Pedido N° ' || 42 AS mezcla;\nSELECT 1::text || 2 AS con_cast;\nSELECT 1 || 2 AS dos_numeros;",
+          "errors": true
+        },
+        {
+          "type": "h",
+          "text": "Medir, buscar y cortar"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Función",
+            "Qué hace",
+            "Ejemplo",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`length(t)`",
+              "largo en caracteres (igual que `char_length`)",
+              "`length('Ñuñoa')`",
+              "`5`"
+            ],
+            [
+              "`octet_length(t)`",
+              "largo en bytes (UTF-8)",
+              "`octet_length('Ñuñoa')`",
+              "`7`"
+            ],
+            [
+              "`upper(t)`, `lower(t)`",
+              "mayúsculas, minúsculas",
+              "`upper('Ñuñoa')`",
+              "`ÑUÑOA`"
+            ],
+            [
+              "`initcap(t)`",
+              "mayúscula inicial en cada palabra, el resto en minúscula",
+              "`initcap('mARÍA josé')`",
+              "`María José`"
+            ],
+            [
+              "`trim(t)`, `ltrim`, `rtrim`",
+              "quita espacios (u otros caracteres) de los extremos",
+              "`ltrim('000123', '0')`",
+              "`123`"
+            ],
+            [
+              "`left(t, n)`, `right(t, n)`",
+              "primeros o últimos n caracteres; con n negativo, todos menos esos",
+              "`left('19501525-2', -2)`",
+              "`19501525`"
+            ],
+            [
+              "`substr(t, desde, cuántos)`",
+              "trozo desde una posición (la primera es 1); también `substring(t FROM i FOR n)`",
+              "`substr('COMP-001', 6)`",
+              "`001`"
+            ],
+            [
+              "`strpos(t, buscado)`",
+              "posición donde aparece (0 si no está); también `position(buscado IN t)`",
+              "`strpos('ana@gmail.com', '@')`",
+              "`4`"
+            ],
+            [
+              "`split_part(t, sep, n)`",
+              "n-ésimo trozo al cortar por `sep` (vacío si no existe)",
+              "`split_part('ana@gmail.com', '@', 2)`",
+              "`gmail.com`"
+            ],
+            [
+              "`replace(t, de, a)`",
+              "reemplaza todas las apariciones de un texto",
+              "`replace('19.501.525-2', '.', '')`",
+              "`19501525-2`"
+            ],
+            [
+              "`translate(t, de, a)`",
+              "reemplaza carácter por carácter",
+              "`translate('Núñez', 'úñ', 'un')`",
+              "`Nunez`"
+            ],
+            [
+              "`lpad(t, n, relleno)`, `rpad`",
+              "rellena a la izquierda o derecha hasta n caracteres (o corta)",
+              "`lpad('42', 5, '0')`",
+              "`00042`"
+            ],
+            [
+              "`reverse(t)`, `repeat(t, n)`",
+              "invierte, repite",
+              "`repeat('*', 3)`",
+              "`***`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT email,\n       length(email)                        AS largo,\n       strpos(email, '@')                   AS pos_arroba,\n       split_part(email, '@', 1)            AS usuario,\n       split_part(email, '@', 2)            AS dominio,\n       left(email, strpos(email, '@') - 1)  AS usuario_con_left,\n       right(email, 4)                      AS termina_en\nFROM clientes\nWHERE email LIKE '%@outlook.com'\nORDER BY email\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "Los SKU de la tienda tienen la forma `FAMILIA-NNN`. Con `split_part` separas la familia del correlativo y con `lpad` los migras a 5 dígitos. Mira también el largo del nombre: las letras con tilde ocupan 2 bytes en UTF-8, por eso `octet_length` supera a `length`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku,\n       split_part(sku, '-', 1)                                            AS familia,\n       split_part(sku, '-', 2)::int                                       AS correlativo,\n       split_part(sku, '-', 1) || '-' || lpad(split_part(sku, '-', 2), 5, '0') AS sku_5_digitos,\n       lpad(split_part(sku, '-', 2), 2, '0')                              AS lpad_que_corta,\n       nombre,\n       length(nombre)                                                     AS caracteres,\n       octet_length(nombre)                                               AS bytes\nFROM productos\nWHERE categoria_id = 3\nORDER BY sku;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`lpad` y `rpad` rellenan **hasta** el largo pedido, y si el texto ya es más largo **lo cortan** sin avisar: en la columna `lpad_que_corta`, `'001'` quedó en `'00'`. Si rellenas correlativos, asegúrate de que el largo alcance para el número más grande que pueda existir."
+        },
+        {
+          "type": "h",
+          "text": "Limpiar lo que escriben las personas"
+        },
+        {
+          "type": "p",
+          "text": "Los datos que llegan desde formularios traen espacios de más, mayúsculas al azar y correos escritos de cualquier forma. `trim` quita los espacios de los **extremos** (no los del medio), `lower` y `upper` cambian mayúsculas, e `initcap` deja en mayúscula la primera letra de cada palabra y el resto en minúscula. En la base del curso la clasificación de caracteres es `C.UTF-8`, que entiende tildes y eñes: `upper('Ñuñoa')` da `ÑUÑOA`. En un servidor cuyo `LC_CTYPE` sea `C` a secas, esas funciones solo cambiarían las letras ASCII y dejarían la ñ intacta."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE contactos_web (id int PRIMARY KEY, nombre text, email text, telefono text);\nINSERT INTO contactos_web VALUES\n  (1, '  maría josé   PÉREZ soto ', ' MJ.Perez@GMAIL.com ', '+56 9 8765 4321'),\n  (2, 'JUAN   ignacio rojas', 'juan.rojas@Correo.CL', '987654321'),\n  (3, 'catalina o''higgins', NULL, '(9) 5555-1234'),\n  (4, ' pedro   de la fuente ', 'pedro@empresa.cl  ', '+56-9-1234-5678');",
+          "code": "SELECT id,\n       '[' || nombre || ']'                  AS original,\n       '[' || trim(nombre) || ']'            AS con_trim,\n       initcap(trim(nombre))                 AS nombre_limpio,\n       lower(trim(email))                    AS email_limpio,\n       length(nombre) - length(trim(nombre)) AS espacios_en_extremos\nFROM contactos_web\nORDER BY id;"
+        },
+        {
+          "type": "p",
+          "text": "Los corchetes son un truco para **ver** los espacios. En el contacto 1, `trim` quitó los espacios de los extremos, pero los tres espacios entre «josé» y «PÉREZ» siguen ahí: para colapsarlos en uno necesitas una expresión regular (`regexp_replace`, lección 5). Observa también que `initcap` capitaliza **todas** las palabras: «pedro de la fuente» queda «Pedro De La Fuente». Y si solo quieres **comparar** sin importar mayúsculas, PostgreSQL 18 agrega `casefold()`, pensada justamente para eso (maneja mejor los casos especiales de Unicode); para los ejemplos del curso basta con `lower`."
+        },
+        {
+          "type": "h",
+          "text": "Armar mensajes con `format()`"
+        },
+        {
+          "type": "p",
+          "text": "`format(plantilla, valores…)` arma un texto reemplazando marcadores, como una plantilla de correo masivo. `%s` inserta el valor como texto (un NULL queda vacío); `%L` lo inserta como **literal SQL** entre comillas simples (y escribe `NULL` sin comillas si es NULL); `%I` lo inserta como **identificador**, con comillas dobles si hace falta; `%%` escribe un `%`. Entre `%` y la letra puedes pedir un ancho: `%-26s` alinea a la izquierda en 26 caracteres y `%8s` a la derecha en 8. `%L` e `%I` son la base del SQL dinámico seguro que verás en la sección 16."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT format('%-26s %8s', nombre, precio)           AS linea_boleta,\n       format('El producto %L está agotado', nombre)  AS aviso,\n       format('%I', 'Precio Final')                   AS identificador,\n       format('Descuento: 10%%')                      AS porcentaje\nFROM productos\nWHERE stock = 0\nORDER BY nombre;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Preguntas clásicas: `SELECT 'a' || NULL` devuelve NULL, pero `concat('a', NULL)` devuelve `'a'`. `length('Ñuñoa')` es 5 (caracteres) y `octet_length('Ñuñoa')` es 7 (bytes: la Ñ y la ñ ocupan 2 cada una en UTF-8). En SQL las posiciones empiezan en **1**, no en 0, y `strpos` devuelve 0 cuando no encuentra el texto."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`split_part` acepta un número de campo negativo desde PostgreSQL 14: `split_part('a-b-c', '-', -1)` devuelve el último trozo (`c`). Y `left(texto, -n)` devuelve todo **menos** los últimos n caracteres: `left('19501525-2', -2)` es el cuerpo del RUT sin el guion ni el dígito verificador."
+        }
+      ]
+    },
+    {
+      "id": "s04-l2",
+      "title": "Números: división entera, redondeo y pesos chilenos",
+      "minutes": 20,
+      "goals": [
+        "Predecir el tipo y el valor de una operación aritmética, incluida la división entera y el resto con `%`.",
+        "Calcular porcentajes sin caer en la división entera, convirtiendo a `numeric` antes de dividir.",
+        "Redondear con `round`, `trunc`, `ceil` y `floor`, también a miles con escala negativa.",
+        "Formatear montos como pesos chilenos (`$549.990`) con `to_char` y `replace`."
+      ],
+      "takeaways": [
+        "El tipo del resultado lo deciden los operandos: `integer / integer` es división entera y trunca hacia cero (`5 / 2 = 2`, `-7 / 2 = -3`).",
+        "Basta un `numeric` en la operación (`100.0`, `::numeric`) para obtener decimales; multiplica antes de dividir.",
+        "`round` sobre `numeric` redondea la mitad alejándose del cero (2.5 → 3); sobre `double precision` normalmente redondea al par (2.5 → 2).",
+        "`to_char` con `G` usa el separador de miles del servidor (`lc_numeric`); con `replace` de comas por puntos obtienes `$549.990` en cualquier servidor.",
+        "El dígito verificador del RUT es aritmética pura: suma ponderada de los dígitos y `11 - suma % 11`."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "En PostgreSQL el **tipo** de los operandos decide qué operación se ejecuta. `5 / 2` no es «cinco dividido dos» en abstracto: como ambos son `integer`, se usa la división **entera**, que descarta los decimales y trunca hacia cero. Es como repartir 5 empanadas entre 2 personas: cada una recibe 2 enteras y sobra 1 (ese resto se obtiene con `%`). Basta con que un operando sea `numeric` (`5.0`, `5::numeric`) para que el resultado sea `numeric` con decimales."
+        },
+        {
+          "type": "diagram",
+          "title": "¿Qué división hace PostgreSQL?",
+          "mermaid": "flowchart TD\n  A[\"a / b\"] --> B{\"¿Ambos son enteros? smallint, integer o bigint\"}\n  B -->|\"sí\"| C[\"División entera, trunca hacia cero: 5 / 2 = 2 y -7 / 2 = -3\"]\n  B -->|\"no\"| D{\"¿Alguno es real o double precision?\"}\n  D -->|\"sí\"| E[\"double precision: rápido pero aproximado\"]\n  D -->|\"no\"| F[\"numeric exacto: 5.0 / 2 = 2.5000000000000000\"]",
+          "caption": "Un literal con punto decimal (`100.0`, `1.19`) es `numeric`, así que basta con uno para salir de la división entera."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Operador o función",
+            "Qué hace",
+            "Ejemplo",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`+`, `-`, `*`, `/`",
+              "suma, resta, multiplicación, división (entera si ambos son enteros)",
+              "`7 / 2`",
+              "`3`"
+            ],
+            [
+              "`%` o `mod(a, b)`",
+              "resto de la división, con el signo del dividendo",
+              "`-7 % 2`",
+              "`-1`"
+            ],
+            [
+              "`div(a, b)`",
+              "cociente entero de dos `numeric` (trunca hacia cero)",
+              "`div(7.5, 2)`",
+              "`3`"
+            ],
+            [
+              "`^` o `power(a, b)`",
+              "potencia",
+              "`2 ^ 10`",
+              "`1024`"
+            ],
+            [
+              "`abs(x)` o `@ x`",
+              "valor absoluto",
+              "`abs(-5)`",
+              "`5`"
+            ],
+            [
+              "`sqrt(x)` o `|/ x`",
+              "raíz cuadrada",
+              "`sqrt(16)`",
+              "`4`"
+            ],
+            [
+              "`sign(x)`",
+              "signo: -1, 0 o 1",
+              "`sign(-3)`",
+              "`-1`"
+            ],
+            [
+              "`round(x)`, `round(x, s)`",
+              "redondea; con `s` a s decimales (s negativo: decenas, centenas, miles)",
+              "`round(549990, -3)`",
+              "`550000`"
+            ],
+            [
+              "`trunc(x)`, `trunc(x, s)`",
+              "corta decimales sin redondear",
+              "`trunc(2.789, 2)`",
+              "`2.78`"
+            ],
+            [
+              "`ceil(x)`, `floor(x)`",
+              "entero hacia arriba, entero hacia abajo",
+              "`ceil(4.01)`",
+              "`5`"
+            ],
+            [
+              "`random()`",
+              "número al azar en [0, 1), distinto en cada ejecución",
+              "`random()`",
+              "`0.42…`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT 5 / 2            AS entera,\n       5 % 2            AS resto,\n       -7 / 2           AS negativa,\n       -7 % 2           AS resto_negativo,\n       5.0 / 2          AS con_numeric,\n       5 / 2::numeric   AS casteando,\n       2 ^ 3 ^ 2        AS potencia,\n       pg_typeof(5 / 2) AS tipo;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "`^` se evalúa **de izquierda a derecha** en PostgreSQL (al revés que en matemática): `2 ^ 3 ^ 2` es `(2 ^ 3) ^ 2 = 64`, no `2 ^ 9 = 512`. Y `*`, `/` y `%` tienen la misma precedencia, mayor que `+` y `-`: `11 - 97 % 11` es `11 - (97 % 11) = 2`. Ante la duda, usa paréntesis."
+        },
+        {
+          "type": "h",
+          "text": "La trampa del porcentaje"
+        },
+        {
+          "type": "p",
+          "text": "El error numérico más común en SQL no muestra ningún mensaje: calcular un porcentaje con enteros. En `(precio - costo) / precio * 100`, la división ocurre **primero** y entre enteros, así que da 0 para cualquier margen menor al 100 %. Hay dos arreglos: multiplicar por `100.0` **antes** de dividir (el literal `100.0` es `numeric` y contagia al resto de la expresión) o convertir explícitamente con `::numeric`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT sku, precio, costo,\n       (precio - costo) / precio * 100             AS margen_mal,\n       (precio - costo) * 100 / precio             AS margen_entero,\n       round((precio - costo) * 100.0 / precio, 1) AS margen_ok\nFROM productos\nWHERE categoria_id = 2\nORDER BY sku;"
+        },
+        {
+          "type": "p",
+          "text": "`margen_mal` es 0 en todas las filas. `margen_entero` se acerca, pero trunca (37 en vez de 37,5 en el notebook). Solo `margen_ok` es correcto. Hay otros dos errores numéricos que, al menos, sí avisan:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT 549990 * 10000 AS desborda;\nSELECT 549990::bigint * 10000 AS con_bigint;\nSELECT precio / 0 FROM productos WHERE id = 1;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`integer out of range` aparece cuando un cálculo entre `integer` supera 2.147.483.647: convierte un operando a `bigint` o `numeric` **antes** de operar (convertir el resultado ya es tarde). `division by zero` aparece al dividir por 0; en la lección 4 aprenderás a esquivarlo con `NULLIF`."
+        },
+        {
+          "type": "h",
+          "text": "Redondear: `round`, `trunc`, `ceil` y `floor`"
+        },
+        {
+          "type": "table",
+          "head": [
+            "x",
+            "round(x)",
+            "trunc(x)",
+            "ceil(x)",
+            "floor(x)"
+          ],
+          "rows": [
+            [
+              "2.4",
+              "2",
+              "2",
+              "3",
+              "2"
+            ],
+            [
+              "2.5",
+              "3",
+              "2",
+              "3",
+              "2"
+            ],
+            [
+              "-2.5",
+              "-3",
+              "-2",
+              "-2",
+              "-3"
+            ],
+            [
+              "-2.7",
+              "-3",
+              "-2",
+              "-2",
+              "-3"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "`trunc` corta hacia el cero, `floor` va siempre hacia abajo y `ceil` siempre hacia arriba: con negativos, `trunc` y `floor` no coinciden. Con un segundo argumento, `round` y `trunc` trabajan en decimales, y con uno negativo en decenas, centenas o miles: muy útil para precios en pesos."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT round(2.5)          AS numeric_25,\n       round(2.5::float8)  AS float_25,\n       round(2.45, 1)      AS a_decima,\n       trunc(2.789, 2)     AS trunc_2,\n       round(549990, -3)   AS a_miles,\n       ceil(4.01)          AS techo,\n       floor(-4.01)        AS piso;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`round` sobre `numeric` redondea la mitad **alejándose del cero** (2.5 → 3, −2.5 → −3). Sobre `double precision` el desempate depende de la plataforma y normalmente es **al par** (2.5 → 2, 3.5 → 4). Para plata usa enteros o `numeric`, nunca `double precision`."
+        },
+        {
+          "type": "h",
+          "text": "Pesos chilenos con `to_char`"
+        },
+        {
+          "type": "p",
+          "text": "En Chile escribimos `$549.990`: punto para los miles y sin decimales. `to_char(número, patrón)` convierte un número en texto con formato (lo conociste en la sección 3). En el patrón, cada `9` es un dígito, `0` es un dígito que se rellena con cero, `G` es el separador de miles **según la configuración regional del servidor** (`lc_numeric`), `D` es el separador decimal regional y el prefijo `FM` (*fill mode*) quita los espacios de relleno. Como en el curso `lc_numeric` es `C`, `G` escribe una coma; por eso cambiamos comas por puntos con `replace`. En un servidor con `lc_numeric = 'es_CL.UTF-8'`, `G` ya escribiría el punto y el `replace` no haría nada: la receta sirve en ambos."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SHOW lc_numeric;\nSELECT nombre, precio,\n       to_char(precio, '999G999G999')                             AS sin_fm,\n       to_char(precio, 'FM999G999G999')                           AS con_fm,\n       '$' || replace(to_char(precio, 'FM999G999G999'), ',', '.') AS pesos\nFROM productos\nWHERE precio >= 100000\nORDER BY precio DESC;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Si el número tiene más dígitos que nueves el patrón, `to_char` no corta ni avisa: escribe `#`. `to_char(1234567, 'FM999G999')` devuelve `###,###`. Pon nueves de sobra: `FM999G999G999` alcanza hasta 999 millones. Y recuerda que el resultado es **texto**: ordena por la columna numérica, no por la formateada."
+        },
+        {
+          "type": "p",
+          "text": "Otro cálculo de todos los días: como todo precio al público en Chile, los precios de la tienda **incluyen IVA** (19 %). El neto es `precio / 1.19` (el literal `1.19` es `numeric`, así que no hay división entera) redondeado al peso, y el IVA es la diferencia."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre,\n       precio                                                                AS total,\n       round(precio / 1.19)                                                  AS neto,\n       precio - round(precio / 1.19)                                         AS iva,\n       '$' || replace(to_char(round(precio / 1.19), 'FM999G999G999'), ',', '.') AS neto_clp\nFROM productos\nWHERE categoria_id = 13\nORDER BY precio DESC, nombre;"
+        },
+        {
+          "type": "h",
+          "text": "El módulo 11: dígito verificador del RUT"
+        },
+        {
+          "type": "p",
+          "text": "El operador `%` tiene un uso muy chileno: el **dígito verificador** (DV) del RUT se calcula con el algoritmo módulo 11. Se toman los dígitos del cuerpo **de derecha a izquierda** y se multiplican por 2, 3, 4, 5, 6, 7, 2, 3…; se suman los productos; se calcula `11 - (suma % 11)`; si da 11 el DV es `0`, si da 10 es `K`, y en otro caso es ese número. Para un cuerpo de 8 dígitos leído de izquierda a derecha, los factores quedan 3, 2, 7, 6, 5, 4, 3, 2."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Cuerpo 19501525",
+            "1",
+            "9",
+            "5",
+            "0",
+            "1",
+            "5",
+            "2",
+            "5"
+          ],
+          "rows": [
+            [
+              "Factor",
+              "3",
+              "2",
+              "7",
+              "6",
+              "5",
+              "4",
+              "3",
+              "2"
+            ],
+            [
+              "Producto",
+              "3",
+              "18",
+              "35",
+              "0",
+              "5",
+              "20",
+              "6",
+              "10"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT 1*3 + 9*2 + 5*7 + 0*6 + 1*5 + 5*4 + 2*3 + 5*2             AS suma,\n       (1*3 + 9*2 + 5*7 + 0*6 + 1*5 + 5*4 + 2*3 + 5*2) % 11      AS resto,\n       11 - (1*3 + 9*2 + 5*7 + 0*6 + 1*5 + 5*4 + 2*3 + 5*2) % 11 AS dv;\nSELECT id, rut FROM clientes WHERE id = 1;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "La suma da 97, el resto 9 y el DV `11 - 9 = 2`, igual al del cliente 1 (`19501525-2`). En la lección 5 harás este cálculo para **cada fila** de una tabla: sacarás los dígitos con `substr` y `lpad`, y convertirás el 10 y el 11 en `K` y `0`."
+        }
+      ]
+    },
+    {
+      "id": "s04-l3",
+      "title": "Fechas e intervalos: extraer, truncar y medir el tiempo",
+      "minutes": 22,
+      "goals": [
+        "Extraer partes de fechas y horas con `extract` y llevarlas al inicio del mes o del día con `date_trunc`.",
+        "Calcular edades y antigüedades con `age`, y diferencias en días restando fechas.",
+        "Sumar y restar intervalos a fechas, prediciendo el resultado a fin de mes.",
+        "Generar calendarios con `generate_series` y formatear fechas con `to_char`."
+      ],
+      "takeaways": [
+        "`date - date` da un `integer` (días); `timestamptz - timestamptz` da un `interval`; `date + integer` da `date`; `date + interval` da `timestamp`.",
+        "`age(fin, inicio)` devuelve años, meses y días de calendario; `extract(year FROM age(…))` da los años cumplidos.",
+        "Sumar `interval '1 month'` al 31 de enero da el 28 de febrero: los meses no tienen largo fijo.",
+        "`generate_series` con fechas trabaja en `timestamptz`: el cambio de hora de septiembre en Chile puede hacerle perder el último día; usa `timestamp` o `date + integer`.",
+        "`to_char` con `Month` y `Day` escribe en inglés; con `TM` traduce según `lc_time`, que en el curso es `C` (inglés)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Para calcular con fechas sin sorpresas necesitas el modelo mental de tres tipos que viste en la sección 3. Un `date` es un **día del calendario**, sin hora. Un `timestamptz` es un **instante**, que se muestra en la zona horaria de la sesión (aquí `America/Santiago`). Un `interval` es una **duración** que PostgreSQL guarda en tres contadores separados: meses, días y microsegundos. Por eso «1 mes» no es «30 días»: al sumarlo a una fecha, un mes avanza el calendario al mismo día del mes siguiente, dure ese mes 28 o 31 días."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué tipo devuelve cada operación con fechas",
+          "mermaid": "flowchart LR\n  A[\"date - date\"] --> R1[\"integer: días\"]\n  B[\"date + integer\"] --> R2[\"date\"]\n  C[\"date + interval\"] --> R3[\"timestamp\"]\n  D[\"timestamptz - timestamptz\"] --> R4[\"interval\"]\n  E[\"timestamptz + interval\"] --> R5[\"timestamptz\"]\n  F[\"age(fin, inicio)\"] --> R6[\"interval: años, meses y días\"]",
+          "caption": "Si mezclas tipos sin saber qué sale, terminas comparando un `timestamp` con un `date` o dividiendo un `interval` por error."
+        },
+        {
+          "type": "h",
+          "text": "Extraer partes: `extract` y `date_trunc`"
+        },
+        {
+          "type": "p",
+          "text": "`extract(campo FROM valor)` saca **un número** de una fecha u hora: el año, el mes, el día de la semana… Desde PostgreSQL 14 devuelve `numeric` (la función antigua `date_part` devuelve `double precision`). `date_trunc('unidad', valor)` hace otra cosa: **redondea hacia abajo** hasta el inicio de la unidad (año, mes, semana, día, hora) y devuelve otra fecha-hora. Es la herramienta para agrupar por mes, que usarás mucho en la sección 7."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Campo de extract",
+            "Qué devuelve",
+            "Domingo 2026-09-27"
+          ],
+          "rows": [
+            [
+              "`year`, `month`, `day`",
+              "año, mes (1–12), día del mes",
+              "2026, 9, 27"
+            ],
+            [
+              "`dow`",
+              "día de la semana: 0 = domingo … 6 = sábado",
+              "0"
+            ],
+            [
+              "`isodow`",
+              "día de la semana ISO: 1 = lunes … 7 = domingo",
+              "7"
+            ],
+            [
+              "`doy`",
+              "día del año (1–366)",
+              "270"
+            ],
+            [
+              "`week`",
+              "semana ISO del año",
+              "39"
+            ],
+            [
+              "`quarter`",
+              "trimestre (1–4)",
+              "3"
+            ],
+            [
+              "`hour`, `minute`",
+              "hora y minuto (en timestamps)",
+              "—"
+            ],
+            [
+              "`epoch`",
+              "segundos desde 1970-01-01 00:00 UTC (en un interval, su duración en segundos)",
+              "—"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, fecha,\n       extract(year FROM fecha)    AS anio,\n       extract(month FROM fecha)   AS mes,\n       extract(isodow FROM fecha)  AS dia_iso,\n       extract(hour FROM fecha)    AS hora,\n       date_trunc('month', fecha)  AS inicio_mes,\n       fecha::date                 AS solo_fecha\nFROM pedidos\nWHERE id IN (1, 334, 420)\nORDER BY id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Dos detalles finos. Primero, con un `timestamptz`, `extract(hour …)` y `date_trunc` trabajan en la **zona horaria de la sesión** (`SHOW timezone`): el pedido 334 se hizo el 4 de abril de 2026 a las 21:44 con horario de verano (`-03`); al día siguiente Chile volvió a `-04`, y el inicio de su mes se muestra con `-03`. Segundo, `date_trunc` sobre un `date` devuelve `timestamp with time zone`, no `date`: `date_trunc('month', date '2026-03-15')` es `2026-03-01 00:00:00-03`. Agrega `::date` si quieres una fecha."
+        },
+        {
+          "type": "h",
+          "text": "Antigüedad y edad con `age`"
+        },
+        {
+          "type": "p",
+          "text": "`age(fin, inicio)` resta dos fechas y devuelve un `interval` **simbólico**: años, meses y días, como lo diría una persona («13 años, 10 meses y 9 días»). Con `extract(year FROM age(…))` obtienes los **años cumplidos**, que es lo que piden los reportes de antigüedad o de edad. Si solo necesitas días, resta las fechas: `fin - inicio` da un `integer`. Con un solo argumento, `age(x)` calcula desde `x` hasta hoy a medianoche, así que su resultado cambia cada día: para un reporte reproducible usa una **fecha de corte** fija."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT nombre || ' ' || apellido                                AS empleado,\n       fecha_ingreso,\n       age(date '2026-06-30', fecha_ingreso)                    AS antiguedad,\n       extract(year FROM age(date '2026-06-30', fecha_ingreso)) AS anios,\n       date '2026-06-30' - fecha_ingreso                        AS dias\nFROM empleados\nWHERE id = 1 OR jefe_id = 1\nORDER BY fecha_ingreso;"
+        },
+        {
+          "type": "p",
+          "text": "El mismo cálculo con `current_date` da la edad **de hoy** de los alumnos de 4° medio (el resultado depende del día en que lo ejecutes):"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT nombre, fecha_nacimiento,\n       age(current_date, fecha_nacimiento)                    AS edad_hoy,\n       extract(year FROM age(current_date, fecha_nacimiento)) AS anios_cumplidos,\n       current_date - fecha_nacimiento                        AS dias_vividos\nFROM alumnos\nWHERE curso_id = 6\nORDER BY fecha_nacimiento, nombre\nLIMIT 5;"
+        },
+        {
+          "type": "h",
+          "text": "Sumar y restar intervalos"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT date '2026-01-31' + interval '1 month'   AS fin_enero_mas_1_mes,\n       date '2026-01-31' + 30                   AS mas_30_dias,\n       date '2026-06-30' - date '2026-01-01'    AS dias_entre,\n       interval '1 month' = interval '30 days'  AS parecen_iguales,\n       (date_trunc('month', date '2026-02-10') + interval '1 month - 1 day')::date AS ultimo_dia_febrero,\n       date '2026-09-18' - interval '2 weeks'   AS dos_semanas_antes;"
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta trampa: `interval '1 month' = interval '30 days'` devuelve **true** (para comparar, PostgreSQL cuenta un mes como 30 días), pero sumarlos a una fecha da resultados distintos: 31 de enero más 1 mes es el 28 de febrero, y más 30 días es el 2 de marzo. Además, `date + interval` devuelve `timestamp`, no `date`. El último día del mes se obtiene con `date_trunc('month', d) + interval '1 month - 1 day'`."
+        },
+        {
+          "type": "h",
+          "text": "Calendarios con `generate_series`"
+        },
+        {
+          "type": "p",
+          "text": "`generate_series(inicio, fin, paso)` es una función que devuelve **un conjunto de filas**, así que se usa en el `FROM` como si fuera una tabla. Con fechas genera un calendario: una fila por cada paso. Ojo: no existe una versión para `date`, así que con argumentos `date` PostgreSQL usa la de `timestamptz` (avanza en la zona horaria de la sesión) y conviene convertir con `::date`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT d::date                     AS dia,\n       extract(isodow FROM d)      AS dia_iso,\n       extract(isodow FROM d) >= 6 AS fin_de_semana,\n       to_char(d, 'Dy DD/MM')      AS etiqueta,\n       pg_typeof(d)                AS tipo_original\nFROM generate_series(date '2026-09-14', date '2026-09-20', interval '1 day') AS d\nORDER BY dia;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Trampa chilena.** En 2026 el horario de verano empieza el domingo 6 de septiembre a las 00:00, y esa medianoche **no existe**: el reloj salta a la 01:00. Una serie `timestamptz` de días que cruza esa fecha queda corrida a la 01:00 desde ahí en adelante y, como el último valor (01:00) supera al límite `fin` (00:00), **se pierde el último día** sin ningún aviso. Para calendarios de días usa `timestamp` sin zona horaria o suma enteros a una fecha (`date + integer` devuelve `date`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "SELECT d AS con_timestamptz\nFROM generate_series(date '2026-09-04', date '2026-09-08', interval '1 day') AS d;\nSELECT d::date AS con_timestamp\nFROM generate_series(timestamp '2026-09-04', timestamp '2026-09-08', interval '1 day') AS d;\nSELECT date '2026-09-04' + n AS con_enteros\nFROM generate_series(0, 4) AS n;"
+        },
+        {
+          "type": "h",
+          "text": "Formatear fechas con `to_char`"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Patrón",
+            "Significa",
+            "Viernes 2026-09-18 20:05"
+          ],
+          "rows": [
+            [
+              "`YYYY`, `YY`",
+              "año con 4 o 2 dígitos",
+              "2026, 26"
+            ],
+            [
+              "`MM`, `DD`",
+              "mes y día con dos dígitos",
+              "09, 18"
+            ],
+            [
+              "`HH24`, `HH12`, `MI`, `SS`",
+              "hora 0–23, hora 1–12, minutos, segundos",
+              "20, 08, 05, 00"
+            ],
+            [
+              "`AM` o `PM`",
+              "indicador de mañana o tarde",
+              "PM"
+            ],
+            [
+              "`Month`, `Mon`",
+              "mes completo (rellenado a 9) o abreviado, en inglés",
+              "September, Sep"
+            ],
+            [
+              "`Day`, `Dy`",
+              "día completo (rellenado a 9) o abreviado, en inglés",
+              "Friday, Fri"
+            ],
+            [
+              "`TM` (prefijo)",
+              "traduce el nombre según `lc_time`",
+              "`TMMonth`"
+            ],
+            [
+              "`FM` (prefijo)",
+              "quita rellenos (espacios y ceros a la izquierda)",
+              "`FMMM` → 9"
+            ],
+            [
+              "`Q`, `IW`",
+              "trimestre, semana ISO",
+              "3, 38"
+            ],
+            [
+              "`\"texto\"`",
+              "texto literal",
+              "`\"de\"`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SHOW lc_time;\nSELECT id,\n       to_char(fecha, 'DD/MM/YYYY')              AS chileno,\n       to_char(fecha, 'DD-MM-YYYY HH24:MI')      AS con_hora,\n       to_char(fecha, 'YYYY\"-T\"Q')               AS trimestre,\n       to_char(fecha, 'Day DD Month')            AS con_relleno,\n       to_char(fecha, 'FMDay DD \"de\" FMMonth')   AS sin_relleno\nFROM pedidos\nWHERE id IN (1, 420)\nORDER BY id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "`Month` y `Day` escriben los nombres **en inglés**; con el prefijo `TM` (`TMMonth`, `TMDay`) se traducen según `lc_time`. En el curso `lc_time` es `C`, así que igual salen en inglés. En un servidor que tenga instalada la configuración regional `es_CL.UTF-8` y `lc_time = 'es_CL.UTF-8'`, `to_char(date '2026-09-18', 'TMDay DD \"de\" TMMonth')` escribiría el día y el mes en español. Si necesitas los nombres en español sin depender del servidor, usa `CASE` con `extract` (próxima lección)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`to_char` es solo para **mostrar**: devuelve texto. Filtra, ordena y calcula con la fecha original y formatea al final. Como texto, `'02/01/2026'` queda antes que `'31/12/2025'`, y un `ORDER BY` sobre la columna formateada desordenaría todo."
+        }
+      ]
+    },
+    {
+      "id": "s04-l4",
+      "title": "Condicionales: CASE, COALESCE, NULLIF, GREATEST y LEAST",
+      "minutes": 20,
+      "goals": [
+        "Clasificar filas con `CASE` buscado y `CASE` simple, determinando qué rama gana y qué pasa sin `ELSE`.",
+        "Reemplazar NULL con `COALESCE` respetando el tipo de dato.",
+        "Evitar la división por cero con `NULLIF` y acotar valores entre un piso y un techo con `GREATEST` y `LEAST`."
+      ],
+      "takeaways": [
+        "`CASE` evalúa las condiciones en orden y se queda con la **primera** verdadera; sin `ELSE`, devuelve NULL.",
+        "`CASE x WHEN NULL` nunca coincide, porque el `CASE` simple compara con `=`. Para NULL usa `CASE WHEN x IS NULL`.",
+        "Las ramas de un `CASE` y los argumentos de `COALESCE` necesitan un tipo común: `COALESCE(paginas, 'sin dato')` falla.",
+        "`x / NULLIF(y, 0)` convierte la división por cero en NULL; después `COALESCE` decide qué mostrar.",
+        "En PostgreSQL, `GREATEST` y `LEAST` ignoran los NULL (el estándar SQL devolvería NULL)."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "`CASE` es el *si… entonces… si no* de SQL. No es una instrucción que controle el flujo de un programa sino una **expresión**: por cada fila produce un valor, así que puedes ponerla en `SELECT`, `WHERE` u `ORDER BY`, o dentro de otras funciones. Funciona como la tabla de conversión que usa un profesor: mira la nota, recorre los tramos de arriba hacia abajo y anota el primer concepto que calza."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo se evalúa un CASE buscado",
+          "mermaid": "flowchart TD\n  S[\"Fila actual\"] --> W1{\"¿WHEN condición 1 es verdadera?\"}\n  W1 -->|\"sí\"| R1[\"Devuelve el THEN 1 y no mira más\"]\n  W1 -->|\"falsa o NULL\"| W2{\"¿WHEN condición 2 es verdadera?\"}\n  W2 -->|\"sí\"| R2[\"Devuelve el THEN 2\"]\n  W2 -->|\"falsa o NULL\"| E{\"¿Hay ELSE?\"}\n  E -->|\"sí\"| R3[\"Devuelve el valor del ELSE\"]\n  E -->|\"no\"| R4[\"Devuelve NULL\"]",
+          "caption": "Una condición NULL (desconocida) cuenta como no verdadera: el CASE sigue con el siguiente WHEN."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "colegio",
+          "code": "SELECT asignatura_id, evaluacion, nota,\n       CASE\n         WHEN nota >= 6.0 THEN 'Muy bueno'\n         WHEN nota >= 5.0 THEN 'Bueno'\n         WHEN nota >= 4.0 THEN 'Suficiente'\n         ELSE 'Insuficiente'\n       END           AS concepto,\n       nota >= 4.0   AS aprobada\nFROM notas\nWHERE alumno_id = 141 AND semestre = 1 AND asignatura_id IN (4, 6)\nORDER BY asignatura_id, evaluacion;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El **orden** de los `WHEN` es parte de la lógica. Si escribes primero `WHEN nota >= 4.0 THEN 'Suficiente'`, un 6.3 también cumple esa condición y nunca llegaría a «Muy bueno». Ordena los tramos del más exigente al menos exigente, o escribe rangos completos (`WHEN nota >= 5.0 AND nota < 6.0`). Y cuida los bordes: en Chile se aprueba **con** 4.0, así que es `>= 4.0`, no `> 4.0`."
+        },
+        {
+          "type": "h",
+          "text": "CASE simple: un valor contra una lista"
+        },
+        {
+          "type": "p",
+          "text": "Cuando todas las condiciones comparan **la misma expresión con `=`**, el `CASE` simple es más corto: `CASE estado WHEN 'pagado' THEN … END`. Pero justamente porque compara con `=`, `WHEN NULL` nunca coincide (`NULL = NULL` no es verdadero, es NULL). Para detectar NULL necesitas el `CASE` buscado con `IS NULL`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT id, estado, metodo_pago,\n       CASE estado\n         WHEN 'pendiente' THEN 'Esperando pago'\n         WHEN 'pagado'    THEN 'Preparando despacho'\n         WHEN 'enviado'   THEN 'En camino'\n         WHEN 'entregado' THEN 'Entregado'\n         ELSE 'Anulado'\n       END                                                                AS para_el_cliente,\n       CASE metodo_pago WHEN NULL THEN 'sin pago' ELSE metodo_pago END    AS trampa,\n       CASE WHEN metodo_pago IS NULL THEN 'sin pago' ELSE metodo_pago END AS correcto\nFROM pedidos\nWHERE id IN (1, 414, 415, 416, 418)\nORDER BY id;"
+        },
+        {
+          "type": "p",
+          "text": "Como es una expresión, `CASE` también sirve para **ordenar** con una lógica de negocio. Ordenar por el texto del estado lo dejaría alfabético («Agotado», «Normal», «Stock crítico»); con un `CASE` que devuelve números decides tú el orden:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre, stock,\n       CASE\n         WHEN stock = 0  THEN 'Agotado'\n         WHEN stock < 20 THEN 'Stock crítico'\n         ELSE 'Normal'\n       END AS estado_stock\nFROM productos\nWHERE categoria_id IN (4, 12)\nORDER BY CASE WHEN stock = 0 THEN 1 WHEN stock < 20 THEN 2 ELSE 3 END, nombre;"
+        },
+        {
+          "type": "h",
+          "text": "`COALESCE`: el primer valor que no sea NULL"
+        },
+        {
+          "type": "p",
+          "text": "`COALESCE(a, b, c, …)` devuelve el primer argumento que no es NULL y deja de evaluar los siguientes. Es la forma idiomática de poner un valor por defecto al **mostrar** datos que faltan, o de encadenar alternativas («llama al teléfono; si no hay, escribe al email»). Todos los argumentos deben poder convertirse a un **tipo común**."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id,\n       nombre || ' ' || apellido                  AS cliente,\n       COALESCE(email, 'sin email')               AS email,\n       COALESCE(telefono, email, 'sin contacto')  AS contactar_por,\n       COALESCE(comuna, 'no informada')           AS comuna\nFROM clientes\nWHERE email IS NULL OR telefono IS NULL OR comuna IS NULL\nORDER BY id\nLIMIT 8;"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "SELECT titulo, COALESCE(paginas, 'sin dato') AS paginas FROM libros WHERE id = 15;\nSELECT titulo, COALESCE(paginas::text, 'sin dato') AS paginas FROM libros WHERE id = 15;",
+          "errors": true
+        },
+        {
+          "type": "p",
+          "text": "`paginas` es `integer`, así que PostgreSQL intenta convertir `'sin dato'` a entero y falla con `invalid input syntax for type integer`. Convertir la columna a texto resuelve el conflicto de tipos. La misma regla vale para las ramas de un `CASE`."
+        },
+        {
+          "type": "h",
+          "text": "`NULLIF` y la división por cero"
+        },
+        {
+          "type": "p",
+          "text": "`NULLIF(a, b)` hace lo contrario de `COALESCE`: devuelve NULL si `a = b` y, si no, devuelve `a`. Su uso estrella es proteger una división: `x / NULLIF(y, 0)`. Si `y` es 0, el divisor pasa a ser NULL, la división da NULL (cualquier operación aritmética con NULL da NULL) y la consulta **no se cae**. Después decides qué mostrar con `COALESCE`. En el ejemplo, cinco ejecutivos de ventas tienen metas mensuales, pero dos no tienen meta (0) porque estuvieron de vacaciones:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "setup": "CREATE TABLE metas (empleado_id int PRIMARY KEY, meta int NOT NULL, vendido int NOT NULL);\nINSERT INTO metas VALUES\n  (38, 20000000, 23500000),\n  (39, 18000000,  9100000),\n  (40,        0,  4200000),\n  (41, 15000000, 15000000),\n  (43,        0,        0);",
+          "code": "SELECT empleado_id, vendido * 100.0 / meta AS cumplimiento FROM metas;\nSELECT empleado_id, meta, vendido,\n       round(vendido * 100.0 / NULLIF(meta, 0), 1)                              AS cumplimiento,\n       COALESCE(round(vendido * 100.0 / NULLIF(meta, 0), 1) || ' %', 'sin meta') AS informe\nFROM metas\nORDER BY empleado_id;",
+          "errors": true
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "No reemplaces el NULL por 0 sin pensarlo: «sin meta» no es lo mismo que «0 % de cumplimiento». `COALESCE(…, 0)` convertiría a un vendedor que estuvo de vacaciones en el peor del equipo. Fíjate también en el truco de `informe`: `|| ' %'` propaga el NULL a propósito, y `COALESCE` lo atrapa al final."
+        },
+        {
+          "type": "h",
+          "text": "`GREATEST` y `LEAST`: acotar valores"
+        },
+        {
+          "type": "p",
+          "text": "`GREATEST(a, b, …)` devuelve el mayor de sus argumentos y `LEAST(a, b, …)` el menor. Comparan **valores de la misma fila**, no filas entre sí (para el máximo de una columna existe `max()`, sección 7). El patrón `LEAST(GREATEST(x, piso), techo)` deja un valor dentro de un rango. En un Cyber Day, la tienda descuenta el 15 %, pero el descuento es de al menos $3.000 y como máximo $50.000:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT nombre, precio,\n       round(precio * 0.15)                                        AS quince_por_ciento,\n       LEAST(GREATEST(round(precio * 0.15), 3000), 50000)          AS descuento,\n       precio - LEAST(GREATEST(round(precio * 0.15), 3000), 50000) AS precio_cyber\nFROM productos\nWHERE id IN (1, 8, 13, 27, 46)\nORDER BY precio DESC;"
+        },
+        {
+          "type": "diagram",
+          "title": "¿Qué expresión condicional necesito?",
+          "mermaid": "flowchart TD\n  A{\"¿Qué necesitas hacer con el valor?\"} -->|\"reemplazar un NULL por otro valor\"| B[\"COALESCE(x, valor_por_defecto)\"]\n  A -->|\"convertir un valor especial en NULL\"| C[\"NULLIF(x, valor_especial)\"]\n  A -->|\"elegir entre varios casos\"| D[\"CASE WHEN condición THEN valor ... END\"]\n  A -->|\"quedarte con el mayor o el menor\"| E[\"GREATEST(a, b, ...) o LEAST(a, b, ...)\"]\n  C --> F[\"Uso estrella: x / NULLIF(y, 0)\"]\n  F --> B",
+          "caption": "`COALESCE` y `NULLIF` son inversos: uno saca los NULL, el otro los crea. Combinados resuelven la división por cero con un valor por defecto."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Dos preguntas de entrevista. **Una**: `GREATEST(3, NULL, 7)` devuelve 7 en PostgreSQL, porque ignora los NULL (solo devuelve NULL si todos lo son); el estándar SQL y otros motores devolverían NULL. **Dos**: `SELECT CASE WHEN stock > 0 THEN precio / stock ELSE 1 / 0 END FROM productos` falla con `division by zero` aunque ninguna fila tenga stock 0 (¡incluso si la consulta no devuelve filas!). El planificador **simplifica las expresiones constantes** antes de ejecutar, y `1 / 0` es constante. `CASE` sí garantiza que no evalúa una rama cuya condición es falsa **en esa fila**, pero no protege contra constantes."
+        }
+      ]
+    },
+    {
+      "id": "s04-l5",
+      "title": "Patrones y expresiones regulares: validar RUT y emails",
+      "minutes": 25,
+      "goals": [
+        "Elegir entre `LIKE`, `SIMILAR TO` y los operadores POSIX `~`, `~*` y `!~` según el patrón que buscas.",
+        "Escribir expresiones regulares con anclas, clases, cuantificadores y grupos para validar formatos chilenos.",
+        "Limpiar y extraer datos con `regexp_replace`, `regexp_match`, `regexp_matches` y `regexp_split_to_table`.",
+        "Validar un RUT completo: formato con expresión regular y dígito verificador con módulo 11."
+      ],
+      "takeaways": [
+        "`LIKE` y `SIMILAR TO` exigen calzar con **todo** el texto; `~` busca el patrón **en cualquier parte**, salvo que lo ancles con `^` y `$`.",
+        "En PostgreSQL el límite de palabra es `\\y` (o `\\m` y `\\M`); `\\b` significa retroceso (*backspace*), no límite de palabra.",
+        "`regexp_replace` cambia solo la primera coincidencia salvo que agregues la opción `'g'`; `\\1`, `\\2` insertan lo capturado por cada grupo.",
+        "`regexp_match` devuelve un arreglo `text[]` con los grupos (o NULL si no calza); `regexp_matches` con `'g'` devuelve una fila por coincidencia.",
+        "Un RUT es válido solo si su formato calza **y** su dígito verificador coincide con el calculado: `substr('0K987654321', suma % 11 + 1, 1)`."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Una **expresión regular** (*regex*) describe una familia de textos: «7 u 8 dígitos, un guion y un dígito o una K» describe a todos los RUT escritos sin puntos. PostgreSQL tiene tres lenguajes de patrones. `LIKE` (sección 2) solo conoce `%` y `_`. `SIMILAR TO` es el del estándar SQL: agrega `|`, `*`, `+`, grupos y clases, pero, igual que `LIKE`, exige calzar con **todo** el texto. Los operadores POSIX (`~` y compañía) son los más potentes y buscan el patrón **en cualquier parte** del texto, salvo que lo ancles con `^` (inicio) y `$` (fin)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Operador",
+            "Significa",
+            "Ejemplo",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`t ~ patrón`",
+              "calza en alguna parte (distingue mayúsculas)",
+              "`'Ñuñoa' ~ 'uñ'`",
+              "`true`"
+            ],
+            [
+              "`t ~* patrón`",
+              "calza sin distinguir mayúsculas",
+              "`'Ñuñoa' ~* '^ñ'`",
+              "`true`"
+            ],
+            [
+              "`t !~ patrón`",
+              "no calza",
+              "`'abc' !~ '\\d'`",
+              "`true`"
+            ],
+            [
+              "`t !~* patrón`",
+              "no calza, sin distinguir mayúsculas",
+              "`'ABC' !~* 'b'`",
+              "`false`"
+            ],
+            [
+              "`t SIMILAR TO patrón`",
+              "calza con todo el texto (estándar SQL)",
+              "`'ana@gmail.com' SIMILAR TO '%@%.(cl|com)'`",
+              "`true`"
+            ],
+            [
+              "`t LIKE patrón`",
+              "calza con todo el texto, solo `%` y `_`",
+              "`'COMP-001' LIKE 'COMP%'`",
+              "`true`"
+            ]
+          ]
+        },
+        {
+          "type": "table",
+          "head": [
+            "Pieza",
+            "Significa",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "`^` y `$`",
+              "inicio y fin del texto (anclas)",
+              "`^\\d+$` calza con `123`, no con `a123`"
+            ],
+            [
+              "`.`",
+              "cualquier carácter",
+              "`a.c` calza con `abc`"
+            ],
+            [
+              "`[abc]`, `[^abc]`",
+              "uno de esos caracteres, ninguno de ellos",
+              "`[0-9K]` calza con `K`"
+            ],
+            [
+              "`\\d`, `\\s`, `\\w`",
+              "dígito, espacio en blanco, letra/dígito/guion bajo",
+              "`\\d\\d` calza con `42`"
+            ],
+            [
+              "`\\D`, `\\S`, `\\W`",
+              "lo contrario de cada uno",
+              "`\\D` calza con `-`"
+            ],
+            [
+              "`*`, `+`, `?`",
+              "0 o más, 1 o más, 0 o 1 vez",
+              "`colou?r` calza con `color`"
+            ],
+            [
+              "`{7,8}`",
+              "entre 7 y 8 veces",
+              "`\\d{7,8}` calza con `19501525`"
+            ],
+            [
+              "`( )` y `|`",
+              "grupo (captura lo que calza) y alternativa",
+              "`\\.(cl|com)$`"
+            ],
+            [
+              "`\\.`",
+              "un punto literal (escapado)",
+              "`\\.cl$` calza con `correo.cl`"
+            ],
+            [
+              "`\\y`, `\\m`, `\\M`",
+              "límite de palabra, inicio de palabra, fin de palabra",
+              "`\\y1 kg\\y`"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT '19501525-2'     ~  '^\\d{7,8}-[\\dK]$'       AS rut_ok,\n       '19.501.525-2'   ~  '^\\d{7,8}-[\\dK]$'       AS con_puntos,\n       '16517822-k'     ~  '^\\d{7,8}-[\\dK]$'       AS k_minuscula,\n       '16517822-k'     ~* '^\\d{7,8}-[\\dK]$'       AS sin_distinguir,\n       'RUT 19501525-2' ~  '\\d{7,8}-[\\dK]'         AS sin_anclas,\n       'ana@gmail.com' SIMILAR TO '%@%.(cl|com)'   AS similar_to,\n       'ana@gmail.com' SIMILAR TO 'gmail'          AS similar_parcial;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Dos trampas propias de PostgreSQL. **Una**: el límite de palabra es `\\y` (o `\\m` para el inicio y `\\M` para el fin de palabra); `\\b` significa *backspace*, así que un patrón con `\\b` copiado de otro lenguaje simplemente no calza. **Dos**: con `standard_conforming_strings = on` (el valor por defecto) la barra invertida dentro de `'…'` es un carácter normal y escribes `'\\d'`; solo en las cadenas con prefijo `E'…'` tendrías que duplicarla (`E'\\\\d'`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT 'Set de 4 mates' ~ '\\d+ m'    AS sin_limite,\n       'Set de 4 mates' ~ '\\d+ m\\b'  AS con_b,\n       'Set de 4 mates' ~ '\\d+ m\\y'  AS con_y,\n       'Cable HDMI 2 m' ~ '\\d+ m\\y'  AS cable_con_y;"
+        },
+        {
+          "type": "p",
+          "text": "Sin límite de palabra, «4 mates» calza como si dijera «4 m» (metros). Con `\\y` solo calza una «m» que termina la palabra, como en el cable de 2 m. Con `\\b` no calza nada."
+        },
+        {
+          "type": "h",
+          "text": "Validar formatos en una tabla"
+        },
+        {
+          "type": "p",
+          "text": "Validar es preguntar «¿este texto tiene la forma correcta?», y la respuesta es un booleano por fila. Un patrón **estricto** acepta solo la forma canónica; uno **flexible** tolera variaciones, como los puntos opcionales con `\\.?`. Para los emails no existe una regex perfecta: en la práctica se valida la forma general (algo sin espacios, una arroba, un dominio con punto) y se confirma enviando un correo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE registros (id int PRIMARY KEY, rut text, email text);\nINSERT INTO registros VALUES\n  (1, '19501525-2',   'lucas.castro@hotmail.com'),\n  (2, '19.501.525-2', 'Benjamin@Gmail.com'),\n  (3, '16517822-k',   'agustina@correo'),\n  (4, '8892072-4',    'cristobal reyes@gmail.com'),\n  (5, '123-4',        'ana@@gmail.com'),\n  (6, '76123456-0',   'ventas@empresa.cl');",
+          "code": "SELECT id, rut,\n       rut ~ '^\\d{7,8}-[\\dK]$'                   AS rut_estricto,\n       rut ~* '^\\d{1,2}\\.?\\d{3}\\.?\\d{3}-[\\dK]$'  AS rut_flexible,\n       email,\n       email ~* '^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$'   AS email_valido\nFROM registros\nORDER BY id;"
+        },
+        {
+          "type": "p",
+          "text": "Lee el patrón del email por partes: `^[^@\\s]+` (uno o más caracteres que no son arroba ni espacio, desde el inicio), `@`, `[^@\\s]+` (el dominio), `\\.` (un punto literal) y `[a-z]{2,}$` (dos o más letras hasta el final). Por eso fallan `agustina@correo` (sin punto en el dominio), `cristobal reyes@gmail.com` (espacio) y `ana@@gmail.com` (dos arrobas)."
+        },
+        {
+          "type": "h",
+          "text": "Limpiar y reformatear con `regexp_replace`"
+        },
+        {
+          "type": "p",
+          "text": "`regexp_replace(texto, patrón, reemplazo [, opciones])` reemplaza lo que calza. Sin opciones cambia **solo la primera** coincidencia; con `'g'` (*global*) las cambia todas, y con `'i'` ignora mayúsculas. En el reemplazo, `\\1`, `\\2`… insertan lo que capturó cada grupo `( )`, lo que permite **reordenar** o **decorar** un texto. Desde PostgreSQL 15 también acepta una posición de inicio y cuál coincidencia reemplazar: `regexp_replace('a1b2c3', '\\d', '#', 1, 2)` da `a1b#c3`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "CREATE TABLE contactos_web (id int PRIMARY KEY, nombre text, email text, telefono text);\nINSERT INTO contactos_web VALUES\n  (1, '  maría josé   PÉREZ soto ', ' MJ.Perez@GMAIL.com ', '+56 9 8765 4321'),\n  (2, 'JUAN   ignacio rojas', 'juan.rojas@Correo.CL', '987654321'),\n  (3, 'catalina o''higgins', NULL, '(9) 5555-1234'),\n  (4, ' pedro   de la fuente ', 'pedro@empresa.cl  ', '+56-9-1234-5678');",
+          "code": "SELECT id,\n       initcap(regexp_replace(trim(nombre), '\\s+', ' ', 'g'))  AS nombre,\n       regexp_replace(telefono, '\\D', '', 'g')                  AS solo_digitos,\n       regexp_replace(right(regexp_replace(telefono, '\\D', '', 'g'), 9),\n                      '^(\\d)(\\d{4})(\\d{4})$', '+56 \\1 \\2 \\3')   AS telefono\nFROM contactos_web\nORDER BY id;"
+        },
+        {
+          "type": "p",
+          "text": "El teléfono se normaliza en tres pasos, de adentro hacia afuera: `regexp_replace(telefono, '\\D', '', 'g')` borra todo lo que no es dígito; `right(…, 9)` se queda con los 9 dígitos del celular (descarta el 56 si venía); y el último `regexp_replace` captura 1 + 4 + 4 dígitos y los reordena con `\\1`, `\\2` y `\\3`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, rut,\n       regexp_replace(rut, '^(\\d{1,2})(\\d{3})(\\d{3})-', '\\1.\\2.\\3-') AS con_puntos,\n       regexp_replace(rut, '\\d', '*', 'g')                           AS con_g,\n       regexp_replace(rut, '\\d', '*')                                AS sin_g\nFROM clientes\nWHERE id IN (1, 13, 22)\nORDER BY id;"
+        },
+        {
+          "type": "p",
+          "text": "Mira el cliente 13 (`8892072-4`, cuerpo de 7 dígitos): `(\\d{1,2})` primero intenta tomar dos dígitos, pero entonces no alcanzan los dos grupos de tres antes del guion, así que el motor **retrocede** y toma uno solo. Por eso la misma expresión sirve para cuerpos de 7 y de 8 dígitos."
+        },
+        {
+          "type": "h",
+          "text": "Extraer: `regexp_match`, `regexp_matches` y `regexp_split_to_table`"
+        },
+        {
+          "type": "p",
+          "text": "`regexp_match(texto, patrón)` devuelve un **arreglo** `text[]` con lo que capturó cada grupo en la primera coincidencia, o NULL si no calza; sacas cada elemento con `[1]`, `[2]`… poniendo la llamada entre paréntesis. `regexp_matches(texto, patrón, 'g')` devuelve **una fila por coincidencia**. `regexp_split_to_table(texto, patrón)` corta el texto donde calza el patrón y devuelve una fila por trozo (`regexp_split_to_array` devuelve un arreglo). `regexp_count` (desde PostgreSQL 15) cuenta coincidencias."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT email,\n       regexp_match(email, '^([^@]+)@(.+)$')       AS grupos,\n       (regexp_match(email, '^([^@]+)@(.+)$'))[2]  AS dominio,\n       regexp_replace(email, '\\d+@', '@')          AS sin_numeros\nFROM clientes\nWHERE email ~ '\\d@'\nORDER BY id\nLIMIT 4;"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "SELECT regexp_split_to_table(titulo, '\\s+') AS palabra\nFROM libros\nWHERE id = 3;\nSELECT titulo,\n       regexp_count(titulo, '\\S+')                 AS palabras,\n       regexp_split_to_array(lower(titulo), '\\s+') AS arreglo\nFROM libros\nWHERE genero = 'Poesía'\nORDER BY palabras DESC, titulo;\nSELECT regexp_matches('Rayuela 1963, 736 páginas, 2 ejemplares', '\\d+', 'g') AS numeros;"
+        },
+        {
+          "type": "h",
+          "text": "Proyecto guiado: validar un RUT de verdad"
+        },
+        {
+          "type": "diagram",
+          "title": "Validación completa de un RUT",
+          "mermaid": "flowchart TD\n  A[\"Texto ingresado, por ejemplo 19.501.525-k\"] --> B[\"Limpiar: upper y regexp_replace dejan solo dígitos y K\"]\n  B --> C{\"¿7 u 8 dígitos seguidos de un dígito o K?\"}\n  C -->|\"no\"| X[\"Formato inválido\"]\n  C -->|\"sí\"| D[\"Separar cuerpo y DV con left y right\"]\n  D --> E[\"Rellenar el cuerpo a 8 con lpad y multiplicar los dígitos por 3, 2, 7, 6, 5, 4, 3, 2\"]\n  E --> F[\"DV calculado: carácter número suma % 11 + 1 de 0K987654321\"]\n  F --> G{\"¿DV ingresado igual al calculado?\"}\n  G -->|\"sí\"| V[\"RUT válido\"]\n  G -->|\"no\"| Y[\"DV incorrecto\"]",
+          "caption": "Dos pruebas independientes: un RUT con formato perfecto puede tener el dígito verificador malo."
+        },
+        {
+          "type": "p",
+          "text": "La pieza nueva es un truco para convertir el resto en DV **sin** un `CASE`. Si `r = suma % 11` (un número de 0 a 10), el DV es `11 - r`, salvo que el 11 se escribe `0` y el 10 se escribe `K`. Si escribes esos resultados en orden en un texto, `'0K987654321'` (r = 0 → `0`, r = 1 → `K`, r = 2 → `9`, …, r = 10 → `1`), el DV es simplemente `substr('0K987654321', r + 1, 1)`. El `lpad(…, 8, '0')` agrega un cero a la izquierda a los cuerpos de 7 dígitos: no altera la suma y deja cada dígito alineado con su factor."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, rut,\n       right(rut, 1) AS dv_informado,\n       substr('0K987654321', (\n           substr(lpad(split_part(rut, '-', 1), 8, '0'), 1, 1)::int * 3\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 2, 1)::int * 2\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 3, 1)::int * 7\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 4, 1)::int * 6\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 5, 1)::int * 5\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 6, 1)::int * 4\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 7, 1)::int * 3\n         + substr(lpad(split_part(rut, '-', 1), 8, '0'), 8, 1)::int * 2\n       ) % 11 + 1, 1) AS dv_calculado\nFROM clientes\nWHERE id IN (1, 3, 7, 13, 22)\nORDER BY id;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "La expresión es larga porque todavía no puedes guardar resultados intermedios. Más adelante la acortarás: en la sección 7 podrás sumar los productos con `sum()`, guardarás la validación de formato en una restricción `CHECK` o un dominio (secciones 5 y 12) y encapsularás el cálculo en una función `dv_rut(text)` reutilizable (sección 16)."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que se pregunta: la diferencia entre `LIKE`, `SIMILAR TO` y `~` (calce completo o parcial), qué hace `^…$`, para qué sirve la opción `'g'` de `regexp_replace` y que `regexp_match` devuelve un arreglo o NULL. En una entrevista en Chile es clásico «¿cómo validarías un RUT en la base de datos?»: la respuesta completa tiene **dos** pruebas, el formato (regex) y el dígito verificador (módulo 11)."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s04-e1",
+      "title": "Contacto sin perder datos",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El equipo de ventas llamará a los clientes de **Ñuñoa** y necesita una lista con una sola columna de contacto.",
+        "Devuelve `id`, `cliente` (nombre, un espacio y apellido) y `contacto`: el email y el teléfono separados por `' / '` (espacio, barra, espacio). Si falta uno de los dos, `contacto` debe mostrar solo el que existe, sin separadores sobrantes.",
+        "Solo clientes con `comuna = 'Ñuñoa'`, ordenados por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, email, telefono\nFROM clientes\nWHERE comuna = 'Ñuñoa'\nORDER BY id;\n",
+      "solution": "SELECT id,\n       nombre || ' ' || apellido          AS cliente,\n       concat_ws(' / ', email, telefono)  AS contacto\nFROM clientes\nWHERE comuna = 'Ñuñoa'\nORDER BY id;",
+      "ordered": true,
+      "hints": [
+        "Prueba con `email || ' / ' || telefono`: ¿qué pasa con los clientes que no tienen email?",
+        "`concat_ws(separador, valor1, valor2)` salta los NULL y no deja separadores colgando."
+      ],
+      "explain": "`concat_ws(' / ', email, telefono)` pone el separador solo entre valores que no son NULL: los clientes 10, 14 y 24 no tienen email y su contacto queda solo con el teléfono. Con `email || ' / ' || telefono` esas filas darían NULL completo (la regla de `||` con NULL), y con `concat(email, ' / ', telefono)` quedaría `' / +56 9…'`, con un separador colgando. Para `cliente` sí sirve `||`, porque `nombre` y `apellido` son NOT NULL. Detalle fino: si ambos faltaran, `concat_ws` devolvería `''` (texto vacío), no NULL; si eso importa, envuélvelo en `NULLIF(…, '')`."
+    },
+    {
+      "id": "s04-e2",
+      "title": "Precios en pesos chilenos",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para el catálogo impreso necesitas los precios de **Computación** (`categoria_id = 2`) escritos a la chilena: signo peso, punto como separador de miles y sin decimales, por ejemplo `$549.990` o `$14.990`.",
+        "Devuelve `sku`, `nombre` y `precio_clp` (texto). Ordena del más caro al más barato y, si hay empate de precio, por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre, precio\nFROM productos\nWHERE categoria_id = 2;\n",
+      "solution": "SELECT sku,\n       nombre,\n       '$' || replace(to_char(precio, 'FM999G999G999'), ',', '.') AS precio_clp\nFROM productos\nWHERE categoria_id = 2\nORDER BY precio DESC, sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "to_char",
+          "msg": "Formatea el número con to_char",
+          "name": "Usa to_char"
+        }
+      ],
+      "hints": [
+        "`to_char(precio, 'FM999G999G999')` agrega separadores de miles; mira qué carácter usa este servidor.",
+        "Cambia las comas por puntos con `replace(texto, ',', '.')` y antepón `'$'` con `||`.",
+        "Sin el prefijo `FM`, el resultado trae espacios de relleno a la izquierda."
+      ],
+      "explain": "`G` es el separador de miles según `lc_numeric`; en el curso es `C` y escribe una coma, así que `replace` la cambia por punto (en un servidor con `es_CL.UTF-8` ya saldría el punto y el `replace` no haría nada). `FM` quita el relleno. Ordena por `precio` (el número) y no por `precio_clp` (el texto): como texto, `'$69.990'` quedaría antes que `'$549.990'` porque se compara carácter por carácter. Otra forma válida: `to_char(precio, 'FM\"$\"999G999G999')` con el mismo `replace`. Trampa: con pocos nueves (`'FM999G999'` para un número de 7 dígitos), `to_char` escribe `#` en vez de cortar."
+    },
+    {
+      "id": "s04-e3",
+      "title": "Margen sin división entera",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Calcula el margen porcentual de los productos de la categoría **Libros** (`categoria_id = 11`): `(precio − costo) / precio × 100`, redondeado a **1 decimal**.",
+        "Devuelve `sku`, `nombre` y `margen`. Ordena por `margen` de mayor a menor y, si empatan, por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre, (precio - costo) / precio * 100 AS margen\nFROM productos\nWHERE categoria_id = 11;\n",
+      "solution": "SELECT sku,\n       nombre,\n       round((precio - costo) * 100.0 / precio, 1) AS margen\nFROM productos\nWHERE categoria_id = 11\nORDER BY margen DESC, sku;",
+      "ordered": true,
+      "hints": [
+        "`precio` y `costo` son `integer`: ¿cuánto da `6310 / 15990` en PostgreSQL?",
+        "Multiplica por `100.0` **antes** de dividir para trabajar en `numeric`.",
+        "`round(x, 1)` redondea a un decimal."
+      ],
+      "explain": "`(precio - costo) / precio * 100` da 0 porque la división entre enteros ocurre primero y trunca. Con `* 100.0` antes de dividir, toda la expresión pasa a `numeric`. También sirve `(precio - costo)::numeric / precio * 100`. Trampa sutil: `round((precio - costo) / precio * 100.0, 1)` sigue dando `0.0`, porque la división entera ya ocurrió antes de que apareciera el `100.0`. En `ORDER BY` puedes usar el alias `margen`."
+    },
+    {
+      "id": "s04-e4",
+      "title": "Iniciales y usuario de correo",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Recursos humanos imprime credenciales para el departamento de **Finanzas** (`departamento_id = 2`).",
+        "Devuelve `id`, `iniciales` y `usuario`. `iniciales` son tres letras: la primera del nombre, la primera del apellido paterno y la primera del apellido materno (en la columna `apellido` vienen ambos, separados por un espacio). Por ejemplo, `RTV` para Rodrigo Tapia Vergara. `usuario` es la parte del email antes de la `@`.",
+        "Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, email\nFROM empleados\nWHERE departamento_id = 2\nORDER BY id;\n",
+      "solution": "SELECT id,\n       left(nombre, 1)\n         || left(split_part(apellido, ' ', 1), 1)\n         || left(split_part(apellido, ' ', 2), 1) AS iniciales,\n       split_part(email, '@', 1)                   AS usuario\nFROM empleados\nWHERE departamento_id = 2\nORDER BY id;",
+      "ordered": true,
+      "hints": [
+        "`split_part(apellido, ' ', 1)` es el apellido paterno; con `2`, el materno.",
+        "`left(texto, 1)` da la primera letra; une las tres con `||`.",
+        "Para el usuario, corta el email en la `@` con `split_part`."
+      ],
+      "explain": "`split_part` corta `apellido` por el espacio y `left(…, 1)` toma la inicial de cada trozo. Alternativas equivalentes: `substr(nombre, 1, 1)` en lugar de `left`, y `left(email, strpos(email, '@') - 1)` en lugar de `split_part(email, '@', 1)`. Envolver todo en `upper()` es una buena defensa si los datos pudieran venir en minúscula. Ojo con los nombres compuestos: para «Juan Pablo», `left(nombre, 1)` da solo `J`; si quisieras `JP` tendrías que partir también el nombre."
+    },
+    {
+      "id": "s04-e5",
+      "title": "Notas con concepto",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "colegio",
+      "prompt": [
+        "Genera el informe del **primer semestre** del alumno con `id = 101`.",
+        "Devuelve `asignatura_id`, `evaluacion`, `nota`, `concepto` y `estado`. `concepto` sigue la escala del liceo: `'Muy bueno'` desde 6.0, `'Bueno'` desde 5.0, `'Suficiente'` desde 4.0 e `'Insuficiente'` bajo 4.0. `estado` es `'Aprobada'` si la nota es **4.0 o más** y `'Reprobada'` en otro caso.",
+        "Ordena por `asignatura_id` y luego por `evaluacion`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT asignatura_id, evaluacion, nota\nFROM notas\nWHERE alumno_id = 101 AND semestre = 1\nORDER BY asignatura_id, evaluacion;\n",
+      "solution": "SELECT asignatura_id, evaluacion, nota,\n       CASE\n         WHEN nota >= 6.0 THEN 'Muy bueno'\n         WHEN nota >= 5.0 THEN 'Bueno'\n         WHEN nota >= 4.0 THEN 'Suficiente'\n         ELSE 'Insuficiente'\n       END AS concepto,\n       CASE WHEN nota >= 4.0 THEN 'Aprobada' ELSE 'Reprobada' END AS estado\nFROM notas\nWHERE alumno_id = 101 AND semestre = 1\nORDER BY asignatura_id, evaluacion;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bcase\\b",
+          "msg": "Usa CASE para clasificar las notas",
+          "name": "Clasifica con CASE"
+        }
+      ],
+      "hints": [
+        "Un `CASE` buscado recorre los `WHEN` en orden y se queda con el primero verdadero.",
+        "Pon primero el tramo más exigente (`nota >= 6.0`).",
+        "Este alumno tiene notas exactas de 4.0 y 5.0: revisa que los bordes usen `>=`."
+      ],
+      "explain": "El orden de los `WHEN` hace el trabajo: como el primero que se cumple gana, basta con `>= 6.0`, `>= 5.0` y `>= 4.0` de arriba hacia abajo, sin escribir los límites superiores. Si invirtieras el orden, todo lo aprobado quedaría como «Suficiente». En los bordes, `> 4.0` reprobaría un 4.0 (en Chile se aprueba **con** 4.0). `estado` también podría escribirse con un `CASE` simple sobre un booleano, pero el buscado es más claro. Si solo necesitaras verdadero o falso, `nota >= 4.0` ya es una expresión booleana y no requiere `CASE`."
+    },
+    {
+      "id": "s04-e6",
+      "title": "Antigüedad al cierre del semestre",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Para el bono por antigüedad, calcula cuánto llevan en la empresa los empleados **vigentes** (sin `fecha_salida`) del departamento de **Tecnología** (`departamento_id = 3`), con fecha de corte **30 de junio de 2026**.",
+        "Devuelve `id`; `empleado` (nombre, espacio y apellido); `anios` y `meses`, los años cumplidos y los meses adicionales como enteros (por ejemplo, 5 años y 7 meses); y `dias`, los días totales entre `fecha_ingreso` y el 30 de junio de 2026.",
+        "Ordena por `fecha_ingreso` (los más antiguos primero) y, si empatan, por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, fecha_ingreso\nFROM empleados\nWHERE departamento_id = 3;\n",
+      "solution": "SELECT id,\n       nombre || ' ' || apellido                                       AS empleado,\n       extract(year FROM age(date '2026-06-30', fecha_ingreso))::int  AS anios,\n       extract(month FROM age(date '2026-06-30', fecha_ingreso))::int AS meses,\n       date '2026-06-30' - fecha_ingreso                               AS dias\nFROM empleados\nWHERE departamento_id = 3\n  AND fecha_salida IS NULL\nORDER BY fecha_ingreso, id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bage\\s*\\(",
+          "msg": "Calcula la antigüedad con age()",
+          "name": "Usa age"
+        }
+      ],
+      "hints": [
+        "`age(date '2026-06-30', fecha_ingreso)` devuelve un intervalo como `5 years 7 mons 12 days`.",
+        "Saca cada parte con `extract(year FROM …)` y `extract(month FROM …)`.",
+        "La resta de dos `date` da directamente los días; no olvides filtrar `fecha_salida IS NULL`."
+      ],
+      "explain": "`age` descompone la diferencia en años, meses y días de calendario, y `extract` saca cada parte. Usamos una fecha de corte fija en vez de `current_date` para que el reporte sea reproducible. Trampas: `(date '2026-06-30' - fecha_ingreso) / 365` como años ignora los bisiestos y trunca por división entera; `extract(day FROM age(…))` no son los días totales sino solo los días sobrantes después de los meses; y olvidar `fecha_salida IS NULL` incluiría a dos personas que ya se fueron."
+    },
+    {
+      "id": "s04-e7",
+      "title": "Multas por atraso",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "La biblioteca cobra **$250 por día de atraso**, con un tope de **$5.000** por préstamo. Calcula las multas de los préstamos hechos desde el **1 de enero de 2026**, con fecha de corte **30 de junio de 2026**: si el libro ya se devolvió, el atraso es `fecha_devolucion − fecha_limite`; si aún no se devuelve (`fecha_devolucion` es NULL), se cuenta hasta la fecha de corte.",
+        "Devuelve `id`, `socio_id`, `dias_atraso` (entero) y `multa` como texto en pesos chilenos (por ejemplo `$1.250` o `$5.000`). Incluye solo los préstamos con atraso (más de 0 días).",
+        "Ordena por `dias_atraso` de mayor a menor y luego por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, socio_id, fecha_limite, fecha_devolucion\nFROM prestamos\nWHERE fecha_prestamo >= date '2026-01-01';\n",
+      "solution": "SELECT id,\n       socio_id,\n       COALESCE(fecha_devolucion, date '2026-06-30') - fecha_limite AS dias_atraso,\n       '$' || replace(to_char(\n         LEAST((COALESCE(fecha_devolucion, date '2026-06-30') - fecha_limite) * 250, 5000),\n         'FM999G999'), ',', '.')                                   AS multa\nFROM prestamos\nWHERE fecha_prestamo >= date '2026-01-01'\n  AND COALESCE(fecha_devolucion, date '2026-06-30') > fecha_limite\nORDER BY dias_atraso DESC, id;",
+      "ordered": true,
+      "hints": [
+        "`COALESCE(fecha_devolucion, date '2026-06-30')` reemplaza la devolución que falta por la fecha de corte.",
+        "Restar dos `date` da días: multiplica por 250 y acota con `LEAST(…, 5000)`.",
+        "El alias `dias_atraso` no se puede usar en `WHERE`: repite la expresión. En `ORDER BY` sí puedes usarlo."
+      ],
+      "explain": "`COALESCE` es la clave: sin él, los libros no devueltos tienen atraso NULL, la condición `NULL > fecha_limite` no es verdadera y **los peores deudores desaparecen** del reporte. `LEAST(x, 5000)` pone el tope. Si en vez de filtrar quisieras mostrar todos los préstamos con multa 0 para los puntuales, usarías `GREATEST(atraso, 0)` antes de multiplicar. El formato en pesos es la receta de la lección 2 (`to_char` con `G` y `replace` de comas por puntos). Ojo: el `WHERE` no puede usar el alias `dias_atraso` porque se evalúa antes que el `SELECT`."
+    },
+    {
+      "id": "s04-e8",
+      "title": "Pedidos de fin de semana",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing quiere saber cuándo compran los clientes los **fines de semana**. Lista los pedidos hechos un **sábado o domingo** entre el **1 de abril y el 30 de junio de 2026** (ambos días incluidos, en hora de Chile).",
+        "Devuelve `id`; `fecha_hora` con el formato `DD/MM/YYYY HH24:MI` (por ejemplo `04/04/2026 21:44`); `dia`, que vale `'sábado'` o `'domingo'`; y `franja`: `'mañana'` si la hora es anterior a las 13:00, `'tarde'` de 13:00 a 18:59 y `'noche'` desde las 19:00.",
+        "Ordena por `fecha`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, fecha\nFROM pedidos\nWHERE fecha >= '2026-04-01';\n",
+      "solution": "SELECT id,\n       to_char(fecha, 'DD/MM/YYYY HH24:MI') AS fecha_hora,\n       CASE extract(isodow FROM fecha) WHEN 6 THEN 'sábado' ELSE 'domingo' END AS dia,\n       CASE\n         WHEN extract(hour FROM fecha) < 13 THEN 'mañana'\n         WHEN extract(hour FROM fecha) < 19 THEN 'tarde'\n         ELSE 'noche'\n       END AS franja\nFROM pedidos\nWHERE fecha >= '2026-04-01' AND fecha < '2026-07-01'\n  AND extract(isodow FROM fecha) IN (6, 7)\nORDER BY fecha;",
+      "ordered": true,
+      "hints": [
+        "`extract(isodow FROM fecha)` vale 6 el sábado y 7 el domingo.",
+        "Para incluir todo el 30 de junio, usa `fecha < '2026-07-01'` en vez de `fecha <= '2026-06-30'`.",
+        "No uses `to_char(fecha, 'Day')`: depende de `lc_time` y aquí sale en inglés. Traduce el número con un `CASE`."
+      ],
+      "explain": "`isodow` (1 = lunes … 7 = domingo) evita la confusión de `dow`, donde el domingo es 0. Como el `WHERE` ya dejó solo sábados y domingos, el `CASE` simple necesita un solo `WHEN`. Para la franja, el `CASE` buscado aprovecha el orden: si la hora no es menor que 13 pero sí menor que 19, es tarde. El rango semiabierto `>= '2026-04-01' AND < '2026-07-01'` incluye todo el 30 de junio; `<= '2026-06-30'` lo cortaría a las 00:00. Todo se calcula en la zona horaria de la sesión (`America/Santiago`): el pedido 334 es del sábado 4 de abril, con horario de verano (`-03`), y el resto ya está en `-04`."
+    },
+    {
+      "id": "s04-e9",
+      "title": "Cumplimiento de metas",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "rrhh",
+      "setup": "CREATE TABLE metas_ventas (empleado_id int PRIMARY KEY, mes date NOT NULL, meta int NOT NULL, vendido int NOT NULL);\nINSERT INTO metas_ventas VALUES\n  (38, '2026-06-01', 20000000, 23500000),\n  (39, '2026-06-01', 18000000,  9100000),\n  (40, '2026-06-01',        0,  4200000),\n  (41, '2026-06-01', 15000000, 15000000),\n  (42, '2026-06-01', 12000000, 10300000),\n  (43, '2026-06-01',        0,        0),\n  (44, '2026-06-01', 16000000, 12000000),\n  (45, '2026-06-01', 14000000, 16240000);",
+      "prompt": [
+        "La tabla `metas_ventas` tiene la meta y lo vendido en junio de 2026 por cada ejecutivo de ventas. Quienes estuvieron de vacaciones tienen `meta = 0`.",
+        "Devuelve `empleado_id`; `cumplimiento`, que es `vendido × 100 / meta` redondeado a 1 decimal (NULL si la meta es 0); y `estado`: `'Sin meta'` si la meta es 0, `'Cumplida'` si el cumplimiento es 100 o más, `'Cerca'` si es 80 o más y `'Bajo'` en otro caso.",
+        "Ordena por `empleado_id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT empleado_id, meta, vendido\nFROM metas_ventas\nORDER BY empleado_id;\n",
+      "solution": "SELECT empleado_id,\n       round(vendido * 100.0 / NULLIF(meta, 0), 1) AS cumplimiento,\n       CASE\n         WHEN meta = 0                      THEN 'Sin meta'\n         WHEN vendido * 100.0 / meta >= 100 THEN 'Cumplida'\n         WHEN vendido * 100.0 / meta >= 80  THEN 'Cerca'\n         ELSE 'Bajo'\n       END AS estado\nFROM metas_ventas\nORDER BY empleado_id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bnullif\\s*\\(",
+          "msg": "Protege la división con NULLIF",
+          "name": "Usa NULLIF"
+        }
+      ],
+      "hints": [
+        "`vendido * 100.0 / meta` falla con `division by zero` en las filas con meta 0.",
+        "`NULLIF(meta, 0)` convierte el 0 en NULL, y la división da NULL en vez de error.",
+        "En el `CASE`, pregunta primero por `meta = 0`."
+      ],
+      "explain": "`NULLIF(meta, 0)` convierte el divisor 0 en NULL, y `x / NULL` es NULL: la consulta no se cae. En el `CASE`, preguntar primero por `meta = 0` hace que las ramas siguientes nunca dividan por cero en esa fila (el `CASE` no evalúa una rama cuya condición es falsa para esa fila; lo que no protege son las divisiones **constantes** como `1 / 0`). También podías usar `NULLIF` en todas las ramas y dejar el caso NULL al final: `WHEN vendido * 100.0 / NULLIF(meta, 0) >= 100 …` y `ELSE` para los sin meta, cuidando que el NULL no caiga en «Bajo». Trampa de negocio: `COALESCE(…, 0)` mostraría a los que estaban de vacaciones con 0 % de cumplimiento."
+    },
+    {
+      "id": "s04-e10",
+      "title": "Días hábiles de septiembre",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "prompt": [
+        "Para planificar turnos necesitas los **días hábiles de septiembre de 2026**: de lunes a viernes, excluyendo el feriado del **viernes 18** (Fiestas Patrias; el 19 cae sábado).",
+        "Genera las fechas con `generate_series` y devuelve `fecha` (tipo `date`), `dia` (nombre en español y en minúsculas: `'lunes'`, `'martes'`, `'miércoles'`, `'jueves'` o `'viernes'`) y `semana` (número de semana ISO, con `extract(week …)`).",
+        "Ordena por `fecha`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT d\nFROM generate_series(date '2026-09-01', date '2026-09-30', interval '1 day') AS d;\n",
+      "solution": "SELECT d::date AS fecha,\n       CASE extract(isodow FROM d)\n         WHEN 1 THEN 'lunes'\n         WHEN 2 THEN 'martes'\n         WHEN 3 THEN 'miércoles'\n         WHEN 4 THEN 'jueves'\n         ELSE 'viernes'\n       END AS dia,\n       extract(week FROM d) AS semana\nFROM generate_series(timestamp '2026-09-01', timestamp '2026-09-30', interval '1 day') AS d\nWHERE extract(isodow FROM d) < 6\n  AND d::date <> date '2026-09-18'\nORDER BY fecha;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "generate_series",
+          "msg": "Genera el calendario con generate_series",
+          "name": "Usa generate_series"
+        }
+      ],
+      "hints": [
+        "Genera los días con `generate_series(timestamp '2026-09-01', timestamp '2026-09-30', interval '1 day')` y conviértelos con `::date`. ¿Por qué `timestamp` y no `date`? Cuenta cuántos viernes te aparecen…",
+        "Filtra de lunes a viernes con `extract(isodow FROM d) < 6` y descarta el 18 con `<>`.",
+        "Traduce el número del día con un `CASE` simple."
+      ],
+      "explain": "La trampa está en el tipo de la serie. Con `generate_series(date '2026-09-01', date '2026-09-30', interval '1 day')` PostgreSQL usa la versión `timestamptz`, y el domingo 6 de septiembre de 2026 comienza el horario de verano a las 00:00: esa medianoche no existe, la serie se corre a la 01:00 y el último valor (30 de septiembre a la 01:00) supera el límite (00:00), así que **el miércoles 30 desaparece** y obtienes 20 días en vez de 21. Con `timestamp` (sin zona horaria) no hay cambios de hora. Otra alternativa segura: `FROM generate_series(0, 29) AS n` y `date '2026-09-01' + n` como fecha (sumar enteros a un `date` da `date`). `d::date` sirve tanto para mostrar como para comparar con el feriado, y el `CASE` simple traduce `isodow`; `to_char(d, 'TMDay')` daría nombres en inglés en este servidor. Resultado: 21 días hábiles, de la semana ISO 36 a la 40."
+    },
+    {
+      "id": "s04-e11",
+      "title": "Limpiar contactos importados",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "script",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE contactos_import (id int PRIMARY KEY, nombre text NOT NULL, email text, comuna text);\nINSERT INTO contactos_import VALUES\n  (1, '  maría josé   PÉREZ soto ', ' MJ.Perez@GMAIL.com ', 'ñuñoa'),\n  (2, 'JUAN   ignacio rojas',       'juan.rojas@Correo.CL',  ' Providencia '),\n  (3, 'catalina  o''higgins',       NULL,                    'LAS CONDES'),\n  (4, ' pedro de la fuente ',       '   ',                   'puente   alto'),\n  (5, 'ANA',                        'Ana.Gonzalez@Gmail.com', NULL);",
+      "prompt": [
+        "La tabla `contactos_import` llegó desde un formulario web con los datos desordenados. Completa la sentencia `UPDATE` que ya está en el editor (la verás a fondo en la sección 6; aquí solo escribes las expresiones) para que las tres columnas queden normalizadas:",
+        "`nombre`: sin espacios en los extremos, con un solo espacio entre palabras y cada palabra con mayúscula inicial (`'  maría josé   PÉREZ soto '` → `'María José Pérez Soto'`).",
+        "`email`: sin espacios en los extremos y en minúsculas; si queda vacío, debe quedar NULL.",
+        "`comuna`: igual que `nombre` (un solo espacio entre palabras y mayúscula inicial). Las comunas NULL siguen siendo NULL."
+      ],
+      "starter": "UPDATE contactos_import\nSET nombre = nombre,  -- reemplaza cada lado derecho por su expresión de limpieza\n    email  = email,\n    comuna = comuna;\n",
+      "solution": "UPDATE contactos_import\nSET nombre = initcap(regexp_replace(trim(nombre), '\\s+', ' ', 'g')),\n    email  = NULLIF(lower(trim(email)), ''),\n    comuna = initcap(regexp_replace(trim(comuna), '\\s+', ' ', 'g'));",
+      "checks": [
+        {
+          "name": "Nombres normalizados",
+          "sql": "SELECT mismas_filas($$SELECT id, nombre FROM contactos_import$$, $$VALUES (1, 'María José Pérez Soto'), (2, 'Juan Ignacio Rojas'), (3, 'Catalina O''Higgins'), (4, 'Pedro De La Fuente'), (5, 'Ana')$$)",
+          "fail": "Algún nombre no quedó como se pide. Revisa los espacios del medio (regexp_replace con la opción 'g'), los de los extremos (trim) y las mayúsculas (initcap)."
+        },
+        {
+          "name": "Emails en minúsculas y sin espacios",
+          "sql": "SELECT mismas_filas($$SELECT id, email FROM contactos_import WHERE email IS NOT NULL$$, $$VALUES (1, 'mj.perez@gmail.com'), (2, 'juan.rojas@correo.cl'), (5, 'ana.gonzalez@gmail.com')$$)",
+          "fail": "Algún email no quedó en minúsculas y sin espacios en los extremos (o quedó un email vacío en vez de NULL)."
+        },
+        {
+          "name": "Email vacío convertido en NULL",
+          "sql": "SELECT email IS NULL, 'El contacto 4 quedó con email ' || quote_nullable(email) || '; debe quedar NULL' FROM contactos_import WHERE id = 4",
+          "fail": "El contacto 4 tenía solo espacios en el email: después de trim queda '' y debe quedar NULL."
+        },
+        {
+          "name": "Comunas normalizadas",
+          "sql": "SELECT mismas_filas($$SELECT id, comuna FROM contactos_import$$, $$VALUES (1, 'Ñuñoa'), (2, 'Providencia'), (3, 'Las Condes'), (4, 'Puente Alto'), (5, NULL)$$)",
+          "fail": "Alguna comuna no quedó como se pide (un solo espacio entre palabras, sin espacios en los extremos y con mayúscula inicial; la NULL sigue NULL)."
+        },
+        {
+          "name": "No se perdieron filas",
+          "sql": "SELECT count(*) = 5, 'Hay ' || count(*) || ' filas; debían quedar 5' FROM contactos_import",
+          "fail": "Debían quedar las 5 filas."
+        }
+      ],
+      "hints": [
+        "Para `nombre` combina tres funciones de adentro hacia afuera: `trim`, `regexp_replace(…, '\\s+', ' ', 'g')` e `initcap`.",
+        "`NULLIF(lower(trim(email)), '')` convierte el texto vacío en NULL.",
+        "Las funciones de texto devuelven NULL si reciben NULL, así que la comuna NULL se mantiene sola."
+      ],
+      "explain": "El orden de las funciones importa poco aquí, pero leerlo de adentro hacia afuera ayuda: `trim` quita los extremos, `regexp_replace` con `'g'` colapsa cualquier secuencia de espacios en uno solo (sin `'g'` solo arreglaría la primera) e `initcap` normaliza las mayúsculas, incluso con tildes y eñes («ñuñoa» → «Ñuñoa»). Para el email, `trim` de `'   '` deja `''`, y `NULLIF(…, '')` lo convierte en NULL: un texto vacío no es un email. Las funciones de texto son *estrictas* (NULL entra, NULL sale), por eso la comuna del contacto 5 sigue NULL sin hacer nada especial. Limitación conocida: `initcap` también capitaliza «de» y «la» («Pedro De La Fuente»); corregir eso requiere reglas propias."
+    },
+    {
+      "id": "s04-e12",
+      "title": "Medidas en los nombres de productos",
+      "level": "dificil",
+      "minutes": 14,
+      "mode": "query",
+      "dataset": "tienda",
+      "setup": "INSERT INTO productos (sku, nombre, categoria_id, precio, costo, stock, creado_en)\nVALUES ('COC-007', 'Set de 4 mates de calabaza', 6, 15990, 9800, 25, date '2026-06-01');",
+      "prompt": [
+        "Muchos nombres de productos traen una medida: `Café en grano 1 kg`, `Cable HDMI 2 m`, `Batería externa 20000 mAh`. Extráela con expresiones regulares.",
+        "Una medida es un número entero, **un espacio** y una de estas unidades escrita exactamente así: `kg`, `g`, `L`, `m`, `cm`, `W`, `TB` o `mAh`. La unidad debe ser una **palabra completa**: en `Set de 4 mates de calabaza` no hay ninguna medida.",
+        "Devuelve `sku`, `cantidad` (entero) y `unidad` (texto), solo de los productos que tienen una medida, ordenados por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre\nFROM productos\nORDER BY sku;\n",
+      "solution": "SELECT sku,\n       (regexp_match(nombre, '(\\d+) (kg|g|L|m|cm|W|TB|mAh)\\y'))[1]::int AS cantidad,\n       (regexp_match(nombre, '(\\d+) (kg|g|L|m|cm|W|TB|mAh)\\y'))[2]      AS unidad\nFROM productos\nWHERE nombre ~ '\\d+ (kg|g|L|m|cm|W|TB|mAh)\\y'\nORDER BY sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "regexp_match|regexp_substr|substring",
+          "msg": "Extrae la medida con regexp_match (o substring con un patrón)",
+          "name": "Extrae con una expresión regular"
+        }
+      ],
+      "hints": [
+        "`regexp_match(nombre, '(\\d+) (kg|g|…)')` devuelve un arreglo con los dos grupos; toma cada uno con `(…)[1]` y `(…)[2]`.",
+        "Filtra con `~` y el mismo patrón para descartar los productos sin medida.",
+        "Para exigir palabra completa, termina el patrón con `\\y` (en PostgreSQL `\\b` no es límite de palabra)."
+      ],
+      "explain": "Los paréntesis alrededor de `regexp_match(…)` son obligatorios para indexar el arreglo: `regexp_match(…)[1]` es un error de sintaxis. El `\\y` final descarta «4 mates»: sin él, `(\\d+) (…|m|…)` calzaría con «4 m» y el set de mates aparecería como 4 metros. Con `\\b` no calzaría **ningún** producto, porque en PostgreSQL `\\b` es *backspace*. «Chocolate amargo 70 %», «Hub USB-C 7 en 1» y «Notebook 14\"» no tienen una unidad de la lista, así que quedan fuera. Alternativas: `substring(nombre FROM '(\\d+) (?:kg|g|L|m|cm|W|TB|mAh)\\y')` para la cantidad o `regexp_substr` (desde PostgreSQL 15)."
+    },
+    {
+      "id": "s04-e13",
+      "title": "RUT con puntos y DV de socios antiguos",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "Los RUT con **7 dígitos** en el cuerpo (por ejemplo `9645867-3`) son los que más fallan en los sistemas mal hechos, porque se olvida que el cuerpo puede tener 7 u 8 dígitos. Revisa los socios que los tienen.",
+        "Para esos socios devuelve `id`; `rut_con_puntos` (por ejemplo `9.645.867-3`); `dv_calculado`, el dígito verificador calculado con módulo 11 como texto (`'0'` a `'9'` o `'K'`); y `coincide`, un booleano que es `true` si el DV del RUT es igual al calculado.",
+        "Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, rut\nFROM socios\nORDER BY id;\n",
+      "solution": "SELECT id,\n       regexp_replace(rut, '^(\\d{1,2})(\\d{3})(\\d{3})-', '\\1.\\2.\\3-') AS rut_con_puntos,\n       substr('0K987654321', (\n             substr(lpad(split_part(rut, '-', 1), 8, '0'), 1, 1)::int * 3\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 2, 1)::int * 2\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 3, 1)::int * 7\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 4, 1)::int * 6\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 5, 1)::int * 5\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 6, 1)::int * 4\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 7, 1)::int * 3\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 8, 1)::int * 2\n           ) % 11 + 1, 1) AS dv_calculado,\n       right(rut, 1) = substr('0K987654321', (\n             substr(lpad(split_part(rut, '-', 1), 8, '0'), 1, 1)::int * 3\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 2, 1)::int * 2\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 3, 1)::int * 7\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 4, 1)::int * 6\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 5, 1)::int * 5\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 6, 1)::int * 4\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 7, 1)::int * 3\n           + substr(lpad(split_part(rut, '-', 1), 8, '0'), 8, 1)::int * 2\n           ) % 11 + 1, 1) AS coincide\nFROM socios\nWHERE length(split_part(rut, '-', 1)) = 7\nORDER BY id;",
+      "ordered": true,
+      "hints": [
+        "Filtra con `length(split_part(rut, '-', 1)) = 7`.",
+        "Rellena el cuerpo a 8 con `lpad(…, 8, '0')` y multiplica cada dígito (`substr(…, i, 1)::int`) por 3, 2, 7, 6, 5, 4, 3, 2.",
+        "El DV es `substr('0K987654321', suma % 11 + 1, 1)`; para `coincide`, compáralo con `right(rut, 1)`.",
+        "Los puntos: `regexp_replace(rut, '^(\\d{1,2})(\\d{3})(\\d{3})-', '\\1.\\2.\\3-')`."
+      ],
+      "explain": "El `lpad(…, 8, '0')` es lo que hace funcionar el cálculo con 7 dígitos: el cero agregado a la izquierda se multiplica por 3 y no suma nada, y cada dígito real queda alineado con su factor. Sin `lpad`, el primer dígito se multiplicaría por 3 en vez de 2 y el DV saldría mal. Otra forma es recorrer el cuerpo invertido (`reverse`) con los factores 2, 3, 4, 5, 6, 7, 2, 3, pero entonces `substr(…, 8, 1)` de un cuerpo de 7 dígitos es `''` y `''::int` falla con `invalid input syntax for type integer`. Para los puntos, `(\\d{1,2})` retrocede solo a un dígito cuando el cuerpo tiene 7. Todos los socios coinciden: los datos del curso tienen RUT válidos."
+    },
+    {
+      "id": "s04-e14",
+      "title": "Restricción de formato de RUT",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "script",
+      "dataset": "biblioteca",
+      "setup": "CREATE TABLE socios_nuevos (id int PRIMARY KEY, rut text NOT NULL, nombre text NOT NULL);\nINSERT INTO socios_nuevos VALUES\n  (1, '17718802-6', 'José Bravo Gutiérrez'),\n  (2, '21121466-K', 'Nicolás Sepúlveda Espinoza'),\n  (3, '6662910-4',  'Agustín Díaz Carrasco');",
+      "prompt": [
+        "La biblioteca abrirá inscripciones en línea y guardará los RUT en la tabla `socios_nuevos`. Quieres que PostgreSQL **rechace** cualquier RUT mal escrito.",
+        "Una restricción `CHECK (condición)` (la verás a fondo en la sección 5) hace que falle, con el error `23514`, cualquier `INSERT` o `UPDATE` cuya condición sea falsa. La sentencia ya está en el editor: reemplaza `true` por una condición con una expresión regular sobre `rut`.",
+        "Formato exigido: 7 u 8 dígitos, **sin puntos**, un guion y un dígito verificador que sea un dígito o una `K` **mayúscula**, sin nada antes ni después. Válidos: `12345678-5`, `1234567-K`. Inválidos: `12.345.678-5`, `12345678-k`, `123456785`, `RUT 12345678-5`, `123456-7`."
+      ],
+      "starter": "ALTER TABLE socios_nuevos\n  ADD CONSTRAINT socios_nuevos_rut_formato\n  CHECK (true);  -- reemplaza true por tu condición\n",
+      "solution": "ALTER TABLE socios_nuevos\n  ADD CONSTRAINT socios_nuevos_rut_formato\n  CHECK (rut ~ '^\\d{7,8}-[0-9K]$');",
+      "checks": [
+        {
+          "name": "La restricción existe",
+          "sql": "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'socios_nuevos_rut_formato' AND contype = 'c')",
+          "fail": "No existe una restricción CHECK llamada socios_nuevos_rut_formato."
+        },
+        {
+          "name": "Acepta RUT válidos de 7 y 8 dígitos",
+          "sql": "SELECT funciona($$INSERT INTO socios_nuevos VALUES (10, '12345678-5', 'Prueba Uno'), (11, '1234567-K', 'Prueba Dos')$$)",
+          "fail": "Tu condición rechaza un RUT válido (12345678-5 o 1234567-K)."
+        },
+        {
+          "name": "Rechaza los puntos",
+          "sql": "SELECT falla($$INSERT INTO socios_nuevos VALUES (12, '12.345.678-5', 'Con puntos')$$, '23514')",
+          "fail": "Se aceptó 12.345.678-5: el cuerpo debe tener solo dígitos."
+        },
+        {
+          "name": "Rechaza la k minúscula",
+          "sql": "SELECT falla($$INSERT INTO socios_nuevos VALUES (13, '12345678-k', 'K minúscula')$$, '23514')",
+          "fail": "Se aceptó 12345678-k: ¿usaste ~* o una clase con k minúscula?"
+        },
+        {
+          "name": "Rechaza el RUT sin guion",
+          "sql": "SELECT falla($$INSERT INTO socios_nuevos VALUES (14, '123456785', 'Sin guion')$$, '23514')",
+          "fail": "Se aceptó 123456785: el guion es obligatorio."
+        },
+        {
+          "name": "Rechaza texto antes o después",
+          "sql": "SELECT falla($$INSERT INTO socios_nuevos VALUES (15, 'RUT 12345678-5', 'Prefijo')$$, '23514') AND falla($$INSERT INTO socios_nuevos VALUES (16, '12345678-5 ', 'Espacio final')$$, '23514')",
+          "fail": "Se aceptó un RUT con texto antes o después. ¿Anclaste el patrón con ^ y $?"
+        },
+        {
+          "name": "Rechaza cuerpos de 6 o 9 dígitos",
+          "sql": "SELECT falla($$INSERT INTO socios_nuevos VALUES (17, '123456-7', 'Seis')$$, '23514') AND falla($$INSERT INTO socios_nuevos VALUES (18, '123456789-0', 'Nueve')$$, '23514')",
+          "fail": "Se aceptó un cuerpo de 6 o 9 dígitos: exige entre 7 y 8 con {7,8}."
+        }
+      ],
+      "hints": [
+        "La condición tiene la forma `rut ~ 'patrón'`.",
+        "Ancla el patrón: `^` al inicio y `$` al final; sin anclas, `RUT 12345678-5` calzaría.",
+        "`\\d{7,8}` exige 7 u 8 dígitos y `[0-9K]` un dígito o una K mayúscula."
+      ],
+      "explain": "`CHECK (rut ~ '^\\d{7,8}-[0-9K]$')`: las anclas impiden texto extra, `{7,8}` fija el largo del cuerpo y `[0-9K]` (con `~`, que distingue mayúsculas) rechaza la k minúscula. Con `~*` la `k` pasaría. `[\\dK]` es equivalente a `[0-9K]`. Si la tabla ya tuviera un RUT inválido, el `ALTER TABLE` fallaría al validar las filas existentes (en la sección 5 verás `NOT VALID` para esos casos). Límite importante: esta restricción valida el **formato**, no el dígito verificador; `12345678-9` pasa aunque su DV correcto sea 5. Para eso necesitarás una función (sección 16) usada en el `CHECK` o un dominio."
+    },
+    {
+      "id": "s04-e15",
+      "title": "Campaña de fidelización",
+      "level": "dificil",
+      "minutes": 15,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing enviará una campaña a los clientes registrados entre el **1 de enero y el 30 de septiembre de 2025** (ambos días incluidos). Calcula su antigüedad con fecha de corte **30 de junio de 2026**.",
+        "Devuelve: `id`; `cliente` (nombre, espacio y apellido); `meses`, los meses completos de antigüedad (años × 12 + meses de `age`) como entero; `segmento`, que es `'Fiel'` con 15 meses o más, `'Regular'` con 12 a 14 y `'Nuevo'` con menos de 12; y `email_oculto`: las **tres primeras** letras del usuario, `***@` y el dominio (por ejemplo `flo***@gmail.com`), o `'sin email'` si el cliente no tiene email.",
+        "Ordena por `meses` de mayor a menor y luego por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, email, fecha_registro\nFROM clientes\nWHERE fecha_registro >= date '2025-01-01';\n",
+      "solution": "SELECT id,\n       nombre || ' ' || apellido AS cliente,\n       (extract(year FROM age(date '2026-06-30', fecha_registro)) * 12\n        + extract(month FROM age(date '2026-06-30', fecha_registro)))::int AS meses,\n       CASE\n         WHEN extract(year FROM age(date '2026-06-30', fecha_registro)) * 12\n              + extract(month FROM age(date '2026-06-30', fecha_registro)) >= 15 THEN 'Fiel'\n         WHEN extract(year FROM age(date '2026-06-30', fecha_registro)) * 12\n              + extract(month FROM age(date '2026-06-30', fecha_registro)) >= 12 THEN 'Regular'\n         ELSE 'Nuevo'\n       END AS segmento,\n       COALESCE(left(split_part(email, '@', 1), 3) || '***@' || split_part(email, '@', 2),\n                'sin email') AS email_oculto\nFROM clientes\nWHERE fecha_registro BETWEEN date '2025-01-01' AND date '2025-09-30'\nORDER BY meses DESC, id;",
+      "ordered": true,
+      "hints": [
+        "Meses completos: `extract(year FROM age(…)) * 12 + extract(month FROM age(…))`.",
+        "En el `CASE` no puedes usar el alias `meses`: repite la expresión.",
+        "`||` con un email NULL da NULL: aprovéchalo y envuelve todo en `COALESCE(…, 'sin email')`."
+      ],
+      "explain": "Este ejercicio usa **a propósito** la regla de `||` con NULL: si `email` es NULL, toda la concatenación es NULL y `COALESCE` la reemplaza por `'sin email'`. Con `concat(…)` obtendrías `'***@'` para los clientes sin email, un error silencioso. `age` da meses de calendario exactos: el cliente 11 se registró el 2025-06-12 y al 2026-06-30 lleva 12 meses y 18 días, o sea 12 meses completos («Regular»). Restar fechas y dividir por 30 daría resultados distintos cerca de los bordes. `BETWEEN` incluye ambos extremos; como `fecha_registro` es `date` (sin hora), aquí es seguro. Con un `timestamptz` preferirías el rango semiabierto `>= … AND < '2025-10-01'`."
+    },
+    {
+      "id": "s04-e16",
+      "title": "Proyecto: auditoría de RUT de proveedores",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "query",
+      "dataset": "tienda",
+      "setup": "CREATE TABLE proveedores_import (id int PRIMARY KEY, rut_ingresado text, razon_social text NOT NULL);\nINSERT INTO proveedores_import VALUES\n  (1,  '76.123.456-0',   'Distribuidora Andes SpA'),\n  (2,  '76543210-3',     'Café del Sur Ltda.'),\n  (3,  ' 96.874.030-k ', 'Importadora Pacífico S.A.'),\n  (4,  '12.345.678-9',   'Comercial Pérez EIRL'),\n  (5,  '9876543-3',      'Talleres Maule'),\n  (6,  '77261280K',      'Tecnología Austral SpA'),\n  (7,  '7.654.321-7',    'Panadería La Espiga'),\n  (8,  '1-9',            'Proveedor de prueba'),\n  (9,  'sin rut',        'Proveedor informal'),\n  (10, '99.500.410-0',   'Seguros Cordillera S.A.'),\n  (11, '78020450-8',     'Frutícola del Valle'),\n  (12, '5.126.663-3',    'Ferretería Don Lucho'),\n  (13, '123.456.789-0',  'Exportadora Norte');",
+      "prompt": [
+        "Cargaste una planilla de proveedores en `proveedores_import`. Los RUT vienen escritos de cualquier forma (con y sin puntos, con espacios, con `k` minúscula, sin guion) y algunos son derechamente inválidos. Tu tarea es auditarlos.",
+        "Primero **limpia** cada RUT: pásalo a mayúsculas y deja solo dígitos y `K` (llamémoslo `c`; por ejemplo `' 96.874.030-k '` → `'96874030K'`). El formato es válido si `c` tiene 7 u 8 dígitos seguidos de un dígito o una `K`.",
+        "Devuelve `id`; `rut`, normalizado como `cuerpo-DV` (por ejemplo `96874030-K`), o NULL si el formato es inválido; `rut_formateado`, con puntos (por ejemplo `96.874.030-K` o `5.126.663-3`), o NULL si el formato es inválido; y `estado`: `'formato inválido'`, `'DV incorrecto'` (formato válido, pero el dígito verificador no coincide con el calculado por módulo 11) o `'válido'`. Ordena por `id`.",
+        "El editor trae una estructura de dos pisos: la consulta de adentro (una *subconsulta en el FROM*, que verás en la sección 9) calcula `c` una sola vez por fila, y la de afuera puede usar `c` como si fuera una columna. Completa la limpieza y las columnas."
+      ],
+      "starter": "-- La consulta de adentro calcula c una vez por fila; afuera úsala como una columna más.\nSELECT id,\n       c\nFROM (\n  SELECT id,\n         rut_ingresado AS c   -- cámbialo: mayúsculas y solo dígitos y K\n  FROM proveedores_import\n) AS t\nORDER BY id;\n",
+      "solution": "SELECT id,\n       CASE WHEN c ~ '^\\d{7,8}[0-9K]$'\n            THEN left(c, -1) || '-' || right(c, 1)\n       END AS rut,\n       CASE WHEN c ~ '^\\d{7,8}[0-9K]$'\n            THEN regexp_replace(left(c, -1), '^(\\d{1,2})(\\d{3})(\\d{3})$', '\\1.\\2.\\3') || '-' || right(c, 1)\n       END AS rut_formateado,\n       CASE\n         WHEN c !~ '^\\d{7,8}[0-9K]$' THEN 'formato inválido'\n         WHEN right(c, 1) = substr('0K987654321', (\n                   substr(lpad(left(c, -1), 8, '0'), 1, 1)::int * 3\n                 + substr(lpad(left(c, -1), 8, '0'), 2, 1)::int * 2\n                 + substr(lpad(left(c, -1), 8, '0'), 3, 1)::int * 7\n                 + substr(lpad(left(c, -1), 8, '0'), 4, 1)::int * 6\n                 + substr(lpad(left(c, -1), 8, '0'), 5, 1)::int * 5\n                 + substr(lpad(left(c, -1), 8, '0'), 6, 1)::int * 4\n                 + substr(lpad(left(c, -1), 8, '0'), 7, 1)::int * 3\n                 + substr(lpad(left(c, -1), 8, '0'), 8, 1)::int * 2\n                 ) % 11 + 1, 1) THEN 'válido'\n         ELSE 'DV incorrecto'\n       END AS estado\nFROM (\n  SELECT id,\n         regexp_replace(upper(rut_ingresado), '[^0-9K]', '', 'g') AS c\n  FROM proveedores_import\n) AS t\nORDER BY id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "regexp_replace",
+          "msg": "Limpia el RUT con regexp_replace",
+          "name": "Limpia con regexp_replace"
+        }
+      ],
+      "hints": [
+        "Limpieza: `regexp_replace(upper(rut_ingresado), '[^0-9K]', '', 'g')`.",
+        "Formato: `c ~ '^\\d{7,8}[0-9K]$'`. Cuerpo: `left(c, -1)`. DV: `right(c, 1)`.",
+        "Puntos: `regexp_replace(left(c, -1), '^(\\d{1,2})(\\d{3})(\\d{3})$', '\\1.\\2.\\3')` y luego `|| '-' || right(c, 1)`.",
+        "En `estado`, pregunta **primero** por el formato: así el `CASE` nunca intenta convertir en número un texto inválido. Un `CASE` sin `ELSE` devuelve NULL, justo lo que piden `rut` y `rut_formateado`."
+      ],
+      "explain": "La limpieza con `[^0-9K]` y la opción `'g'` borra puntos, guiones y espacios de una sola vez, y `upper` convierte la `k`. Después, todo es composición de lo visto en la sección: la regex valida el formato; `left(c, -1)` y `right(c, 1)` separan cuerpo y DV; `lpad` alinea los cuerpos de 7 dígitos con los factores; y `substr('0K987654321', suma % 11 + 1, 1)` traduce el resto al DV. El orden de los `WHEN` es de seguridad, no de estilo: para `'1-9'` (limpio: `'19'`), el primer `WHEN` ya decide `'formato inválido'` y el cálculo con `::int` nunca se evalúa en esa fila. Resultado: 8 válidos, 2 con DV incorrecto (el 4 debería terminar en 5 y el 7 en 6) y 3 con formato inválido (el 13 tiene 9 dígitos en el cuerpo). En producción guardarías esta lógica en una función (sección 16) y la usarías en una restricción `CHECK`."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "¿Qué devuelve `'Hola ' || NULL`? ¿Y `concat('Hola ', NULL)`?",
+      "back": "`||` devuelve **NULL** (si un lado es NULL, todo es NULL). `concat` trata el NULL como texto vacío y devuelve `'Hola '`."
+    },
+    {
+      "front": "`concat_ws(sep, a, b, c)`: ¿qué hace con los NULL?",
+      "back": "Los **salta**: pone el separador solo entre los valores no nulos. El separador va primero. Si todos los valores son NULL, devuelve `''` (no NULL)."
+    },
+    {
+      "front": "`length('Ñuñoa')` vs `octet_length('Ñuñoa')`",
+      "back": "`5` caracteres vs `7` bytes: en UTF-8 la Ñ y la ñ ocupan 2 bytes cada una."
+    },
+    {
+      "front": "`lpad('123456', 3, '0')`",
+      "back": "`'123'`: `lpad` y `rpad` rellenan **o cortan** hasta el largo pedido, sin avisar."
+    },
+    {
+      "front": "`split_part(texto, separador, n)` con n negativo",
+      "back": "Cuenta desde el final (desde PostgreSQL 14): `split_part('a-b-c', '-', -1)` = `'c'`. Si el campo no existe devuelve `''`."
+    },
+    {
+      "front": "`left('19501525-2', -2)`",
+      "back": "`'19501525'`: con n negativo, `left` devuelve todo **menos** los últimos n caracteres (y `right(t, -n)`, todo menos los primeros n)."
+    },
+    {
+      "front": "`format()`: `%s`, `%L`, `%I`, `%%`",
+      "back": "`%s` valor como texto (NULL → vacío); `%L` literal SQL entre comillas (NULL → `NULL`); `%I` identificador con comillas dobles si hace falta; `%%` un signo `%`. Ancho: `%-10s` izquierda, `%10s` derecha."
+    },
+    {
+      "front": "¿Qué hace `initcap('pedro de la fuente')`?",
+      "back": "`'Pedro De La Fuente'`: mayúscula inicial en **todas** las palabras y el resto en minúscula. No colapsa espacios dobles (para eso, `regexp_replace`)."
+    },
+    {
+      "front": "`5 / 2`, `-7 / 2` y `-7 % 2` en PostgreSQL",
+      "back": "`2`, `-3` y `-1`: entre enteros la división trunca hacia cero y el resto lleva el signo del dividendo."
+    },
+    {
+      "front": "Porcentaje sin división entera",
+      "back": "Multiplica por un `numeric` **antes** de dividir: `round((precio - costo) * 100.0 / precio, 1)`. `(precio - costo) / precio * 100` da 0."
+    },
+    {
+      "front": "`2 ^ 3 ^ 2`",
+      "back": "`64`: en PostgreSQL `^` se asocia de izquierda a derecha, `(2 ^ 3) ^ 2`. Devuelve `double precision` (o `numeric` si los operandos lo son)."
+    },
+    {
+      "front": "`round(2.5)` vs `round(2.5::float8)`",
+      "back": "`3` vs `2`: con `numeric` la mitad se aleja del cero; con `double precision` el desempate depende de la plataforma y suele ser al par."
+    },
+    {
+      "front": "`round(549990, -3)`",
+      "back": "`550000`: una escala negativa redondea a decenas, centenas, miles…"
+    },
+    {
+      "front": "`trunc(-2.7)` vs `floor(-2.7)` vs `ceil(-2.7)`",
+      "back": "`-2`, `-3` y `-2`: `trunc` corta hacia el cero, `floor` va hacia abajo y `ceil` hacia arriba."
+    },
+    {
+      "front": "Receta para `$549.990` con `to_char`",
+      "back": "`'$' || replace(to_char(precio, 'FM999G999G999'), ',', '.')`. `G` usa el separador de `lc_numeric` (en el curso, `C` → coma); `FM` quita el relleno."
+    },
+    {
+      "front": "¿Qué escribe `to_char(1234567, 'FM999G999')`?",
+      "back": "`###,###`: si el número no cabe en los nueves, `to_char` escribe `#` en vez de cortar. Pon nueves de sobra."
+    },
+    {
+      "front": "Tipo de `date - date`, `date + integer`, `date + interval`, `timestamptz - timestamptz`",
+      "back": "`integer` (días), `date`, `timestamp` y `interval`."
+    },
+    {
+      "front": "Años cumplidos a una fecha de corte",
+      "back": "`extract(year FROM age(date '2026-06-30', fecha_nacimiento))`. `age(fin, inicio)` da años, meses y días de calendario."
+    },
+    {
+      "front": "`extract` vs `date_part`",
+      "back": "`extract(campo FROM x)` devuelve `numeric` (desde PostgreSQL 14); `date_part('campo', x)` devuelve `double precision`."
+    },
+    {
+      "front": "`dow` vs `isodow`",
+      "back": "`dow`: 0 = domingo … 6 = sábado. `isodow`: 1 = lunes … 7 = domingo."
+    },
+    {
+      "front": "`date_trunc('month', date '2026-03-15')`: ¿qué tipo devuelve?",
+      "back": "`timestamp with time zone` (`2026-03-01 00:00:00-03`). Agrega `::date` si quieres una fecha."
+    },
+    {
+      "front": "`date '2026-01-31' + interval '1 month'`",
+      "back": "`2026-02-28 00:00:00` (un `timestamp`): el mes avanza el calendario y se ajusta al último día del mes."
+    },
+    {
+      "front": "¿`interval '1 month' = interval '30 days'`?",
+      "back": "`true`: para comparar, PostgreSQL cuenta un mes como 30 días. Pero sumados a una fecha dan resultados distintos."
+    },
+    {
+      "front": "`generate_series` con argumentos `date`: ¿qué tipo devuelve y qué trampa tiene en Chile?",
+      "back": "`timestamptz`. Si la serie cruza el inicio del horario de verano (00:00 inexistente en septiembre), queda corrida a la 01:00 y puede perder el último día. Usa `timestamp` o `date + integer`."
+    },
+    {
+      "front": "`to_char(fecha, 'TMMonth')`",
+      "back": "Nombre del mes traducido según `lc_time`. En el curso `lc_time = C`, así que sale en inglés. `Month` sin `TM` siempre sale en inglés y rellenado a 9."
+    },
+    {
+      "front": "¿Qué devuelve un `CASE` sin `ELSE` si ningún `WHEN` es verdadero?",
+      "back": "NULL. Y si varios `WHEN` son verdaderos, gana el **primero**."
+    },
+    {
+      "front": "¿Por qué `CASE x WHEN NULL THEN …` nunca coincide?",
+      "back": "El `CASE` simple compara con `=`, y `x = NULL` es NULL (no verdadero). Usa `CASE WHEN x IS NULL THEN …`."
+    },
+    {
+      "front": "`COALESCE(paginas, 'sin dato')` con `paginas integer`",
+      "back": "Error `invalid input syntax for type integer`: los argumentos necesitan un tipo común. Solución: `COALESCE(paginas::text, 'sin dato')`."
+    },
+    {
+      "front": "Dividir sin caerse por cero",
+      "back": "`x / NULLIF(y, 0)`: si `y = 0` el divisor es NULL y el resultado NULL. Luego `COALESCE` decide qué mostrar."
+    },
+    {
+      "front": "`GREATEST(3, NULL, 7)` en PostgreSQL",
+      "back": "`7`: `GREATEST` y `LEAST` ignoran los NULL (solo devuelven NULL si todos lo son). El estándar SQL diría NULL."
+    },
+    {
+      "front": "`~`, `~*`, `!~`, `!~*`",
+      "back": "Calza (distingue mayúsculas), calza sin distinguir, no calza y no calza sin distinguir. Buscan en cualquier parte del texto, salvo que ancles el patrón con `^` y `$`."
+    },
+    {
+      "front": "Límite de palabra en las regex de PostgreSQL",
+      "back": "`\\y` (o `\\m` inicio y `\\M` fin de palabra). `\\b` es *backspace*: un patrón con `\\b` no calza."
+    },
+    {
+      "front": "`regexp_replace` sin y con `'g'`",
+      "back": "Sin opciones reemplaza solo la **primera** coincidencia; con `'g'` todas; con `'i'` ignora mayúsculas. `\\1`, `\\2` insertan los grupos capturados."
+    },
+    {
+      "front": "`regexp_match` vs `regexp_matches`",
+      "back": "`regexp_match` devuelve un `text[]` con los grupos de la primera coincidencia (o NULL). `regexp_matches(t, p, 'g')` devuelve una fila por coincidencia."
+    },
+    {
+      "front": "Truco del DV del RUT sin `CASE`",
+      "back": "`substr('0K987654321', suma % 11 + 1, 1)`, con `suma` = dígitos del cuerpo (rellenado a 8 con `lpad`) por 3, 2, 7, 6, 5, 4, 3, 2."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s04-q1",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 'Correo: ' || NULL;\n```",
+      "options": [
+        "`'Correo: '`",
+        "`'Correo: NULL'`",
+        "NULL",
+        "Un error de tipos"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`||` es estricto con NULL: si cualquiera de los lados es NULL, el resultado es NULL. Para tratar el NULL como texto vacío usa `concat('Correo: ', NULL)`, que sí devuelve `'Correo: '`."
+    },
+    {
+      "id": "s04-q2",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT concat_ws('-', 'a', NULL, 'b');\n```",
+      "options": [
+        "`'a--b'`",
+        "`'a-b'`",
+        "NULL",
+        "`'-a-b'`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`concat_ws` usa el primer argumento como separador y lo pone solo entre los valores no nulos, así que el NULL desaparece sin dejar un separador doble."
+    },
+    {
+      "id": "s04-q3",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT length('Ñuñoa'), octet_length('Ñuñoa');\n```",
+      "options": [
+        "`5` y `5`",
+        "`5` y `7`",
+        "`7` y `5`",
+        "`7` y `7`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`length` cuenta caracteres (5) y `octet_length` bytes: en UTF-8 la `Ñ` y la `ñ` ocupan 2 bytes cada una, por eso son 7."
+    },
+    {
+      "id": "s04-q4",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT lpad('123456', 4, '0');\n```",
+      "options": [
+        "`'123456'` (no hace nada porque ya es más largo)",
+        "`'1234'`",
+        "`'3456'`",
+        "Un error: el texto es más largo que 4"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`lpad` ajusta el texto **exactamente** al largo pedido: si sobra, lo corta por la derecha y conserva los primeros caracteres. No avisa, así que puede perder datos en silencio."
+    },
+    {
+      "id": "s04-q5",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT split_part('ventas@andes.cl', '@', 3);\n```",
+      "options": [
+        "NULL",
+        "Un texto vacío `''`",
+        "`'andes.cl'`",
+        "Un error porque no hay tercer campo"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Si el campo pedido no existe, `split_part` devuelve un texto vacío, no NULL ni error. Con `-1` obtendrías el último campo (`'andes.cl'`), algo disponible desde PostgreSQL 14."
+    },
+    {
+      "id": "s04-q6",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones devuelven exactamente `'María José'`? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`initcap('MARÍA JOSÉ')`",
+        "`initcap(trim('  maría josé '))`",
+        "`upper('maría josé')`",
+        "`initcap('maría   josé')`",
+        "`concat_ws(' ', 'María', NULL, 'José')`"
+      ],
+      "answer": [
+        0,
+        1,
+        4
+      ],
+      "explain": "`initcap` deja la primera letra de cada palabra en mayúscula y el resto en minúscula (la base del curso entiende tildes). `trim` quita los espacios de los extremos. `upper` lo pasa todo a mayúsculas. `initcap('maría   josé')` conserva los tres espacios del medio. `concat_ws` salta el NULL y pone un solo espacio."
+    },
+    {
+      "id": "s04-q7",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT format('%L', NULL) AS a, format('%s', NULL) AS b;\n```",
+      "options": [
+        "`a` = `NULL` (la palabra, sin comillas) y `b` = texto vacío",
+        "`a` = `'NULL'` y `b` = `'NULL'`",
+        "Ambas son NULL",
+        "`a` = texto vacío y `b` = `NULL`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`%L` formatea un literal SQL: para NULL escribe la palabra `NULL` sin comillas, lista para pegar en una sentencia. `%s` inserta el valor como texto y un NULL queda como texto vacío."
+    },
+    {
+      "id": "s04-q8",
+      "type": "yesno",
+      "q": "Para cada afirmación sobre funciones de texto, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`trim('  a  b  ')` devuelve `'a b'`.",
+          "answer": false
+        },
+        {
+          "text": "`left('19501525-2', -2)` devuelve `'19501525'`.",
+          "answer": true
+        },
+        {
+          "text": "En `substr(texto, i, n)` la primera posición es 0.",
+          "answer": false
+        },
+        {
+          "text": "`SELECT 1 || 2` devuelve `'12'`.",
+          "answer": false
+        },
+        {
+          "text": "`strpos('abc', 'x')` devuelve 0.",
+          "answer": true
+        }
+      ],
+      "explain": "`trim` solo quita los espacios de los extremos: queda `'a  b'`. `left` con n negativo devuelve todo menos los últimos n caracteres. En SQL las posiciones parten en 1. `1 || 2` falla con `operator does not exist: integer || integer` (necesitas `1::text || 2`). `strpos` devuelve 0 cuando no encuentra el texto."
+    },
+    {
+      "id": "s04-q9",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 7 / 2, 7 % 2, -7 / 2;\n```",
+      "options": [
+        "`3.5`, `1`, `-3.5`",
+        "`3`, `1`, `-3`",
+        "`3`, `1`, `-4`",
+        "`4`, `1`, `-4`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Entre enteros, `/` es división entera y trunca hacia cero: `7 / 2 = 3` y `-7 / 2 = -3` (no `-4`, que sería redondear hacia abajo). `%` es el resto: `1`."
+    },
+    {
+      "id": "s04-q10",
+      "type": "single",
+      "q": "El libro «Cien años de soledad» cuesta $15.990 y su costo es $9.680 (ambas columnas `integer`). ¿Qué devuelve esta consulta?\n```sql\nSELECT (15990 - 9680) / 15990 * 100 AS margen;\n```",
+      "options": [
+        "`39.46`",
+        "`39`",
+        "`0`",
+        "`40`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "La división `6310 / 15990` ocurre primero y entre enteros: da 0, y `0 * 100 = 0`. Para obtener 39.5 escribe `round((15990 - 9680) * 100.0 / 15990, 1)`."
+    },
+    {
+      "id": "s04-q11",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones dan un resultado con decimales (equivalente a 2.5)? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`5 / 2`",
+        "`5.0 / 2`",
+        "`5 / 2.0`",
+        "`5::numeric / 2`",
+        "`(5 / 2)::numeric`"
+      ],
+      "answer": [
+        1,
+        2,
+        3
+      ],
+      "explain": "Basta un operando `numeric` para que la división sea `numeric`: `5.0`, `2.0` y `5::numeric` lo son. `(5 / 2)::numeric` convierte **después** de la división entera, así que da `2`: convertir el resultado ya es tarde."
+    },
+    {
+      "id": "s04-q12",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 2 ^ 3 ^ 2;\n```",
+      "options": [
+        "`512`",
+        "`64`",
+        "`12`",
+        "Un error de sintaxis"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En PostgreSQL `^` se asocia de izquierda a derecha: `(2 ^ 3) ^ 2 = 8 ^ 2 = 64`. En matemática sería `2 ^ 9 = 512`. Usa paréntesis para no depender de esta regla."
+    },
+    {
+      "id": "s04-q13",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT round(2.5), round(2.5::float8);\n```",
+      "options": [
+        "`3` y `3`",
+        "`2` y `2`",
+        "`3` y `2` (lo más común)",
+        "`2` y `3`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "`round` sobre `numeric` redondea la mitad alejándose del cero (3). Sobre `double precision` el desempate depende de la plataforma, y lo más común es redondear al par (2). Por eso el dinero se maneja con enteros o `numeric`."
+    },
+    {
+      "id": "s04-q14",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT trunc(-2.7), floor(-2.7);\n```",
+      "options": [
+        "`-2` y `-3`",
+        "`-3` y `-3`",
+        "`-2` y `-2`",
+        "`-3` y `-2`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`trunc` corta hacia el cero (-2) y `floor` va siempre hacia abajo (-3). Con números positivos coinciden, con negativos no."
+    },
+    {
+      "id": "s04-q15",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT round(1234567, -3);\n```",
+      "options": [
+        "`1234567.000`",
+        "`1234000`",
+        "`1235000`",
+        "Un error: la escala no puede ser negativa"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Una escala negativa redondea a la izquierda del punto decimal: -3 redondea a miles. 1.234.567 queda en 1.235.000 porque las unidades (567) son 500 o más."
+    },
+    {
+      "id": "s04-q16",
+      "type": "single",
+      "q": "En el servidor del curso (`lc_numeric = C`), ¿qué expresión muestra `$1.234.567` para el valor 1234567?",
+      "options": [
+        "`to_char(1234567, 'FM$999G999')`",
+        "`'$' || replace(to_char(1234567, 'FM999G999G999'), ',', '.')`",
+        "`'$' || to_char(1234567, 'FM999.999.999')`",
+        "`'$' || to_char(1234567, '999G999G999')`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`G` escribe el separador de `lc_numeric` (una coma en `C`), y `replace` la cambia por punto. `'FM999G999'` no tiene nueves suficientes para 7 dígitos (saldría `#`). `'999.999.999'` falla porque el punto es el separador **decimal** y no puede repetirse. Sin `FM`, quedan espacios de relleno a la izquierda."
+    },
+    {
+      "id": "s04-q17",
+      "type": "yesno",
+      "q": "Para cada afirmación sobre números, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`SELECT 549990 * 10000` falla con `integer out of range`.",
+          "answer": true
+        },
+        {
+          "text": "`SELECT (549990 * 10000)::bigint` evita el error.",
+          "answer": false
+        },
+        {
+          "text": "`%` siempre devuelve un resultado positivo.",
+          "answer": false
+        },
+        {
+          "text": "En `to_char`, `G` siempre escribe un punto.",
+          "answer": false
+        },
+        {
+          "text": "`1.19` escrito como literal es de tipo `numeric`.",
+          "answer": true
+        }
+      ],
+      "explain": "El producto de dos `integer` es `integer` y 5.499.900.000 no cabe; convertir el **resultado** a `bigint` llega tarde: hay que convertir un operando antes (`549990::bigint * 10000`). `%` lleva el signo del dividendo (`-7 % 2 = -1`). `G` depende de `lc_numeric` (coma en `C`, punto en `es_CL.UTF-8`). Un literal con punto decimal es `numeric`."
+    },
+    {
+      "id": "s04-q18",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT date '2026-06-30' - date '2026-01-01';\n```",
+      "options": [
+        "`180` (un `integer`)",
+        "`180 days` (un `interval`)",
+        "`5 mons 29 days`",
+        "`2026-06-29`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Restar dos `date` da un `integer` con los días de diferencia. Restar dos `timestamptz` sí daría un `interval`, y `age` un intervalo simbólico en años, meses y días."
+    },
+    {
+      "id": "s04-q19",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT date '2026-01-31' + interval '1 month';\n```",
+      "options": [
+        "`2026-03-03`",
+        "`2026-02-28 00:00:00`",
+        "`2026-03-02 00:00:00`",
+        "Un error: el 31 de febrero no existe"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Un mes avanza el calendario al mismo día del mes siguiente y, si ese día no existe, usa el último día del mes. El resultado es `timestamp` porque `date + interval` devuelve `timestamp`. Con `+ 30` (días) darías `2026-03-02`."
+    },
+    {
+      "id": "s04-q20",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT interval '1 month' = interval '30 days';\n```",
+      "options": [
+        "`true`",
+        "`false`",
+        "NULL",
+        "Un error: no se pueden comparar meses con días"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Para comparar intervalos, PostgreSQL normaliza un mes como 30 días, así que son «iguales». Pero sumados a una fecha dan resultados distintos: los meses de calendario tienen largos variables."
+    },
+    {
+      "id": "s04-q21",
+      "type": "single",
+      "q": "¿Qué tipo devuelve `date_trunc('month', date '2026-03-15')`?",
+      "options": [
+        "`date`",
+        "`timestamp without time zone`",
+        "`timestamp with time zone`",
+        "`interval`"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "No existe una versión de `date_trunc` para `date`: el argumento se convierte a `timestamptz` y el resultado es `2026-03-01 00:00:00-03`. Agrega `::date` si quieres una fecha."
+    },
+    {
+      "id": "s04-q22",
+      "type": "single",
+      "q": "El 27 de septiembre de 2026 es domingo. ¿Qué devuelve esta consulta?\n```sql\nSELECT extract(dow FROM date '2026-09-27'), extract(isodow FROM date '2026-09-27');\n```",
+      "options": [
+        "`0` y `7`",
+        "`7` y `0`",
+        "`7` y `7`",
+        "`1` y `7`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`dow` numera de 0 (domingo) a 6 (sábado); `isodow` de 1 (lunes) a 7 (domingo). Para filtrar fines de semana, `isodow IN (6, 7)` es más legible."
+    },
+    {
+      "id": "s04-q23",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT age(date '2026-06-30', date '2012-08-21');\n```",
+      "options": [
+        "`5061 days`",
+        "`13 years 10 mons 9 days`",
+        "`13.86`",
+        "`14 years`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`age(fin, inicio)` devuelve un intervalo simbólico en años, meses y días de calendario. Con `extract(year FROM …)` obtienes 13 años cumplidos; la resta de fechas daría 5061 días."
+    },
+    {
+      "id": "s04-q24",
+      "type": "multi",
+      "q": "¿Cuáles expresiones calculan correctamente los **años cumplidos** de un empleado al 30 de junio de 2026? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`extract(year FROM age(date '2026-06-30', fecha_ingreso))`",
+        "`(date '2026-06-30' - fecha_ingreso) / 365`",
+        "`date_part('year', age(date '2026-06-30', fecha_ingreso))`",
+        "`extract(year FROM date '2026-06-30') - extract(year FROM fecha_ingreso)`"
+      ],
+      "answer": [
+        0,
+        2
+      ],
+      "explain": "`age` + `extract` (o `date_part`) da los años cumplidos. Dividir los días por 365 ignora los años bisiestos y puede equivocarse cerca del aniversario. Restar los años calendario no considera si el aniversario ya pasó: alguien que ingresó el 2015-11-26 tendría 11 «años» al 30 de junio de 2026, aunque lleva 10."
+    },
+    {
+      "id": "s04-q25",
+      "type": "multi",
+      "q": "¿Cuáles de estas expresiones devuelven un valor de tipo `date`? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`date '2026-01-31' + 1`",
+        "`date '2026-01-31' + interval '1 day'`",
+        "`date_trunc('month', date '2026-01-31')`",
+        "`date_trunc('month', date '2026-01-31')::date`",
+        "`current_date - 7`"
+      ],
+      "answer": [
+        0,
+        3,
+        4
+      ],
+      "explain": "`date ± integer` da `date`. `date + interval` da `timestamp`. `date_trunc` sobre un `date` devuelve `timestamptz`, salvo que lo conviertas con `::date`."
+    },
+    {
+      "id": "s04-q26",
+      "type": "single",
+      "q": "Con la zona horaria `America/Santiago` (en 2026 el horario de verano empieza el domingo 6 de septiembre a las 00:00), ¿cuántas filas devuelve esta consulta?\n```sql\nSELECT d\nFROM generate_series(date '2026-09-04', date '2026-09-08', interval '1 day') AS d;\n```",
+      "options": [
+        "5",
+        "4",
+        "6",
+        "Da error por el cambio de hora"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Con argumentos `date`, `generate_series` usa `timestamptz`. El 6 de septiembre a las 00:00 no existe, así que la serie salta a la 01:00 y sigue a esa hora; el 8 de septiembre a la 01:00 supera el límite (00:00) y queda fuera. Con `timestamp '2026-09-04'` o con `date '2026-09-04' + generate_series(0, 4)` obtienes los 5 días."
+    },
+    {
+      "id": "s04-q27",
+      "type": "yesno",
+      "q": "Para cada afirmación sobre fechas, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`extract` devuelve `numeric` desde PostgreSQL 14.",
+          "answer": true
+        },
+        {
+          "text": "`to_char(fecha, 'TMMonth')` depende de `lc_time`.",
+          "answer": true
+        },
+        {
+          "text": "`age(x)` con un solo argumento calcula desde `x` hasta hoy.",
+          "answer": true
+        },
+        {
+          "text": "Ordenar por `to_char(fecha, 'DD/MM/YYYY')` ordena cronológicamente.",
+          "answer": false
+        },
+        {
+          "text": "En un `timestamptz`, `extract(hour FROM …)` usa la zona horaria de la sesión.",
+          "answer": true
+        }
+      ],
+      "explain": "`extract` cambió a `numeric` en la versión 14 (`date_part` sigue en `double precision`). `TM` traduce según `lc_time` (en el curso, `C`: inglés). `age(x)` equivale a `age(current_date, x)`. Como texto, `'02/01/2026'` queda antes que `'31/12/2025'`: ordena por la fecha y formatea al final. Las partes de un `timestamptz` se calculan en la zona horaria de la sesión."
+    },
+    {
+      "id": "s04-q28",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT CASE\n         WHEN 6.5 >= 4.0 THEN 'Suficiente'\n         WHEN 6.5 >= 6.0 THEN 'Muy bueno'\n       END;\n```",
+      "options": [
+        "`'Muy bueno'`",
+        "`'Suficiente'`",
+        "`'Suficiente'` y `'Muy bueno'` en dos filas",
+        "NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`CASE` se queda con el **primer** `WHEN` verdadero. Como `6.5 >= 4.0` se evalúa primero, nunca se llega al tramo de «Muy bueno». Ordena los tramos del más exigente al menos exigente."
+    },
+    {
+      "id": "s04-q29",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT CASE NULL WHEN NULL THEN 'sí' ELSE 'no' END;\n```",
+      "options": [
+        "`'sí'`",
+        "`'no'`",
+        "NULL",
+        "Un error de sintaxis"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El `CASE` simple compara con `=`, y `NULL = NULL` es NULL (no verdadero), así que cae en el `ELSE`. Para detectar NULL usa `CASE WHEN x IS NULL THEN …`."
+    },
+    {
+      "id": "s04-q30",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT CASE WHEN false THEN 1 END;\n```",
+      "options": [
+        "`0`",
+        "`1`",
+        "NULL",
+        "Un error: falta el ELSE"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "El `ELSE` es opcional; si ninguna condición es verdadera y no hay `ELSE`, el `CASE` devuelve NULL."
+    },
+    {
+      "id": "s04-q31",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT COALESCE(NULL, 0, 5), 10 / NULLIF(0, 0);\n```",
+      "options": [
+        "`5` y `0`",
+        "`0` y NULL",
+        "`0` y un error de división por cero",
+        "NULL y NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`COALESCE` devuelve el primer valor no nulo: 0 (el cero no es NULL). `NULLIF(0, 0)` devuelve NULL, y dividir por NULL da NULL en vez de error."
+    },
+    {
+      "id": "s04-q32",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta en PostgreSQL?\n```sql\nSELECT GREATEST(3, NULL, 7), LEAST(NULL, NULL);\n```",
+      "options": [
+        "`7` y NULL",
+        "NULL y NULL",
+        "`7` y `0`",
+        "Un error por los NULL"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En PostgreSQL `GREATEST` y `LEAST` ignoran los NULL y solo devuelven NULL si todos los argumentos lo son. El estándar SQL (y otros motores) devolvería NULL en ambos casos."
+    },
+    {
+      "id": "s04-q33",
+      "type": "single",
+      "q": "`paginas` es `integer` y a veces es NULL. ¿Qué pasa con esta consulta?\n```sql\nSELECT titulo, COALESCE(paginas, 'sin dato') FROM libros;\n```",
+      "options": [
+        "Muestra `'sin dato'` donde `paginas` es NULL",
+        "Muestra `0` donde `paginas` es NULL",
+        "Falla con `invalid input syntax for type integer: \"sin dato\"`",
+        "Muestra NULL porque los tipos no coinciden"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Los argumentos de `COALESCE` deben tener un tipo común; como `paginas` es entero, PostgreSQL intenta convertir `'sin dato'` a entero y falla. Solución: `COALESCE(paginas::text, 'sin dato')`."
+    },
+    {
+      "id": "s04-q34",
+      "type": "multi",
+      "q": "`meta` puede valer 0. ¿Cuáles expresiones calculan `vendido / meta` **sin** fallar por división por cero? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`vendido / NULLIF(meta, 0)`",
+        "`CASE WHEN meta = 0 THEN NULL ELSE vendido / meta END`",
+        "`COALESCE(vendido / meta, 0)`",
+        "`vendido / GREATEST(meta, 0)`",
+        "`vendido / NULLIF(meta, NULL)`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "`NULLIF(meta, 0)` convierte el 0 en NULL. El `CASE` no evalúa la rama del `ELSE` en las filas con meta 0. `COALESCE` llega tarde: la división ya falló antes. `GREATEST(0, 0)` sigue siendo 0, y `NULLIF(meta, NULL)` nunca devuelve NULL para un 0."
+    },
+    {
+      "id": "s04-q35",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta si **ninguna** fila de `productos` tiene `id < 0`?\n```sql\nSELECT CASE WHEN stock > 0 THEN precio / stock ELSE 1 / 0 END\nFROM productos\nWHERE id < 0;\n```",
+      "options": [
+        "Devuelve 0 filas sin error",
+        "Falla con `division by zero`",
+        "Devuelve una fila con NULL",
+        "Falla con un error de sintaxis"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El planificador simplifica las expresiones **constantes** antes de ejecutar, y `1 / 0` es constante: el error aparece al planificar, aunque no haya filas. `CASE` protege las ramas que dependen de cada fila, no las constantes."
+    },
+    {
+      "id": "s04-q36",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT '16517822-k' ~ '^\\d{7,8}-[\\dK]$';\n```",
+      "options": [
+        "`true`",
+        "`false`",
+        "NULL",
+        "Un error: `\\d` no existe en PostgreSQL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`~` distingue mayúsculas y la clase `[\\dK]` solo acepta la `K` mayúscula. Con `~*` (sin distinguir mayúsculas) devolvería `true`."
+    },
+    {
+      "id": "s04-q37",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 'ana@gmail.com' SIMILAR TO 'gmail' AS a,\n       'ana@gmail.com' ~ 'gmail'          AS b;\n```",
+      "options": [
+        "`a = true`, `b = true`",
+        "`a = false`, `b = true`",
+        "`a = true`, `b = false`",
+        "`a = false`, `b = false`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`SIMILAR TO` (como `LIKE`) exige calzar con **todo** el texto; `~` busca el patrón en cualquier parte. Para que `SIMILAR TO` calce habría que escribir `'%gmail%'`."
+    },
+    {
+      "id": "s04-q38",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT 'Set de 4 mates' ~ '\\d+ m\\b' AS con_b,\n       'Set de 4 mates' ~ '\\d+ m'    AS sin_limite;\n```",
+      "options": [
+        "`con_b = false`, `sin_limite = true`",
+        "`con_b = true`, `sin_limite = true`",
+        "`con_b = false`, `sin_limite = false`",
+        "`con_b = true`, `sin_limite = false`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "En PostgreSQL `\\b` es *backspace*, no límite de palabra, así que el primer patrón no calza. Sin límite, «4 m» calza dentro de «4 mates». El límite de palabra correcto es `\\y`: `'\\d+ m\\y'` rechazaría «4 mates» y aceptaría «2 m»."
+    },
+    {
+      "id": "s04-q39",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT regexp_replace('a-b-c', '-', '');\n```",
+      "options": [
+        "`'abc'`",
+        "`'ab-c'`",
+        "`'a-bc'`",
+        "`'a-b-c'`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin la opción `'g'`, `regexp_replace` reemplaza solo la primera coincidencia. Con `regexp_replace('a-b-c', '-', '', 'g')` obtendrías `'abc'` (igual que con `replace('a-b-c', '-', '')`, que siempre reemplaza todas)."
+    },
+    {
+      "id": "s04-q40",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nSELECT (regexp_match('Café en grano 1 kg', '(\\d+) (kg|g)'))[2];\n```",
+      "options": [
+        "`'1'`",
+        "`'kg'`",
+        "`'1 kg'`",
+        "`{1,kg}`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`regexp_match` devuelve un arreglo con lo que capturó cada grupo: `{1,kg}`. El elemento `[2]` es el segundo grupo, `'kg'`. Los paréntesis alrededor de la llamada son obligatorios para indexar."
+    },
+    {
+      "id": "s04-q41",
+      "type": "multi",
+      "q": "¿Qué patrones, usados con `~`, aceptan `'12345678-5'` y `'1234567-K'` pero rechazan `'12.345.678-5'` y `'RUT 12345678-5'`? (Selecciona TODAS las correctas.)",
+      "options": [
+        "`'^\\d{7,8}-[\\dK]$'`",
+        "`'^[0-9]{7,8}-[0-9K]$'`",
+        "`'^[\\d.]+-[\\dK]$'`",
+        "`'^\\d{7,8}-\\d$'`",
+        "`'\\d{7,8}-[\\dK]'`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "Las dos primeras son equivalentes. `[\\d.]+` acepta los puntos. `-\\d$` rechaza la K. Sin anclas, `'\\d{7,8}-[\\dK]'` calza dentro de `'RUT 12345678-5'`."
+    },
+    {
+      "id": "s04-q42",
+      "type": "single",
+      "q": "En el cálculo del dígito verificador, la suma ponderada del RUT 19501525 es 97. ¿Qué devuelve esta consulta?\n```sql\nSELECT substr('0K987654321', 97 % 11 + 1, 1);\n```",
+      "options": [
+        "`'9'`",
+        "`'2'`",
+        "`'K'`",
+        "`'0'`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`97 % 11 = 9`, y el carácter número 10 de `'0K987654321'` es `'2'`. Es lo mismo que `11 - 9 = 2`: el texto guarda en orden los DV para los restos 0 a 10, con 11 → `0` y 10 → `K` ya resueltos."
+    },
+    {
+      "id": "s04-q43",
+      "type": "yesno",
+      "q": "Para cada afirmación sobre patrones, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`~*` compara sin distinguir mayúsculas.",
+          "answer": true
+        },
+        {
+          "text": "`regexp_match` devuelve NULL si el patrón no calza.",
+          "answer": true
+        },
+        {
+          "text": "`regexp_split_to_table` devuelve un arreglo.",
+          "answer": false
+        },
+        {
+          "text": "Un RUT con formato correcto siempre tiene su dígito verificador correcto.",
+          "answer": false
+        },
+        {
+          "text": "Con `standard_conforming_strings = on`, en `'\\d'` la barra invertida es un carácter normal.",
+          "answer": true
+        }
+      ],
+      "explain": "`~*` es la versión sin distinguir mayúsculas de `~`. `regexp_match` devuelve un `text[]` o NULL. `regexp_split_to_table` devuelve **filas**; la que devuelve un arreglo es `regexp_split_to_array`. El formato y el DV son pruebas independientes (`12345678-9` tiene formato válido pero DV incorrecto). Con `standard_conforming_strings` activo (el valor por defecto), solo las cadenas `E'…'` interpretan la barra invertida."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: String Functions and Operators",
+      "url": "https://www.postgresql.org/docs/18/functions-string.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Mathematical Functions and Operators",
+      "url": "https://www.postgresql.org/docs/18/functions-math.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Data Type Formatting Functions (to_char)",
+      "url": "https://www.postgresql.org/docs/18/functions-formatting.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Date/Time Functions and Operators",
+      "url": "https://www.postgresql.org/docs/18/functions-datetime.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Conditional Expressions (CASE, COALESCE, NULLIF, GREATEST, LEAST)",
+      "url": "https://www.postgresql.org/docs/18/functions-conditional.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Pattern Matching (LIKE, SIMILAR TO, POSIX)",
+      "url": "https://www.postgresql.org/docs/18/functions-matching.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Set Returning Functions (generate_series)",
+      "url": "https://www.postgresql.org/docs/18/functions-srf.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Value Expressions (reglas de evaluación de expresiones)",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Lexical Structure (precedencia de operadores y constantes de cadena)",
+      "url": "https://www.postgresql.org/docs/18/sql-syntax-lexical.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Date/Time Types (interval y zonas horarias)",
+      "url": "https://www.postgresql.org/docs/18/datatype-datetime.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Type Conversion — Operators",
+      "url": "https://www.postgresql.org/docs/18/typeconv-oper.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Locale Support (lc_numeric, lc_time, LC_CTYPE)",
+      "url": "https://www.postgresql.org/docs/18/locale.html"
+    }
+  ]
+}

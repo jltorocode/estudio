@@ -1,0 +1,3338 @@
+{
+ "id": "s05",
+ "order": 5,
+ "title": "Texto a fondo: cadenas, formato y expresiones regulares",
+ "domain": "basico",
+ "summary": "Casi todo programa maneja texto: nombres, mensajes, archivos, formularios, respuestas de la web. En esta sección aprenderás cómo representa Python las cadenas (secuencias inmutables de code points Unicode), a transformarlas con sus métodos, a darles formato profesional con f-strings, a pasar de texto a bytes sin romper tildes ni eñes, a usar las nuevas plantillas `t\"…\"` de Python 3.14 y a buscar, extraer y validar patrones con expresiones regulares.",
+ "goal": "Manipular, formatear, normalizar, codificar y validar texto en Python 3.14 con métodos de `str`, f-strings, `unicodedata`, `bytes` y el módulo `re`, eligiendo en cada caso la herramienta más simple que funcione.",
+ "objectives": [
+  "Indexar, recortar, recorrer y comparar cadenas teniendo en cuenta que son inmutables.",
+  "Elegir y encadenar los métodos de `str` adecuados para limpiar, dividir, unir, buscar y transformar texto.",
+  "Dar formato preciso a números y textos con f-strings y el mini-lenguaje de formato, y reconocer `str.format()` y el operador `%`.",
+  "Explicar la diferencia entre carácter, code point y byte, y normalizar texto Unicode para comparar sin mayúsculas ni tildes.",
+  "Codificar y decodificar entre `str` y `bytes` con UTF-8 y otras codificaciones, gestionando los errores de forma explícita.",
+  "Construir y procesar plantillas `t\"…\"` (Python 3.14) para escapar los valores interpolados.",
+  "Escribir, probar y documentar expresiones regulares con `re` (grupos con nombre, flags, sustitución) y justificar cuándo no usarlas."
+ ],
+ "lessons": [
+  {
+   "id": "s05-l1",
+   "title": "Cadenas: el modelo mental",
+   "minutes": 25,
+   "goals": [
+    "Escribir literales de cadena con comillas simples, dobles y triples, secuencias de escape y cadenas raw.",
+    "Extraer caracteres y subcadenas con índices positivos y negativos y con slicing (incluido el paso).",
+    "Explicar por qué las cadenas son inmutables y construir texto de forma eficiente con `join`.",
+    "Predecir el resultado de comparar cadenas con `==`, `<` e `in`."
+   ],
+   "takeaways": [
+    "Una cadena es una secuencia inmutable: índices, slicing, `len`, `in` y `for` funcionan como en listas y tuplas.",
+    "Ningún método modifica la cadena: devuelve otra nueva que tienes que guardar.",
+    "Para construir texto en un bucle, acumula trozos en una lista y únelos al final con `join`.",
+    "`<` y `>` comparan el código numérico de cada carácter: mayúsculas antes que minúsculas y letras con tilde después de la z.",
+    "Usa cadenas raw `r\"…\"` siempre que haya barras invertidas (regex, rutas de Windows)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s02 usaste `str` por encima. Ahora toca ir a fondo, porque casi todos los programas reales manejan texto: nombres, mensajes, archivos, formularios, respuestas de una web… El modelo mental que necesitas cabe en una frase: **una cadena es una secuencia inmutable de caracteres Unicode** (técnicamente, de *code points*; lo precisarás en la lección 4)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Secuencia**: todo lo que aprendiste en s04 con listas y tuplas funciona igual (índices, slicing, `len`, `in`, recorrer con `for`, `sorted`…). No existe un tipo «carácter»: un carácter es una cadena de longitud 1.",
+      "**Inmutable**: como las tuplas, una cadena nunca cambia. Cada operación que «modifica» texto en realidad **crea una cadena nueva**."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "h",
+     "text": "Literales: cómo se escribe una cadena"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Qué significa"
+     ],
+     "rows": [
+      [
+       "`'texto'` o `\"texto\"`",
+       "Son idénticas. Elige la que te evite escapar comillas: `\"O'Higgins\"`, `'Dijo \"hola\"'`."
+      ],
+      [
+       "`'''…'''` o `\"\"\"…\"\"\"`",
+       "Cadena de varias líneas: los saltos de línea forman parte del texto. También se usan para los docstrings (s06)."
+      ],
+      [
+       "`\"a\\tb\\n\"`",
+       "Secuencias de escape: `\\n` salto de línea, `\\t` tabulador, `\\\\` barra invertida, `\\\"` y `\\'` comillas."
+      ],
+      [
+       "`\"\\u00f1\"`, `\"\\N{GREEK SMALL LETTER PI}\"`",
+       "Un carácter por su código Unicode (`\\u` + 4 cifras hexadecimales, `\\U` + 8) o por su nombre oficial."
+      ],
+      [
+       "`r\"C:\\nuevo\\tabla\"`",
+       "Cadena *raw* (cruda): las barras invertidas no escapan nada. Imprescindible en expresiones regulares y rutas de Windows."
+      ],
+      [
+       "`\"uno \" \"dos\"`",
+       "Dos literales seguidos, separados solo por espacios (o por saltos de línea dentro de paréntesis), se unen al compilar: `\"uno dos\"`. Útil para partir textos largos."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "ruta = \"C:\\nuevo\\tabla\"        # ¡cuidado! \\n y \\t son escapes\nprint(ruta)\nprint(len(ruta))                # 12: \\n y \\t cuentan como UN carácter cada uno\ncruda = r\"C:\\nuevo\\tabla\"       # raw: las barras se quedan tal cual\nprint(cruda, len(cruda))        # C:\\nuevo\\tabla 14\nprint(repr(ruta))               # repr() muestra los escapes: 'C:\\nuevo\\tabla'\nprint(\"\\N{GREEK SMALL LETTER PI}\", \"\\u00f1\", \"caf\\u00e9\")   # π ñ café\nmensaje = (\"Esta frase es larga, así que la \"\n           \"partimos en dos literales adyacentes.\")\nprint(mensaje)",
+     "run": true,
+     "caption": "Ejecuta y compara la salida de `ruta` con la de `cruda`. Prueba a quitar la `r`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Una barra invertida seguida de algo que no es un escape válido (por ejemplo `\"\\d\"` o `\"\\p\"`) se conserva tal cual, pero desde **Python 3.12** el compilador emite un `SyntaxWarning` (antes era un `DeprecationWarning` que casi nadie veía) y en una versión futura será un `SyntaxError`. Es el error clásico al escribir regex o rutas de Windows sin `r`. Otra trampa: una cadena raw no puede terminar en una sola barra (`r\"C:\\carpeta\\\"` es un error de sintaxis, porque la barra «escapa» la comilla de cierre)."
+    },
+    {
+     "type": "h",
+     "text": "Índices y slicing: igual que en las listas"
+    },
+    {
+     "type": "diagram",
+     "title": "Cada carácter tiene dos índices",
+     "mermaid": "flowchart LR\n  A[\"'P'<br/>0 · -6\"] --- B[\"'y'<br/>1 · -5\"] --- C[\"'t'<br/>2 · -4\"] --- D[\"'h'<br/>3 · -3\"] --- E[\"'o'<br/>4 · -2\"] --- F[\"'n'<br/>5 · -1\"]",
+     "caption": "En `s = \"Python\"`, `s[0]` y `s[-6]` son la misma `'P'`. `s[1:4]` toma los índices 1, 2 y 3 → `'yth'`: el final nunca se incluye."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "s = \"Python\"\nprint(s[0], s[-1])          # P n\nprint(s[1:4])               # yth  (del 1 al 3; el 4 no entra)\nprint(s[:2], s[2:])         # Py thon  → s[:k] + s[k:] == s, siempre\nprint(s[::2])               # Pto  (de dos en dos)\nprint(s[::-1])              # nohtyP  (al revés)\nprint(repr(s[10:20]))       # ''  → un slice fuera de rango NO da error\nprint(len(s), \"th\" in s, \"TH\" in s)   # 6 True False\nfor i, letra in enumerate(\"sol\"):\n    print(i, letra)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`s[i]` con un índice fuera de rango lanza `IndexError`, pero un *slice* fuera de rango devuelve `''` sin error. `in` busca **subcadenas** (`\"th\" in \"Python\"` es `True`), no solo caracteres sueltos, a diferencia de lo que pasa con una lista."
+    },
+    {
+     "type": "h",
+     "text": "Inmutabilidad: las cadenas no se modifican, se sustituyen"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "s = \"gato\"\ns[0] = \"p\"\n# TypeError: 'str' object does not support item assignment",
+     "caption": "No se puede cambiar un carácter dentro de una cadena."
+    },
+    {
+     "type": "p",
+     "text": "Para «cambiar» una letra construye una cadena nueva y reasigna el nombre: `s = \"p\" + s[1:]`. Todos los métodos (`upper`, `replace`, `strip`…) **devuelven** una cadena nueva y dejan la original intacta. Si no guardas el resultado, se pierde."
+    },
+    {
+     "type": "diagram",
+     "title": "Un método crea un objeto nuevo",
+     "mermaid": "flowchart LR\n  N1([\"nombre\"]) --> O1[\"'ana'<br/>objeto original\"]\n  O1 -- \"nombre.upper() crea\" --> O2[\"'ANA'<br/>objeto nuevo\"]\n  N2([\"nombre = nombre.upper()\"]) -. \"reasigna\" .-> O2",
+     "caption": "El objeto `'ana'` no cambia nunca. Lo que cambia es a qué objeto apunta el nombre (el modelo de referencias de s02)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre = \"ana\"\nnombre.upper()              # el resultado se pierde: nadie lo guarda\nprint(nombre)               # ana  (no ha cambiado)\nnombre = nombre.upper()     # reasignamos el NOMBRE a la cadena nueva\nprint(nombre)               # ANA\ns = \"gato\"\ns = \"p\" + s[1:]\nprint(s)                    # pato",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Construir texto: `+`, `*` y `join`"
+    },
+    {
+     "type": "p",
+     "text": "`+` concatena y `*` repite (`\"-\" * 20`). Pero en un bucle, `resultado += trozo` crea una cadena nueva en cada vuelta y copia todo lo anterior: la documentación oficial advierte que construir una secuencia inmutable por concatenación repetida tiene un coste **cuadrático** en la longitud total. La forma idiomática es acumular los trozos en una lista y unirlos **una sola vez** al final con `separador.join(lista)`, que tiene coste lineal."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "palabras = [\"texto\", \"a\", \"fondo\"]\nprint(\" \".join(palabras))        # texto a fondo\nprint(\"-\".join(\"abc\"))           # a-b-c  (una cadena también es iterable)\nprint(\"=\" * 20)\ntrozos = []\nfor n in range(1, 6):\n    trozos.append(str(n))        # join solo acepta cadenas\nprint(\", \".join(trozos))         # 1, 2, 3, 4, 5",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`\", \".join([1, 2, 3])` lanza `TypeError: sequence item 0: expected str instance, int found`. `join` exige que **todos** los elementos sean `str`: conviértelos antes con una comprensión, `[str(n) for n in numeros]`. Y fíjate en que `join` es un método del **separador**, no de la lista."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "CPython a veces optimiza `s += t` para que no sea tan lento, pero la documentación insiste en que depende de la versión y la implementación. Si el rendimiento importa, usa `join` (o `io.StringIO`)."
+    },
+    {
+     "type": "h",
+     "text": "Comparar cadenas"
+    },
+    {
+     "type": "p",
+     "text": "`==` compara carácter a carácter. `<` y `>` comparan **lexicográficamente** usando el código numérico de cada carácter (su *code point*, el que devuelve `ord()`): se busca el primer carácter distinto y manda ese. Consecuencias que sorprenden:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Todas las mayúsculas ASCII van antes que las minúsculas: `\"Zorro\" < \"abeja\"` es `True` (`ord(\"Z\")` es 90 y `ord(\"a\")` es 97).",
+      "Los números guardados como texto se comparan dígito a dígito: `\"10\" < \"9\"` es `True`.",
+      "Las letras con tilde y la ñ tienen códigos mayores que la `z`: `\"árbol\" > \"zorro\"`.",
+      "Un prefijo va antes que la cadena completa: `\"casa\" < \"casas\"`."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"abeja\" < \"abejorro\")      # True: primera diferencia 'a' < 'o'\nprint(\"Zorro\" < \"abeja\")         # True: 'Z' (90) < 'a' (97)\nprint(\"10\" < \"9\")                # True: se compara '1' con '9'\nprint(\"árbol\" < \"zorro\")         # False: 'á' (225) > 'z' (122)\npalabras = [\"zorro\", \"Árbol\", \"abeja\", \"Ñu\", \"Casa\"]\nprint(sorted(palabras))                     # ['Casa', 'abeja', 'zorro', 'Árbol', 'Ñu']\nprint(sorted(palabras, key=str.casefold))   # ['abeja', 'Casa', 'zorro', 'Árbol', 'Ñu']\n# casefold arregla las mayúsculas, pero las letras con tilde siguen después de la z",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Ordenar «como un diccionario» en español requiere reglas de ordenación del idioma (*collation*): `locale.strxfrm` con una configuración regional adecuada o bibliotecas externas como PyICU. Para la mayoría de los casos basta una clave que quite tildes y mayúsculas; aprenderás a construirla en la lección 4."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Cadena",
+       "en": "string (str)",
+       "def": "Secuencia inmutable de caracteres Unicode. Se escribe entre comillas."
+      },
+      {
+       "term": "Secuencia de escape",
+       "en": "escape sequence",
+       "def": "Barra invertida más uno o varios caracteres que representan otro carácter: `\\n`, `\\t`, `\\u00f1`."
+      },
+      {
+       "term": "Cadena raw",
+       "en": "raw string",
+       "def": "Literal con prefijo `r` en el que las barras invertidas no escapan nada."
+      },
+      {
+       "term": "Inmutable",
+       "en": "immutable",
+       "def": "Que no puede modificarse después de crearse; las operaciones crean objetos nuevos."
+      },
+      {
+       "term": "Rebanado",
+       "en": "slicing",
+       "def": "Extraer una subsecuencia con `s[inicio:fin:paso]`; el índice `fin` no se incluye."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l2",
+   "title": "Métodos de cadena: la caja de herramientas",
+   "minutes": 30,
+   "goals": [
+    "Clasificar los métodos de `str` por familias: mayúsculas, búsqueda, limpieza, división, alineación y comprobación.",
+    "Aplicar `split`, `join`, `strip`, `replace` y `partition` para limpiar y trocear datos de texto.",
+    "Distinguir `find` de `index`, `split()` de `split(\" \")` e `isdigit` de `isdecimal`.",
+    "Encadenar métodos para escribir transformaciones legibles en una sola expresión."
+   ],
+   "takeaways": [
+    "Ningún método modifica la cadena: devuelven un valor nuevo (otra cadena, un número, una lista o un booleano).",
+    "`in` para saber si algo está; `find` (devuelve -1) o `index` (lanza `ValueError`) para saber dónde.",
+    "`strip(chars)` quita un *conjunto* de caracteres de los extremos; para prefijos y sufijos concretos usa `removeprefix` y `removesuffix`.",
+    "`split()` sin argumentos agrupa cualquier racha de espacios; con separador explícito conserva los campos vacíos.",
+    "`isdecimal()` es la comprobación que encaja con los dígitos que acepta `int()`; `isdigit()` e `isnumeric()` son más permisivas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`str` tiene 47 métodos públicos en Python 3.14 (compruébalo con `dir(str)`). No hace falta memorizarlos: basta con saber qué **familias** existen para ir directo al adecuado, y recordar la regla de la lección anterior: todos **devuelven** algo nuevo."
+    },
+    {
+     "type": "diagram",
+     "title": "Las familias de métodos de `str`",
+     "mermaid": "mindmap\n  root((\"Métodos de str\"))\n    [\"Mayúsculas\"]\n      [\"upper, lower\"]\n      [\"capitalize, title\"]\n      [\"swapcase, casefold\"]\n    [\"Buscar\"]\n      [\"find, rfind, index\"]\n      [\"count\"]\n      [\"startswith, endswith\"]\n    [\"Limpiar y cambiar\"]\n      [\"strip, lstrip, rstrip\"]\n      [\"removeprefix, removesuffix\"]\n      [\"replace, translate\"]\n    [\"Dividir y unir\"]\n      [\"split, rsplit, splitlines\"]\n      [\"partition, rpartition\"]\n      [\"join\"]\n    [\"Alinear\"]\n      [\"center, ljust, rjust\"]\n      [\"zfill\"]\n    [\"Comprobar\"]\n      [\"isalpha, isalnum\"]\n      [\"isdecimal, isdigit, isnumeric\"]\n      [\"isspace, isupper, islower, isascii\"]",
+     "caption": "Si dudas, consulta la tabla de métodos de cadena en la documentación oficial (Built-in Types → String Methods)."
+    },
+    {
+     "type": "h",
+     "text": "Mayúsculas y minúsculas"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "s = \"el señor de los anillos\"\nprint(s.upper())             # EL SEÑOR DE LOS ANILLOS\nprint(s.capitalize())        # El señor de los anillos\nprint(s.title())             # El Señor De Los Anillos\nprint(\"iPhone\".swapcase())   # IpHONE\nprint(\"it's\".title())        # It'S  ← title() no entiende de apóstrofos\nprint(\"Straße\".lower(), \"Straße\".casefold())   # straße strasse",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para **comparar** sin distinguir mayúsculas usa `a.casefold() == b.casefold()`. `casefold()` es un `lower()` más agresivo, pensado precisamente para comparar: por ejemplo, convierte la `ß` alemana en `ss`. Para **mostrar** texto en minúsculas, `lower()`."
+    },
+    {
+     "type": "h",
+     "text": "Buscar"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Expresión",
+      "Devuelve",
+      "Si no lo encuentra"
+     ],
+     "rows": [
+      [
+       "`sub in s`",
+       "`bool`. La forma idiomática de preguntar «¿contiene?»",
+       "`False`"
+      ],
+      [
+       "`s.find(sub)` / `s.rfind(sub)`",
+       "Índice de la primera / última aparición",
+       "`-1`"
+      ],
+      [
+       "`s.index(sub)` / `s.rindex(sub)`",
+       "Igual que `find` / `rfind`",
+       "Lanza `ValueError`"
+      ],
+      [
+       "`s.count(sub)`",
+       "Nº de apariciones **sin solaparse**",
+       "`0`"
+      ],
+      [
+       "`s.startswith(x)` / `s.endswith(x)`",
+       "`bool`; `x` puede ser una tupla de opciones",
+       "`False`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "frase = \"banana\"\nprint(frase.find(\"an\"), frase.rfind(\"an\"))   # 1 3\nprint(frase.find(\"x\"))                       # -1 (no es un error)\nprint(frase.count(\"ana\"))                    # 1: no cuenta solapamientos\nprint(frase.find(\"a\", 2))                    # 3: busca a partir del índice 2\narchivo = \"informe.PDF\"\nprint(archivo.lower().endswith((\".pdf\", \".docx\")))   # True",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`find` devuelve `-1` cuando no encuentra, y `-1` es un índice válido (el último carácter): `s[s.find(\"x\")]` no falla, te devuelve el último carácter en silencio. Si solo quieres saber si está, usa `in` (la propia documentación lo recomienda). Si necesitas la posición y *tiene* que estar, `index` falla de forma ruidosa, que es lo que quieres."
+    },
+    {
+     "type": "h",
+     "text": "Limpiar: `strip`, `removeprefix`, `replace`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "entrada = \"   hola mundo \\n\"\nprint(repr(entrada.strip()))                     # 'hola mundo'\nprint(\"xxhola--xx\".strip(\"x\"))                   # hola--\nprint(\"www.ejemplo.com\".strip(\"w.com\"))          # ejempl  ← ¡se comió la o!\nprint(\"www.ejemplo.com\".removeprefix(\"www.\"))    # ejemplo.com\nprint(\"foto.jpeg\".removesuffix(\".jpeg\") + \".jpg\")   # foto.jpg\nprint(\"a-b-c-d\".replace(\"-\", \"+\", 2))            # a+b+c-d (solo 2 reemplazos)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`strip(\"w.com\")` **no** quita el texto `\".com\"`: quita de los extremos cualquier combinación de los caracteres `w`, `.`, `c`, `o` y `m`, por eso desaparece también la `o` final de «ejemplo». Para quitar un prefijo o sufijo concreto usa `removeprefix` / `removesuffix` (disponibles desde Python 3.9)."
+    },
+    {
+     "type": "h",
+     "text": "Dividir y unir"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"  uno   dos\\ttres\\n\".split())         # ['uno', 'dos', 'tres']\nprint(\"a,b,,c\".split(\",\"))                   # ['a', 'b', '', 'c']\nprint(\"a  b\".split(\" \"))                     # ['a', '', 'b']\nprint(\"\".split(), \"\".split(\",\"))             # [] ['']\nprint(\"2026-09-26\".split(\"-\", 1))            # ['2026', '09-26']  (maxsplit)\nprint(\"ruta/a/archivo.txt\".rsplit(\"/\", 1))   # ['ruta/a', 'archivo.txt']\nclave, sep, valor = \"usuario=ana=admin\".partition(\"=\")\nprint(clave, \"|\", valor)                     # usuario | ana=admin\nprint(\"línea 1\\nlínea 2\\r\\nlínea 3\\n\".splitlines())   # ['línea 1', 'línea 2', 'línea 3']",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`split()` sin argumentos y `split(\" \")` **no** son lo mismo. Sin argumentos, cualquier racha de espacios, tabuladores o saltos de línea cuenta como un solo separador y no aparecen cadenas vacías. Con un separador explícito, cada separador cuenta y surgen campos vacíos. Pregunta trampa típica: `\"\".split()` es `[]`, pero `\"\".split(\",\")` es `['']`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`\" \".join(texto.split())` es el modismo clásico para normalizar espacios: quita los de los extremos y reduce cada racha interior (incluidos tabuladores y saltos de línea) a un solo espacio. Y `partition` es perfecto para separar «clave=valor» en el primer separador sin preocuparte de si hay más."
+    },
+    {
+     "type": "h",
+     "text": "Alinear y rellenar"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"[\" + \"hola\".center(10, \"*\") + \"]\")   # [***hola***]\nprint(\"[\" + \"hola\".ljust(8) + \"]\")          # [hola    ]\nprint(\"[\" + \"hola\".rjust(8, \".\") + \"]\")     # [....hola]\nprint(\"42\".zfill(5), \"-42\".zfill(5))        # 00042 -0042",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "En la lección siguiente verás que las f-strings hacen lo mismo (y mucho más) con `{x:^10}`, `{x:<8}` o `{x:.>8}`."
+    },
+    {
+     "type": "h",
+     "text": "Comprobar el contenido: los métodos `is…()`"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método",
+      "`True` si (y la cadena no está vacía)…",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`isalpha()`",
+       "todo son letras (incluidas á, ñ, ü…)",
+       "`\"Ñandú\".isalpha()` → `True`"
+      ],
+      [
+       "`isdecimal()`",
+       "todo son dígitos decimales (categoría Unicode Nd)",
+       "`\"²\".isdecimal()` → `False`"
+      ],
+      [
+       "`isdigit()`",
+       "decimales y otros dígitos, como los superíndices",
+       "`\"²\".isdigit()` → `True`"
+      ],
+      [
+       "`isnumeric()`",
+       "además fracciones, números romanos…",
+       "`\"½\".isnumeric()` → `True`"
+      ],
+      [
+       "`isalnum()`",
+       "todo son letras o números",
+       "`\"abc123\".isalnum()` → `True`"
+      ],
+      [
+       "`isspace()`",
+       "todo son espacios en blanco",
+       "`\" \\t\\n\".isspace()` → `True`"
+      ],
+      [
+       "`isupper()` / `islower()`",
+       "hay letras con mayúscula/minúscula y todas lo son",
+       "`\"ABC 1\".isupper()` → `True`"
+      ],
+      [
+       "`isascii()`",
+       "todos los caracteres son ASCII (`True` también si está vacía)",
+       "`\"año\".isascii()` → `False`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Para saber si puedes convertir con `int()`, `isdigit()` no es la comprobación correcta: `\"²\".isdigit()` es `True` pero `int(\"²\")` lanza `ValueError`. La que encaja es `isdecimal()`, que además acepta dígitos de otras escrituras (`int(\"٣\")` vale 3). Ninguna de ellas acepta `\"-5\"` ni `\"3.14\"`: el signo y el punto no son dígitos."
+    },
+    {
+     "type": "h",
+     "text": "`translate`: sustituciones carácter a carácter"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "tabla = str.maketrans(\"áéíóú\", \"aeiou\", \"¡!¿?\")   # el 3.er argumento: caracteres a borrar\nprint(\"¡Qué día más bonito!\".translate(tabla))     # Que dia mas bonito\ntitulo = \"  Informe Anual 2026  \"\narchivo = titulo.strip().lower().replace(\" \", \"_\") + \".txt\"   # métodos encadenados\nprint(archivo)                                     # informe_anual_2026.txt",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`str.maketrans` crea una tabla (un diccionario de code point a code point) y `translate` la aplica en una sola pasada; es la herramienta más rápida para cambiar o borrar muchos caracteres sueltos. Encadenar métodos (`titulo.strip().lower().replace(…)`) funciona porque cada uno devuelve una cadena nueva sobre la que se llama el siguiente; si la cadena se alarga demasiado, pártela en variables con nombre."
+    }
+   ]
+  },
+  {
+   "id": "s05-l3",
+   "title": "Formato profesional: f-strings y el mini-lenguaje de formato",
+   "minutes": 35,
+   "goals": [
+    "Escribir f-strings con expresiones, conversiones (`!r`, `!s`, `!a`) y el especificador de depuración `=`.",
+    "Construir especificaciones de formato con relleno, alineación, signo, ancho, separador de miles, precisión y tipo.",
+    "Formatear columnas alineadas con anchos calculados en tiempo de ejecución mediante campos anidados.",
+    "Traducir a f-string código que usa `str.format()` o el operador `%`."
+   ],
+   "takeaways": [
+    "Un campo de f-string es `{expresión=!conversión:especificación}`; solo la expresión es obligatoria.",
+    "Orden fijo de la especificación: relleno y alineación, signo, `z`, `#`, `0`, ancho, agrupación, `.precisión` y tipo.",
+    "El ancho es un mínimo (no recorta); en cadenas, `.N` sí recorta; `%` multiplica por 100.",
+    "`{x=}` es tu `print` de depuración y `!r` muestra el `repr` (con comillas en las cadenas).",
+    "Reconoce `str.format()` y `%`, pero en código nuevo escribe f-strings."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una **f-string** (*formatted string literal*, desde Python 3.6, PEP 498) es una cadena con prefijo `f` cuyos campos `{…}` se evalúan en el momento de ejecutarse y se sustituyen por su valor formateado. Cada campo tiene hasta cuatro partes, y solo la primera es obligatoria:"
+    },
+    {
+     "type": "diagram",
+     "title": "Anatomía de un campo de reemplazo",
+     "mermaid": "flowchart LR\n  E[\"expresión<br/>precio * 1.21\"] --> D[\"= opcional<br/>depuración\"]\n  D --> C[\"!conversión opcional<br/>!r · !s · !a\"]\n  C --> S[\":especificación opcional<br/>>10,.2f\"]\n  S --> R[\"texto final<br/>format(valor, especificación)\"]",
+     "caption": "Se evalúa la expresión, se aplica la conversión (si la hay) y el resultado pasa por `format(valor, especificación)`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre, edad = \"Ada\", 36\nprint(f\"{nombre} tiene {edad} años\")\nprint(f\"El año que viene tendrá {edad + 1}\")     # cualquier expresión\nprint(f\"{nombre.upper()} | {len(nombre)} letras\")\nprint(f\"{nombre!r}\")          # 'Ada'  → usa repr()\nprint(f\"{edad=}\")             # edad=36  (depuración, desde 3.8)\nprint(f\"{edad * 2 = }\")       # edad * 2 = 72  (respeta los espacios)\nprint(f\"{nombre=}\")           # nombre='Ada'  → con = se usa repr() por defecto\nprint(f\"{{llaves}} literales y {edad}\")   # {llaves} literales y 36",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`f\"{variable=}\"` es el `print` de depuración más rápido que existe: muestra el texto de la expresión, un `=` y su valor. Si usas `=` sin especificación de formato, la conversión por defecto pasa a ser `repr()`; por eso las cadenas aparecen entre comillas. Para escribir una llave literal, duplícala: `{{` y `}}`."
+    },
+    {
+     "type": "h",
+     "text": "El mini-lenguaje de especificación de formato"
+    },
+    {
+     "type": "p",
+     "text": "Lo que va tras los dos puntos es la **especificación de formato** (*format spec*). Su gramática oficial, simplificada, es `[[relleno]alineación][signo][z][#][0][ancho][agrupación][.precisión][tipo]`. Todas las piezas son opcionales, pero **el orden es fijo**. En la columna *Resultado* de la tabla, `␣` marca cada espacio."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Pieza",
+      "Valores",
+      "Ejemplo",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "alineación",
+       "`<` izquierda, `>` derecha, `^` centro, `=` relleno tras el signo",
+       "`f\"{'hola':^10}\"`",
+       "`'␣␣␣hola␣␣␣'`"
+      ],
+      [
+       "relleno",
+       "cualquier carácter, justo antes de la alineación",
+       "`f\"{'hola':*>8}\"`",
+       "`'****hola'`"
+      ],
+      [
+       "signo",
+       "`+` siempre, `-` solo negativos (por defecto), espacio",
+       "`f\"{5:+}\"`",
+       "`'+5'`"
+      ],
+      [
+       "ancho",
+       "número mínimo de caracteres (no recorta)",
+       "`f\"{42:6}\"`",
+       "`'␣␣␣␣42'`"
+      ],
+      [
+       "`0`",
+       "rellena con ceros respetando el signo",
+       "`f\"{-42:06}\"`",
+       "`'-00042'`"
+      ],
+      [
+       "agrupación",
+       "`,` o `_` cada tres cifras",
+       "`f\"{1234567:,}\"`",
+       "`'1,234,567'`"
+      ],
+      [
+       "precisión",
+       "decimales (`f`, `%`), cifras significativas (`g`) o longitud máxima (cadenas)",
+       "`f\"{3.14159:.2f}\"`",
+       "`'3.14'`"
+      ],
+      [
+       "tipo (enteros)",
+       "`d`, `b`, `o`, `x`, `X`, `c`",
+       "`f\"{255:x}\"`",
+       "`'ff'`"
+      ],
+      [
+       "tipo (reales)",
+       "`f`, `e`, `g`, `%`",
+       "`f\"{0.256:.1%}\"`",
+       "`'25.6%'`"
+      ],
+      [
+       "`#`",
+       "forma alternativa: prefijos `0x`, `0b`, `0o`",
+       "`f\"{5:#b}\"`",
+       "`'0b101'`"
+      ],
+      [
+       "`z` (3.11)",
+       "convierte `-0.0` en `0.0` tras redondear",
+       "`f\"{-0.001:z.2f}\"`",
+       "`'0.00'`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "precio = 1234567.891\nprint(f\"{precio:,.2f}\")          # 1,234,567.89\nprint(f\"{precio:_.1f}\")          # 1_234_567.9\nprint(f\"{precio:>15,.2f}|\")      #    1,234,567.89|\nprint(f\"{0.07:.1%}\")             # 7.0%\nprint(f\"{1/3:.3g} {123456789:.3g}\")    # 0.333 1.23e+08\nprint(f\"{-7:08.2f} {7:+d}\")      # -0007.00 +7\nprint(f\"{255:b} {255:x} {255:#o}\")     # 11111111 ff 0o377\nprint(f\"{2.5:.0f} {3.5:.0f}\")    # 2 4  ← empate: redondea al par",
+     "run": true,
+     "caption": "Cambia las especificaciones y observa el resultado: es la mejor forma de aprender el mini-lenguaje."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El redondeo de `f` es el mismo que el de `round()` (s02): los empates van al número par (`f\"{2.5:.0f}\"` da `'2'`) y muchos decimales no son exactos en binario (`f\"{2.675:.2f}\"` da `'2.67'`). Para dinero con redondeo exacto se usa `decimal.Decimal`."
+    },
+    {
+     "type": "h",
+     "text": "Texto alineado y anchos dinámicos"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "for nombre, nota in [(\"Ana\", 9.5), (\"Bartolomé\", 7.25), (\"Li\", 10)]:\n    print(f\"{nombre:<10}|{nota:>6.2f}|\")\nprint(f\"{'título':=^20}\")                    # =======título=======\nprint(f\"{'Supercalifragilístico':.8}\")      # Supercal  ← .N recorta cadenas\nancho, decimales = 12, 3\nprint(f\"{3.14159:>{ancho}.{decimales}f}|\")  #        3.142|  (campos anidados)",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El ancho es un **mínimo**: si el valor no cabe, se muestra entero y la tabla se descuadra. Para cadenas, la precisión (`.8`) sí recorta. Además, el ancho cuenta *code points*, no columnas de pantalla: un emoji o un ideograma chino ocupan dos columnas en la terminal y una tilde combinante no ocupa ninguna, así que pueden descuadrar tablas."
+    },
+    {
+     "type": "p",
+     "text": "**Novedad de Python 3.14**: la agrupación también puede aplicarse a la parte decimal escribiéndola tras la precisión. `f\"{1234.56789:,.4_f}\"` da `'1,234.567_9'`. En versiones anteriores eso era un `ValueError`."
+    },
+    {
+     "type": "p",
+     "text": "Por dentro, un campo es exactamente `format(valor, especificación)`: puedes llamar a la función integrada `format()` directamente, y **cada tipo decide qué especificaciones entiende**. Por eso `f\"{'hola':.2f}\"` da error (una cadena no sabe qué es `f`) y por eso las fechas tienen sus propios códigos, como `f\"{hoy:%d/%m/%Y}\"` (lo verás en s09)."
+    },
+    {
+     "type": "h",
+     "text": "Python 3.12: f-strings sin restricciones (PEP 701)"
+    },
+    {
+     "type": "p",
+     "text": "Desde Python 3.12 (PEP 701) la expresión de un campo puede ser cualquier expresión válida: se pueden **reutilizar las mismas comillas** que delimitan la f-string, usar barras invertidas y escribir la expresión en varias líneas, incluso con comentarios. En código que deba funcionar en 3.11 o anteriores, alterna comillas simples y dobles."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "datos = {\"nombre\": \"Ada\", \"lenguajes\": [\"Python\", \"C\"]}\nprint(f\"{datos[\"nombre\"]} programa en {\", \".join(datos[\"lenguajes\"])}\")   # 3.12+\nprint(f\"Lenguajes:\\n{\"\\n\".join(datos[\"lenguajes\"])}\")                      # 3.12+",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Las otras dos formas: `str.format()` y `%`"
+    },
+    {
+     "type": "p",
+     "text": "Antes de las f-strings existían dos sistemas que siguen presentes en mucho código (y en los exámenes). Tienes que **reconocerlos**, aunque en código nuevo lo normal sea usar f-strings. `str.format()` usa la misma especificación de formato; el operador `%` (estilo *printf* de C) tiene sus propios códigos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "f-string",
+      "`str.format()`",
+      "`%` (printf)"
+     ],
+     "rows": [
+      [
+       "`f\"{n} tiene {e}\"`",
+       "`\"{} tiene {}\".format(n, e)`",
+       "`\"%s tiene %s\" % (n, e)`"
+      ],
+      [
+       "`f\"{x:.2f}\"`",
+       "`\"{:.2f}\".format(x)`",
+       "`\"%.2f\" % x`"
+      ],
+      [
+       "`f\"{n:05d}\"`",
+       "`\"{:05d}\".format(n)`",
+       "`\"%05d\" % n`"
+      ],
+      [
+       "`f\"{s:>8}\"`",
+       "`\"{:>8}\".format(s)`",
+       "`\"%8s\" % s`"
+      ],
+      [
+       "`f\"{a}{b}{a}\"`",
+       "`\"{0}{1}{0}\".format(a, b)`",
+       "—"
+      ],
+      [
+       "`f\"{nombre}\"`",
+       "`\"{nombre}\".format(nombre=\"Ana\")`",
+       "`\"%(nombre)s\" % {\"nombre\": \"Ana\"}`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre, total = \"Ana\", 12.5\nprint(\"{} debe ${:.2f}\".format(nombre, total))\nprint(\"{0} y {1}; otra vez {0}\".format(\"pan\", \"vino\"))\nprint(\"{n} debe ${t:.2f}\".format(n=nombre, t=total))\nprint(\"%s debe $%.2f\" % (nombre, total))\nprint(\"%(n)s tiene %(e)d años\" % {\"n\": \"Luis\", \"e\": 40})\nplantilla = \"Hola, {nombre}\"                 # la plantilla existe ANTES que los datos\nprint(plantilla.format(nombre=\"mundo\"))",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa de `%`: si el valor es una tupla, `%` la interpreta como la lista de argumentos. `\"%s\" % (1, 2)` lanza `TypeError: not all arguments converted during string formatting`; habría que escribir `\"%s\" % ((1, 2),)`. La propia documentación avisa de estas rarezas y recomienda f-strings, `str.format()` o `string.Template`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Cuándo usar cada una? f-string casi siempre. `str.format()` cuando la plantilla se define antes que los datos o se guarda aparte (por ejemplo, mensajes traducibles). `%` solo al mantener código antiguo y en `logging`, que lo usa internamente (s08)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué imprime `print(f\"{3.14159:6.2f}|\")`? Dos espacios y después `3.14|`: ancho total 6 (el punto también cuenta) y 2 decimales, alineado a la derecha porque es un número. Los exámenes adoran el ancho mínimo, la alineación por defecto (texto a la izquierda, números a la derecha), `^` para centrar y la diferencia entre `{x}` y `{x!r}`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "f-string",
+       "en": "formatted string literal",
+       "def": "Literal con prefijo `f` cuyos campos `{…}` se evalúan y formatean al ejecutarse."
+      },
+      {
+       "term": "Especificación de formato",
+       "en": "format spec",
+       "def": "Texto tras `:` en un campo que indica relleno, alineación, ancho, precisión, tipo…"
+      },
+      {
+       "term": "Conversión",
+       "en": "conversion",
+       "def": "`!s`, `!r` o `!a`: aplica `str()`, `repr()` o `ascii()` antes de formatear."
+      },
+      {
+       "term": "Especificador de depuración",
+       "en": "debug specifier",
+       "def": "El `=` tras la expresión: muestra `expresión=valor`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l4",
+   "title": "Unicode y bytes: de los caracteres a los bytes",
+   "minutes": 40,
+   "goals": [
+    "Distinguir glifo, carácter, code point y byte, y obtener code points con `ord()` y `chr()`.",
+    "Normalizar texto con `unicodedata.normalize` para comparar, buscar y quitar tildes de forma fiable.",
+    "Codificar y decodificar entre `str` y `bytes` con UTF-8 eligiendo un manejador de errores explícito.",
+    "Diagnosticar mojibake y los errores `UnicodeEncodeError` y `UnicodeDecodeError`."
+   ],
+   "takeaways": [
+    "`str` es una secuencia de code points; `bytes`, una secuencia de enteros de 0 a 255. Se pasa de uno a otro con `encode`/`decode` y una codificación.",
+    "UTF-8 usa de 1 a 4 bytes por code point y es compatible con ASCII: úsalo siempre que puedas elegir.",
+    "Normaliza el texto que viene de fuera antes de comparar (NFC para guardar, NFD o NFKD para quitar marcas) y usa `casefold()` para ignorar mayúsculas.",
+    "`errors=\"strict\"` es el valor por defecto; elige `replace`, `ignore` u otro solo sabiendo qué datos pierdes.",
+    "Lo que una persona ve como un carácter puede ser varios code points: `len` cuenta code points, no grafemas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un computador solo guarda bytes (números de 0 a 255). **Unicode** es el estándar que asigna a cada carácter de cada sistema de escritura un número único, su **code point** (punto de código), entre 0 y 0x10FFFF: algo más de 1,1 millones de posiciones, que se escriben como `U+00F1` (la ñ). Un `str` de Python 3 es una secuencia de code points. Una **codificación** (UTF-8, Latin-1, UTF-16…) es la regla que convierte esa secuencia en bytes y viceversa."
+    },
+    {
+     "type": "diagram",
+     "title": "De lo que ves a lo que se guarda",
+     "mermaid": "flowchart LR\n  G[\"Glifo<br/>el dibujo en pantalla\"] --- C[\"Carácter<br/>ñ\"]\n  C --- CP[\"Code point<br/>U+00F1 = 241\"]\n  CP -- \"encode('utf-8')\" --> B[\"bytes<br/>C3 B1\"]\n  B -- \"decode('utf-8')\" --> CP",
+     "caption": "El glifo depende de la fuente; el code point, del estándar Unicode; los bytes, de la codificación elegida."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(ord(\"A\"), ord(\"a\"), ord(\"ñ\"), ord(\"✓\"))   # 65 97 241 10003\nprint(chr(241), chr(0x1F40D))                   # ñ 🐍\nprint(f\"U+{ord('✓'):04X}\")                      # U+2713\nprint(\"\\u00f1\" == \"ñ\" == \"\\N{LATIN SMALL LETTER N WITH TILDE}\")   # True\nimport unicodedata\nfor c in \"Añ✓🐍\":\n    print(c, f\"U+{ord(c):04X}\", unicodedata.name(c), unicodedata.category(c))",
+     "run": true,
+     "caption": "`unicodedata` consulta la base de datos de Unicode (versión 16.0.0 en Python 3.14): nombre, categoría (`Lu` letra mayúscula, `Ll` minúscula, `Sc` símbolo de moneda, `Mn` marca combinante…) y más."
+    },
+    {
+     "type": "h",
+     "text": "El mismo texto, distintas secuencias: normalización"
+    },
+    {
+     "type": "p",
+     "text": "La `é` puede escribirse como **un** code point (`U+00E9`, «e con acento agudo») o como **dos**: `e` + `U+0301` (*COMBINING ACUTE ACCENT*, un acento que se dibuja sobre la letra anterior). Se ven idénticas, pero para Python son cadenas distintas. Pasa en la práctica: el texto copiado de otras aplicaciones o recibido de otros sistemas puede llegar en cualquiera de las dos formas. La solución es **normalizar** con `unicodedata.normalize(forma, texto)`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import unicodedata\na = \"café\"                  # é precompuesta: U+00E9\nb = \"cafe\\u0301\"            # e + acento combinante U+0301\nprint(a, b, a == b, len(a), len(b))       # café café False 4 5\nnfc = unicodedata.normalize(\"NFC\", b)\nprint(nfc == a, len(nfc))                 # True 4\nnfd = unicodedata.normalize(\"NFD\", a)\nprint([f\"U+{ord(c):04X}\" for c in nfd])  # la é se separa en dos code points",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Qué hace",
+      "Para qué"
+     ],
+     "rows": [
+      [
+       "NFC",
+       "Descompone y vuelve a componer: letra + marca → carácter precompuesto",
+       "Guardar y comparar texto. Es la forma más habitual."
+      ],
+      [
+       "NFD",
+       "Descomposición canónica: `é` → `e` + `◌́`",
+       "Separar las marcas (tildes, diéresis) para quitarlas."
+      ],
+      [
+       "NFKC",
+       "Como NFC, pero además cambia caracteres «de compatibilidad» por sus equivalentes: `ﬁ` → `fi`, `²` → `2`",
+       "Búsquedas e identificadores (Python normaliza así los nombres de variables)."
+      ],
+      [
+       "NFKD",
+       "Como NFD más la compatibilidad: `½` → `1⁄2`",
+       "Slugs y búsquedas «a lo bruto»."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Receta para quitar tildes",
+     "mermaid": "flowchart LR\n  T[\"'Canción'\"] -- \"normalize('NFD')\" --> D[\"C a n c i o + tilde n\"]\n  D -- \"descartar categoría Mn\" --> S[\"C a n c i o n\"]\n  S -- \"normalize('NFC')\" --> R[\"'Cancion'\"]",
+     "caption": "Al descomponer, la tilde se convierte en un code point aparte (categoría `Mn`, *Mark, nonspacing*) que ya se puede filtrar."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import unicodedata\n\ndef quitar_tildes(texto):\n    descompuesto = unicodedata.normalize(\"NFD\", texto)\n    letras = [c for c in descompuesto if unicodedata.category(c) != \"Mn\"]\n    return unicodedata.normalize(\"NFC\", \"\".join(letras))\n\nprint(quitar_tildes(\"Canción, pingüino, Ñandú\"))   # Cancion, pinguino, Nandu",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Quitar las marcas combinantes también convierte la `ñ` en `n` (y la `ç` en `c`), lo que en español cambia el significado (año → ano). Hazlo solo para búsquedas o identificadores técnicos (slugs, nombres de archivo), nunca para mostrar texto. Si necesitas conservar la ñ, trátala aparte antes de filtrar."
+    },
+    {
+     "type": "h",
+     "text": "Comparar sin mayúsculas ni variantes: `casefold` + normalización"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import unicodedata\n\ndef clave_comparacion(s):\n    return unicodedata.normalize(\"NFD\", unicodedata.normalize(\"NFD\", s).casefold())\n\nprint(clave_comparacion(\"STRASSE\") == clave_comparacion(\"straße\"))    # True\nprint(clave_comparacion(\"CAFÉ\") == clave_comparacion(\"cafe\\u0301\"))   # True\nprint(\"STRASSE\".lower() == \"straße\".lower())                          # False",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Es la receta del *Unicode HOWTO* oficial para comparar sin distinguir mayúsculas: se normaliza **dos veces** porque `casefold()` puede devolver texto que ya no está normalizado. Si además quieres ignorar las tildes, filtra las marcas `Mn` como antes."
+    },
+    {
+     "type": "h",
+     "text": "Lo que ves no es lo que cuenta `len`: grafemas"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(len(\"👍\"), len(\"👍🏽\"), len(\"👨‍👩‍👧\"))   # 1 2 5\nprint(\"🇪🇸\"[::-1])                            # 🇸🇪  ¡la bandera de Suecia!",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Lo que una persona percibe como un solo carácter (un **grafema**) puede estar formado por varios code points: un emoji con tono de piel son dos, el emoji de familia 👨‍👩‍👧 son cinco (tres personas unidas por dos *zero width joiners*) y una bandera son dos «indicadores regionales». Invertir o recortar por code points puede romperlos. La biblioteca estándar no segmenta grafemas; si lo necesitas (editores de texto, recortar para mostrar), hay paquetes externos como `regex`, que admite `\\X`."
+    },
+    {
+     "type": "h",
+     "text": "`bytes`: la otra cara del texto"
+    },
+    {
+     "type": "p",
+     "text": "`bytes` es una secuencia **inmutable de enteros entre 0 y 255**: lo que viaja por la red y se guarda en disco. El literal lleva prefijo `b` y solo admite caracteres ASCII (el resto se escribe con `\\xhh`). Al indexar un `bytes` obtienes un **entero**, no un carácter. `bytearray` es su versión mutable. Se pasa de `str` a `bytes` con `str.encode(codificación)` y al revés con `bytes.decode(codificación)`; en ambos, la codificación por defecto es UTF-8."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "datos = \"Ñandú ✓\".encode(\"utf-8\")     # str → bytes\nprint(datos)                          # b'\\xc3\\x91and\\xc3\\xba \\xe2\\x9c\\x93'\nprint(len(\"Ñandú ✓\"), len(datos))     # 7 11\nprint(datos[0], datos[:3])            # 195 b'\\xc3\\x91a'  (indexar da un int)\nprint(datos.decode(\"utf-8\"))          # bytes → str: Ñandú ✓\nprint(datos.hex(\" \"))                 # los bytes en hexadecimal\nprint(bytes.fromhex(\"48 6f 6c 61\").decode(\"ascii\"))   # Hola\nprint(\"ñ\".encode(\"latin-1\"), \"ñ\".encode(\"utf-16-le\"))  # otras codificaciones, otros bytes",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Code points",
+      "Bytes en UTF-8",
+      "Ejemplos"
+     ],
+     "rows": [
+      [
+       "U+0000 – U+007F",
+       "1",
+       "ASCII: `a`, `Z`, `7`, `?`"
+      ],
+      [
+       "U+0080 – U+07FF",
+       "2",
+       "`ñ`, `é`, `ü`, griego, cirílico, árabe"
+      ],
+      [
+       "U+0800 – U+FFFF",
+       "3",
+       "`✓`, `→`, `中`, la mayoría de los símbolos"
+      ],
+      [
+       "U+10000 – U+10FFFF",
+       "4",
+       "emojis como `🐍`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "UTF-8 puede representar cualquier code point, un texto ASCII ya es UTF-8 válido y el texto habitual ocupa poco. Por eso es la codificación dominante y la que usa Python por defecto para el código fuente, `encode` y `decode`."
+    },
+    {
+     "type": "h",
+     "text": "Cuando algo no encaja: errores y manejadores `errors`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": ">>> \"canción ✓\".encode(\"ascii\")\nUnicodeEncodeError: 'ascii' codec can't encode character '\\xf3' in position 5: ordinal not in range(128)\n>>> b\"\\xff\\xfe\".decode(\"utf-8\")\nUnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte",
+     "caption": "Con `errors=\"strict\"` (el valor por defecto) Python prefiere fallar a corromper datos en silencio."
+    },
+    {
+     "type": "table",
+     "head": [
+      "`errors=`",
+      "Al codificar (`encode`)",
+      "Al decodificar (`decode`)"
+     ],
+     "rows": [
+      [
+       "`\"strict\"` (defecto)",
+       "lanza `UnicodeEncodeError`",
+       "lanza `UnicodeDecodeError`"
+      ],
+      [
+       "`\"ignore\"`",
+       "omite el carácter",
+       "omite los bytes inválidos"
+      ],
+      [
+       "`\"replace\"`",
+       "pone `?`",
+       "pone `�` (U+FFFD, carácter de reemplazo)"
+      ],
+      [
+       "`\"backslashreplace\"`",
+       "escribe `\\xf1`, `\\u2713`…",
+       "escribe `\\xff`…"
+      ],
+      [
+       "`\"xmlcharrefreplace\"`",
+       "referencia XML: `&#241;`",
+       "— (solo al codificar)"
+      ],
+      [
+       "`\"namereplace\"`",
+       "`\\N{CHECK MARK}`",
+       "— (solo al codificar)"
+      ],
+      [
+       "`\"surrogateescape\"`",
+       "recupera los bytes originales",
+       "guarda cada byte inválido en un code point sustituto (U+DC80–U+DCFF) para poder recodificarlo idéntico"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "texto = \"Año 2026 ✓\"\nfor manejador in [\"ignore\", \"replace\", \"backslashreplace\", \"xmlcharrefreplace\", \"namereplace\"]:\n    print(f\"{manejador:>18}:\", texto.encode(\"ascii\", errors=manejador))\nroto = b\"caf\\xe9 con leche\"                     # 'café' codificado en Latin-1\nprint(roto.decode(\"utf-8\", errors=\"replace\"))  # caf� con leche\nprint(roto.decode(\"latin-1\"))                   # café con leche",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Mojibake: decodificar con la codificación equivocada"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "original = \"Canción\"\nmal = original.encode(\"utf-8\").decode(\"latin-1\")   # codificación equivocada\nprint(mal)                                          # CanciÃ³n  ← mojibake\narreglado = mal.encode(\"latin-1\").decode(\"utf-8\")  # deshacer el error\nprint(arreglado)                                    # Canción",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`latin-1` nunca falla al decodificar (asigna un carácter a cada uno de los 256 bytes posibles), así que **no sirve para «detectar» la codificación**: siempre «funciona» y te devuelve basura. La codificación de unos bytes no se puede deducir con certeza: hay que conocerla (cabeceras HTTP, metadatos, documentación) o recurrir a heurísticas externas como el paquete `charset-normalizer`."
+    },
+    {
+     "type": "diagram",
+     "title": "El «sándwich Unicode»",
+     "mermaid": "sequenceDiagram\n  participant E as Entrada: archivo o red\n  participant P as Tu programa\n  participant S as Salida: archivo o red\n  E->>P: bytes\n  Note over P: decode lo antes posible\n  P->>P: trabajas solo con str\n  Note over P: encode lo más tarde posible\n  P->>S: bytes",
+     "caption": "Decodifica en cuanto los bytes entran, trabaja siempre con `str` y codifica justo al salir. Al abrir archivos de texto, indica siempre `encoding=\"utf-8\"` (s09)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`len(\"ñ\")` es 1 y `len(\"ñ\".encode(\"utf-8\"))` es 2. `b\"abc\"[0]` es `97` (un `int`), no `b\"a\"`. `str` y `bytes` no se mezclan: `\"a\" + b\"b\"` lanza `TypeError: can only concatenate str (not \"bytes\") to str`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Code point",
+       "en": "code point",
+       "def": "Número que Unicode asigna a un carácter, de U+0000 a U+10FFFF. `ord()` lo obtiene y `chr()` hace lo contrario."
+      },
+      {
+       "term": "Codificación",
+       "en": "encoding",
+       "def": "Regla para convertir code points en bytes y viceversa: UTF-8, Latin-1, UTF-16…"
+      },
+      {
+       "term": "Normalización",
+       "en": "normalization",
+       "def": "Convertir texto a una forma canónica (NFC, NFD, NFKC, NFKD) para que lo equivalente sea igual."
+      },
+      {
+       "term": "Marca combinante",
+       "en": "combining mark",
+       "def": "Code point que modifica al anterior, como un acento (categoría `Mn`)."
+      },
+      {
+       "term": "Grafema",
+       "en": "grapheme cluster",
+       "def": "Lo que una persona percibe como un carácter; puede ocupar varios code points."
+      },
+      {
+       "term": "Mojibake",
+       "en": "mojibake",
+       "def": "Texto ilegible por decodificar bytes con una codificación distinta de la usada al codificar."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l5",
+   "title": "Plantillas t\"…\": template strings (Python 3.14)",
+   "minutes": 20,
+   "goals": [
+    "Distinguir lo que produce una f-string (un `str`) de lo que produce una t-string (un objeto `Template`).",
+    "Recorrer un `Template` y consultar `strings`, `interpolations`, `values` y los atributos de cada `Interpolation`.",
+    "Escribir una función que procese una plantilla aplicando conversión, formato y escape a los valores interpolados."
+   ],
+   "takeaways": [
+    "`t\"…\"` (Python 3.14, PEP 750) tiene la sintaxis de una f-string, pero produce un `string.templatelib.Template`, no un `str`.",
+    "Un `Template` guarda aparte el texto fijo (`strings`) y los valores (`interpolations`), cada uno con su expresión, conversión y especificación **sin aplicar**.",
+    "Los valores se evalúan en el momento, como en una f-string; lo que se aplaza es la combinación final.",
+    "Para obtener texto hay que procesar la plantilla con una función: el lugar perfecto para escapar o validar lo que viene del usuario."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Las f-strings tienen un punto débil cuando el texto va a un sitio delicado: en cuanto se evalúan, los valores se mezclan con el texto fijo y ya no se sabe qué parte vino del usuario. Si metes un nombre de usuario en HTML o en una consulta SQL con una f-string, abres la puerta a inyecciones (XSS, inyección SQL). **Python 3.14** introduce las *template strings* o **t-strings** (PEP 750): la misma sintaxis que una f-string, con prefijo `t`, pero en lugar de un `str` producen un objeto `Template` que conserva **por separado** las partes fijas y los valores."
+    },
+    {
+     "type": "diagram",
+     "title": "f-string frente a t-string",
+     "mermaid": "flowchart LR\n  F[\"f'Hola {nombre}'\"] --> S[\"str ya combinado<br/>'Hola Ana'\"]\n  T[\"t'Hola {nombre}'\"] --> TP[\"Template<br/>strings + interpolations\"]\n  TP --> PR[\"tu función lo procesa<br/>escapa, valida, registra\"]\n  PR --> R[\"str, HTML seguro, consulta...\"]",
+     "caption": "Con una f-string el resultado ya está cerrado. Con una t-string decides tú cómo se combinan las piezas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre = \"Ana\"\nedad = 36\nplantilla = t\"Hola {nombre!r}, tienes {edad:>4} años\"\nprint(type(plantilla))          # <class 'string.templatelib.Template'>\nprint(plantilla.strings)        # ('Hola ', ', tienes ', ' años')\nprint(plantilla.values)         # ('Ana', 36)\nfor interp in plantilla.interpolations:\n    print(interp.value, interp.expression, interp.conversion, repr(interp.format_spec))",
+     "run": true,
+     "caption": "Observa que `!r` y `>4` no se han aplicado: solo se han guardado."
+    },
+    {
+     "type": "p",
+     "text": "La conversión `!r` y la especificación `>4` **no se aplican**: se guardan en la `Interpolation` para que decida el código que procese la plantilla. En cambio, los valores sí se calculan en el momento (evaluación *inmediata*, igual que en las f-strings): una t-string no es una plantilla «para rellenar más tarde» con otros datos."
+    },
+    {
+     "type": "diagram",
+     "title": "Las dos clases de `string.templatelib`",
+     "mermaid": "classDiagram\n  class Template {\n    +strings: tuple\n    +interpolations: tuple\n    +values: tuple\n    +__iter__()\n  }\n  class Interpolation {\n    +value: object\n    +expression: str\n    +conversion: str o None\n    +format_spec: str\n  }\n  Template \"1\" o-- \"0..*\" Interpolation : contiene",
+     "caption": "`strings` siempre tiene un elemento más que `interpolations` (puede haber cadenas vacías). Iterar un `Template` devuelve, en orden, los textos no vacíos y las `Interpolation`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Propiedad",
+      "Detalle"
+     ],
+     "rows": [
+      [
+       "`len(t.strings) == len(t.interpolations) + 1`",
+       "Siempre. Entre dos interpolaciones seguidas hay una cadena vacía `''`."
+      ],
+      [
+       "`for parte in t`",
+       "Devuelve los `str` no vacíos y las `Interpolation` en orden de aparición."
+      ],
+      [
+       "`t1 + t2`",
+       "Permitido entre dos `Template`. `Template + str` lanza `TypeError`."
+      ],
+      [
+       "`str(t)`",
+       "No «rellena» la plantilla: devuelve su representación (`Template(strings=…)`)."
+      ],
+      [
+       "`t1 == t2`",
+       "Compara identidad (`is`), no contenido: dos t-strings iguales no son `==`."
+      ],
+      [
+       "`t\"{x=}\"`",
+       "Se trata como `t\"x={x!r}\"`: el texto `x=` pasa a `strings` y la conversión por defecto es `'r'`."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Procesar una plantilla: escapar HTML"
+    },
+    {
+     "type": "p",
+     "text": "El patrón es siempre el mismo: recorre las partes; el **texto fijo** (lo escribiste tú en el código) se deja tal cual y cada **valor interpolado** (que puede venir del usuario) se transforma. Aquí usamos `html.escape` de la biblioteca estándar, que convierte `&`, `<`, `>` y las comillas en entidades HTML. `isinstance(parte, Interpolation)` pregunta si `parte` es de tipo `Interpolation` (verás `isinstance` a fondo en s10)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "from html import escape\nfrom string.templatelib import Interpolation\n\ndef html_seguro(plantilla):\n    trozos = []\n    for parte in plantilla:\n        if isinstance(parte, Interpolation):\n            trozos.append(escape(str(parte.value)))   # valor: se escapa\n        else:\n            trozos.append(parte)                      # texto fijo: de confianza\n    return \"\".join(trozos)\n\nusuario = \"<script>alert('hackeado')</script>\"\nprint(f\"<p>Hola {usuario}</p>\")               # f-string: ¡el script pasa tal cual!\nprint(html_seguro(t\"<p>Hola {usuario}</p>\"))  # t-string: escapado",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Otra forma, sin `isinstance`: como `strings` siempre tiene un elemento más que `interpolations`, puedes recorrerlas en paralelo con `zip` y añadir el último texto al final. Este ejemplo reproduce lo que hace una f-string usando `convert` (aplica `!s`, `!r` o `!a`; con `None` devuelve el valor intacto) y `format`:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "from string.templatelib import convert\n\ndef renderizar(plantilla):\n    trozos = []\n    for texto, interp in zip(plantilla.strings, plantilla.interpolations):\n        valor = convert(interp.value, interp.conversion)   # !r, !s, !a o nada\n        trozos.append(texto)\n        trozos.append(format(valor, interp.format_spec))   # :especificación\n    trozos.append(plantilla.strings[-1])                    # el último texto fijo\n    return \"\".join(trozos)\n\nproducto, precio = \"café\", 1234.5\nprint(renderizar(t\"{producto!r}: ${precio:,.2f}\"))   # 'café': $1,234.50\nprint(f\"{producto!r}: ${precio:,.2f}\")                # idéntico",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un `Template` **no es un `str`**: `str(plantilla)` no la rellena, no se puede concatenar con un `str` (`TypeError`) y dos plantillas con el mismo contenido no son iguales con `==`. Siempre necesitas una función que la procese."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "No confundas las t-strings con `string.Template` (plantillas con `$nombre`, disponibles desde Python 2.4 y pensadas sobre todo para traducciones) ni con las plantillas de `str.format()`. La documentación de `string.Template` aclara expresamente que no tiene relación con las t-strings. La idea clave de las t-strings es que **quien procesa la plantilla sabe qué partes son de confianza**; es de esperar que aparezcan bibliotecas de HTML, SQL o logging que las acepten directamente."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica sobre novedades de 3.14: ¿qué tipo tiene `t\"hola {x}\"`? `string.templatelib.Template`. ¿Cuántos elementos tiene `strings`? Siempre uno más que `interpolations`. ¿Se aplica `:.2f` automáticamente? No: queda en `format_spec`."
+    }
+   ]
+  },
+  {
+   "id": "s05-l6",
+   "title": "Expresiones regulares I: patrones y búsqueda",
+   "minutes": 35,
+   "goals": [
+    "Leer y escribir patrones con literales, clases de caracteres, cuantificadores, anclas y alternativas.",
+    "Elegir entre `re.search`, `re.match`, `re.fullmatch`, `re.findall` y `re.finditer` según la tarea.",
+    "Explicar la diferencia entre cuantificadores codiciosos y perezosos, y entre `$` y `\\z`.",
+    "Escribir patrones como cadenas raw y comprobar el resultado `None` antes de usar un `Match`."
+   ],
+   "takeaways": [
+    "Escribe los patrones como cadenas raw: `r\"\\d+\"`.",
+    "`fullmatch` para validar, `search` para encontrar, `findall` y `finditer` para todas las apariciones; `match` solo mira el principio.",
+    "Todas pueden devolver `None`: compruébalo antes de usar el `Match`.",
+    "`*`, `+` y `?` son codiciosos; añade `?` para hacerlos perezosos o usa clases negadas como `[^>]+`.",
+    "`\\d` y `\\w` son Unicode por defecto; usa `[0-9]` o `re.ASCII` para formatos técnicos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una **expresión regular** (*regex*) es un pequeño lenguaje para describir un **conjunto de cadenas**: `\\d{5}` describe «cinco dígitos seguidos». El módulo `re` compila el patrón y lo recorre sobre tu texto probando posiciones; cuando un camino falla, retrocede e intenta otro (*backtracking*). Escribe los patrones **siempre como cadenas raw** (`r\"…\"`): la barra invertida significa algo para Python y algo distinto para la regex, y sin `r` tendrías que duplicarlas todas."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Sintaxis",
+      "Significado",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`abc`",
+       "literal: esos caracteres, en ese orden",
+       "`r\"gato\"`"
+      ],
+      [
+       "`.`",
+       "cualquier carácter excepto `\\n`",
+       "`r\"c.sa\"` → casa, cosa, c-sa"
+      ],
+      [
+       "`[aeiou]`, `[a-z]`, `[^0-9]`",
+       "clase: uno de esos, un rango o «cualquiera menos» (`^` al principio)",
+       "`r\"[aeiou]\"`"
+      ],
+      [
+       "`\\d`, `\\w`, `\\s`",
+       "dígito, carácter de palabra (letra, dígito o `_`), espacio en blanco",
+       "`r\"\\d\\d\"`"
+      ],
+      [
+       "`\\D`, `\\W`, `\\S`",
+       "lo contrario de los anteriores",
+       "`r\"\\S+\"`"
+      ],
+      [
+       "`*`, `+`, `?`",
+       "0 o más, 1 o más, 0 o 1 veces lo anterior",
+       "`r\"colou?r\"`"
+      ],
+      [
+       "`{n}`, `{m,n}`, `{m,}`",
+       "exactamente n; entre m y n; m o más",
+       "`r\"\\d{2,4}\"`"
+      ],
+      [
+       "`^`, `$`",
+       "inicio y final (ojo con `$`, más abajo)",
+       "`r\"^Hola\"`"
+      ],
+      [
+       "`\\A`, `\\z`",
+       "inicio y final absolutos de la cadena (`\\z` desde 3.14; antes `\\Z`)",
+       "`r\"\\A\\d+\\z\"`"
+      ],
+      [
+       "`\\b`",
+       "frontera de palabra (posición, no carácter)",
+       "`r\"\\bsol\\b\"`"
+      ],
+      [
+       "`a|b`",
+       "alternativa: a o b",
+       "`r\"gato|perro\"`"
+      ],
+      [
+       "`(…)`",
+       "grupo: agrupa y captura (lección 7)",
+       "`r\"(ja)+\"`"
+      ],
+      [
+       "`\\.`, `\\+`, `\\(`",
+       "metacarácter escapado, como literal",
+       "`r\"3\\.14\"`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Los metacaracteres son `. ^ $ * + ? { } [ ] \\ | ( )`. Cualquier otro carácter se representa a sí mismo."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\ntexto = \"Pedido 1234 enviado el 26/09/2026 a Av. Sol 7, código postal 45010.\"\nprint(re.search(r\"\\d+\", texto))                 # el primer número, como objeto Match\nprint(re.findall(r\"\\d+\", texto))                # ['1234', '26', '09', '2026', '7', '45010']\nprint(re.findall(r\"\\b\\d{5}\\b\", texto))          # ['45010']\nprint(re.findall(r\"\\d{2}/\\d{2}/\\d{4}\", texto))  # ['26/09/2026']\nprint(re.findall(r\"[A-Z]\\w+\", texto))           # ['Pedido', 'Av', 'Sol']",
+     "run": true,
+     "caption": "Modifica los patrones: ¿qué devuelve `r\"\\d{3,}\"`? ¿Y `r\"[aeiou]\\w*\"`?"
+    },
+    {
+     "type": "h",
+     "text": "`search`, `match`, `fullmatch`, `findall` y `finditer`"
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué función necesito?",
+     "mermaid": "flowchart TD\n  Q{\"¿Qué necesitas?\"} --> V[\"Que TODA la cadena cumpla el patrón<br/>validar\"]\n  V --> FM[\"re.fullmatch\"]\n  Q --> P[\"La primera aparición, en cualquier sitio\"]\n  P --> S[\"re.search\"]\n  Q --> I[\"Que la cadena EMPIECE por el patrón\"]\n  I --> MA[\"re.match\"]\n  Q --> T[\"Todas las apariciones como texto\"]\n  T --> FA[\"re.findall\"]\n  Q --> O[\"Todas, con posición y grupos\"]\n  O --> FI[\"re.finditer\"]\n  Q --> R[\"Reemplazar o dividir\"]\n  R --> SUB[\"re.sub y re.split, lección 7\"]",
+     "caption": "`search`, `match` y `fullmatch` devuelven un objeto `Match` o `None`; `findall` devuelve una lista y `finditer` un iterador de objetos `Match`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nprint(re.match(r\"\\d+\", \"abc123\"))       # None: match solo mira el principio\nprint(re.search(r\"\\d+\", \"abc123\"))      # encuentra '123'\nprint(re.fullmatch(r\"\\d+\", \"123abc\"))   # None: sobra 'abc'\nprint(re.fullmatch(r\"\\d+\", \"123\"))      # coincide entera\nm = re.search(r\"\\d+\", \"abc123def\")\nif m:                                   # ¡comprueba siempre si es None!\n    print(m.group(), m.start(), m.end(), m.span())   # 123 3 6 (3, 6)\nfor m in re.finditer(r\"\\d+\", \"a1 b22 c333\"):\n    print(m.group(), m.span())",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Las funciones de búsqueda devuelven `None` cuando no hay coincidencia, y `re.search(…).group()` sin comprobar lanza `AttributeError: 'NoneType' object has no attribute 'group'`: es el error más frecuente con regex. Comprueba con `if m:` o, más compacto, con el operador morsa de s03: `if (m := re.search(patron, texto)):`."
+    },
+    {
+     "type": "h",
+     "text": "Codiciosos y perezosos"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nhtml = \"<b>negrita</b> y <i>cursiva</i>\"\nprint(re.findall(r\"<.+>\", html))     # ['<b>negrita</b> y <i>cursiva</i>']  codicioso\nprint(re.findall(r\"<.+?>\", html))    # ['<b>', '</b>', '<i>', '</i>']      perezoso\nprint(re.findall(r\"<[^>]+>\", html))  # lo mismo, sin retrocesos: «todo menos >»",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`*`, `+`, `?` y `{m,n}` son **codiciosos** (*greedy*): `.+` se come hasta el final de la cadena y luego el motor retrocede carácter a carácter hasta encontrar el último `>`. Añadiendo `?` (`+?`, `*?`, `??`, `{m,n}?`) pasan a ser **perezosos** (*lazy*): consumen lo mínimo. Una clase negada como `[^>]+` suele ser aún mejor: expresa exactamente lo que quieres y evita retrocesos."
+    },
+    {
+     "type": "h",
+     "text": "Anclas y la trampa de `$`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nprint(bool(re.search(r\"^\\d{5}$\", \"45010\\n\")))    # True  ← ¡$ acepta un \\n final!\nprint(bool(re.search(r\"^\\d{5}\\z\", \"45010\\n\")))   # False (\\z: final real, desde 3.14)\nprint(bool(re.fullmatch(r\"\\d{5}\", \"45010\\n\")))   # False: fullmatch exige la cadena entera",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`$` coincide al final de la cadena **o justo antes de un salto de línea final**. Para validar entradas usa `re.fullmatch` (o `\\A…\\z`): con `^…$` la cadena `\"45010\\n\"` pasaría como válida. `\\z` es nuevo en Python 3.14; en versiones anteriores se escribe `\\Z`, que en Python significa lo mismo (final absoluto)."
+    },
+    {
+     "type": "h",
+     "text": "`\\d` no es `[0-9]`: Unicode por defecto"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nprint(re.fullmatch(r\"\\d+\", \"٢٠٢٦\"))                  # coincide: dígitos árabe-índicos\nprint(re.fullmatch(r\"[0-9]+\", \"٢٠٢٦\"))               # None\nprint(re.fullmatch(r\"\\d+\", \"٢٠٢٦\", flags=re.ASCII))  # None\nprint(re.findall(r\"\\w+\", \"El niño comió 2 piñas_rojas\"))   # \\w incluye ñ, ó, dígitos y _\nprint(re.findall(r\"[^\\W\\d_]+\", \"El niño comió 2 piñas_rojas\"))  # solo letras",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En patrones de cadenas (`str`), `\\d`, `\\w` y `\\s` son Unicode: `\\d` acepta cualquier dígito decimal de cualquier escritura. Para formatos técnicos (códigos postales, números de documento, códigos de producto) usa `[0-9]` o el flag `re.ASCII`. Para «solo letras, con tildes y ñ», el truco es `[^\\W\\d_]`: «un carácter que no sea no-palabra, ni dígito, ni guion bajo»."
+    },
+    {
+     "type": "h",
+     "text": "Buscar texto literal: `re.escape`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nbuscado = \"3.14 (aprox.)\"\nprint(re.escape(buscado))            # 3\\.14\\ \\(aprox\\.\\)\ntexto = \"pi = 3.14 (aprox.) y no 3x14 (aprox.)\"\nprint(re.findall(buscado, texto))            # []: el . y los () actúan como metacaracteres\nprint(re.findall(re.escape(buscado), texto)) # ['3.14 (aprox.)']",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Si un texto que no controlas (lo escribió el usuario) va a formar parte de un patrón, pásalo por `re.escape`: si no, un `.`, un `*` o un `(` cambiarían el significado del patrón o provocarían un error."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Expresión regular",
+       "en": "regular expression, regex",
+       "def": "Patrón que describe un conjunto de cadenas; se usa para buscar, validar, extraer y reemplazar."
+      },
+      {
+       "term": "Cuantificador",
+       "en": "quantifier",
+       "def": "Indica cuántas veces se repite lo anterior: `*`, `+`, `?`, `{m,n}`."
+      },
+      {
+       "term": "Ancla",
+       "en": "anchor",
+       "def": "Coincide con una posición, no con un carácter: `^`, `$`, `\\A`, `\\z`, `\\b`."
+      },
+      {
+       "term": "Clase de caracteres",
+       "en": "character class",
+       "def": "Conjunto entre corchetes del que se toma un carácter: `[a-z]`, `[^0-9]`."
+      },
+      {
+       "term": "Retroceso",
+       "en": "backtracking",
+       "def": "Cuando un camino falla, el motor deshace parte de lo consumido y prueba otra alternativa."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s05-l7",
+   "title": "Expresiones regulares II: grupos, sustituciones y buen criterio",
+   "minutes": 35,
+   "goals": [
+    "Extraer datos estructurados con grupos numerados y con nombre (`(?P<nombre>…)` y `groupdict()`).",
+    "Transformar texto con `re.sub` usando referencias a grupos o una función de reemplazo, y dividirlo con `re.split`.",
+    "Aplicar flags (`IGNORECASE`, `MULTILINE`, `DOTALL`, `VERBOSE`, `ASCII`) y compilar patrones reutilizables y documentados.",
+    "Justificar cuándo un método de `str` o un parser es mejor opción que una regex."
+   ],
+   "takeaways": [
+    "Los grupos `(…)` capturan partes; `(?P<nombre>…)` les da nombre y `groupdict()` las devuelve en un diccionario.",
+    "`re.sub` admite referencias (`\\1`, `\\g<nombre>`) o una función que recibe cada `Match` y devuelve el reemplazo.",
+    "Flags: `re.I`, `re.M`, `re.S`, `re.X` y `re.A`; se combinan con `|`.",
+    "Compila con nombre y documenta con `re.VERBOSE` las regex que vayas a reutilizar, y pruébalas con casos inválidos.",
+    "Antes de escribir una regex, pregúntate si basta un método de `str` o si existe un parser para ese formato."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Encontrar texto está bien; **extraer sus partes** es mejor. Los paréntesis crean **grupos de captura**: el objeto `Match` recuerda qué trozo de texto coincidió con cada grupo. Se numeran de izquierda a derecha por su paréntesis de apertura, empezando en 1; el grupo 0 es la coincidencia completa."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nm = re.search(r\"(\\d{2})/(\\d{2})/(\\d{4})\", \"Entrega: 26/09/2026\")\nprint(m.group(0))                # 26/09/2026 (toda la coincidencia)\nprint(m.group(1), m.group(3))    # 26 2026\nprint(m.groups())                # ('26', '09', '2026')\ndia, mes, anio = m.groups()      # desempaquetado (s04)\nprint(f\"{anio}-{mes}-{dia}\")     # 2026-09-26",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Con muchos grupos, los números se vuelven ilegibles. Los **grupos con nombre** `(?P<nombre>…)` se consultan por nombre y `groupdict()` los devuelve todos en un diccionario. Si solo necesitas agrupar (por ejemplo, para repetir una parte) sin capturar, usa un **grupo no capturante** `(?:…)`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\npatron = r\"(?P<dia>\\d{2})/(?P<mes>\\d{2})/(?P<anio>\\d{4})\"\nm = re.search(patron, \"Entrega: 26/09/2026\")\nprint(m[\"anio\"], m.group(\"mes\"))    # 2026 09\nprint(m.groupdict())                 # {'dia': '26', 'mes': '09', 'anio': '2026'}\nprint(re.findall(r\"(\\w+)=(\\d+)\", \"ancho=20 alto=10\"))          # [('ancho', '20'), ('alto', '10')]\nprint(re.findall(r\"(?:\\d{3})-(\\d{4})\", \"555-1234 y 555-9876\"))  # ['1234', '9876']\nprint(re.findall(r\"(?:ja)+\", \"jajaja, jeje, ja\"))             # ['jajaja', 'ja']",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`findall` cambia de forma según los grupos: sin grupos devuelve las coincidencias completas; con **un** grupo, una lista con lo capturado por ese grupo; con **varios**, una lista de tuplas. Los grupos no capturantes `(?:…)` no cuentan. Si quieres la coincidencia completa *y* los grupos, usa `finditer`."
+    },
+    {
+     "type": "h",
+     "text": "Sustituir con `re.sub`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nprint(re.sub(r\"\\s+\", \" \", \"demasiados    espacios\\t\\taquí\"))   # demasiados espacios aquí\nprint(re.sub(r\"(\\d{2})/(\\d{2})/(\\d{4})\", r\"\\3-\\2-\\1\", \"Del 01/02/2026 al 15/03/2026\"))\nprint(re.sub(r\"(?P<d>\\d{2})/(?P<m>\\d{2})/(?P<a>\\d{4})\", r\"\\g<a>-\\g<m>-\\g<d>\", \"Hoy: 26/09/2026\"))\nprint(re.subn(r\"o\", \"0\", \"cocodrilo\"))       # ('c0c0dril0', 3): texto y nº de cambios\nprint(re.sub(r\"a\", \"A\", \"banana\", count=2))  # bAnAna",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "En la cadena de reemplazo, `\\1` o `\\g<1>` insertan lo capturado por el grupo 1 y `\\g<nombre>` lo de un grupo con nombre (`\\g<0>` es la coincidencia completa). Escribe también el reemplazo como cadena raw. Desde Python 3.13, pasar `count` y `flags` como argumentos posicionales está desaconsejado (*deprecated*): escríbelos siempre con nombre, `count=2`, `flags=re.I`."
+    },
+    {
+     "type": "p",
+     "text": "El reemplazo también puede ser **una función**: `re.sub` la llama con cada `Match` y usa lo que devuelva. Igual que con `key=` en `sorted`, pasas el nombre de la función, sin paréntesis."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\n\ndef duplicar(m):\n    return str(int(m.group()) * 2)\n\nprint(re.sub(r\"\\d+\", duplicar, \"3 manzanas y 10 peras\"))    # 6 manzanas y 20 peras\n\ndef a_mayuscula(m):\n    return m.group(1).upper()\n\nprint(re.sub(r\"_(\\w)\", a_mayuscula, \"nombre_de_variable\"))   # nombreDeVariable",
+     "run": true
+    },
+    {
+     "type": "h",
+     "text": "Dividir con `re.split`"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nprint(re.split(r\"\\s*[,;]\\s*\", \"uno, dos;tres ;  cuatro\"))   # ['uno', 'dos', 'tres', 'cuatro']\nprint(re.split(r\"(\\d)\", \"a1b2c\"))                          # ['a', '1', 'b', '2', 'c']",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "`re.split` divide por un patrón, algo que `str.split` no puede hacer con varios separadores distintos. Si el patrón tiene grupos de captura, los separadores capturados también aparecen en el resultado."
+    },
+    {
+     "type": "h",
+     "text": "Flags: modificar el comportamiento"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Flag",
+      "Abreviatura",
+      "En línea",
+      "Efecto"
+     ],
+     "rows": [
+      [
+       "`re.IGNORECASE`",
+       "`re.I`",
+       "`(?i)`",
+       "ignora mayúsculas, también en Unicode (`Ü` coincide con `ü`)"
+      ],
+      [
+       "`re.MULTILINE`",
+       "`re.M`",
+       "`(?m)`",
+       "`^` y `$` coinciden al principio y al final de cada línea"
+      ],
+      [
+       "`re.DOTALL`",
+       "`re.S`",
+       "`(?s)`",
+       "`.` también coincide con `\\n`"
+      ],
+      [
+       "`re.VERBOSE`",
+       "`re.X`",
+       "`(?x)`",
+       "ignora los espacios del patrón y permite comentarios con `#`"
+      ],
+      [
+       "`re.ASCII`",
+       "`re.A`",
+       "`(?a)`",
+       "`\\w`, `\\d`, `\\s` y `\\b` solo consideran ASCII"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nlog = \"\"\"INFO arranque\nerror disco lleno\nERROR red caída\"\"\"\nprint(re.findall(r\"^error.*$\", log, flags=re.IGNORECASE | re.MULTILINE))\n# ['error disco lleno', 'ERROR red caída']",
+     "run": true,
+     "caption": "Los flags se combinan con el operador `|`."
+    },
+    {
+     "type": "p",
+     "text": "Para regex largas, `re.VERBOSE` permite repartirlas en varias líneas con comentarios, y `re.compile` crea un **objeto patrón** con los mismos métodos (`search`, `fullmatch`, `findall`, `sub`…) al que puedes dar un nombre claro. El módulo `re` guarda en caché los patrones usados recientemente, así que en programas pequeños compilar no es imprescindible por rendimiento: la ventaja principal es la legibilidad."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import re\nFECHA = re.compile(r\"\"\"\n    (?P<dia>0[1-9]|[12][0-9]|3[01])    # día: 01-31\n    /\n    (?P<mes>0[1-9]|1[0-2])             # mes: 01-12\n    /\n    (?P<anio>[0-9]{4})                 # año: cuatro cifras\n\"\"\", re.VERBOSE)\n\nfor candidata in [\"26/09/2026\", \"32/01/2026\", \"1/1/2026\"]:\n    m = FECHA.fullmatch(candidata)\n    print(candidata, \"→\", m.groupdict() if m else \"no válida\")",
+     "run": true
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En modo `VERBOSE` los espacios del patrón **se ignoran** (salvo dentro de `[…]` o escapados): para exigir un espacio literal escribe `[ ]` o `\\ `, y recuerda que `#` inicia un comentario. Un patrón mal escrito lanza `re.PatternError` (así se llama desde Python 3.13; el nombre antiguo, `re.error`, sigue funcionando como alias). Ejemplo: `re.compile(\"(\")` → `missing ), unterminated subpattern at position 0`."
+    },
+    {
+     "type": "h",
+     "text": "Cuándo NO usar expresiones regulares"
+    },
+    {
+     "type": "diagram",
+     "title": "¿Regex, método de `str` o parser?",
+     "mermaid": "flowchart TD\n  A{\"¿Buscas un texto fijo?\"} -- \"sí\" --> B[\"in, find, replace, startswith\"]\n  A -- \"no\" --> C{\"¿Es un formato estándar?<br/>HTML, JSON, CSV, fechas, URL\"}\n  C -- \"sí\" --> D[\"Su parser: html.parser, json, csv, datetime, urllib.parse\"]\n  C -- \"no\" --> E{\"¿Es un patrón corto y acotado?\"}\n  E -- \"sí\" --> F[\"Regex con fullmatch o search, más tests\"]\n  E -- \"no\" --> G[\"Divide el problema: split y lógica en Python\"]",
+     "caption": "Una regex es la herramienta adecuada para patrones pequeños y bien delimitados; no es un parser universal."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Texto fijo**: `\"error\" in linea` es más claro y rápido que `re.search(\"error\", linea)`. El *Regular Expression HOWTO* oficial recomienda probar antes los métodos de cadena.",
+      "**Caracteres sueltos**: para cambiar o borrar caracteres individuales, `str.translate` o `replace`.",
+      "**Formatos estructurados** (HTML, XML, JSON, CSV con comillas): usa su parser; la documentación advierte de que analizar HTML o XML con regex «es doloroso».",
+      "**Números**: `int()` y `float()` saben más de números que tu regex; valida intentando convertir (con excepciones, s08).",
+      "**Emails**: la gramática completa (RFC 5322) es enorme. Comprueba la forma básica con una regex sencilla y confirma de verdad enviando un correo."
+     ],
+     "ordered": false
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Retroceso catastrófico**: patrones con cuantificadores anidados sobre lo mismo, como `(a+)+$`, pueden tardar un tiempo exponencial con entradas que *casi* coinciden (`\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaab\"`). Si un atacante controla la entrada, es un ataque de denegación de servicio (ReDoS). Evita esas construcciones; desde Python 3.11 existen los cuantificadores posesivos (`a++`) y los grupos atómicos (`(?>…)`), que no retroceden."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Trata cada regex como código: dale un nombre (`re.compile`), documéntala con `re.VERBOSE` y escribe tests con casos válidos **e inválidos**, incluidos los bordes: cadena vacía, espacios alrededor, `\\n` final y caracteres Unicode."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Grupo de captura",
+       "en": "capturing group",
+       "def": "Parte del patrón entre `(…)` cuyo texto coincidente se guarda en el `Match`."
+      },
+      {
+       "term": "Grupo con nombre",
+       "en": "named group",
+       "def": "Grupo `(?P<nombre>…)` accesible como `m[\"nombre\"]` o mediante `groupdict()`."
+      },
+      {
+       "term": "Grupo no capturante",
+       "en": "non-capturing group",
+       "def": "`(?:…)`: agrupa sin guardar lo que coincide."
+      },
+      {
+       "term": "Flag",
+       "en": "flag",
+       "def": "Opción que modifica cómo se interpreta el patrón: `re.I`, `re.M`, `re.S`, `re.X`, `re.A`."
+      },
+      {
+       "term": "ReDoS",
+       "en": "regular expression denial of service",
+       "def": "Ataque que explota el retroceso exponencial de una regex mal diseñada."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s05-e1",
+   "title": "Contar vocales (con tildes)",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe la función `contar_vocales(texto)`, que **devuelve** cuántas vocales hay en `texto` sin distinguir mayúsculas de minúsculas.",
+    "Cuentan como vocales `a e i o u`, también con tilde (`á é í ó ú`) y la `ü`. La `y` no cuenta."
+   ],
+   "examples": [
+    {
+     "call": "contar_vocales(\"Hola Mundo\")",
+     "result": "4"
+    },
+    {
+     "call": "contar_vocales(\"ÁRBOL Y CANCIÓN\")",
+     "result": "5"
+    },
+    {
+     "call": "contar_vocales(\"\")",
+     "result": "0"
+    }
+   ],
+   "starter": "def contar_vocales(texto):\n    # Recorre el texto y cuenta las vocales (con y sin tilde)\n    pass\n",
+   "solution": "def contar_vocales(texto):\n    vocales = \"aeiouáéíóúü\"\n    total = 0\n    for letra in texto.casefold():\n        if letra in vocales:\n            total += 1\n    return total\n",
+   "tests": [
+    {
+     "name": "Frase sencilla",
+     "code": "r = contar_vocales(\"Hola Mundo\")\nassert r == 4, f\"contar_vocales('Hola Mundo') debería devolver 4, pero devolvió {r!r}\""
+    },
+    {
+     "name": "Mayúsculas con tilde",
+     "code": "r = contar_vocales(\"ÁRBOL Y CANCIÓN\")\nassert r == 5, f\"Las vocales en mayúscula y con tilde también cuentan (Á, O, A, I, Ó): esperaba 5, obtuve {r!r}\""
+    },
+    {
+     "name": "Diéresis",
+     "code": "r = contar_vocales(\"pingüino\")\nassert r == 4, f\"La ü es una vocal: 'pingüino' tiene 4 (i, ü, i, o); obtuve {r!r}\""
+    },
+    {
+     "name": "Cadena vacía",
+     "code": "r = contar_vocales(\"\")\nassert r == 0, f\"Una cadena vacía tiene 0 vocales; obtuve {r!r}\""
+    },
+    {
+     "name": "Sin vocales (la y no cuenta)",
+     "code": "r = contar_vocales(\"¡Brr! 123 rhythm y\")\nassert r == 0, f\"Ni los signos, ni los dígitos, ni la y son vocales: esperaba 0, obtuve {r!r}\""
+    },
+    {
+     "name": "Tilde combinante",
+     "code": "r = contar_vocales(\"cafe\\u0301\")\nassert r == 2, f\"En 'cafe' + acento combinante hay 2 vocales (a, e); obtuve {r!r}\""
+    },
+    {
+     "name": "Devuelve un número",
+     "code": "r = contar_vocales(\"aeiou\")\nassert type(r) is int and r == 5, f\"La función debe DEVOLVER (return) un int; devolvió {r!r}\""
+    }
+   ],
+   "hints": [
+    "Recorre `texto` con `for` y usa `in` para comprobar si cada carácter está en una cadena que contenga todas las vocales.",
+    "Pasa antes el texto a minúsculas (`texto.casefold()` o `texto.lower()`): así solo necesitas las vocales minúsculas, `\"aeiouáéíóúü\"`."
+   ],
+   "explain": "Se normalizan las mayúsculas con `casefold()` una sola vez y cada carácter se comprueba con `in` contra una cadena de referencia. Coste O(n) en la longitud del texto (la cadena de vocales es pequeña y fija).\n\nVersión compacta con una comprensión (s04):\n```python\ndef contar_vocales(texto):\n    return len([c for c in texto.casefold() if c in \"aeiouáéíóúü\"])\n```\nSi el conjunto de referencia fuera grande, un `set` haría cada comprobación O(1). Versión «pro», más general: descomponer con `unicodedata.normalize(\"NFD\", texto)` (lección 4) y contar solo `aeiou`; así cuentan también `â`, `è` o `ö` sin tener que enumerarlas. Fíjate en que con texto ya descompuesto (`\"cafe\\u0301\"`) la solución funciona: la `e` cuenta y el acento combinante, que es un carácter aparte, no."
+  },
+  {
+   "id": "s05-e2",
+   "title": "Iniciales",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `iniciales(nombre)`, que devuelve la inicial de cada palabra de `nombre` en mayúscula, seguida de un punto y sin espacios: `\"ada lovelace\"` → `\"A.L.\"`.",
+    "Las palabras pueden estar separadas por varios espacios o tabuladores y puede haber espacios al principio o al final. Todas las palabras cuentan (también «de», «la»…). Si no hay ninguna palabra, devuelve `\"\"`."
+   ],
+   "examples": [
+    {
+     "call": "iniciales(\"ada lovelace\")",
+     "result": "'A.L.'"
+    },
+    {
+     "call": "iniciales(\"grace brewster hopper\")",
+     "result": "'G.B.H.'"
+    },
+    {
+     "call": "iniciales(\"\")",
+     "result": "''"
+    }
+   ],
+   "starter": "def iniciales(nombre):\n    # Devuelve algo como \"A.L.\"\n    pass\n",
+   "solution": "def iniciales(nombre):\n    letras = []\n    for palabra in nombre.split():\n        letras.append(palabra[0].upper() + \".\")\n    return \"\".join(letras)\n",
+   "tests": [
+    {
+     "name": "Nombre y apellido",
+     "code": "r = iniciales(\"ada lovelace\")\nassert r == \"A.L.\", f\"iniciales('ada lovelace') debería ser 'A.L.', obtuve {r!r}\""
+    },
+    {
+     "name": "Espacios y tabuladores de más",
+     "code": "r = iniciales(\"  grace   brewster\\thopper \")\nassert r == \"G.B.H.\", f\"Los espacios repetidos, tabuladores y extremos no deben generar iniciales vacías: esperaba 'G.B.H.', obtuve {r!r}\""
+    },
+    {
+     "name": "Letras con tilde",
+     "code": "r = iniciales(\"álvaro núñez\")\nassert r == \"Á.N.\", f\"La inicial con tilde también se pasa a mayúscula: esperaba 'Á.N.', obtuve {r!r}\""
+    },
+    {
+     "name": "Una sola palabra",
+     "code": "r = iniciales(\"Cher\")\nassert r == \"C.\", f\"Con una sola palabra: esperaba 'C.', obtuve {r!r}\""
+    },
+    {
+     "name": "Todas las palabras cuentan",
+     "code": "r = iniciales(\"María de la O\")\nassert r == \"M.D.L.O.\", f\"Esperaba 'M.D.L.O.', obtuve {r!r}\""
+    },
+    {
+     "name": "Vacía o solo espacios",
+     "code": "assert iniciales(\"\") == \"\", \"Con una cadena vacía debe devolver ''\"\nr = iniciales(\"   \\t  \")\nassert r == \"\", f\"Con solo espacios debe devolver '' (y no fallar); obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "`split()` **sin argumentos** ya se ocupa de los espacios repetidos, los tabuladores y los extremos.",
+    "Para cada palabra toma `palabra[0]`, pásala a mayúscula y añade `\".\"`. Acumula los trozos en una lista y únelos al final con `\"\".join(…)`."
+   ],
+   "explain": "`nombre.split()` devuelve solo palabras no vacías, así que `palabra[0]` siempre existe. Con `split(\" \")` aparecerían cadenas vacías y `palabra[0]` lanzaría `IndexError`: es exactamente la diferencia entre las dos formas de `split` que viste en la lección 2. Coste O(n).\n\nVersión compacta:\n```python\ndef iniciales(nombre):\n    return \"\".join([p[0].upper() + \".\" for p in nombre.split()])\n```\n¿Y `nombre.title()`? No sirve aquí: capitaliza pero no extrae iniciales, y además se equivoca con apóstrofos."
+  },
+  {
+   "id": "s05-e3",
+   "title": "Enmascarar una tarjeta",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "En un recibo, de una tarjeta solo se muestran los 4 últimos dígitos. Escribe `enmascarar(numero)`, que recibe el número como texto (puede traer espacios o guiones) y devuelve **solo los dígitos**, con todos excepto los 4 últimos sustituidos por `*`.",
+    "Si quedan 4 dígitos o menos, se devuelven tal cual (sin espacios ni guiones)."
+   ],
+   "examples": [
+    {
+     "call": "enmascarar(\"4111 1111 1111 1234\")",
+     "result": "'************1234'"
+    },
+    {
+     "call": "enmascarar(\"5500-0000-0000-0004\")",
+     "result": "'************0004'"
+    },
+    {
+     "call": "enmascarar(\"12-34\")",
+     "result": "'1234'"
+    }
+   ],
+   "starter": "def enmascarar(numero):\n    # 1) Quita espacios y guiones  2) Enmascara todo menos los 4 últimos\n    pass\n",
+   "solution": "def enmascarar(numero):\n    digitos = numero.replace(\" \", \"\").replace(\"-\", \"\")\n    return \"*\" * (len(digitos) - 4) + digitos[-4:]\n",
+   "tests": [
+    {
+     "name": "Con espacios",
+     "code": "r = enmascarar(\"4111 1111 1111 1234\")\nassert r == \"************1234\", f\"Esperaba '************1234' (12 asteriscos + 1234), obtuve {r!r}\""
+    },
+    {
+     "name": "Con guiones",
+     "code": "r = enmascarar(\"5500-0000-0000-0004\")\nassert r == \"************0004\", f\"Los guiones también se eliminan: esperaba '************0004', obtuve {r!r}\""
+    },
+    {
+     "name": "15 dígitos y separadores mezclados",
+     "code": "r = enmascarar(\" 3782-822463 10005 \")\nassert r == \"***********0005\", f\"Esperaba '***********0005' (11 asteriscos), obtuve {r!r}\""
+    },
+    {
+     "name": "Exactamente 4 dígitos",
+     "code": "r = enmascarar(\"12-34\")\nassert r == \"1234\", f\"Con 4 dígitos no se enmascara nada: esperaba '1234', obtuve {r!r}\""
+    },
+    {
+     "name": "Menos de 4 dígitos y vacía",
+     "code": "r = enmascarar(\"7\")\nassert r == \"7\", f\"Con 1 dígito debe devolver '7', obtuve {r!r}\"\nr = enmascarar(\"\")\nassert r == \"\", f\"Con una cadena vacía debe devolver '', obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Primero limpia: dos `replace` encadenados eliminan espacios y guiones.",
+    "`\"*\" * n` repite el asterisco `n` veces y `digitos[-4:]` da los 4 últimos. ¿Qué devuelve `\"*\" * -2`? ¿Y `\"12\"[-4:]`? Pruébalo: quizá no necesites ningún `if`."
+   ],
+   "explain": "La solución no necesita `if` gracias a dos propiedades de las secuencias: repetir una cadena un número negativo de veces da `\"\"`, y un *slice* que se sale del rango no falla, devuelve lo que haya. Así, con 4 dígitos o menos, `\"*\" * (len - 4)` es `\"\"` y `digitos[-4:]` es la cadena entera.\n\nSi prefieres dejar explícito el caso corto, un `if len(digitos) <= 4: return digitos` también es correcto y quizá más legible. Otra opción para limpiar: `numero.translate(str.maketrans(\"\", \"\", \" -\"))`. En sistemas reales, el número completo de una tarjeta ni siquiera debería almacenarse: enmascarar es solo la última capa."
+  },
+  {
+   "id": "s05-e4",
+   "title": "Etiqueta de precio con f-string",
+   "level": "facil",
+   "minutes": 12,
+   "prompt": [
+    "Escribe `etiqueta(nombre, precio)`, que devuelve una línea de una lista de precios con este formato exacto:",
+    "• el nombre alineado a la izquierda en 15 caracteres, rellenando con puntos `.` y **recortado** a 15 si es más largo;\n• un espacio y el signo `$`;\n• el precio alineado a la derecha en un ancho de 8 y con 2 decimales.",
+    "Si el precio no cabe en 8 caracteres, ocupa lo que necesite (el ancho es un mínimo). Intenta resolverlo con **una sola f-string**.",
+    "```python\netiqueta(\"Teclado\", 49.9)                       # 'Teclado........ $   49.90'\netiqueta(\"Monitor 4K ultrapanorámico\", 1299)    # 'Monitor 4K ultr $ 1299.00'\n```"
+   ],
+   "starter": "def etiqueta(nombre, precio):\n    # Devuelve una f-string con dos campos formateados\n    pass\n",
+   "solution": "def etiqueta(nombre, precio):\n    return f\"{nombre:.<15.15} ${precio:>8.2f}\"\n",
+   "tests": [
+    {
+     "name": "Ejemplo básico",
+     "code": "r = etiqueta(\"Teclado\", 49.9)\nassert r == \"Teclado........ $   49.90\", f\"Esperaba 'Teclado........ $   49.90', obtuve {r!r}\""
+    },
+    {
+     "name": "Longitud total de 25",
+     "code": "r = etiqueta(\"Mouse\", 9.5)\nassert len(r) == 25, f\"Con nombre y precio cortos la línea mide 15 + 2 + 8 = 25 caracteres; la tuya mide {len(r)}: {r!r}\""
+    },
+    {
+     "name": "Nombre largo recortado",
+     "code": "r = etiqueta(\"Monitor 4K ultrapanorámico\", 1299)\nassert r == \"Monitor 4K ultr $ 1299.00\", f\"El nombre debe recortarse a 15 caracteres: esperaba 'Monitor 4K ultr $ 1299.00', obtuve {r!r}\""
+    },
+    {
+     "name": "Nombre de exactamente 15",
+     "code": "r = etiqueta(\"Mouse USB negro\", 19.99)\nassert r == \"Mouse USB negro $   19.99\", f\"Con 15 caracteres no hay puntos: esperaba 'Mouse USB negro $   19.99', obtuve {r!r}\""
+    },
+    {
+     "name": "Precio negativo y nombre vacío",
+     "code": "r = etiqueta(\"\", -5)\nassert r == \"...............\" + \" $   -5.00\", f\"Nombre vacío = 15 puntos, y el signo menos va pegado al número: obtuve {r!r}\""
+    },
+    {
+     "name": "El ancho es un mínimo",
+     "code": "r = etiqueta(\"TV\", 123456.789)\nassert r == \"TV............. $123456.79\", f\"Si el precio no cabe en 8, ocupa lo que necesite: esperaba 'TV............. $123456.79', obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Necesitas dos campos en la f-string: `{nombre:…}` y `{precio:…}`, con `\" $\"` de texto fijo entre ambos. Repasa el orden de la especificación: relleno, alineación, ancho, precisión y tipo.",
+    "En las cadenas, la precisión (`.15`) **recorta**. El relleno va justo antes de la alineación: `.<` significa «rellena con puntos, alinea a la izquierda».",
+    "Para el precio: `>8.2f` (derecha, ancho 8, 2 decimales, coma fija)."
+   ],
+   "explain": "`f\"{nombre:.<15.15} ${precio:>8.2f}\"`. En `.<15.15` el primer `.` es el **relleno** (lo delata el `<` que lo sigue), `15` es el ancho mínimo y `.15` la precisión, que en cadenas es la longitud máxima. En `>8.2f`: derecha, ancho 8, dos decimales. El `$` es texto fijo: dentro de una f-string solo las llaves son especiales. Como el ancho es un mínimo, un precio de 9 caracteres empuja la línea en lugar de recortarse (nunca se recortan números: sería mentir).\n\nEquivalente con métodos de la lección 2, más largo y menos claro:\n```python\nnombre[:15].ljust(15, \".\") + \" $\" + f\"{precio:.2f}\".rjust(8)\n```"
+  },
+  {
+   "id": "s05-e5",
+   "title": "Palíndromos con acentos",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `es_palindromo(frase)`, que devuelve `True` si `frase` se lee igual al derecho que al revés **ignorando** mayúsculas, tildes y diéresis, espacios y signos de puntuación (cualquier cosa que no sea letra o dígito).",
+    "Una frase sin letras ni dígitos (o vacía) se considera palíndromo. El texto puede llegar con las tildes precompuestas (`é`) o descompuestas (`e` + acento combinante): ambas formas deben dar el mismo resultado."
+   ],
+   "examples": [
+    {
+     "call": "es_palindromo(\"Dábale arroz a la zorra el abad\")",
+     "result": "True"
+    },
+    {
+     "call": "es_palindromo(\"¿Acaso hubo búhos acá?\")",
+     "result": "True"
+    },
+    {
+     "call": "es_palindromo(\"Hola\")",
+     "result": "False"
+    }
+   ],
+   "starter": "import unicodedata\n\ndef es_palindromo(frase):\n    # 1) Normaliza  2) Quédate con letras y dígitos  3) Compara con su inversa\n    pass\n",
+   "solution": "import unicodedata\n\ndef es_palindromo(frase):\n    descompuesta = unicodedata.normalize(\"NFD\", frase.casefold())\n    limpia = []\n    for c in descompuesta:\n        if c.isalnum():\n            limpia.append(c)\n    texto = \"\".join(limpia)\n    return texto == texto[::-1]\n",
+   "tests": [
+    {
+     "name": "Clásico con tildes",
+     "code": "assert es_palindromo(\"Dábale arroz a la zorra el abad\") is True, \"'Dábale arroz a la zorra el abad' es palíndromo si ignoras la tilde de la á\""
+    },
+    {
+     "name": "Signos de apertura y cierre",
+     "code": "assert es_palindromo(\"¿Acaso hubo búhos acá?\") is True, \"Hay que ignorar ¿ ? y las tildes de 'búhos' y 'acá'\""
+    },
+    {
+     "name": "Sin tildes",
+     "code": "assert es_palindromo(\"Anita lava la tina\") is True, \"'Anita lava la tina' es palíndromo (mayúsculas y espacios se ignoran)\"\nassert es_palindromo(\"A man, a plan, a canal: Panama!\") is True, \"Las comas, los dos puntos y la exclamación se ignoran\""
+    },
+    {
+     "name": "Frases que no lo son",
+     "code": "assert es_palindromo(\"Hola\") is False, \"'Hola' no es palíndromo\"\nassert es_palindromo(\"ab\") is False, \"'ab' no es palíndromo\"\nassert es_palindromo(\"1a2\") is False, \"'1a2' al revés es '2a1': no es palíndromo\""
+    },
+    {
+     "name": "Dígitos",
+     "code": "assert es_palindromo(\"12321\") is True, \"Los dígitos cuentan: '12321' es palíndromo\"\nassert es_palindromo(\"2026\") is False, \"'2026' no es palíndromo\""
+    },
+    {
+     "name": "Texto descompuesto (NFD)",
+     "code": "import unicodedata\nfrase = unicodedata.normalize(\"NFD\", \"¿Acaso hubo búhos acá?\")\nassert es_palindromo(frase) is True, \"Con las tildes como caracteres combinantes aparte, el resultado debe ser el mismo (True)\""
+    },
+    {
+     "name": "Vacía o sin letras",
+     "code": "assert es_palindromo(\"\") is True, \"Una cadena vacía se considera palíndromo\"\nassert es_palindromo(\"¡¿!?\") is True, \"Una frase sin letras ni dígitos se considera palíndromo\""
+    },
+    {
+     "name": "Devuelve un bool",
+     "code": "r = es_palindromo(\"oso\")\nassert type(r) is bool, f\"Debe devolver True o False (bool), no {type(r).__name__}\""
+    }
+   ],
+   "hints": [
+    "Divide el problema en tres pasos: preparar la frase, quedarte solo con letras y dígitos, y comparar con su inversa (`[::-1]`).",
+    "Para ignorar tildes, descompón con `unicodedata.normalize(\"NFD\", …)`: cada tilde pasa a ser un carácter aparte.",
+    "Tras NFD, `isalnum()` devuelve `False` para las marcas combinantes, así que un único filtro `if c.isalnum()` elimina a la vez espacios, signos y tildes."
+   ],
+   "explain": "Tres pasos: `casefold()` elimina las mayúsculas; NFD separa cada tilde o diéresis en su propio code point; y el filtro `isalnum()` descarta de una vez espacios, signos y marcas combinantes (que no son alfanuméricas). Después basta comparar con `texto[::-1]`. Coste O(n) en tiempo y memoria.\n\nEfecto secundario: la `ñ` se convierte en `n` (NFD la descompone en `n` + virgulilla). Para detectar palíndromos da igual, pero si necesitaras distinguirlas tendrías que tratar la ñ aparte. Alternativa sin copiar la cadena invertida: dos índices que avanzan desde los extremos hacia el centro (lo verás en s15)."
+  },
+  {
+   "id": "s05-e6",
+   "title": "Cifrado César",
+   "level": "medio",
+   "minutes": 15,
+   "prompt": [
+    "El cifrado César sustituye cada letra por la que está `k` posiciones más adelante en el alfabeto: con `k = 3`, `a` → `d` y `x` → `a` (se da la vuelta).",
+    "Escribe `cesar(texto, desplazamiento)` que cifre las letras del **alfabeto inglés** (`a`–`z` y `A`–`Z`) conservando mayúsculas y minúsculas. Todo lo demás (espacios, dígitos, signos, `ñ`, letras con tilde) se deja igual. El desplazamiento puede ser negativo o mayor que 26; para descifrar basta con usar el desplazamiento contrario."
+   ],
+   "examples": [
+    {
+     "call": "cesar(\"Hola, Mundo!\", 3)",
+     "result": "'Krod, Pxqgr!'"
+    },
+    {
+     "call": "cesar(\"xyz\", 3)",
+     "result": "'abc'"
+    },
+    {
+     "call": "cesar(\"Krod\", -3)",
+     "result": "'Hola'"
+    }
+   ],
+   "starter": "def cesar(texto, desplazamiento):\n    # Usa ord(), chr() y el operador %\n    pass\n",
+   "solution": "def cesar(texto, desplazamiento):\n    resultado = []\n    for c in texto:\n        if \"a\" <= c <= \"z\":\n            base = ord(\"a\")\n        elif \"A\" <= c <= \"Z\":\n            base = ord(\"A\")\n        else:\n            resultado.append(c)\n            continue\n        posicion = (ord(c) - base + desplazamiento) % 26\n        resultado.append(chr(base + posicion))\n    return \"\".join(resultado)\n",
+   "tests": [
+    {
+     "name": "Cifrado básico",
+     "code": "r = cesar(\"Hola, Mundo!\", 3)\nassert r == \"Krod, Pxqgr!\", f\"cesar('Hola, Mundo!', 3) debería ser 'Krod, Pxqgr!', obtuve {r!r}\""
+    },
+    {
+     "name": "Da la vuelta al final del alfabeto",
+     "code": "r = cesar(\"xyz XYZ\", 3)\nassert r == \"abc ABC\", f\"Tras la z viene la a (y tras la Z, la A): esperaba 'abc ABC', obtuve {r!r}\""
+    },
+    {
+     "name": "Desplazamiento negativo",
+     "code": "r = cesar(\"Krod\", -3)\nassert r == \"Hola\", f\"Con -3 se descifra: esperaba 'Hola', obtuve {r!r}\"\nr = cesar(\"abc\", -1)\nassert r == \"zab\", f\"cesar('abc', -1) debería ser 'zab', obtuve {r!r}\""
+    },
+    {
+     "name": "Desplazamientos grandes",
+     "code": "assert cesar(\"Python\", 29) == cesar(\"Python\", 3), \"Desplazar 29 debe equivaler a desplazar 3\"\nassert cesar(\"Python\", 26) == \"Python\", \"Desplazar 26 (una vuelta completa) no cambia el texto\"\nassert cesar(\"Python\", -52) == \"Python\", \"Desplazar -52 (dos vueltas) no cambia el texto\""
+    },
+    {
+     "name": "Solo letras inglesas",
+     "code": "r = cesar(\"ñandú 2026, ¿sí?\", 1)\nassert r == \"ñboeú 2026, ¿tí?\", f\"ñ, ú, í, dígitos y signos no cambian: esperaba 'ñboeú 2026, ¿tí?', obtuve {r!r}\""
+    },
+    {
+     "name": "Ida y vuelta",
+     "code": "original = \"El Veloz Murciélago Hindú comía feliz cardillo y kiwi.\"\nfor k in [1, 7, 13, 25, 100, -8]:\n    assert cesar(cesar(original, k), -k) == original, f\"Cifrar con {k} y descifrar con {-k} debe devolver el original\""
+    },
+    {
+     "name": "Cadena vacía",
+     "code": "r = cesar(\"\", 5)\nassert r == \"\", f\"Con una cadena vacía debe devolver '', obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Para cada carácter, averigua si es minúscula (`\"a\" <= c <= \"z\"`), mayúscula (`\"A\" <= c <= \"Z\"`) o ninguna de las dos. La `ñ` y las vocales con tilde quedan fuera de esos rangos: su code point es mayor que el de la `z`.",
+    "Convierte la letra en su posición 0–25 restando `ord(\"a\")` (u `ord(\"A\")`), suma el desplazamiento y usa `% 26` para dar la vuelta. `chr(base + posicion)` te devuelve la letra.",
+    "En Python, `%` con divisor positivo siempre da un resultado entre 0 y 25, también con números negativos: `-3 % 26` es `23`. No necesitas tratar aparte los desplazamientos negativos."
+   ],
+   "explain": "Cada letra se lleva a una posición 0–25, se desplaza y se vuelve al rango con `% 26` (aritmética modular). El `%` de Python con divisor positivo nunca da negativos (s02), por eso el mismo código cifra, descifra y admite desplazamientos enormes. Coste O(n).\n\nVersión «pro» con `str.maketrans` y las constantes del módulo `string`:\n```python\nimport string\n\ndef cesar(texto, desplazamiento):\n    k = desplazamiento % 26\n    minus, mayus = string.ascii_lowercase, string.ascii_uppercase\n    tabla = str.maketrans(minus + mayus, minus[k:] + minus[:k] + mayus[k:] + mayus[:k])\n    return texto.translate(tabla)\n```\nConstruye la tabla una vez y `translate` aplica todas las sustituciones en C, en una sola pasada. Y recuerda: el César es un juguete histórico, no un cifrado seguro (solo hay 25 claves posibles)."
+  },
+  {
+   "id": "s05-e7",
+   "title": "Validar un RUT chileno",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "El RUT (Rol Único Tributario) chileno se escribe como `12.345.678-5`: un número, un guion y un **dígito verificador** (DV), que es una cifra o la letra `K`. El DV permite detectar errores de tipeo. Escribe dos funciones:",
+    "**`calcular_dv(numero)`** recibe las cifras del número como `str`, sin puntos (`\"12345678\"`), y devuelve el DV como `str` (`\"0\"`–`\"9\"` o `\"K\"`). Algoritmo (módulo 11): recorre las cifras **de derecha a izquierda** multiplicándolas por `2, 3, 4, 5, 6, 7` y vuelta a empezar en `2`; suma los productos; calcula `11 - suma % 11`. Si da 11, el DV es `\"0\"`; si da 10, `\"K\"`; si no, esa cifra.",
+    "```text\n12345678  →  8·2 + 7·3 + 6·4 + 5·5 + 4·6 + 3·7 + 2·2 + 1·3 = 138\n138 % 11 = 6   →   11 - 6 = 5   →   DV = \"5\"\n```",
+    "**`es_rut_valido(rut)`** devuelve `True` si `rut` tiene un formato correcto **y** su DV coincide con el calculado. Formato correcto:\n• el número tiene entre 1 y 8 cifras ASCII y no empieza por `0`;\n• se escribe sin puntos (`12345678-5`) o con puntos separando exactamente los miles (`12.345.678-5`, `1.234-3`);\n• después, un guion `-` y el DV: una cifra, `K` o `k`;\n• nada más: ni espacios ni otros separadores.\nUsa `re` para el formato y devuelve siempre un `bool`."
+   ],
+   "examples": [
+    {
+     "call": "calcular_dv(\"12345678\")",
+     "result": "'5'"
+    },
+    {
+     "call": "es_rut_valido(\"12.345.678-5\")",
+     "result": "True"
+    },
+    {
+     "call": "es_rut_valido(\"12.345.678-4\")",
+     "result": "False"
+    }
+   ],
+   "starter": "import re\n\ndef calcular_dv(numero):\n    # Recorre las cifras de derecha a izquierda con factores 2, 3, 4, 5, 6, 7, 2, 3...\n    pass\n\ndef es_rut_valido(rut):\n    # 1) Valida el formato con una regex  2) Compara el DV\n    pass\n",
+   "solution": "import re\n\nPATRON_RUT = re.compile(r\"\"\"\n    (?P<numero>\n        [1-9][0-9]{0,7}                    # sin puntos: 12345678\n      | [1-9][0-9]{0,2}(?:\\.[0-9]{3}){1,2} # con puntos: 12.345.678\n    )\n    -\n    (?P<dv>[0-9Kk])\n\"\"\", re.VERBOSE)\n\ndef calcular_dv(numero):\n    suma = 0\n    factor = 2\n    for cifra in reversed(numero):\n        suma += int(cifra) * factor\n        factor = factor + 1 if factor < 7 else 2\n    resultado = 11 - suma % 11\n    if resultado == 11:\n        return \"0\"\n    if resultado == 10:\n        return \"K\"\n    return str(resultado)\n\ndef es_rut_valido(rut):\n    m = PATRON_RUT.fullmatch(rut)\n    if m is None:\n        return False\n    numero = m.group(\"numero\").replace(\".\", \"\")\n    if len(numero) > 8:\n        return False\n    return calcular_dv(numero) == m.group(\"dv\").upper()\n",
+   "tests": [
+    {
+     "name": "calcular_dv: ejemplo del enunciado",
+     "code": "r = calcular_dv(\"12345678\")\nassert r == \"5\", f\"calcular_dv('12345678') debe devolver '5' (un str); obtuve {r!r}\""
+    },
+    {
+     "name": "calcular_dv: casos 0 y K",
+     "code": "casos = {\"30686957\": \"4\", \"1055433\": \"0\", \"1039595\": \"K\", \"999999\": \"K\", \"1\": \"9\", \"123\": \"6\", \"1234\": \"3\", \"76086428\": \"5\"}\nfor numero, esperado in casos.items():\n    r = calcular_dv(numero)\n    assert r == esperado, f\"calcular_dv({numero!r}) debería ser {esperado!r}, obtuve {r!r} (11 → '0', 10 → 'K')\""
+    },
+    {
+     "name": "RUT válidos con y sin puntos",
+     "code": "for rut in [\"12.345.678-5\", \"12345678-5\", \"30.686.957-4\", \"1.039.595-K\", \"1039595-K\", \"1.055.433-0\", \"999.999-K\", \"1.234-3\", \"123-6\", \"1-9\"]:\n    assert es_rut_valido(rut) is True, f\"{rut!r} es un RUT válido\""
+    },
+    {
+     "name": "La k minúscula también vale",
+     "code": "assert es_rut_valido(\"999.999-k\") is True, \"'999.999-k' es válido: el DV admite k minúscula\""
+    },
+    {
+     "name": "DV incorrecto",
+     "code": "for rut in [\"12.345.678-4\", \"12345678-K\", \"1.039.595-0\", \"1.055.433-K\", \"1-0\"]:\n    assert es_rut_valido(rut) is False, f\"{rut!r} tiene bien el formato, pero el DV no coincide\""
+    },
+    {
+     "name": "Puntos mal colocados",
+     "code": "for rut in [\"12.34.5678-5\", \"1234.5678-5\", \"12345.678-5\", \"12.345678-5\", \".123-6\", \"12..345.678-5\"]:\n    assert es_rut_valido(rut) is False, f\"{rut!r}: los puntos solo pueden separar grupos de tres cifras (miles)\""
+    },
+    {
+     "name": "Otros formatos incorrectos",
+     "code": "malos = [\"12.345.678\", \"12345678 5\", \"12.345.678-\", \"12,345,678-5\", \"012.345.678-5\", \"123456789-2\",\n         \"123.456.789-2\", \" 12.345.678-5\", \"12.345.678-5\\n\", \"12.345.678-KK\", \"12.345.678-x\", \"\", \"K\", \"-5\"]\nfor rut in malos:\n    assert es_rut_valido(rut) is False, f\"{rut!r} no tiene un formato válido\""
+    },
+    {
+     "name": "Devuelve un bool",
+     "code": "r1, r2 = es_rut_valido(\"12.345.678-5\"), es_rut_valido(\"hola\")\nassert type(r1) is bool and type(r2) is bool, f\"Debe devolver True/False; obtuve {r1!r} y {r2!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por `calcular_dv`: `reversed(numero)` recorre las cifras de derecha a izquierda; lleva un `factor` que empieza en 2, sube de uno en uno y vuelve a 2 después del 7.",
+    "Para el formato hay dos alternativas: sin puntos `[1-9][0-9]{0,7}`, o con puntos `[1-9][0-9]{0,2}(?:\\.[0-9]{3}){1,2}`. Únelas con `|` dentro de un grupo con nombre y añade `-` y el DV `[0-9Kk]`.",
+    "Valida con `fullmatch`. Después quita los puntos del número, comprueba que no pase de 8 cifras y compara `calcular_dv(numero)` con el DV en mayúsculas (`.upper()`)."
+   ],
+   "explain": "El problema tiene dos capas bien separadas: la **forma** (regex) y la **aritmética** (módulo 11). La regex acepta dos escrituras con una alternativa `|`; en la versión con puntos, `(?:\\.[0-9]{3}){1,2}` garantiza grupos de exactamente tres cifras, y la primera parte (`[1-9][0-9]{0,2}`) impide ceros a la izquierda. Como con puntos podrían salir 9 cifras (`123.456.789`), el límite de 8 se comprueba después de quitar los puntos: a veces es más claro validar una parte con código que complicar el patrón.\n\n`calcular_dv` recorre las cifras al revés con un factor cíclico 2…7 (la expresión condicional de s03 lo reinicia). Coste O(número de cifras). Versión alternativa del factor, sin `if`: `factor = 2 + i % 6`, usando `enumerate(reversed(numero))`.\n\nY separar `calcular_dv` permite reutilizarla, por ejemplo, para generar el DV de un número nuevo o para mostrar al usuario cuál sería el DV correcto."
+  },
+  {
+   "id": "s05-e8",
+   "title": "Validar un email (versión práctica)",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Validar emails «de verdad» con una regex es casi imposible (la norma RFC 5322 es enorme). En la práctica se comprueba una forma razonable y después se envía un correo de confirmación. Escribe `es_email_valido(email)`, que devuelve `True` solo si se cumplen **todas** estas reglas:",
+    "• Una única `@` separa la parte local del dominio.\n• **Parte local**: uno o más caracteres entre letras ASCII, dígitos y `. _ % + -`; no puede empezar ni terminar en punto ni tener dos puntos seguidos.\n• **Dominio**: dos o más etiquetas separadas por puntos. Cada etiqueta usa letras ASCII, dígitos o guiones, y no empieza ni termina en guion.\n• La última etiqueta (el dominio de primer nivel, como `com`, `org` o `cl`) solo tiene letras, y al menos 2.\n• Nada más: ni espacios ni saltos de línea. Se admiten mayúsculas.",
+    "Devuelve siempre un `bool`."
+   ],
+   "examples": [
+    {
+     "call": "es_email_valido(\"ana.garcia+news@correo.example.org\")",
+     "result": "True"
+    },
+    {
+     "call": "es_email_valido(\"ana..garcia@x.com\")",
+     "result": "False"
+    },
+    {
+     "call": "es_email_valido(\"ana@localhost\")",
+     "result": "False"
+    }
+   ],
+   "starter": "import re\n\ndef es_email_valido(email):\n    # Construye el patrón por partes: local @ etiquetas. tld\n    pass\n",
+   "solution": "import re\n\nPATRON_EMAIL = re.compile(r\"\"\"\n    [A-Za-z0-9_%+-]+ (?: \\. [A-Za-z0-9_%+-]+ )*            # parte local\n    @\n    (?: [A-Za-z0-9] (?: [A-Za-z0-9-]* [A-Za-z0-9] )? \\. )+   # etiquetas del dominio\n    [A-Za-z]{2,}                                           # dominio de primer nivel\n\"\"\", re.VERBOSE)\n\ndef es_email_valido(email):\n    return PATRON_EMAIL.fullmatch(email) is not None\n",
+   "tests": [
+    {
+     "name": "Direcciones válidas",
+     "code": "for e in [\"ana@example.com\", \"ana.garcia+news@correo.example.org\", \"ANA_99%x@EJEMPLO.ORG\", \"a@b.co\", \"user-1@sub-dominio.ejemplo.com\"]:\n    assert es_email_valido(e) is True, f\"{e!r} cumple todas las reglas y debería ser válida\""
+    },
+    {
+     "name": "Puntos en la parte local",
+     "code": "for e in [\".ana@x.com\", \"ana.@x.com\", \"an..a@x.com\"]:\n    assert es_email_valido(e) is False, f\"{e!r}: la parte local no puede empezar/terminar en punto ni tener puntos seguidos\""
+    },
+    {
+     "name": "Número de @",
+     "code": "for e in [\"ana.example.com\", \"ana@@x.com\", \"ana@x@y.com\", \"@x.com\", \"ana@\"]:\n    assert es_email_valido(e) is False, f\"{e!r}: debe haber exactamente una @ con texto a ambos lados\""
+    },
+    {
+     "name": "Etiquetas del dominio",
+     "code": "for e in [\"ana@localhost\", \"ana@-x.com\", \"ana@x-.com\", \"ana@x..com\", \"ana@.x.com\", \"ana@x.com.\"]:\n    assert es_email_valido(e) is False, f\"{e!r}: el dominio no cumple las reglas de las etiquetas\""
+    },
+    {
+     "name": "Dominio de primer nivel",
+     "code": "for e in [\"ana@x.c\", \"ana@x.c0m\", \"ana@x.123\"]:\n    assert es_email_valido(e) is False, f\"{e!r}: la última etiqueta debe tener solo letras y al menos 2\""
+    },
+    {
+     "name": "Espacios, salto de línea y no ASCII",
+     "code": "for e in [\"ana @x.com\", \" ana@x.com\", \"ana@x.com\\n\", \"ñandú@x.com\", \"ana@correo.ñandú.org\", \"\"]:\n    assert es_email_valido(e) is False, f\"{e!r} no es válida según las reglas (¿validas la cadena completa?)\""
+    },
+    {
+     "name": "Devuelve un bool",
+     "code": "r1, r2 = es_email_valido(\"a@b.co\"), es_email_valido(\"nada\")\nassert type(r1) is bool and type(r2) is bool, f\"Debe devolver True/False; obtuve {r1!r} y {r2!r}\""
+    }
+   ],
+   "hints": [
+    "Construye el patrón por piezas y pruébalas por separado: parte local, `@`, etiquetas del dominio terminadas en punto (repetidas con `+`) y el dominio de primer nivel.",
+    "Para «palabras separadas por puntos, sin puntos al principio, al final ni dobles», el truco es `X+(?:\\.X+)*`, donde `X` es la clase de caracteres permitidos.",
+    "Una etiqueta que no empieza ni termina en guion: `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`. Usa `re.VERBOSE` para poder comentar el patrón y `fullmatch` para validar la cadena entera."
+   ],
+   "explain": "El patrón se lee por partes (por eso `re.VERBOSE` ayuda tanto):\n```text\n[A-Za-z0-9_%+-]+ (?:\\.[A-Za-z0-9_%+-]+)*    palabras separadas por puntos sueltos\n@\n(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\\.)+    etiquetas terminadas en punto\n[A-Za-z]{2,}                                  dominio de primer nivel\n```\nEl `(?:…)+` exige al menos una etiqueta seguida de punto antes del dominio de primer nivel, así que `ana@localhost` falla. `fullmatch` impide que se cuelen espacios o un `\\n` final. En modo `VERBOSE` los espacios del patrón se ignoran y `#` inicia un comentario; no usamos `#` dentro de ninguna clase.\n\nLimitaciones deliberadas: el estándar real admite partes locales entre comillas, direcciones IP como dominio y dominios internacionalizados (`ñandú.org`), y fija longitudes máximas. En producción se usa una biblioteca mantenida (por ejemplo, el paquete `email-validator`) y, sobre todo, un correo de confirmación: es la única prueba de que la dirección existe y es de quien dice."
+  },
+  {
+   "id": "s05-e9",
+   "title": "Recortar a N bytes sin romper caracteres",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Muchos sistemas (columnas de bases de datos, protocolos, APIs) limitan el tamaño en **bytes**, no en caracteres, y en UTF-8 un carácter ocupa de 1 a 4 bytes. Escribe `recortar_utf8(texto, max_bytes)`, que devuelve el **prefijo más largo** de `texto` cuya codificación UTF-8 ocupa como mucho `max_bytes` bytes, sin partir ningún carácter (code point) por la mitad.",
+    "Devuelve un `str`. Si el texto completo cabe, se devuelve entero; si no cabe ni el primer carácter, `\"\"`. `max_bytes` nunca es negativo."
+   ],
+   "examples": [
+    {
+     "call": "recortar_utf8(\"Hola\", 10)",
+     "result": "'Hola'"
+    },
+    {
+     "call": "recortar_utf8(\"añoñ\", 3)",
+     "result": "'añ'"
+    },
+    {
+     "call": "recortar_utf8(\"✓ok\", 2)",
+     "result": "''"
+    }
+   ],
+   "starter": "def recortar_utf8(texto, max_bytes):\n    # Pista: len(\"ñ\".encode(\"utf-8\")) es 2\n    pass\n",
+   "solution": "def recortar_utf8(texto, max_bytes):\n    usados = 0\n    fin = 0\n    for caracter in texto:\n        tam = len(caracter.encode(\"utf-8\"))\n        if usados + tam > max_bytes:\n            break\n        usados += tam\n        fin += 1\n    return texto[:fin]\n",
+   "tests": [
+    {
+     "name": "Cabe entero",
+     "code": "assert recortar_utf8(\"Hola\", 10) == \"Hola\", \"Si el texto cabe, se devuelve entero\"\nassert recortar_utf8(\"Hola\", 4) == \"Hola\", \"'Hola' ocupa exactamente 4 bytes: cabe\""
+    },
+    {
+     "name": "Texto ASCII",
+     "code": "r = recortar_utf8(\"Hola mundo\", 4)\nassert r == \"Hola\", f\"En ASCII, 1 carácter = 1 byte: esperaba 'Hola', obtuve {r!r}\""
+    },
+    {
+     "name": "Caracteres de 2 bytes",
+     "code": "casos = {2: \"a\", 3: \"añ\", 4: \"año\", 5: \"año\", 6: \"añoñ\"}\nfor n, esperado in casos.items():\n    r = recortar_utf8(\"añoñ\", n)\n    assert r == esperado, f\"recortar_utf8('añoñ', {n}) debería ser {esperado!r} (la ñ ocupa 2 bytes), obtuve {r!r}\""
+    },
+    {
+     "name": "Caracteres de 3 y 4 bytes",
+     "code": "assert recortar_utf8(\"✓ok\", 2) == \"\", \"El ✓ ocupa 3 bytes: con 2 no cabe nada\"\nassert recortar_utf8(\"✓ok\", 3) == \"✓\", \"Con 3 bytes cabe justo el ✓\"\nassert recortar_utf8(\"✓ok\", 5) == \"✓ok\", \"Con 5 bytes caben ✓ (3) + o (1) + k (1)\"\nassert recortar_utf8(\"🐍🐍\", 7) == \"🐍\", \"Cada 🐍 ocupa 4 bytes: con 7 solo cabe uno\"\nassert recortar_utf8(\"🐍🐍\", 8) == \"🐍🐍\", \"Con 8 bytes caben los dos\""
+    },
+    {
+     "name": "Bordes",
+     "code": "assert recortar_utf8(\"Hola\", 0) == \"\", \"Con 0 bytes no cabe nada\"\nassert recortar_utf8(\"\", 5) == \"\", \"Un texto vacío se queda vacío\"\nr = recortar_utf8(\"abc\", 1)\nassert type(r) is str, f\"Debe devolver un str, no {type(r).__name__}\""
+    },
+    {
+     "name": "Propiedades en muchos casos",
+     "code": "texto = \"Ñandú $5 ✓ 🐍 ok\"\nfor n in range(0, 30):\n    r = recortar_utf8(texto, n)\n    assert texto.startswith(r), f\"Con max_bytes={n}, el resultado {r!r} debe ser un prefijo del texto\"\n    assert len(r.encode(\"utf-8\")) <= n, f\"Con max_bytes={n}, {r!r} ocupa {len(r.encode('utf-8'))} bytes: demasiado\"\n    if r != texto:\n        siguiente = texto[:len(r) + 1]\n        assert len(siguiente.encode(\"utf-8\")) > n, f\"Con max_bytes={n}, {r!r} no es el prefijo MÁS LARGO posible\""
+    }
+   ],
+   "hints": [
+    "Recorre el texto carácter a carácter llevando la cuenta de los bytes acumulados: `len(c.encode(\"utf-8\"))` te dice cuánto ocupa cada carácter.",
+    "En cuanto el siguiente carácter no quepa, para con `break` y devuelve el slice `texto[:n]` con los `n` caracteres que sí cabían."
+   ],
+   "explain": "Se suma el tamaño en UTF-8 de cada carácter y se corta justo antes del primero que no cabe. Coste O(n).\n\nVersión «pro», muy común en código real:\n```python\ndef recortar_utf8(texto, max_bytes):\n    return texto.encode(\"utf-8\")[:max_bytes].decode(\"utf-8\", errors=\"ignore\")\n```\nFunciona porque cortar los bytes solo puede dejar **al final** una secuencia UTF-8 incompleta (inválida), y `errors=\"ignore\"` la descarta; todo lo anterior sigue siendo UTF-8 válido. Es un buen ejemplo de elegir el manejador de errores sabiendo exactamente qué se pierde.\n\nLimitación de ambas versiones: respetan los code points, no los grafemas. Una `é` descompuesta (`e` + acento) o un emoji con tono de piel pueden quedar partidos entre el carácter base y su modificador."
+  },
+  {
+   "id": "s05-e10",
+   "title": "HTML seguro con t-strings",
+   "level": "medio",
+   "minutes": 20,
+   "prompt": [
+    "Vas a escribir tu primer procesador de plantillas `t\"…\"` (Python 3.14). Escribe `html_seguro(plantilla)`, que recibe un `Template` y devuelve un `str` así:",
+    "• El texto fijo de la plantilla se copia tal cual.\n• Cada valor interpolado, **en este orden**: 1) se le aplica su conversión (`!r`, `!s`, `!a`) si la tiene; 2) se formatea con su especificación (lo que va tras `:`); 3) se escapa con `html.escape`.",
+    "```python\nusuario = \"<b>Ana</b>\"\nhtml_seguro(t\"<p>Hola {usuario}</p>\")      # '<p>Hola &lt;b&gt;Ana&lt;/b&gt;</p>'\nprecio = 5\nhtml_seguro(t\"<td>{precio:.2f}</td>\")     # '<td>5.00</td>'\n```"
+   ],
+   "examples": [
+    {
+     "call": "html_seguro(t\"<p>{'<b>Ana</b>'}</p>\")",
+     "result": "'<p>&lt;b&gt;Ana&lt;/b&gt;</p>'"
+    },
+    {
+     "call": "html_seguro(t\"<td>{5:.2f}</td>\")",
+     "result": "'<td>5.00</td>'"
+    }
+   ],
+   "starter": "from html import escape\nfrom string.templatelib import Interpolation, convert\n\ndef html_seguro(plantilla):\n    # Recorre la plantilla: texto fijo tal cual, valores convertidos, formateados y escapados\n    pass\n",
+   "solution": "from html import escape\nfrom string.templatelib import Interpolation, convert\n\ndef html_seguro(plantilla):\n    trozos = []\n    for parte in plantilla:\n        if isinstance(parte, Interpolation):\n            valor = convert(parte.value, parte.conversion)\n            texto = format(valor, parte.format_spec)\n            trozos.append(escape(texto))\n        else:\n            trozos.append(parte)\n    return \"\".join(trozos)\n",
+   "tests": [
+    {
+     "name": "Escapa un script",
+     "code": "usuario = \"<script>alert('x')</script>\"\nr = html_seguro(t\"<p>{usuario}</p>\")\nesperado = \"<p>&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;</p>\"\nassert r == esperado, f\"El valor interpolado debe escaparse con html.escape: esperaba {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "El texto fijo no se toca",
+     "code": "nombre = \"mundo\"\nr = html_seguro(t\"<b>Hola</b> <i>{nombre}</i>\")\nassert r == \"<b>Hola</b> <i>mundo</i>\", f\"Las etiquetas escritas en la plantilla no se escapan: obtuve {r!r}\""
+    },
+    {
+     "name": "Ampersand y comillas",
+     "code": "serie = \"Tom & Jerry\"\ntitulo = 'dijo \"hola\"'\nr = html_seguro(t'<a title=\"{titulo}\">{serie}</a>')\nesperado = '<a title=\"dijo &quot;hola&quot;\">Tom &amp; Jerry</a>'\nassert r == esperado, f\"& y las comillas también se escapan: esperaba {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Aplica la especificación de formato",
+     "code": "precio = 1234.5\nr = html_seguro(t\"<td>{precio:>10,.2f}</td>\")\nassert r == \"<td>  1,234.50</td>\", f\"Debe aplicarse format(valor, '>10,.2f'): obtuve {r!r}\""
+    },
+    {
+     "name": "Aplica la conversión !r",
+     "code": "nombre = \"O'Neil\"\nr = html_seguro(t\"{nombre!r}\")\nassert r == \"&quot;O&#x27;Neil&quot;\", f\"Con !r se usa repr() antes de escapar: esperaba '&quot;O&#x27;Neil&quot;', obtuve {r!r}\""
+    },
+    {
+     "name": "Formatea antes de escapar",
+     "code": "v = \"<\"\nr = html_seguro(t\"[{v:*^5}]\")\nassert r == \"[**&lt;**]\", f\"Primero format('<', '*^5') = '**<**' y después escape: esperaba '[**&lt;**]', obtuve {r!r}\""
+    },
+    {
+     "name": "Valores seguidos y no str",
+     "code": "a, b = 1, \"<\"\nr = html_seguro(t\"{a}{b}{a}\")\nassert r == \"1&lt;1\", f\"Esperaba '1&lt;1', obtuve {r!r}\""
+    },
+    {
+     "name": "Sin interpolaciones y tipo del resultado",
+     "code": "r = html_seguro(t\"<br>\")\nassert r == \"<br>\", f\"Una plantilla sin valores se devuelve tal cual: obtuve {r!r}\"\nassert type(html_seguro(t\"x{1}\")) is str, \"Debe devolver un str\""
+    }
+   ],
+   "hints": [
+    "Recorre la plantilla con `for parte in plantilla:`. Cada parte es un `str` (texto fijo) o una `Interpolation`; distínguelas con `isinstance(parte, Interpolation)`.",
+    "Para una `Interpolation`, en este orden: `convert(parte.value, parte.conversion)`, después `format(valor, parte.format_spec)` y por último `escape(…)`.",
+    "Acumula los trozos en una lista y termina con `\"\".join(trozos)`."
+   ],
+   "explain": "El procesador separa lo que escribió el programador (texto fijo, de confianza) de lo que viene de variables (potencialmente del usuario) y solo escapa lo segundo. Eso es imposible con una f-string: cuando la recibes, ya es un `str` mezclado.\n\nEl orden importa: se formatea **antes** de escapar para que el ancho y el relleno se calculen sobre el texto visible (`\"**<**\"`) y no sobre las entidades (`\"&lt;\"` ocupa 4 caracteres). `html.escape` escapa por defecto `&`, `<`, `>`, `\"` y `'` (`quote=True`), lo que protege también los valores dentro de atributos.\n\nUn motor real iría más allá: si un valor es a su vez un `Template`, lo renderizaría sin escaparlo dos veces (recursión, s06), y podría convertir un diccionario en atributos HTML, como sugieren la PEP 750 y las novedades de Python 3.14."
+  },
+  {
+   "id": "s05-e11",
+   "title": "Slugify: títulos para URLs",
+   "level": "dificil",
+   "minutes": 25,
+   "prompt": [
+    "Un *slug* es la versión de un título apta para una URL: `\"¡Hola, Mundo!\"` → `\"hola-mundo\"`. Escribe `slugify(texto)` siguiendo estos pasos:",
+    "1. Normaliza con **NFKD** y elimina las marcas combinantes (tildes, diéresis, la virgulilla de la ñ…): `Ñ` → `N`, `ﬁ` → `fi`.\n2. Pasa a minúsculas con `casefold()` (así `ß` → `ss`).\n3. Cada racha de caracteres que no sean `a`–`z` ni `0`–`9` se convierte en **un solo** guion `-`.\n4. Quita los guiones del principio y del final. Si no queda nada, devuelve `\"\"`.",
+    "```python\nslugify(\"Programación en Python 3.14\")   # 'programacion-en-python-3-14'\nslugify(\"  --Árbol   Ñandú--  \")          # 'arbol-nandu'\nslugify(\"北京\")                            # ''\n```"
+   ],
+   "examples": [
+    {
+     "call": "slugify(\"¡Hola, Mundo!\")",
+     "result": "'hola-mundo'"
+    },
+    {
+     "call": "slugify(\"Calle Straße 5\")",
+     "result": "'calle-strasse-5'"
+    },
+    {
+     "call": "slugify(\"ﬁnal ½\")",
+     "result": "'final-1-2'"
+    }
+   ],
+   "starter": "import re\nimport unicodedata\n\ndef slugify(texto):\n    # 1) NFKD sin marcas  2) casefold  3) re.sub  4) strip\n    pass\n",
+   "solution": "import re\nimport unicodedata\n\ndef slugify(texto):\n    descompuesto = unicodedata.normalize(\"NFKD\", texto)\n    sin_marcas = []\n    for c in descompuesto:\n        if not unicodedata.combining(c):\n            sin_marcas.append(c)\n    texto = \"\".join(sin_marcas).casefold()\n    texto = re.sub(r\"[^a-z0-9]+\", \"-\", texto)\n    return texto.strip(\"-\")\n",
+   "tests": [
+    {
+     "name": "Frase con signos",
+     "code": "r = slugify(\"¡Hola, Mundo!\")\nassert r == \"hola-mundo\", f\"Esperaba 'hola-mundo', obtuve {r!r}\""
+    },
+    {
+     "name": "Tildes y números",
+     "code": "r = slugify(\"Programación en Python 3.14\")\nassert r == \"programacion-en-python-3-14\", f\"Esperaba 'programacion-en-python-3-14', obtuve {r!r}\""
+    },
+    {
+     "name": "Rachas y extremos",
+     "code": "r = slugify(\"  --Árbol   Ñandú--  \")\nassert r == \"arbol-nandu\", f\"Cada racha de separadores da UN guion y no quedan guiones en los extremos: esperaba 'arbol-nandu', obtuve {r!r}\""
+    },
+    {
+     "name": "Eszett alemana (casefold)",
+     "code": "r = slugify(\"Calle Straße 5\")\nassert r == \"calle-strasse-5\", f\"Con casefold() la ß se convierte en 'ss' (lower() la deja igual): obtuve {r!r}\""
+    },
+    {
+     "name": "Compatibilidad (NFKD)",
+     "code": "r = slugify(\"ﬁnal ½\")\nassert r == \"final-1-2\", f\"NFKD convierte la ligadura ﬁ en 'fi' y ½ en '1⁄2' (NFD no lo hace): esperaba 'final-1-2', obtuve {r!r}\""
+    },
+    {
+     "name": "Texto ya descompuesto",
+     "code": "r = slugify(\"cafe\\u0301 con leche\")\nassert r == \"cafe-con-leche\", f\"La tilde combinante debe desaparecer, no convertirse en guion: obtuve {r!r}\""
+    },
+    {
+     "name": "Emojis y guiones bajos",
+     "code": "r = slugify(\"🐍 Año_2026 🐍\")\nassert r == \"ano-2026\", f\"El _ y los emojis son separadores: esperaba 'ano-2026', obtuve {r!r}\""
+    },
+    {
+     "name": "Nada aprovechable",
+     "code": "for texto in [\"北京\", \"\", \"¡¿?!\", \"   \"]:\n    r = slugify(texto)\n    assert r == \"\", f\"slugify({texto!r}) debería devolver '', obtuve {r!r}\""
+    },
+    {
+     "name": "Formato del resultado",
+     "code": "import re\nfor texto in [\"Hola, Mundo\", \"¿Qué tal?  Bien, ¿y tú?\", \"C++ & Python: 2 lenguajes\", \"ÉXITO!!!\"]:\n    r = slugify(texto)\n    assert re.fullmatch(r\"[a-z0-9]+(?:-[a-z0-9]+)*\", r), f\"slugify({texto!r}) = {r!r}: solo a-z, 0-9 y guiones sueltos entre palabras\""
+    },
+    {
+     "name": "Aplicarlo dos veces no cambia nada",
+     "code": "for texto in [\"¡Hola, Mundo!\", \"  --Árbol   Ñandú--  \", \"ya-es-un-slug\"]:\n    s = slugify(texto)\n    assert slugify(s) == s, f\"slugify debe ser idempotente: slugify({s!r}) debería seguir siendo {s!r}\""
+    }
+   ],
+   "hints": [
+    "Reutiliza la receta de la lección 4: `unicodedata.normalize(\"NFKD\", texto)` y descarta los caracteres para los que `unicodedata.combining(c)` no es 0 (o cuya categoría es `\"Mn\"`).",
+    "El paso 3 es una sola llamada: `re.sub(r\"[^a-z0-9]+\", \"-\", texto)`. El `+` hace que cada racha produzca un único guion.",
+    "Termina con `strip(\"-\")`: aquí `strip` con argumento es justo lo que quieres, quitar cualquier guion de los extremos."
+   ],
+   "explain": "Es una tubería de cuatro etapas, cada una con su herramienta: NFKD + filtro de marcas (Unicode), `casefold` (mayúsculas), `re.sub` con una clase negada y `+` (separadores) y `strip` (extremos). Coste O(n).\n\n¿Por qué NFKD y no NFD? NFD solo separa las marcas; NFKD además sustituye los caracteres «de compatibilidad» por sus equivalentes (`ﬁ` → `fi`, `½` → `1⁄2`, `²` → `2`). ¿Por qué `casefold`? Porque `\"ß\".lower()` sigue siendo `ß`, que el paso 3 convertiría en un separador. El orden exacto de los pasos 1 y 2 apenas importa en la práctica; lo esencial es que la sustitución con `[^a-z0-9]+` llegue después de ambos.\n\nEn proyectos reales se usan funciones ya probadas, como `django.utils.text.slugify` o el paquete `python-slugify`. Y para escrituras no latinas (`北京`) hace falta transliteración (convertir a caracteres latinos), algo que la biblioteca estándar no hace."
+  },
+  {
+   "id": "s05-e12",
+   "title": "Analizar un log con grupos con nombre",
+   "level": "dificil",
+   "minutes": 30,
+   "prompt": [
+    "Tienes el registro (*log*) de una aplicación. Cada línea válida tiene exactamente este formato:",
+    "```text\n2026-09-26 14:03:12 [ERROR] db.pool: Conexión perdida (intento=3)\n```",
+    "• fecha `AAAA-MM-DD` y hora `HH:MM:SS`, con dígitos `0`–`9` (no hace falta comprobar que la fecha exista);\n• un espacio y el nivel entre corchetes, en mayúsculas: `DEBUG`, `INFO`, `WARNING`, `ERROR` o `CRITICAL`;\n• un espacio y el módulo: empieza por una letra minúscula ASCII y sigue con minúsculas ASCII, dígitos, `_` o `.`;\n• `: ` (dos puntos y un espacio) y el mensaje: el resto de la línea, sin los espacios finales y con al menos un carácter.",
+    "Escribe dos funciones:\n• `analizar_log(texto)` devuelve una lista de diccionarios, uno por línea válida y en orden, con las claves `fecha`, `hora`, `nivel`, `modulo` y `mensaje` (todos `str`). Las líneas que no cumplan el formato se ignoran. Las líneas pueden terminar en `\\n` o en `\\r\\n`.\n• `contar_por_nivel(texto)` devuelve un diccionario con los cinco niveles como claves, **en el orden** DEBUG, INFO, WARNING, ERROR, CRITICAL, y como valor el número de líneas válidas de cada nivel (0 si no hay ninguna)."
+   ],
+   "examples": [
+    {
+     "call": "analizar_log(\"2026-09-26 14:03:12 [ERROR] db.pool: Conexión perdida\")",
+     "result": "[{'fecha': '2026-09-26', 'hora': '14:03:12', 'nivel': 'ERROR', 'modulo': 'db.pool', 'mensaje': 'Conexión perdida'}]"
+    },
+    {
+     "call": "contar_por_nivel(\"\")",
+     "result": "{'DEBUG': 0, 'INFO': 0, 'WARNING': 0, 'ERROR': 0, 'CRITICAL': 0}"
+    }
+   ],
+   "starter": "import re\n\nNIVELES = [\"DEBUG\", \"INFO\", \"WARNING\", \"ERROR\", \"CRITICAL\"]\n\ndef analizar_log(texto):\n    # Recorre las líneas y usa un patrón con grupos con nombre\n    pass\n\ndef contar_por_nivel(texto):\n    pass\n",
+   "solution": "import re\n\nNIVELES = [\"DEBUG\", \"INFO\", \"WARNING\", \"ERROR\", \"CRITICAL\"]\n\nLINEA = re.compile(r\"\"\"\n    (?P<fecha>[0-9]{4}-[0-9]{2}-[0-9]{2})\n    [ ]\n    (?P<hora>[0-9]{2}:[0-9]{2}:[0-9]{2})\n    [ ]\n    \\[(?P<nivel>DEBUG|INFO|WARNING|ERROR|CRITICAL)\\]\n    [ ]\n    (?P<modulo>[a-z][a-z0-9_.]*)\n    :[ ]\n    (?P<mensaje>.+)\n\"\"\", re.VERBOSE)\n\ndef analizar_log(texto):\n    registros = []\n    for linea in texto.splitlines():\n        m = LINEA.fullmatch(linea.rstrip())\n        if m:\n            registros.append(m.groupdict())\n    return registros\n\ndef contar_por_nivel(texto):\n    conteo = {nivel: 0 for nivel in NIVELES}\n    for registro in analizar_log(texto):\n        conteo[registro[\"nivel\"]] += 1\n    return conteo\n",
+   "setup": "LINEAS_LOG = [\n    \"2026-09-26 14:03:12 [ERROR] db.pool: Conexión perdida (intento=3)\",\n    \"2026-09-26 14:03:13 [INFO] web: GET /inicio 200\",\n    \"esto no es una línea de log\",\n    \"2026-09-26 14:03:14 [WARNING] cache_2: Memoria al 91%\" + \"   \",\n    \"2026-09-26 14:03:15 [error] web: nivel en minúsculas\",\n    \"2026-09-26 14:03:16 [INFO] 9web: módulo que empieza por dígito\",\n    \" 2026-09-26 14:03:17 [INFO] web: línea con espacio inicial\",\n    \"2026-09-26 14:03:18 [CRITICAL] db: Disco lleno: [sda1] sin espacio\",\n    \"2026-09-26 14:03:19 [INFO] app: \",\n    \"2026-09-26 14:3:20 [INFO] app: hora mal formada\",\n    \"2026-09-26 14:03:21 [DEBUG] app.core: x\",\n    \"2026-09-26 14:03:22 [INFO] web: POST /login 302\",\n    \"\",\n]\nLOG = \"\\n\".join(LINEAS_LOG)",
+   "tests": [
+    {
+     "name": "Una línea válida",
+     "code": "r = analizar_log(\"2026-09-26 14:03:12 [ERROR] db.pool: Conexión perdida (intento=3)\")\nesperado = [{\"fecha\": \"2026-09-26\", \"hora\": \"14:03:12\", \"nivel\": \"ERROR\", \"modulo\": \"db.pool\", \"mensaje\": \"Conexión perdida (intento=3)\"}]\nassert r == esperado, f\"Esperaba {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Ignora las líneas inválidas y conserva el orden",
+     "code": "r = analizar_log(LOG)\nhoras = [registro[\"hora\"] for registro in r]\nesperadas = [\"14:03:12\", \"14:03:13\", \"14:03:14\", \"14:03:18\", \"14:03:21\", \"14:03:22\"]\nassert horas == esperadas, f\"Solo 6 líneas del log de prueba son válidas; horas esperadas {esperadas}, obtuve {horas}\""
+    },
+    {
+     "name": "Mensajes con corchetes y dos puntos",
+     "code": "r = analizar_log(LOG)\ncriticos = [registro for registro in r if registro[\"nivel\"] == \"CRITICAL\"]\nassert len(criticos) == 1 and criticos[0][\"mensaje\"] == \"Disco lleno: [sda1] sin espacio\", f\"El mensaje es TODO lo que sigue a ': ' tras el módulo; obtuve {criticos!r}\"\nassert criticos[0][\"modulo\"] == \"db\", f\"El módulo termina en el primer ': '; obtuve {criticos[0]['modulo']!r}\""
+    },
+    {
+     "name": "Quita los espacios finales del mensaje",
+     "code": "r = analizar_log(LOG)\navisos = [registro[\"mensaje\"] for registro in r if registro[\"nivel\"] == \"WARNING\"]\nassert avisos == [\"Memoria al 91%\"], f\"El mensaje no debe incluir espacios finales; obtuve {avisos!r}\""
+    },
+    {
+     "name": "Finales de línea de Windows",
+     "code": "texto = \"2026-01-01 00:00:00 [INFO] a: uno\\r\\n2026-01-01 00:00:01 [DEBUG] b: dos\\r\\n\"\nr = analizar_log(texto)\nassert [x[\"mensaje\"] for x in r] == [\"uno\", \"dos\"], f\"Con \\\\r\\\\n deben salir 2 registros sin \\\\r en el mensaje; obtuve {r!r}\""
+    },
+    {
+     "name": "Rechaza formatos incorrectos",
+     "code": "malas = [\n    \"2026-09-26 14:03:15 [error] web: nivel en minúsculas\",\n    \"2026-09-26 14:03:15 [FATAL] web: nivel inexistente\",\n    \"2026-09-26 14:03:16 [INFO] 9web: módulo que empieza por dígito\",\n    \"2026-09-26 14:03:16 [INFO] Web: módulo con mayúscula\",\n    \" 2026-09-26 14:03:17 [INFO] web: espacio inicial\",\n    \"2026-09-26 14:03:19 [INFO] app: \",\n    \"2026-09-26 14:3:20 [INFO] app: hora mal formada\",\n    \"26-09-2026 14:03:20 [INFO] app: fecha al revés\",\n    \"2026-09-26 14:03:20 [INFO] app:sin espacio\",\n]\nfor linea in malas:\n    r = analizar_log(linea)\n    assert r == [], f\"Esta línea no cumple el formato y debe ignorarse: {linea!r} (obtuve {r!r})\""
+    },
+    {
+     "name": "Texto vacío",
+     "code": "assert analizar_log(\"\") == [], \"Sin texto, analizar_log debe devolver []\"\nesperado = {\"DEBUG\": 0, \"INFO\": 0, \"WARNING\": 0, \"ERROR\": 0, \"CRITICAL\": 0}\nr = contar_por_nivel(\"\")\nassert r == esperado, f\"Sin texto, todos los niveles valen 0; obtuve {r!r}\""
+    },
+    {
+     "name": "Conteo por nivel",
+     "code": "r = contar_por_nivel(LOG)\nesperado = {\"DEBUG\": 1, \"INFO\": 2, \"WARNING\": 1, \"ERROR\": 1, \"CRITICAL\": 1}\nassert r == esperado, f\"Esperaba {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Orden de las claves del conteo",
+     "code": "r = contar_por_nivel(\"2026-01-01 00:00:00 [ERROR] a: b\")\nassert list(r) == [\"DEBUG\", \"INFO\", \"WARNING\", \"ERROR\", \"CRITICAL\"], f\"Las claves deben estar en el orden DEBUG, INFO, WARNING, ERROR, CRITICAL; obtuve {list(r)}\"\nassert r[\"ERROR\"] == 1 and r[\"INFO\"] == 0, f\"Conteo incorrecto: {r!r}\""
+    }
+   ],
+   "hints": [
+    "Recorre `texto.splitlines()` (maneja `\\n` y `\\r\\n`), quita los espacios finales con `rstrip()` y valida cada línea con `fullmatch`.",
+    "Usa grupos con nombre (`(?P<fecha>…)`, `(?P<nivel>…)`…) llamados exactamente como las claves pedidas: `m.groupdict()` te da el diccionario hecho. Con `re.VERBOSE` los espacios del patrón se ignoran: para exigir uno escribe `[ ]`, y escapa los corchetes del nivel (`\\[`, `\\]`).",
+    "`contar_por_nivel` puede reutilizar `analizar_log`: inicializa un diccionario con los cinco niveles a 0 (en ese orden) y suma 1 por cada registro."
+   ],
+   "explain": "Tres ideas: **una línea = una validación completa** (`splitlines` + `rstrip` + `fullmatch`); **grupos con nombre iguales a las claves**, para que `groupdict()` construya el resultado; y **reutilizar** `analizar_log` en `contar_por_nivel` en vez de repetir la lógica. El mensaje `(?P<mensaje>.+)` es codicioso y `.` no incluye `\\n`, así que toma todo el resto de la línea, incluidos otros `:` o `[…]`. Coste O(tamaño del texto).\n\nAlternativa: aplicar el patrón al texto completo con `re.finditer(…, flags=re.MULTILINE)` y anclas `^…$`. Funciona, pero hay que tener en cuenta el `\\r` de Windows y los espacios finales dentro del patrón; procesar línea a línea es más simple y fácil de depurar.\n\nPara analizar las fechas de verdad (y comprobar que existen) usarás `datetime.strptime` en s09. Y con `dict.fromkeys(NIVELES, 0)` tienes otra forma de inicializar el conteo."
+  },
+  {
+   "id": "s05-e13",
+   "title": "Tabla de texto con anchos automáticos",
+   "level": "dificil",
+   "minutes": 30,
+   "prompt": [
+    "Escribe `formatear_tabla(cabeceras, filas)`, que devuelve una tabla de texto alineada. `cabeceras` es una lista de `str`; `filas`, una lista de listas del mismo largo cuyas celdas son `str`, `int` o `float` (nunca `bool`).",
+    "• Cada celda se convierte a texto: un `str` tal cual; un `int` con separador de miles (`1500` → `1,500`); un `float` con separador de miles y 2 decimales (`1234.5` → `1,234.50`).\n• El **ancho** de cada columna es el máximo entre la longitud de su cabecera y la de sus celdas ya convertidas.\n• Las cabeceras van **centradas** (`^`). En las filas, los textos se alinean a la izquierda y los números (`int` y `float`) a la derecha.\n• Las columnas se separan con `\" | \"`. Bajo las cabeceras va una línea con `-` repetido el ancho de cada columna, unidas con `\"-+-\"`.\n• Las líneas se unen con `\"\\n\"`, sin salto final y **sin quitar** los espacios de relleno (tampoco los del final de la línea).",
+    "```python\nprint(formatear_tabla([\"Producto\", \"Uds\", \"Precio\"],\n                      [[\"Café\", 3, 1.5], [\"Tostada\", 12, 2.25], [\"Jugo natural\", 1500, 1234.5]]))\n```\n```text\n  Producto   |  Uds  |  Precio\n-------------+-------+---------\nCafé         |     3 |     1.50\nTostada      |    12 |     2.25\nJugo natural | 1,500 | 1,234.50\n```"
+   ],
+   "starter": "def formatear_tabla(cabeceras, filas):\n    # 1) Convierte cada celda a texto  2) Calcula anchos  3) Construye las líneas\n    pass\n",
+   "solution": "def texto_celda(celda):\n    if isinstance(celda, float):\n        return f\"{celda:,.2f}\"\n    if isinstance(celda, int):\n        return f\"{celda:,}\"\n    return celda\n\ndef formatear_tabla(cabeceras, filas):\n    textos = []\n    for fila in filas:\n        textos.append([texto_celda(celda) for celda in fila])\n\n    anchos = []\n    for i, cabecera in enumerate(cabeceras):\n        ancho = len(cabecera)\n        for fila in textos:\n            ancho = max(ancho, len(fila[i]))\n        anchos.append(ancho)\n\n    lineas = [\" | \".join([f\"{c:^{a}}\" for c, a in zip(cabeceras, anchos)])]\n    lineas.append(\"-+-\".join([\"-\" * a for a in anchos]))\n    for fila, fila_texto in zip(filas, textos):\n        celdas = []\n        for original, texto, ancho in zip(fila, fila_texto, anchos):\n            if isinstance(original, str):\n                celdas.append(f\"{texto:<{ancho}}\")\n            else:\n                celdas.append(f\"{texto:>{ancho}}\")\n        lineas.append(\" | \".join(celdas))\n    return \"\\n\".join(lineas)\n",
+   "setup": "def comparar_lineas(obtenido, esperadas):\n    assert isinstance(obtenido, str), f\"formatear_tabla debe devolver un str, no {type(obtenido).__name__}\"\n    lineas = obtenido.split(\"\\n\")\n    assert len(lineas) == len(esperadas), f\"Esperaba {len(esperadas)} líneas y hay {len(lineas)}: {obtenido!r}\"\n    for i, (o, e) in enumerate(zip(lineas, esperadas), start=1):\n        assert o == e, f\"Línea {i}: esperaba {e!r} y es {o!r}\"",
+   "tests": [
+    {
+     "name": "Ejemplo del enunciado",
+     "code": "r = formatear_tabla([\"Producto\", \"Uds\", \"Precio\"],\n                    [[\"Café\", 3, 1.5], [\"Tostada\", 12, 2.25], [\"Jugo natural\", 1500, 1234.5]])\ncomparar_lineas(r, [\n    \"  Producto   |  Uds  |  Precio \",\n    \"-------------+-------+---------\",\n    \"Café         |     3 |     1.50\",\n    \"Tostada      |    12 |     2.25\",\n    \"Jugo natural | 1,500 | 1,234.50\",\n])"
+    },
+    {
+     "name": "La cabecera manda si es más larga",
+     "code": "r = formatear_tabla([\"Descripción larga\", \"N\"], [[\"a\", -1234.5], [\"bb\", 0]])\ncomparar_lineas(r, [\n    \"Descripción larga |     N    \",\n    \"------------------+----------\",\n    \"a                 | -1,234.50\",\n    \"bb                |         0\",\n])"
+    },
+    {
+     "name": "Una sola columna numérica",
+     "code": "r = formatear_tabla([\"Id\"], [[7], [1234567]])\ncomparar_lineas(r, [\"   Id    \", \"---------\", \"        7\", \"1,234,567\"])"
+    },
+    {
+     "name": "Sin filas",
+     "code": "r = formatear_tabla([\"Ciudad\", \"Habitantes\"], [])\ncomparar_lineas(r, [\"Ciudad | Habitantes\", \"-------+-----------\"])"
+    },
+    {
+     "name": "Formato de los números",
+     "code": "r = formatear_tabla([\"x\"], [[0.5], [1000000], [2.0]])\ncomparar_lineas(r, [\"    x    \", \"---------\", \"     0.50\", \"1,000,000\", \"     2.00\"])"
+    },
+    {
+     "name": "Sin salto de línea final",
+     "code": "r = formatear_tabla([\"a\"], [[\"b\"]])\nassert not r.endswith(\"\\n\"), \"La tabla no debe terminar en salto de línea\"\nassert r.count(\"\\n\") == 2, f\"Con 1 fila hay 3 líneas (2 saltos); obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Separa el trabajo: una función auxiliar que convierta una celda a texto (con `isinstance(celda, float)`, `isinstance(celda, int)`…) y después la tabla.",
+    "Para los anchos, recorre las columnas con `enumerate(cabeceras)` y, para cada una, calcula el `max` entre la cabecera y las celdas de esa columna ya convertidas.",
+    "Los campos anidados resuelven la alineación con ancho variable: `f\"{texto:<{ancho}}\"`, `f\"{texto:>{ancho}}\"` y `f\"{c:^{ancho}}\"`. Une las celdas de cada línea con `\" | \".join(…)` y todas las líneas con `\"\\n\".join(…)`."
+   ],
+   "explain": "Dos pasadas: la primera convierte todo a texto y mide; la segunda formatea. No se puede hacer en una, porque el ancho de una columna depende de su celda más larga, que puede estar en la última fila. Coste O(filas × columnas).\n\nLa clave está en los **campos anidados** de la especificación de formato: `f\"{texto:>{ancho}}\"` calcula la especificación en tiempo de ejecución. Alineación: los números a la derecha para que coincidan unidades con unidades, y el texto a la izquierda para leerlo con comodidad (es también lo que hace `format` por defecto).\n\nLímite: `len` cuenta code points, así que emojis, ideogramas o tildes combinantes descuadrarían la tabla en una terminal (lección 3). Existen paquetes como `tabulate` o `rich` que resuelven estos detalles, pero ahora sabes exactamente qué hacen por dentro."
+  },
+  {
+   "id": "s05-e14",
+   "title": "Proyecto: analizador de textos",
+   "level": "proyecto",
+   "minutes": 45,
+   "prompt": [
+    "Vas a construir, paso a paso, un pequeño analizador de textos que combina normalización Unicode, expresiones regulares, diccionarios, ordenación y formato. Escribe estas cinco funciones (pueden llamarse unas a otras):",
+    "**1. `normalizar(texto)`** → devuelve `texto` en minúsculas con `casefold()` y normalizado a **NFC**. Así `\"CAFE\\u0301\"` (con acento combinante) pasa a `\"café\"` con 4 code points.",
+    "**2. `palabras(texto)`** → lista de las palabras del texto **normalizado**, en orden. Una palabra es una racha de **letras** (incluidas las que llevan tilde y la ñ); dígitos, guiones bajos, espacios y signos separan palabras. Pista: la clase `[^\\W\\d_]` de la lección 6.",
+    "**3. `frecuencias(texto)`** → diccionario `{palabra: veces}` con las claves en el orden de su primera aparición.",
+    "**4. `top_palabras(texto, n)`** → lista de las `n` tuplas `(palabra, veces)` más frecuentes, de más a menos veces; los empates se ordenan alfabéticamente con la comparación normal de cadenas. Si hay menos de `n` palabras distintas, devuelve todas; con `n = 0`, `[]`.",
+    "**5. `informe(texto, n)`** → un `str` con líneas unidas por `\"\\n\"` (sin salto final): la línea 1 con los totales; si hay alguna palabra, una cabecera; y una línea por cada palabra de `top_palabras(texto, n)`, donde `posicion` empieza en 1 y `porcentaje = veces / total`. Si no hay palabras, el informe es solo la línea 1. Usa exactamente estas f-strings (fíjate en los **dos espacios** entre columnas):",
+    "```python\nf\"Palabras: {total} | Distintas: {distintas}\"                              # línea 1\nf\"{'Nº':>3}  {'Palabra':<12}  {'Veces':>5}  {'%':>6}\"                      # cabecera\nf\"{posicion:>3}  {palabra:<12}  {veces:>5}  {porcentaje:>6.1%}\"            # cada palabra\n```",
+    "```python\nprint(informe(\"El gato y el perro. ¡El gato duerme!\", 3))\n```\n```text\nPalabras: 8 | Distintas: 5\n Nº  Palabra       Veces       %\n  1  el                3   37.5%\n  2  gato              2   25.0%\n  3  duerme            1   12.5%\n```"
+   ],
+   "examples": [
+    {
+     "call": "palabras(\"¡Hola, hola! ¿Qué tal? 3 veces_más\")",
+     "result": "['hola', 'hola', 'qué', 'tal', 'veces', 'más']"
+    },
+    {
+     "call": "top_palabras(\"b a c b a d\", 3)",
+     "result": "[('a', 2), ('b', 2), ('c', 1)]"
+    },
+    {
+     "call": "informe(\"123 !!!\", 3)",
+     "result": "'Palabras: 0 | Distintas: 0'"
+    }
+   ],
+   "starter": "import re\nimport unicodedata\n\ndef normalizar(texto):\n    pass\n\ndef palabras(texto):\n    pass\n\ndef frecuencias(texto):\n    pass\n\ndef top_palabras(texto, n):\n    pass\n\ndef informe(texto, n):\n    pass\n",
+   "solution": "import re\nimport unicodedata\n\nPALABRA = re.compile(r\"[^\\W\\d_]+\")\n\ndef normalizar(texto):\n    return unicodedata.normalize(\"NFC\", texto.casefold())\n\ndef palabras(texto):\n    return PALABRA.findall(normalizar(texto))\n\ndef frecuencias(texto):\n    conteo = {}\n    for palabra in palabras(texto):\n        conteo[palabra] = conteo.get(palabra, 0) + 1\n    return conteo\n\ndef clave_ranking(par):\n    palabra, veces = par\n    return (-veces, palabra)\n\ndef top_palabras(texto, n):\n    ordenadas = sorted(frecuencias(texto).items(), key=clave_ranking)\n    return ordenadas[:n]\n\ndef informe(texto, n):\n    lista = palabras(texto)\n    total = len(lista)\n    lineas = [f\"Palabras: {total} | Distintas: {len(set(lista))}\"]\n    if total == 0:\n        return lineas[0]\n    lineas.append(f\"{'Nº':>3}  {'Palabra':<12}  {'Veces':>5}  {'%':>6}\")\n    for posicion, (palabra, veces) in enumerate(top_palabras(texto, n), start=1):\n        lineas.append(f\"{posicion:>3}  {palabra:<12}  {veces:>5}  {veces / total:>6.1%}\")\n    return \"\\n\".join(lineas)\n",
+   "setup": "FRASE = \"El gato y el perro. ¡El gato duerme!\"",
+   "tests": [
+    {
+     "name": "normalizar: mayúsculas y NFC",
+     "code": "r = normalizar(\"CAFE\\u0301\")\nassert r == \"café\" and len(r) == 4, f\"normalizar('CAFE' + acento combinante) debe dar 'café' con 4 code points (NFC); obtuve {r!r} ({len(r)})\""
+    },
+    {
+     "name": "normalizar: casefold",
+     "code": "r = normalizar(\"Straße ÁRBOL\")\nassert r == \"strasse árbol\", f\"Usa casefold(): esperaba 'strasse árbol', obtuve {r!r}\""
+    },
+    {
+     "name": "palabras: letras con tilde, signos y dígitos",
+     "code": "r = palabras(\"¡Hola, hola! ¿Qué tal? 3 veces_más\")\nesperado = [\"hola\", \"hola\", \"qué\", \"tal\", \"veces\", \"más\"]\nassert r == esperado, f\"Esperaba {esperado}, obtuve {r!r} (¿separas por dígitos y guion bajo?)\""
+    },
+    {
+     "name": "palabras: formas descompuestas y vacío",
+     "code": "r = palabras(\"cafe\\u0301 CAFÉ café\")\nassert r == [\"café\", \"café\", \"café\"], f\"Las tres formas deben dar la misma palabra 'café' (normaliza ANTES de buscar); obtuve {r!r}\"\nassert palabras(\"\") == [] and palabras(\"123 !!! __\") == [], \"Sin letras, palabras() debe devolver []\""
+    },
+    {
+     "name": "frecuencias: conteo y orden de aparición",
+     "code": "r = frecuencias(FRASE)\nesperado = {\"el\": 3, \"gato\": 2, \"y\": 1, \"perro\": 1, \"duerme\": 1}\nassert r == esperado, f\"Esperaba {esperado}, obtuve {r!r}\"\nassert list(r) == [\"el\", \"gato\", \"y\", \"perro\", \"duerme\"], f\"Las claves deben seguir el orden de primera aparición; obtuve {list(r)}\""
+    },
+    {
+     "name": "top_palabras: frecuencia y desempate alfabético",
+     "code": "r = top_palabras(\"b a c b a d\", 3)\nassert r == [(\"a\", 2), (\"b\", 2), (\"c\", 1)], f\"Primero más veces; en empate, orden alfabético: esperaba [('a', 2), ('b', 2), ('c', 1)], obtuve {r!r}\"\nr = top_palabras(\"ábaco zorro abeja\", 3)\nassert r == [(\"abeja\", 1), (\"zorro\", 1), (\"ábaco\", 1)], f\"El desempate usa la comparación normal de cadenas (á va después de z); obtuve {r!r}\""
+    },
+    {
+     "name": "top_palabras: bordes",
+     "code": "assert top_palabras(\"b a\", 10) == [(\"a\", 1), (\"b\", 1)], \"Si n supera las palabras distintas, devuelve todas\"\nassert top_palabras(\"b a\", 0) == [], \"Con n = 0 devuelve []\"\nassert top_palabras(\"\", 3) == [], \"Sin palabras devuelve []\""
+    },
+    {
+     "name": "informe: ejemplo del enunciado",
+     "code": "r = informe(FRASE, 3)\nesperadas = [\n    \"Palabras: 8 | Distintas: 5\",\n    \" Nº  Palabra       Veces       %\",\n    \"  1  el                3   37.5%\",\n    \"  2  gato              2   25.0%\",\n    \"  3  duerme            1   12.5%\",\n]\nlineas = r.split(\"\\n\")\nassert len(lineas) == len(esperadas), f\"Esperaba {len(esperadas)} líneas; obtuve {len(lineas)}: {r!r}\"\nfor i, (o, e) in enumerate(zip(lineas, esperadas), start=1):\n    assert o == e, f\"Línea {i}: esperaba {e!r} y es {o!r}\""
+    },
+    {
+     "name": "informe: palabras largas no se recortan",
+     "code": "r = informe(\"Electroencefalografista y electroencefalografista, sí\", 5)\nlineas = r.split(\"\\n\")\nassert lineas[0] == \"Palabras: 4 | Distintas: 3\", f\"Primera línea incorrecta: {lineas[0]!r}\"\nassert lineas[2] == \"  1  electroencefalografista      2   50.0%\", f\"El ancho 12 es un mínimo: la palabra larga se muestra entera. Obtuve {lineas[2]!r}\"\nassert len(lineas) == 5, f\"Hay 3 palabras distintas: esperaba 5 líneas, obtuve {len(lineas)}\""
+    },
+    {
+     "name": "informe: sin palabras",
+     "code": "r = informe(\"123 !!!\", 3)\nassert r == \"Palabras: 0 | Distintas: 0\", f\"Sin palabras el informe es solo la primera línea; obtuve {r!r}\"\nassert not informe(FRASE, 2).endswith(\"\\n\"), \"El informe no debe terminar en salto de línea\""
+    }
+   ],
+   "hints": [
+    "Ve función a función y ejecuta los tests a menudo: cada una se apoya en la anterior. `palabras` cabe en una línea con `re.findall(r\"[^\\W\\d_]+\", normalizar(texto))`, y para `frecuencias` basta `conteo[p] = conteo.get(p, 0) + 1`.",
+    "Para ordenar por dos criterios, define una función clave que devuelva una tupla: `(-veces, palabra)`. El signo menos invierte el orden de las veces sin invertir el alfabético. Pásala a `sorted(…, key=tu_funcion)` y recorta con `[:n]`.",
+    "En `informe`, `enumerate(…, start=1)` te da la posición y `{porcentaje:>6.1%}` multiplica por 100 y añade el `%`."
+   ],
+   "explain": "El proyecto es una **tubería** de funciones pequeñas, cada una con una responsabilidad y reutilizada por la siguiente: normalizar → extraer palabras → contar → ordenar → presentar. Así cada pieza se prueba por separado.\n\nDetalles que marcan la diferencia:\n• Normalizar **antes** de buscar hace que `café` escrito de tres formas cuente como una sola palabra.\n• `[^\\W\\d_]+` significa «letras»: carácter de palabra que no es dígito ni `_`.\n• La clave `(-veces, palabra)` ordena por veces descendente y, en empate, alfabéticamente ascendente; las tuplas se comparan elemento a elemento.\n• Coste: O(n) para contar más O(k log k) para ordenar las k palabras distintas.\n\nMás adelante (s07 y s15) conocerás `collections.Counter`, que hace `frecuencias` y `most_common` en una línea (aunque su desempate es por orden de aparición, no alfabético). Y ten presente que el orden alfabético por code point coloca `ábaco` detrás de `zorro`: para un orden «de diccionario» haría falta una clave sin tildes o *collation* (lecciones 1 y 4)."
+  },
+  {
+   "id": "s05-e15",
+   "title": "Proyecto: mini motor de plantillas",
+   "level": "proyecto",
+   "minutes": 60,
+   "prompt": [
+    "Vas a construir un motor de plantillas minimalista, al estilo de Jinja o Django. Escribe `renderizar(plantilla, datos)`, donde `plantilla` es un `str` y `datos` un diccionario, y la función auxiliar `formato_moneda(numero)`.",
+    "**Marcadores.** Un marcador es `{{ nombre }}`: dos llaves de apertura, espacios opcionales, un nombre (una letra ASCII o `_` seguida de letras ASCII, dígitos o `_`), espacios opcionales y dos llaves de cierre. Se sustituye por `str(datos[nombre])`. Una sola llave (`{nombre}`) no es un marcador.",
+    "**Filtros.** Tras el nombre puede haber filtros separados por `|` (con espacios opcionales), que se aplican de izquierda a derecha: `{{ nombre | recortar | mayus }}`. Los filtros disponibles:\n• `mayus`, `minus`, `titulo`, `recortar`: `str.upper`, `str.lower`, `str.title` y `str.strip` sobre el valor convertido a `str`.\n• `html`: `html.escape` sobre el valor convertido a `str`.\n• `moneda`: aplica `formato_moneda`. Solo se usará con números y como primer filtro.",
+    "**`formato_moneda(numero)`** devuelve el número con el signo `$` delante, 2 decimales, **punto** como separador de miles y **coma** decimal: `1234.5` → `\"$1.234,50\"`. Si es negativo, el signo menos va delante de todo: `-1234.5` → `\"-$1.234,50\"`.",
+    "**Casos especiales.** Si el nombre no está en `datos` o algún filtro no existe, el marcador se deja **tal cual**. El texto que no forma parte de un marcador no cambia. Los valores insertados **no** se vuelven a procesar: si un valor contiene `{{ x }}`, aparece literalmente.",
+    "```python\nrenderizar(\"Hola, {{ nombre | titulo }}. Debes {{ total | moneda }}.\",\n           {\"nombre\": \"ada lovelace\", \"total\": 1234.5})\n# 'Hola, Ada Lovelace. Debes $1.234,50.'\n```"
+   ],
+   "examples": [
+    {
+     "call": "renderizar(\"Hola, {{ nombre }}!\", {\"nombre\": \"Ana\"})",
+     "result": "'Hola, Ana!'"
+    },
+    {
+     "call": "renderizar(\"{{ nombre | titulo }}\", {\"nombre\": \"ada lovelace\"})",
+     "result": "'Ada Lovelace'"
+    },
+    {
+     "call": "renderizar(\"{{ nadie }}\", {})",
+     "result": "'{{ nadie }}'"
+    },
+    {
+     "call": "formato_moneda(-1234.5)",
+     "result": "'-$1.234,50'"
+    }
+   ],
+   "starter": "import re\nfrom html import escape\n\ndef formato_moneda(numero):\n    pass\n\ndef renderizar(plantilla, datos):\n    pass\n",
+   "solution": "import re\nfrom html import escape\n\nMARCADOR = re.compile(r\"\"\"\n    \\{\\{ \\s*\n    (?P<nombre>[A-Za-z_][A-Za-z0-9_]*)       # nombre de la variable\n    \\s*\n    (?P<filtros>(?: \\| \\s* [a-z]+ \\s* )*)    # cero o más \"| filtro\"\n    \\}\\}\n\"\"\", re.VERBOSE)\n\ndef formato_moneda(numero):\n    texto = f\"{abs(numero):,.2f}\"                          # 1,234.50\n    texto = texto.translate(str.maketrans(\",.\", \".,\"))    # 1.234,50\n    if numero < 0:\n        return \"-$\" + texto\n    return \"$\" + texto\n\ndef aplicar_filtro(valor, filtro):\n    match filtro:\n        case \"mayus\":\n            return str(valor).upper()\n        case \"minus\":\n            return str(valor).lower()\n        case \"titulo\":\n            return str(valor).title()\n        case \"recortar\":\n            return str(valor).strip()\n        case \"moneda\":\n            return formato_moneda(valor)\n        case \"html\":\n            return escape(str(valor))\n        case _:\n            return None                                          # filtro desconocido\n\ndef sustituir(m, datos):\n    nombre = m.group(\"nombre\")\n    if nombre not in datos:\n        return m.group(0)\n    valor = datos[nombre]\n    for filtro in m.group(\"filtros\").split(\"|\"):\n        filtro = filtro.strip()\n        if filtro == \"\":\n            continue\n        valor = aplicar_filtro(valor, filtro)\n        if valor is None:\n            return m.group(0)\n    return str(valor)\n\ndef renderizar(plantilla, datos):\n    trozos = []\n    posicion = 0\n    for m in MARCADOR.finditer(plantilla):\n        trozos.append(plantilla[posicion:m.start()])   # texto entre marcadores\n        trozos.append(sustituir(m, datos))\n        posicion = m.end()\n    trozos.append(plantilla[posicion:])                # texto tras el último\n    return \"\".join(trozos)\n",
+   "tests": [
+    {
+     "name": "Sustitución simple",
+     "code": "r = renderizar(\"Hola, {{ nombre }}!\", {\"nombre\": \"Ana\"})\nassert r == \"Hola, Ana!\", f\"Esperaba 'Hola, Ana!', obtuve {r!r}\""
+    },
+    {
+     "name": "Espacios opcionales dentro de las llaves",
+     "code": "r = renderizar(\"{{nombre}} {{   nombre   }}\", {\"nombre\": \"Ana\"})\nassert r == \"Ana Ana\", f\"Los espacios dentro de las llaves son opcionales: esperaba 'Ana Ana', obtuve {r!r}\""
+    },
+    {
+     "name": "Varios marcadores y valores que no son str",
+     "code": "r = renderizar(\"{{ a }} + {{ b }} = {{ c }}\", {\"a\": 2, \"b\": 3, \"c\": 5})\nassert r == \"2 + 3 = 5\", f\"Los valores se insertan con str(): esperaba '2 + 3 = 5', obtuve {r!r}\"\nr = renderizar(\"{{ _id }}-{{ nombre_2 }}\", {\"_id\": 7, \"nombre_2\": \"b\"})\nassert r == \"7-b\", f\"Los nombres admiten _ y dígitos: esperaba '7-b', obtuve {r!r}\""
+    },
+    {
+     "name": "Filtros de texto",
+     "code": "d = {\"x\": \"HOLA mundo\", \"s\": \"  hola  \"}\ncasos = {\"{{ x | minus }}\": \"hola mundo\", \"{{ x|mayus }}\": \"HOLA MUNDO\", \"{{ x | titulo }}\": \"Hola Mundo\", \"[{{ s | recortar }}]\": \"[hola]\"}\nfor plantilla, esperado in casos.items():\n    r = renderizar(plantilla, d)\n    assert r == esperado, f\"renderizar({plantilla!r}) debería dar {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Filtros encadenados en orden",
+     "code": "d = {\"s\": \"  el quijote \"}\nr = renderizar(\"[{{ s | recortar | titulo }}]\", d)\nassert r == \"[El Quijote]\", f\"Primero recortar y después titulo: esperaba '[El Quijote]', obtuve {r!r}\"\nr = renderizar(\"[{{ s | mayus }}]\", d)\nassert r == \"[  EL QUIJOTE ]\", f\"Sin 'recortar' los espacios se conservan: esperaba '[  EL QUIJOTE ]', obtuve {r!r}\""
+    },
+    {
+     "name": "formato_moneda",
+     "code": "casos = {1234.5: \"$1.234,50\", 0: \"$0,00\", 1234567.891: \"$1.234.567,89\", -1234.5: \"-$1.234,50\", 999.999: \"$1.000,00\", 5: \"$5,00\", -7: \"-$7,00\"}\nfor numero, esperado in casos.items():\n    r = formato_moneda(numero)\n    assert r == esperado, f\"formato_moneda({numero!r}) debería ser {esperado!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Filtro moneda en una plantilla",
+     "code": "r = renderizar(\"Hola, {{ nombre | titulo }}. Debes {{ total | moneda }}.\", {\"nombre\": \"ada lovelace\", \"total\": 1234.5})\nassert r == \"Hola, Ada Lovelace. Debes $1.234,50.\", f\"Obtuve {r!r}\""
+    },
+    {
+     "name": "Filtro html",
+     "code": "r = renderizar(\"<p>{{ x | html }}</p>\", {\"x\": \"<b>Tom & Jerry</b>\"})\nassert r == \"<p>&lt;b&gt;Tom &amp; Jerry&lt;/b&gt;</p>\", f\"El filtro html escapa el valor (no el texto fijo): obtuve {r!r}\""
+    },
+    {
+     "name": "Variable desconocida: el marcador se conserva",
+     "code": "r = renderizar(\"Hola {{ nadie }} y {{ nombre }}\", {\"nombre\": \"Ana\"})\nassert r == \"Hola {{ nadie }} y Ana\", f\"Un nombre que no está en datos deja el marcador tal cual: obtuve {r!r}\""
+    },
+    {
+     "name": "Filtro desconocido: el marcador se conserva",
+     "code": "d = {\"nombre\": \"ana\"}\nfor plantilla in [\"{{ nombre | inventado }}\", \"{{ nombre|mayus|inventado }}\"]:\n    r = renderizar(plantilla, d)\n    assert r == plantilla, f\"Con un filtro inexistente el marcador queda intacto: esperaba {plantilla!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Lo que no es un marcador no cambia",
+     "code": "plantilla = \"{nombre} y {{ }} y {{ 1x }} y {{ a b }} y {{a}\"\nr = renderizar(plantilla, {\"nombre\": \"x\", \"a\": 1})\nassert r == plantilla, f\"Ninguno de esos fragmentos es un marcador válido; el texto no debe cambiar. Obtuve {r!r}\""
+    },
+    {
+     "name": "Una sola pasada",
+     "code": "r = renderizar(\"{{ a }}\", {\"a\": \"{{ b }}\", \"b\": \"X\"})\nassert r == \"{{ b }}\", f\"Los valores insertados no se vuelven a procesar: esperaba {'{{ b }}'!r}, obtuve {r!r}\""
+    },
+    {
+     "name": "Bordes: vacía y marcadores pegados",
+     "code": "assert renderizar(\"\", {}) == \"\", \"Una plantilla vacía da ''\"\nr = renderizar(\"{{a}}{{b}}\", {\"a\": 1, \"b\": 2})\nassert r == \"12\", f\"Marcadores pegados: esperaba '12', obtuve {r!r}\"\nr = renderizar(\"sin marcadores\", {\"x\": 1})\nassert r == \"sin marcadores\", f\"Sin marcadores el texto no cambia; obtuve {r!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por `formato_moneda`: `f\"{abs(numero):,.2f}\"` da `\"1,234.50\"`; intercambia comas y puntos con `str.maketrans(\",.\", \".,\")` y `translate` (¿por qué no sirven dos `replace` seguidos?). El signo lo pones tú delante: `\"-$\"` si el número es negativo y `\"$\"` si no.",
+    "Escribe el patrón del marcador con dos grupos con nombre: el nombre y la cadena de filtros, por ejemplo `(?P<filtros>(?:\\|\\s*[a-z]+\\s*)*)`. Las llaves y la barra vertical son metacaracteres: escápalas (`\\{`, `\\}`, `\\|`).",
+    "Recorre los marcadores con `re.finditer`: añade el texto intermedio `plantilla[posicion:m.start()]`, luego el reemplazo, y actualiza `posicion = m.end()`; al final, el resto de la plantilla. Para los filtros: `m.group(\"filtros\").split(\"|\")`, `strip()` y un `match`/`case` con `case _:` para detectar los desconocidos."
+   ],
+   "explain": "La arquitectura separa responsabilidades: `MARCADOR` reconoce la sintaxis, `aplicar_filtro` sabe qué hace cada filtro, `sustituir` decide el reemplazo de un marcador y `renderizar` recorre el texto. Añadir un filtro nuevo es añadir un `case`.\n\n¿Por qué `finditer` y no `re.sub`? `re.sub` con una función sería lo natural, pero esa función necesita `datos` y `re.sub` solo le pasa el `Match`. Las soluciones idiomáticas (una función anidada que «recuerda» `datos`, o una `lambda`) las verás en s06 y s12:\n```python\nreturn MARCADOR.sub(lambda m: sustituir(m, datos), plantilla)\n```\nReconstruir el texto con `finditer` es exactamente lo que hace `re.sub` por dentro, y garantiza una sola pasada: el texto insertado nunca se vuelve a analizar.\n\n`formato_moneda` usa `translate` porque intercambia comas y puntos **a la vez**; con `replace(\",\", \".\").replace(\".\", \",\")` el segundo paso deshace el primero. Formatea `abs(numero)` para poder colocar el signo menos delante del `$`. Detalle fino: un valor como `-0.001` se mostraría `\"-$0,00\"`; si te importa, decide el signo con el valor ya redondeado, `round(numero, 2) < 0`. En aplicaciones reales, el formato por idioma se delega en `locale` o en bibliotecas como Babel, y los motores serios (como Jinja2) pueden escapar HTML automáticamente y compilan las plantillas."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué devuelve `\"Python\"[::-1]`?",
+   "back": "`'nohtyP'`: un slice con paso -1 recorre la cadena al revés."
+  },
+  {
+   "front": "¿Por qué `s[0] = \"X\"` lanza `TypeError`?",
+   "back": "Porque las cadenas son inmutables. Se construye otra y se reasigna: `s = \"X\" + s[1:]`."
+  },
+  {
+   "front": "¿Cuál es la forma eficiente de construir una cadena a partir de muchos trozos?",
+   "back": "Acumularlos en una lista y unirlos al final con `\"\".join(lista)` (coste lineal). `+=` en un bucle puede tener coste cuadrático."
+  },
+  {
+   "front": "`find` frente a `index`",
+   "back": "Si no encuentra la subcadena, `find` devuelve `-1` e `index` lanza `ValueError`. Para saber si está, lo idiomático es `in`."
+  },
+  {
+   "front": "¿Qué hace `\"www.ejemplo.com\".strip(\"w.com\")`?",
+   "back": "Quita de los extremos cualquier combinación de los caracteres w . c o m → `'ejempl'`. Para un prefijo o sufijo concreto: `removeprefix` / `removesuffix` (3.9+)."
+  },
+  {
+   "front": "`split()` sin argumentos frente a `split(\" \")` cuando hay dos espacios seguidos entre palabras",
+   "back": "Sin argumentos, cualquier racha de espacios, tabuladores o saltos de línea es un único separador y no salen cadenas vacías. Con `split(\" \")` cada espacio separa, así que dos seguidos producen una cadena vacía `''`."
+  },
+  {
+   "front": "`casefold()` frente a `lower()`",
+   "back": "`casefold()` es más agresivo y está pensado para comparar sin mayúsculas: `\"ß\".casefold()` es `'ss'`, `\"ß\".lower()` sigue siendo `'ß'`."
+  },
+  {
+   "front": "`isdecimal()` frente a `isdigit()`",
+   "back": "`isdigit()` acepta también superíndices como `²`, que `int()` no convierte. `isdecimal()` (categoría Nd) encaja con lo que acepta `int()`."
+  },
+  {
+   "front": "Orden de las piezas de una especificación de formato",
+   "back": "`[[relleno]alineación][signo][z][#][0][ancho][agrupación][.precisión][tipo]`"
+  },
+  {
+   "front": "¿Qué muestra `f\"{x=}\"` si `x = \"hola\"`?",
+   "back": "`x='hola'`: el texto de la expresión, `=` y el `repr` del valor (depuración, desde Python 3.8)."
+  },
+  {
+   "front": "`f\"{0.256:.1%}\"`",
+   "back": "`'25.6%'`: el tipo `%` multiplica por 100, usa coma fija y añade el signo %."
+  },
+  {
+   "front": "`f\"{'hola':*^10}\"`",
+   "back": "`'***hola***'`: relleno `*`, centrado `^`, ancho 10."
+  },
+  {
+   "front": "¿Qué permitió la PEP 701 (Python 3.12) en las f-strings?",
+   "back": "Cualquier expresión dentro de `{}`: reutilizar las mismas comillas, barras invertidas, varias líneas y comentarios."
+  },
+  {
+   "front": "Novedad de Python 3.14 en el mini-lenguaje de formato",
+   "back": "Agrupación en la parte decimal: `f\"{1234.56789:,.4_f}\"` → `'1,234.567_9'`."
+  },
+  {
+   "front": "¿Qué pasa con `\"%s\" % (1, 2)`?",
+   "back": "`TypeError: not all arguments converted during string formatting`: `%` interpreta la tupla como la lista de argumentos."
+  },
+  {
+   "front": "¿Qué es un code point?",
+   "back": "El número que Unicode asigna a un carácter, de U+0000 a U+10FFFF. `ord(\"ñ\")` → 241; `chr(241)` → `'ñ'`."
+  },
+  {
+   "front": "NFC frente a NFD",
+   "back": "NFC compone (letra + marca → carácter precompuesto); NFD descompone (`é` → `e` + acento combinante). Las formas K (NFKC, NFKD) además sustituyen caracteres de compatibilidad."
+  },
+  {
+   "front": "Receta para quitar tildes",
+   "back": "`unicodedata.normalize(\"NFD\", s)`, descartar los caracteres de categoría `Mn` y volver a unir (y a NFC). Ojo: la ñ se convierte en n."
+  },
+  {
+   "front": "Bytes en UTF-8 de `a`, `ñ`, `✓` y `🐍`",
+   "back": "1, 2, 3 y 4 bytes respectivamente."
+  },
+  {
+   "front": "¿Qué devuelve `b\"abc\"[0]`?",
+   "back": "`97`: indexar un `bytes` da un `int` (0–255), no un carácter."
+  },
+  {
+   "front": "`b\"\\xff\".decode(\"utf-8\", errors=\"replace\")`",
+   "back": "`'�'` (U+FFFD, carácter de reemplazo). Con `\"strict\"` (por defecto) lanzaría `UnicodeDecodeError`."
+  },
+  {
+   "front": "¿Qué es el mojibake?",
+   "back": "Texto ilegible por decodificar con una codificación distinta de la usada al codificar: `\"Canción\"` en UTF-8 leído como Latin-1 → `'CanciÃ³n'`."
+  },
+  {
+   "front": "¿Qué produce `t\"Hola {x}\"` en Python 3.14?",
+   "back": "Un objeto `string.templatelib.Template` (PEP 750), no un `str`: guarda aparte el texto fijo y las interpolaciones."
+  },
+  {
+   "front": "Atributos de una `Interpolation`",
+   "back": "`value` (el valor ya evaluado), `expression` (el texto), `conversion` (`'r'`, `'s'`, `'a'` o `None`) y `format_spec` (sin aplicar)."
+  },
+  {
+   "front": "`re.search`, `re.match` y `re.fullmatch`",
+   "back": "`search`: primera aparición en cualquier sitio; `match`: solo al principio; `fullmatch`: la cadena entera (la adecuada para validar)."
+  },
+  {
+   "front": "La trampa de `$` en una regex",
+   "back": "`$` también coincide justo antes de un `\\n` final: `^\\d{5}$` acepta `\"45010\\n\"`. Para validar, `fullmatch` o `\\A…\\z` (`\\z` desde 3.14)."
+  },
+  {
+   "front": "¿Qué devuelve `re.findall` según los grupos?",
+   "back": "Sin grupos: las coincidencias completas. Con un grupo: lo capturado por él. Con varios: tuplas. `(?:…)` no cuenta."
+  },
+  {
+   "front": "Grupos con nombre",
+   "back": "`(?P<nombre>…)`; se leen con `m[\"nombre\"]` o `m.group(\"nombre\")`, todos juntos con `m.groupdict()`, y en `re.sub` con `\\g<nombre>`."
+  },
+  {
+   "front": "Codicioso frente a perezoso",
+   "back": "`<.+>` se extiende hasta el último `>` posible; `<.+?>` se detiene en el primero. A menudo es mejor una clase negada: `<[^>]+>`."
+  },
+  {
+   "front": "¿Acepta `\\d` solo 0–9?",
+   "back": "No: en patrones `str` acepta cualquier dígito decimal Unicode (`\"٣\"`). Para 0–9, `[0-9]` o el flag `re.ASCII`."
+  },
+  {
+   "front": "¿Qué hace `re.VERBOSE`?",
+   "back": "Ignora los espacios del patrón (salvo en `[…]` o escapados) y permite comentarios con `#`: regex legibles en varias líneas."
+  },
+  {
+   "front": "¿Qué excepción lanza un patrón mal escrito?",
+   "back": "`re.PatternError` (nombre desde Python 3.13; `re.error` sigue existiendo como alias)."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s05-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ns = \"Python\"\nprint(s[1:4], s[-2:])\n```",
+   "options": [
+    "`yth on`",
+    "`ytho on`",
+    "`yth hon`",
+    "`Pyt on`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`s[1:4]` toma los índices 1, 2 y 3 (el 4 no se incluye): `yth`. `s[-2:]` toma los dos últimos: `on`."
+  },
+  {
+   "id": "s05-q2",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este código?\n```python\ns = \"hola\"\ns[0] = \"H\"\n```",
+   "options": [
+    "`s` pasa a valer `\"Hola\"`",
+    "Se lanza `TypeError`",
+    "Se lanza `IndexError`",
+    "Se crea una cadena nueva y `s` pasa a apuntar a ella"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las cadenas son inmutables: no admiten asignación a un índice (`'str' object does not support item assignment`). Para cambiarla hay que construir otra: `s = \"H\" + s[1:]`."
+  },
+  {
+   "id": "s05-q3",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nnombre = \"ana\"\nnombre.upper()\nprint(nombre)\n```",
+   "options": [
+    "`ana`",
+    "`ANA`",
+    "`Ana`",
+    "`None`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`upper()` devuelve una cadena nueva que aquí nadie guarda; `nombre` sigue apuntando a `\"ana\"`. Habría que escribir `nombre = nombre.upper()`."
+  },
+  {
+   "id": "s05-q4",
+   "type": "yesno",
+   "q": "Indica si cada comparación es `True` (Sí) o `False` (No).",
+   "statements": [
+    {
+     "text": "`\"Zorro\" < \"abeja\"`",
+     "answer": true
+    },
+    {
+     "text": "`\"10\" < \"9\"`",
+     "answer": true
+    },
+    {
+     "text": "`\"árbol\" < \"zorro\"`",
+     "answer": false
+    },
+    {
+     "text": "`\"casa\" < \"casas\"`",
+     "answer": true
+    }
+   ],
+   "explain": "Las cadenas se comparan por el code point del primer carácter distinto: `'Z'` (90) < `'a'` (97); `'1'` < `'9'`; `'á'` (225) > `'z'` (122). Un prefijo va antes que la cadena más larga."
+  },
+  {
+   "id": "s05-q5",
+   "type": "single",
+   "q": "¿Qué devuelve `\"a,b,,c\".split(\",\")`?",
+   "options": [
+    "`['a', 'b', '', 'c']`",
+    "`['a', 'b', 'c']`",
+    "`['a', 'b', ',', 'c']`",
+    "`['a,b,,c']`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con un separador explícito, dos separadores seguidos delimitan una cadena vacía. Solo `split()` sin argumentos descarta los vacíos (y trabaja con espacios, no con comas)."
+  },
+  {
+   "id": "s05-q6",
+   "type": "multi",
+   "q": "¿Qué expresiones devuelven una lista vacía `[]`? (Selecciona DOS.)",
+   "options": [
+    "`\"\".split()`",
+    "`\"\\t\\n\".split()`",
+    "`\"\".split(\",\")`",
+    "`\" \".split(\" \")`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`split()` sin argumentos devuelve `[]` para una cadena vacía o formada solo por espacios en blanco (espacios, tabuladores, saltos de línea). `\"\".split(\",\")` da `['']` y `\" \".split(\" \")` da `['', '']`."
+  },
+  {
+   "id": "s05-q7",
+   "type": "single",
+   "q": "¿Qué devuelve `\"www.ejemplo.com\".strip(\"w.com\")`?",
+   "options": [
+    "`'ejemplo'`",
+    "`'ejempl'`",
+    "`'ejemplo.com'`",
+    "`'www.ejemplo'`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`strip` quita de ambos extremos cualquier combinación de los caracteres dados (w, ., c, o, m), no la cadena literal. Por la derecha elimina «.com» y, de paso, la «o» final de «ejemplo»; se detiene en la `l`. Para quitar un sufijo concreto: `removesuffix(\".com\")`."
+  },
+  {
+   "id": "s05-q8",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nfrase = \"banana\"\nprint(frase.find(\"x\"), frase.count(\"an\"))\n```",
+   "options": [
+    "`-1 2`",
+    "`None 2`",
+    "Lanza `ValueError`",
+    "`-1 1`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`find` devuelve `-1` si no encuentra (`index` lanzaría `ValueError`). `\"banana\"` contiene `\"an\"` dos veces sin solaparse."
+  },
+  {
+   "id": "s05-q9",
+   "type": "single",
+   "q": "¿Qué ocurre con `\", \".join([1, 2, 3])`?",
+   "options": [
+    "Devuelve `'1, 2, 3'`",
+    "Lanza `TypeError`",
+    "Devuelve `'123'`",
+    "Devuelve `[1, 2, 3]`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`join` exige que todos los elementos sean `str`: `TypeError: sequence item 0: expected str instance, int found`. Solución: `\", \".join([str(n) for n in numeros])`."
+  },
+  {
+   "id": "s05-q10",
+   "type": "yesno",
+   "q": "Indica si cada expresión es `True` (Sí) o `False` (No).",
+   "statements": [
+    {
+     "text": "`\"²\".isdigit()`",
+     "answer": true
+    },
+    {
+     "text": "`\"²\".isdecimal()`",
+     "answer": false
+    },
+    {
+     "text": "`\"Ñandú\".isalpha()`",
+     "answer": true
+    },
+    {
+     "text": "`\"-5\".isdecimal()`",
+     "answer": false
+    }
+   ],
+   "explain": "El superíndice `²` es un dígito pero no un decimal (y `int(\"²\")` falla). `isalpha` acepta letras Unicode como ñ y ú. El signo `-` no es un dígito, así que `\"-5\".isdecimal()` es `False` aunque `int(\"-5\")` funcione."
+  },
+  {
+   "id": "s05-q11",
+   "type": "single",
+   "q": "¿Qué imprime `print(f\"{3.14159:8.3f}|\")`? (En las opciones, `␣` representa un espacio.)",
+   "options": [
+    "`␣␣␣3.142|`",
+    "`3.142␣␣␣|`",
+    "`3.14159␣|`",
+    "`00003.142|`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Ancho mínimo 8 y 3 decimales: `3.142` ocupa 5 caracteres y se rellena con 3 espacios. Los números se alinean a la derecha por defecto."
+  },
+  {
+   "id": "s05-q12",
+   "type": "single",
+   "q": "¿Qué devuelve `f\"{'py':*^6}\"`?",
+   "options": [
+    "`'**py**'`",
+    "`'py****'`",
+    "`'****py'`",
+    "`'*py*'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Relleno `*`, alineación centrada `^` y ancho 6: dos asteriscos a cada lado."
+  },
+  {
+   "id": "s05-q13",
+   "type": "single",
+   "q": "¿Qué devuelve `f\"{1234567.891:,.2f}\"`?",
+   "options": [
+    "`'1,234,567.89'`",
+    "`'1.234.567,89'`",
+    "`'1234567.89'`",
+    "`'1,234,567.891'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`,` agrupa los miles con comas y `.2f` deja 2 decimales. El formato habitual en muchos países de habla hispana (punto de miles y coma decimal) requiere un paso extra, como en el proyecto del motor de plantillas."
+  },
+  {
+   "id": "s05-q14",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nx = \"hola\"\nprint(f\"{x=}\")\n```",
+   "options": [
+    "`x='hola'`",
+    "`x=hola`",
+    "`hola`",
+    "`'hola'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El especificador `=` (Python 3.8+) muestra el texto de la expresión, `=` y el valor; sin especificación de formato, usa `repr()`, por eso aparecen las comillas."
+  },
+  {
+   "id": "s05-q15",
+   "type": "single",
+   "q": "¿Qué devuelve `f\"{0.5:.0%}\"`?",
+   "options": [
+    "`'50%'`",
+    "`'0.5%'`",
+    "`'1%'`",
+    "`'50.0%'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`%` multiplica por 100 (50) y lo muestra con 0 decimales seguido del signo %."
+  },
+  {
+   "id": "s05-q16",
+   "type": "multi",
+   "q": "¿Qué afirmaciones sobre la especificación de formato son correctas? (Selecciona DOS.)",
+   "options": [
+    "El ancho es un mínimo: si el valor no cabe, no se recorta",
+    "En una cadena, la precisión (`.5`) recorta el texto",
+    "El ancho recorta los números demasiado largos",
+    "Por defecto, los números se alinean a la izquierda"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El ancho nunca recorta (los números jamás se cortan). En cadenas, la precisión es la longitud máxima. Por defecto, los números van a la derecha y el texto a la izquierda."
+  },
+  {
+   "id": "s05-q17",
+   "type": "single",
+   "q": "¿Qué imprime `print(f\"{2.5:.0f} {3.5:.0f}\")`?",
+   "options": [
+    "`2 4`",
+    "`3 4`",
+    "`2 3`",
+    "`3 3`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "En los empates exactos se redondea al par (como `round`): 2.5 → 2 y 3.5 → 4."
+  },
+  {
+   "id": "s05-q18",
+   "type": "single",
+   "q": "¿Qué ocurre con `\"%s\" % (1, 2)`?",
+   "options": [
+    "Devuelve `'(1, 2)'`",
+    "Devuelve `'1'`",
+    "Lanza `TypeError`",
+    "Devuelve `'1 2'`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`%` trata la tupla como la lista de argumentos: dos valores para un solo `%s` → `TypeError: not all arguments converted during string formatting`. Habría que escribir `\"%s\" % ((1, 2),)`."
+  },
+  {
+   "id": "s05-q19",
+   "type": "single",
+   "q": "¿Qué devuelve `\"{1}{0}{1}\".format(\"a\", \"b\")`?",
+   "options": [
+    "`'bab'`",
+    "`'aba'`",
+    "`'ab'`",
+    "Lanza `IndexError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los números se refieren a la posición de los argumentos: `{1}` es `\"b\"` y `{0}` es `\"a\"`."
+  },
+  {
+   "id": "s05-q20",
+   "type": "single",
+   "q": "Con `d = {\"k\": 1}`, ¿qué f-string es válida en Python 3.12 o posterior, pero era un error de sintaxis en 3.11?",
+   "options": [
+    "`f\"{d[\"k\"]}\"`",
+    "`f\"{d['k']}\"`",
+    "`f'{d[\"k\"]}'`",
+    "`f\"{d}\"`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La PEP 701 (3.12) permite reutilizar dentro de `{}` las mismas comillas que delimitan la f-string. Las otras opciones ya eran válidas antes."
+  },
+  {
+   "id": "s05-q21",
+   "type": "single",
+   "q": "¿Qué imprime `print(len(\"cafe\\u0301\"))`?",
+   "options": [
+    "`5`",
+    "`4`",
+    "`6`",
+    "`9`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`\"cafe\\u0301\"` son 5 code points: c, a, f, e y el acento combinante U+0301, aunque en pantalla se vea «café». Normalizado a NFC tendría 4."
+  },
+  {
+   "id": "s05-q22",
+   "type": "single",
+   "q": "¿Cuánto vale `len(\"ñ\".encode(\"utf-8\"))`?",
+   "options": [
+    "`2`",
+    "`1`",
+    "`3`",
+    "`4`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La ñ (U+00F1) está en el rango U+0080–U+07FF, que UTF-8 codifica con 2 bytes: `b'\\xc3\\xb1'`."
+  },
+  {
+   "id": "s05-q23",
+   "type": "single",
+   "q": "¿Qué devuelve `b\"hola\"[0]`?",
+   "options": [
+    "`104`",
+    "`b'h'`",
+    "`'h'`",
+    "`[104]`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Indexar un `bytes` devuelve un entero: el valor del byte, 104 para la `h`. Un slice (`b\"hola\"[:1]`) sí devolvería `b'h'`."
+  },
+  {
+   "id": "s05-q24",
+   "type": "single",
+   "q": "¿Qué devuelve `\"Canción\".encode(\"utf-8\").decode(\"latin-1\")`?",
+   "options": [
+    "`'CanciÃ³n'`",
+    "`'Canción'`",
+    "Lanza `UnicodeDecodeError`",
+    "`'Canci?n'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Es mojibake: los dos bytes UTF-8 de la ó (C3 B3) se leen como dos caracteres Latin-1, `Ã` y `³`. Latin-1 nunca lanza error al decodificar."
+  },
+  {
+   "id": "s05-q25",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre Unicode y codificaciones es correcta.",
+   "statements": [
+    {
+     "text": "NFC compone una letra y su marca combinante en un carácter precompuesto cuando existe.",
+     "answer": true
+    },
+    {
+     "text": "`\"ß\".casefold() == \"ss\"` es `True`.",
+     "answer": true
+    },
+    {
+     "text": "Si `datos.decode(\"latin-1\")` no da error, los datos estaban en Latin-1.",
+     "answer": false
+    },
+    {
+     "text": "Todo texto ASCII es también UTF-8 válido.",
+     "answer": true
+    }
+   ],
+   "explain": "NFC compone; `casefold` convierte la ß en ss. Latin-1 decodifica cualquier secuencia de bytes sin fallar, así que no demuestra nada. UTF-8 codifica los 128 caracteres ASCII con el mismo byte."
+  },
+  {
+   "id": "s05-q26",
+   "type": "single",
+   "q": "¿Qué devuelve `\"Año\".encode(\"ascii\", errors=\"replace\")`?",
+   "options": [
+    "`b'A?o'`",
+    "`b'Ao'`",
+    "`b'A\\xf1o'`",
+    "`b'A&#241;o'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Al codificar, `replace` sustituye cada carácter no representable por `?`. `ignore` daría `b'Ao'` y `xmlcharrefreplace` daría `b'A&#241;o'`."
+  },
+  {
+   "id": "s05-q27",
+   "type": "single",
+   "q": "En Python 3.14, ¿de qué tipo es `t\"Hola {nombre}\"`?",
+   "options": [
+    "`string.templatelib.Template`",
+    "`str`",
+    "`string.Template`",
+    "Es un error de sintaxis"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Las t-strings (PEP 750, nuevas en 3.14) producen un `Template` del módulo `string.templatelib`. `string.Template` es otra cosa: las plantillas con `$nombre` que existen desde Python 2.4."
+  },
+  {
+   "id": "s05-q28",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre las t-strings es correcta.",
+   "statements": [
+    {
+     "text": "Las expresiones de `{…}` se evalúan al crear la t-string, igual que en una f-string.",
+     "answer": true
+    },
+    {
+     "text": "La especificación de formato (`:.2f`) se aplica automáticamente al valor.",
+     "answer": false
+    },
+    {
+     "text": "`t\"a\" + \"b\"` es válido y devuelve un `Template`.",
+     "answer": false
+    },
+    {
+     "text": "`len(plantilla.strings)` siempre es `len(plantilla.interpolations) + 1`.",
+     "answer": true
+    }
+   ],
+   "explain": "La evaluación es inmediata; lo que se aplaza es la combinación. Conversión y especificación solo se guardan en la `Interpolation`. `Template + str` lanza `TypeError` (solo `Template + Template`). `strings` tiene siempre un elemento más, con cadenas vacías si hace falta."
+  },
+  {
+   "id": "s05-q29",
+   "type": "single",
+   "q": "¿Qué imprime `print(re.match(r\"\\d+\", \"abc123\"))`?",
+   "options": [
+    "`None`",
+    "Un `Match` con `'123'`",
+    "`[]`",
+    "Lanza `AttributeError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`re.match` solo busca al principio de la cadena, que empieza por `a`. `re.search` sí encontraría `'123'`."
+  },
+  {
+   "id": "s05-q30",
+   "type": "single",
+   "q": "¿Qué devuelve `re.findall(r\"(\\w+)=(\\d+)\", \"a=1 b=22\")`?",
+   "options": [
+    "`[('a', '1'), ('b', '22')]`",
+    "`['a=1', 'b=22']`",
+    "`['a', '1', 'b', '22']`",
+    "`[('a=1',), ('b=22',)]`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con varios grupos de captura, `findall` devuelve una lista de tuplas con lo capturado por cada grupo."
+  },
+  {
+   "id": "s05-q31",
+   "type": "single",
+   "q": "¿Qué devuelve `re.findall(r\"<.+?>\", \"<a><b>\")`?",
+   "options": [
+    "`['<a>', '<b>']`",
+    "`['<a><b>']`",
+    "`['a', 'b']`",
+    "`[]`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`+?` es perezoso: se detiene en el primer `>` posible. Con `<.+>` (codicioso) la única coincidencia sería `'<a><b>'`."
+  },
+  {
+   "id": "s05-q32",
+   "type": "single",
+   "q": "¿Qué imprime `print(bool(re.search(r\"^\\d{3}$\", \"123\\n\")))`?",
+   "options": [
+    "`True`",
+    "`False`",
+    "Lanza `re.PatternError`",
+    "`None`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`$` coincide al final de la cadena o justo antes de un `\\n` final. Para validar la cadena exacta se usa `re.fullmatch` (o `\\z`, desde 3.14)."
+  },
+  {
+   "id": "s05-q33",
+   "type": "multi",
+   "q": "¿Qué expresiones comprueban correctamente que `s` es **exactamente** cinco dígitos ASCII? (Selecciona DOS.)",
+   "options": [
+    "`re.fullmatch(r\"[0-9]{5}\", s)`",
+    "`re.match(r\"\\d{5}\", s)`",
+    "`re.search(r\"^[0-9]{5}$\", s)`",
+    "`re.fullmatch(r\"\\d{5}\", s, flags=re.ASCII)`"
+   ],
+   "answer": [
+    0,
+    3
+   ],
+   "explain": "`match` no exige llegar al final y `\\d` sin `re.ASCII` acepta dígitos de otras escrituras. `^…$` deja pasar un `\\n` final. `fullmatch` con `[0-9]` o con `\\d` + `re.ASCII` son correctas."
+  },
+  {
+   "id": "s05-q34",
+   "type": "single",
+   "q": "¿Qué devuelve `re.sub(r\"(\\w+)@(\\w+)\", r\"\\2@\\1\", \"ana@web\")`?",
+   "options": [
+    "`'web@ana'`",
+    "`'ana@web'`",
+    "`'\\2@\\1'`",
+    "`'2@1'`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`\\1` y `\\2` en el reemplazo insertan lo capturado por los grupos 1 y 2, así que se intercambian."
+  },
+  {
+   "id": "s05-q35",
+   "type": "single",
+   "q": "Desde Python 3.13, ¿qué nombre tiene la excepción que lanza `re.compile(\"(\")`?",
+   "options": [
+    "`re.PatternError` (con `re.error` como alias)",
+    "`SyntaxError`",
+    "`ValueError`",
+    "`re.RegexError`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "En 3.13 `re.error` pasó a llamarse `re.PatternError`; el nombre antiguo se mantiene por compatibilidad."
+  },
+  {
+   "id": "s05-q36",
+   "type": "single",
+   "q": "Quieres saber si la palabra fija `\"ERROR\"` aparece en una línea. ¿Qué es lo más adecuado?",
+   "options": [
+    "`\"ERROR\" in linea`",
+    "`re.search(\"ERROR\", linea)`",
+    "`re.fullmatch(\".*ERROR.*\", linea)`",
+    "`linea.find(\"ERROR\") > 0`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Para texto fijo, `in` es más claro y rápido que una regex. `find(...) > 0` además fallaría si la palabra está al principio (índice 0)."
+  },
+  {
+   "id": "s05-q37",
+   "type": "single",
+   "q": "¿Qué devuelve `re.split(r\"[,;]\\s*\", \"a, b;c\")`?",
+   "options": [
+    "`['a', 'b', 'c']`",
+    "`['a', ' b', 'c']`",
+    "`['a, b;c']`",
+    "`['a', ',', 'b', ';', 'c']`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El patrón divide por una coma o un punto y coma seguidos de espacios opcionales. Como no hay grupos de captura, los separadores no aparecen en el resultado."
+  },
+  {
+   "id": "s05-q38",
+   "type": "single",
+   "q": "¿Qué devuelve `\"it's ok\".title()`?",
+   "options": [
+    "`\"It'S Ok\"`",
+    "`\"It's Ok\"`",
+    "`\"It's ok\"`",
+    "`\"IT'S OK\"`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`title()` pone en mayúscula la primera letra de cada racha de letras y considera el apóstrofo un separador, por eso la `s` queda en mayúscula. `capitalize()` daría `\"It's ok\"`."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Built-in Types — Text Sequence Type (str) y String Methods",
+   "url": "https://docs.python.org/3/library/stdtypes.html#text-sequence-type-str"
+  },
+  {
+   "title": "Built-in Types — printf-style String Formatting",
+   "url": "https://docs.python.org/3/library/stdtypes.html#printf-style-string-formatting"
+  },
+  {
+   "title": "string — Format Specification Mini-Language",
+   "url": "https://docs.python.org/3/library/string.html#format-specification-mini-language"
+  },
+  {
+   "title": "Lexical analysis — String and bytes literals, f-strings y t-strings",
+   "url": "https://docs.python.org/3/reference/lexical_analysis.html"
+  },
+  {
+   "title": "Expressions — Value comparisons",
+   "url": "https://docs.python.org/3/reference/expressions.html#value-comparisons"
+  },
+  {
+   "title": "string.templatelib — Support for template string literals",
+   "url": "https://docs.python.org/3/library/string.templatelib.html"
+  },
+  {
+   "title": "PEP 750 – Template Strings",
+   "url": "https://peps.python.org/pep-0750/"
+  },
+  {
+   "title": "Unicode HOWTO",
+   "url": "https://docs.python.org/3/howto/unicode.html"
+  },
+  {
+   "title": "unicodedata — Unicode Database",
+   "url": "https://docs.python.org/3/library/unicodedata.html"
+  },
+  {
+   "title": "codecs — Error Handlers",
+   "url": "https://docs.python.org/3/library/codecs.html#error-handlers"
+  },
+  {
+   "title": "html — html.escape",
+   "url": "https://docs.python.org/3/library/html.html#html.escape"
+  },
+  {
+   "title": "re — Regular expression operations",
+   "url": "https://docs.python.org/3/library/re.html"
+  },
+  {
+   "title": "Regular Expression HOWTO",
+   "url": "https://docs.python.org/3/howto/regex.html"
+  },
+  {
+   "title": "What's New In Python 3.12 (PEP 701, SyntaxWarning en escapes inválidos)",
+   "url": "https://docs.python.org/3/whatsnew/3.12.html"
+  },
+  {
+   "title": "What's New In Python 3.13 (re.PatternError, str.replace count)",
+   "url": "https://docs.python.org/3/whatsnew/3.13.html"
+  },
+  {
+   "title": "What's New In Python 3.14 (t-strings, agrupación decimal, \\z, Unicode 16.0)",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "Rol Único Tributario (algoritmo del dígito verificador) — Wikipedia",
+   "url": "https://es.wikipedia.org/wiki/Rol_%C3%9Anico_Tributario"
+  },
+  {
+   "title": "Dave Peck (coautor de la PEP 750) — Python's new t-strings",
+   "url": "https://davepeck.org/2025/04/11/pythons-new-t-strings/"
+  }
+ ]
+}

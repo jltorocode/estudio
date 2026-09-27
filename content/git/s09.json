@@ -1,0 +1,2599 @@
+{
+ "id": "s09",
+ "order": 9,
+ "title": "Rebase y reescritura de historia",
+ "domain": "avanzado",
+ "summary": "Qué hace realmente `git rebase` (reaplica commits y crea hashes nuevos), cuándo conviene frente a merge, cómo resolver conflictos a mitad de camino, el rebase interactivo en el editor integrado (reword, edit, squash, fixup, drop, reordenar, exec), los arreglos automáticos con `--fixup` y `--autosquash`, mover ramas con `--onto` y `--update-refs`, `git pull --rebase`, la regla de oro y cómo publicar historia reescrita con `--force-with-lease` y `--force-if-includes`.",
+ "goal": "Limpiar y actualizar una rama con rebase (incluido el interactivo) y publicarla con `git push --force-with-lease` sin perder el trabajo de nadie.",
+ "objectives": [
+  "Explicar qué hace `git rebase` paso a paso y por qué los commits reaplicados tienen hashes nuevos",
+  "Elegir entre rebase y merge según si los commits son locales o compartidos",
+  "Resolver conflictos durante un rebase y decidir entre `--continue`, `--skip` y `--abort`",
+  "Reescribir una serie de commits con `git rebase -i`: reword, edit, squash, fixup, drop y reordenar",
+  "Corregir commits anteriores con `git commit --fixup` y `git rebase --autosquash`",
+  "Trasplantar ramas con `git rebase --onto` y mantener ramas apiladas con `--update-refs`",
+  "Integrar cambios remotos con `git pull --rebase` y publicar historia reescrita con `--force-with-lease` y `--force-if-includes`",
+  "Aplicar la regla de oro para no reescribir historia de la que dependen otras personas"
+ ],
+ "lessons": [
+  {
+   "id": "s09-l1",
+   "title": "Qué hace git rebase: reaplicar commits sobre otra base",
+   "minutes": 20,
+   "goals": [
+    "Describir los cuatro pasos que sigue `git rebase` para trasladar una rama a otra base",
+    "Actualizar una rama de funcionalidad con `git rebase main` y comprobar el resultado en el gráfico",
+    "Explicar por qué los commits reaplicados tienen hashes nuevos y qué datos conservan del original",
+    "Deshacer un rebase recién hecho con `ORIG_HEAD`"
+   ],
+   "takeaways": [
+    "`git rebase <base>` toma los commits de tu rama que no están en `<base>` y los vuelve a aplicar, uno por uno, encima de la punta de `<base>`.",
+    "Los commits no se «mueven»: Git crea commits nuevos (C', D') con el mismo cambio y mensaje, pero con otro padre y otro hash.",
+    "Se conservan el autor, la fecha de autor, el mensaje y el cambio; cambian el padre, el committer, la fecha de commit y, por lo tanto, el hash.",
+    "Tras el rebase, integrar la rama en `main` es un fast-forward: la historia queda en línea recta.",
+    "`ORIG_HEAD` apunta a la punta anterior de la rama: `git reset --hard ORIG_HEAD` deshace un rebase recién terminado."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s06 integraste ramas con `git merge`, que une dos historias con un commit de fusión. Git tiene una segunda forma de combinar trabajo: `git rebase`. En vez de unir, **reescribe** tu rama para que parezca que la empezaste a partir del último commit de otra. Es la herramienta que usan los profesionales para mantener sus ramas al día y para dejar una historia limpia antes de compartirla; y también la que más sustos da cuando se usa sin entenderla. Por eso partimos por el modelo mental."
+    },
+    {
+     "type": "h",
+     "text": "El punto de partida: tu rama se quedó atrás"
+    },
+    {
+     "type": "p",
+     "text": "Creaste `feature/rutas` desde `main` cuando `main` estaba en B e hiciste dos commits (C y D). Mientras tanto, tu compañero Diego agregó dos commits a `main` (E y F). Las dos ramas **divergieron**: comparten la historia hasta B y luego cada una siguió su camino."
+    },
+    {
+     "type": "diagram",
+     "title": "Antes: feature/rutas parte de un main antiguo",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  branch feature/rutas\n  checkout feature/rutas\n  commit id: \"C\"\n  commit id: \"D\"\n  checkout main\n  commit id: \"E\"\n  commit id: \"F\""
+    },
+    {
+     "type": "h",
+     "text": "Lo que hace git rebase main, paso a paso"
+    },
+    {
+     "type": "p",
+     "text": "Estando en `feature/rutas`, ejecutas `git rebase main`. La documentación oficial describe lo que ocurre en cuatro pasos:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Hace la lista** de los commits de tu rama que no están en `main` (los que hay desde el ancestro común B): C y D. Si alguno introduce exactamente el mismo cambio que un commit que ya está en `main`, lo omite.",
+      "**Se sitúa en la punta de `main`** (F), en HEAD separado, como si hicieras `git switch --detach main`.",
+      "**Reaplica tus commits uno por uno, en orden**: toma el cambio que introdujo C y lo aplica sobre F, creando C'; luego aplica el de D sobre C', creando D'. Es como hacer un *cherry-pick* de cada commit (lo verás en s10).",
+      "**Mueve la rama** `feature/rutas` a la punta del resultado (D') y te deja de nuevo en ella."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "diagram",
+     "title": "Después de git rebase main (estando en feature/rutas)",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  commit id: \"E\"\n  commit id: \"F\"\n  branch feature/rutas\n  checkout feature/rutas\n  commit id: \"C'\"\n  commit id: \"D'\"",
+     "caption": "C' y D' son commits nuevos: mismo cambio y mismo mensaje que C y D, pero con otro padre y otro hash."
+    },
+    {
+     "type": "h",
+     "text": "¿Por qué cambian los hashes?"
+    },
+    {
+     "type": "p",
+     "text": "En s02 viste que un commit guarda una instantánea, el autor, el committer, las fechas, el mensaje y **el hash de su padre**; su propio hash es un resumen de todo eso. C tenía como padre a B; C' tiene como padre a F. Basta ese cambio para que el hash sea otro, y como D' tiene como padre a C' (que es nuevo), el efecto se propaga a toda la rama. Además, Git registra como *committer* a quien hace el rebase y como fecha de commit el momento actual."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Dato del commit",
+      "Tras el rebase",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "Mensaje",
+       "Se conserva",
+       "Git reutiliza el mensaje original (salvo que lo edites en un rebase interactivo)."
+      ],
+      [
+       "Autor y fecha de autor",
+       "Se conservan",
+       "La autoría es de quien escribió el cambio, no de quien lo reaplica."
+      ],
+      [
+       "Cambio (diff)",
+       "Igual",
+       "Salvo que tengas que resolver un conflicto al reaplicarlo."
+      ],
+      [
+       "Padre",
+       "Cambia",
+       "Ahora cuelga de la nueva base (F) o del commit reaplicado anterior."
+      ],
+      [
+       "Committer y fecha de commit",
+       "Cambian",
+       "Quedan tu identidad y la fecha y hora en que hiciste el rebase."
+      ],
+      [
+       "Hash",
+       "Nuevo",
+       "Resume todo lo anterior, incluido el padre."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Pruébalo. En este repositorio, el commit «Agrega la ruta del San Cristóbal» lo escribió Camila. Mira los hashes antes y después, y fíjate en quién queda como autor y quién como committer:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo club\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Club de ciclismo Pedaleando</h1>' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 10:00'\ncommit_archivo rutas.html '<h2>Rutas</h2>' 'Agrega página de rutas'\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 11:00'\nanexar rutas.html '<p>Cerro San Cristóbal: 12 km</p>'\ngit commit -qam 'Agrega la ruta del San Cristóbal'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega página de contacto'\nfecha '2026-09-03 10:00'\nanexar index.html '<nav>Inicio | Contacto</nav>'\ngit commit -qam 'Agrega menú de navegación'\nyo\ngit switch -q feature/rutas",
+     "cwd": "club",
+     "code": "git log --oneline --graph --all\ngit rebase main\ngit log --oneline --graph --all\ngit log --format=\"%h %s | autor: %an | committer: %cn\" main..feature/rutas",
+     "caption": "Compara los dos gráficos: antes, dos ramas divergentes; después, una línea recta con tus commits encima de `main` y con hashes nuevos. El último comando muestra el autor y el committer de cada commit reaplicado."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git rebase main feature/rutas` equivale a `git switch feature/rutas` seguido de `git rebase main`: te cambia a la rama y la reaplica sobre `main` en un solo paso. Lo indica el propio libro Pro Git."
+    },
+    {
+     "type": "h",
+     "text": "Los commits antiguos no desaparecen al instante"
+    },
+    {
+     "type": "p",
+     "text": "C y D siguen existiendo en la base de datos de Git; simplemente ninguna rama los apunta, así que dejan de verse en `git log --all`. Al empezar un rebase, Git guarda la punta anterior de la rama en `ORIG_HEAD`. Si justo después del rebase te arrepientes, `git reset --hard ORIG_HEAD` deja la rama exactamente como estaba. Ojo: otros comandos (como `git reset` o un merge) también reescriben `ORIG_HEAD`, así que úsalo solo inmediatamente después. La red de seguridad completa es el *reflog*, que verás en s10."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo club\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Club de ciclismo Pedaleando</h1>' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 10:00'\ncommit_archivo rutas.html '<h2>Rutas</h2>' 'Agrega página de rutas'\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 11:00'\nanexar rutas.html '<p>Cerro San Cristóbal: 12 km</p>'\ngit commit -qam 'Agrega la ruta del San Cristóbal'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega página de contacto'\nfecha '2026-09-03 10:00'\nanexar index.html '<nav>Inicio | Contacto</nav>'\ngit commit -qam 'Agrega menú de navegación'\nyo\ngit switch -q feature/rutas",
+     "cwd": "club",
+     "code": "git rebase main\ngit log --oneline -1 ORIG_HEAD\ngit reset --hard ORIG_HEAD\ngit log --oneline --graph --all",
+     "caption": "El segundo comando muestra la punta anterior de la rama, guardada en `ORIG_HEAD`; `git reset --hard ORIG_HEAD` vuelve a ella y el gráfico recupera las dos ramas divergentes."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Regla de oro** (la verás a fondo en la última lección): como el rebase crea commits nuevos y abandona los viejos, **nunca hagas rebase de commits que ya publicaste y sobre los que otras personas pueden haber basado su trabajo**. Reescribir tu rama local antes de compartirla es seguro; reescribir `main` compartida, no."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «¿por qué cambian los hashes después de un rebase?». Respuesta: porque cada commit se vuelve a crear con otro padre (y otra fecha de commit), y el hash resume todo el contenido del commit, incluido su padre. El autor y el mensaje, en cambio, se conservan."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "rebase",
+       "en": "rebase",
+       "def": "Reaplicar una serie de commits sobre otra base, creando commits nuevos con los mismos cambios."
+      },
+      {
+       "term": "base / upstream",
+       "en": "upstream",
+       "def": "La rama o commit sobre el que reaplicas tus commits (en `git rebase main`, es `main`)."
+      },
+      {
+       "term": "commit reaplicado",
+       "en": "rewritten commit",
+       "def": "La copia nueva (C') de un commit original (C): mismo cambio y mensaje, otro padre y otro hash."
+      },
+      {
+       "term": "ORIG_HEAD",
+       "en": "ORIG_HEAD",
+       "def": "Referencia donde Git guarda la punta anterior antes de operaciones como rebase, reset o merge."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l2",
+   "title": "Rebase vs merge: dos formas de integrar",
+   "minutes": 15,
+   "goals": [
+    "Comparar la historia que dejan `git merge` y `git rebase` sobre el mismo escenario",
+    "Elegir entre merge y rebase según si los commits son locales o compartidos",
+    "Integrar en `main`, con `git merge --ff-only`, una rama a la que ya le hiciste rebase",
+    "Contar los commits de fusión de una historia con `git rev-list --merges`"
+   ],
+   "takeaways": [
+    "Merge conserva la historia tal como ocurrió (trabajo en paralelo) y no reescribe nada, a cambio de agregar commits de fusión.",
+    "Rebase deja una historia lineal, más fácil de leer y de recorrer, a cambio de reescribir commits (hashes nuevos).",
+    "Con merge resuelves los conflictos una sola vez; con rebase, commit por commit (puede detenerse varias veces).",
+    "Por defecto, `git rebase` descarta los commits de fusión de la rama y la aplana; `--rebase-merges` intenta conservarlos.",
+    "Patrón habitual: rebase para poner al día y limpiar tu rama local; merge (o el botón del pull request) para integrarla en la rama compartida."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Merge y rebase resuelven el mismo problema: incorporar el trabajo de una rama en otra. La diferencia está en **qué historia dejan**. Veámoslo con el escenario de la lección anterior: `feature/rutas` (C, D) y `main` (E, F) divergieron desde B."
+    },
+    {
+     "type": "diagram",
+     "title": "Opción 1: git merge (historia verdadera)",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  branch feature/rutas\n  checkout feature/rutas\n  commit id: \"C\"\n  commit id: \"D\"\n  checkout main\n  commit id: \"E\"\n  commit id: \"F\"\n  merge feature/rutas id: \"M\"",
+     "caption": "El commit de fusión M tiene dos padres (F y D). Se ve exactamente cuándo y cómo se integró la rama."
+    },
+    {
+     "type": "diagram",
+     "title": "Opción 2: git rebase main + fast-forward (historia lineal)",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  commit id: \"E\"\n  commit id: \"F\"\n  commit id: \"C'\"\n  commit id: \"D'\"",
+     "caption": "No hay commit de fusión: la historia se lee como si todo se hubiera hecho en secuencia."
+    },
+    {
+     "type": "p",
+     "text": "Compruébalo en el mismo repositorio. Primero, integrando con merge:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo club\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Club de ciclismo Pedaleando</h1>' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 10:00'\ncommit_archivo rutas.html '<h2>Rutas</h2>' 'Agrega página de rutas'\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 11:00'\nanexar rutas.html '<p>Cerro San Cristóbal: 12 km</p>'\ngit commit -qam 'Agrega la ruta del San Cristóbal'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega página de contacto'\nfecha '2026-09-03 10:00'\nanexar index.html '<nav>Inicio | Contacto</nav>'\ngit commit -qam 'Agrega menú de navegación'\nyo\ngit switch -q feature/rutas",
+     "cwd": "club",
+     "code": "git switch main\ngit merge --no-edit feature/rutas\ngit log --oneline --graph\ngit rev-list --merges --count HEAD",
+     "caption": "El último comando cuenta los commits de fusión en la historia de `main`: aquí, 1."
+    },
+    {
+     "type": "p",
+     "text": "Y ahora, desde el mismo punto de partida, con rebase y un fast-forward:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo club\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Club de ciclismo Pedaleando</h1>' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 10:00'\ncommit_archivo rutas.html '<h2>Rutas</h2>' 'Agrega página de rutas'\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 11:00'\nanexar rutas.html '<p>Cerro San Cristóbal: 12 km</p>'\ngit commit -qam 'Agrega la ruta del San Cristóbal'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega página de contacto'\nfecha '2026-09-03 10:00'\nanexar index.html '<nav>Inicio | Contacto</nav>'\ngit commit -qam 'Agrega menú de navegación'\nyo\ngit switch -q feature/rutas",
+     "cwd": "club",
+     "code": "git rebase main feature/rutas\ngit switch main\ngit merge --ff-only feature/rutas\ngit log --oneline --graph\ngit rev-list --merges --count HEAD",
+     "caption": "Ahora la historia es una línea recta y el conteo de commits de fusión da 0."
+    },
+    {
+     "type": "p",
+     "text": "`git merge --ff-only` (s06) solo avanza el puntero si es posible sin crear un commit de fusión; si no, se niega. Después de un rebase siempre es posible, porque `main` es ancestro de tu rama."
+    },
+    {
+     "type": "h",
+     "text": "Cara a cara"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Aspecto",
+      "git merge",
+      "git rebase"
+     ],
+     "rows": [
+      [
+       "Historia resultante",
+       "Verdadera: muestra el trabajo en paralelo y el momento de la integración",
+       "Lineal: como si todo se hubiera hecho en secuencia"
+      ],
+      [
+       "¿Reescribe commits?",
+       "No; solo agrega un commit de fusión",
+       "Sí: crea commits nuevos y abandona los originales"
+      ],
+      [
+       "Conflictos",
+       "Se resuelven una vez, todos juntos",
+       "Se resuelven commit por commit, a medida que se reaplican"
+      ],
+      [
+       "Seguro con ramas compartidas",
+       "Sí",
+       "Solo si nadie más usa esos commits (regla de oro)"
+      ],
+      [
+       "Leer la historia, `git log`, `git bisect` (s11)",
+       "Más ramificada",
+       "Más simple de recorrer"
+      ],
+      [
+       "Trazabilidad",
+       "Se ve cuándo se integró cada rama",
+       "Se pierde ese contexto"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Merge o rebase?",
+     "mermaid": "flowchart TD\n  A[\"¿Los commits que vas a reescribir ya están publicados y otras personas pueden haber trabajado sobre ellos?\"] -->|Sí| B[\"No los reescribas: usa merge (o revert para deshacer)\"]\n  A -->|No, son locales o de tu rama personal| C[\"¿Quieres historia lineal o limpiar tus commits antes de compartir?\"]\n  C -->|Sí| D[\"git rebase (y rebase -i para ordenar)\"]\n  C -->|No, prefieres conservar la historia real| E[\"git merge\"]"
+    },
+    {
+     "type": "h",
+     "text": "Cómo se combinan en un equipo"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Poner al día tu rama**: mientras trabajas en `feature/x`, `git rebase main` (o `git pull --rebase`, última lección) evita llenar tu rama de commits «Merge branch 'main' into feature/x».",
+      "**Limpiar antes de compartir**: `git rebase -i` para unir commits WIP, corregir mensajes y quitar commits de depuración (lecciones 4 y 5).",
+      "**Integrar en la rama compartida**: merge. Muchos equipos usan `--no-ff` para dejar un commit de fusión por funcionalidad; otros prefieren historia lineal con `--ff-only`. En GitHub, el pull request ofrece tres botones: *Create a merge commit*, *Squash and merge* (un único commit) y *Rebase and merge* (reaplica los commits sin commit de fusión; GitHub siempre actualiza el committer y crea hashes nuevos)."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Un detalle importante: si tu rama contiene commits de fusión (por ejemplo, porque antes hiciste `git merge main` dentro de ella), `git rebase` **los descarta por defecto** y deja una línea recta con el resto de los commits. Si necesitas conservar esa estructura existe `git rebase --rebase-merges`, que vuelve a crear las fusiones (las resoluciones de conflictos de esas fusiones hay que rehacerlas a mano)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Atlassian resume el compromiso así: el rebase te da una historia más limpia a cambio de **seguridad y trazabilidad**. La seguridad la recuperas respetando la regla de oro; la trazabilidad, integrando con un merge al final si tu equipo la valora."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si te preguntan qué comando deja una historia **lineal** sin commits de fusión al integrar una rama que divergió: rebase (y luego fast-forward). Si te preguntan cuál es **seguro para ramas públicas** porque no reescribe commits: merge."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "historia lineal",
+       "en": "linear history",
+       "def": "Historia sin commits de fusión: cada commit tiene un único padre."
+      },
+      {
+       "term": "fast-forward",
+       "en": "fast-forward",
+       "def": "Integración en la que la rama destino solo avanza su puntero, porque es ancestro de la otra."
+      },
+      {
+       "term": "--rebase-merges",
+       "en": "--rebase-merges",
+       "def": "Opción de rebase que intenta recrear los commits de fusión en vez de aplanarlos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l3",
+   "title": "Conflictos durante un rebase",
+   "minutes": 20,
+   "goals": [
+    "Resolver un conflicto a mitad de un rebase y terminarlo con `git rebase --continue`",
+    "Decidir entre `--continue`, `--skip` y `--abort` según la situación",
+    "Interpretar `git status` durante un rebase: qué commit se está aplicando y cuáles faltan",
+    "Distinguir qué versión es «ours» y cuál «theirs» durante un rebase"
+   ],
+   "takeaways": [
+    "Un conflicto detiene el rebase en el commit que no se pudo reaplicar; los siguientes esperan su turno.",
+    "Para seguir: edita los archivos, `git add` y `git rebase --continue` (Git te ofrece el mensaje original para que lo guardes).",
+    "`git rebase --skip` descarta el commit actual; úsalo cuando su cambio ya no hace falta (por ejemplo, ya está en `main`).",
+    "`git rebase --abort` cancela todo y deja la rama exactamente como estaba antes de empezar.",
+    "Durante un rebase, «ours» (HEAD) es la base nueva con lo ya reaplicado y «theirs» es tu commit: al revés que en un merge."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Reaplicar un commit sobre otra base es, por dentro, una pequeña fusión de tres vías: Git compara el commit original con su padre y trata de aplicar esa diferencia sobre la nueva base. Si `main` cambió las mismas líneas que tu commit, Git no puede decidir por ti y **se detiene en ese commit**. El resto de los commits de la lista esperan."
+    },
+    {
+     "type": "p",
+     "text": "Así se ve en Git 2.50 cuando Diego cambió el precio del café cortado en `main` y tú agregaste una línea justo al lado en tu rama:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "$ git rebase main\nRebasing (1/2)Auto-merging menu.md\nCONFLICT (content): Merge conflict in menu.md\nerror: could not apply cf1e26a... Agrega el café cortado doble\nhint: Resolve all conflicts manually, mark them as resolved with\nhint: \"git add/rm <conflicted_files>\", then run \"git rebase --continue\".\nhint: You can instead skip this commit: run \"git rebase --skip\".\nhint: To abort and get back to the state before \"git rebase\", run \"git rebase --abort\".\nhint: Disable this message with \"git config set advice.mergeConflict false\"\nCould not apply cf1e26a... # Agrega el café cortado doble"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`Rebasing (1/2)`: está reaplicando el primero de tus dos commits.",
+      "`CONFLICT (content): Merge conflict in menu.md`: hay un conflicto de contenido en ese archivo.",
+      "`could not apply cf1e26a... Agrega el café cortado doble`: el commit que no pudo reaplicar (con su hash original).",
+      "Los `hint:` resumen tus tres salidas: resolver y `--continue`, saltar el commit con `--skip` o cancelar con `--abort`."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Las tres salidas de un rebase detenido",
+     "mermaid": "stateDiagram-v2\n  [*] --> Reaplicando: git rebase main\n  Reaplicando --> Detenido: conflicto en un commit\n  Detenido --> Reaplicando: editar + git add + git rebase --continue\n  Detenido --> Reaplicando: git rebase --skip (descarta ese commit)\n  Detenido --> [*]: git rebase --abort (todo vuelve a como estaba)\n  Reaplicando --> [*]: no quedan commits (rama actualizada)"
+    },
+    {
+     "type": "h",
+     "text": "Mirar antes de tocar: git status"
+    },
+    {
+     "type": "p",
+     "text": "Durante el rebase estás en **HEAD separado** (si tu terminal usa el prompt de Git, `git-prompt.sh`, verás algo como `(feature/menu-invierno|REBASE 1/2)`). `git status` te dice qué commit se aplicó, cuáles faltan y qué archivos están en conflicto. En Git 2.50 aparece como *interactive rebase* incluso si no usaste `-i`, porque el rebase moderno usa por dentro la misma maquinaria que el interactivo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.800'\nanexar menu.md '- Té con leche: $1.500'\ngit add menu.md\ngit commit -qm 'Primer commit'\ngit switch -q -c feature/menu-invierno\nfecha '2026-09-02 10:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.800'\nanexar menu.md '- Café cortado doble: $2.200'\nanexar menu.md '- Té con leche: $1.500'\ngit commit -qam 'Agrega el café cortado doble'\nfecha '2026-09-02 11:00'\nanexar menu.md '- Sopaipillas pasadas: $2.000'\ngit commit -qam 'Agrega sopaipillas pasadas al menú'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.900'\nanexar menu.md '- Té con leche: $1.500'\ngit commit -qam 'Actualiza el precio del café cortado'\nyo\ngit switch -q feature/menu-invierno",
+     "cwd": "cafeteria",
+     "code": "git rebase main\ngit status\ncat menu.md\ngit rebase --abort\ngit log --oneline --graph --all",
+     "caption": "Tras mirar el estado y el archivo, `git rebase --abort` cancela el rebase: el gráfico muestra que todo volvió a como estaba."
+    },
+    {
+     "type": "h",
+     "text": "Resolver y continuar"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Abre el archivo (`code menu.md`) y decide el contenido final: a veces es una versión, a veces la otra y muchas veces una **combinación** de ambas. Borra los marcadores `<<<<<<<`, `=======` y `>>>>>>>`.",
+      "Marca el archivo como resuelto con `git add menu.md` (si la solución es borrarlo, `git rm`).",
+      "Ejecuta `git rebase --continue`. Git crea el commit reaplicado y te abre el editor con el mensaje original para que lo revises: guárdalo tal cual o mejóralo.",
+      "Si otro commit más adelante vuelve a chocar, el rebase se detiene otra vez y repites el proceso."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.800'\nanexar menu.md '- Té con leche: $1.500'\ngit add menu.md\ngit commit -qm 'Primer commit'\ngit switch -q -c feature/menu-invierno\nfecha '2026-09-02 10:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.800'\nanexar menu.md '- Café cortado doble: $2.200'\nanexar menu.md '- Té con leche: $1.500'\ngit commit -qam 'Agrega el café cortado doble'\nfecha '2026-09-02 11:00'\nanexar menu.md '- Sopaipillas pasadas: $2.000'\ngit commit -qam 'Agrega sopaipillas pasadas al menú'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\nescribir menu.md '# Menú Café Andino'\nanexar menu.md '- Café cortado: $1.900'\nanexar menu.md '- Té con leche: $1.500'\ngit commit -qam 'Actualiza el precio del café cortado'\nyo\ngit switch -q feature/menu-invierno",
+     "cwd": "cafeteria",
+     "code": "git rebase main\ncat menu.md\nprintf '# Menú Café Andino\\n- Café cortado: $1.900\\n- Café cortado doble: $2.200\\n- Té con leche: $1.500\\n' > menu.md\ngit add menu.md\ngit rebase --continue\ngit log --oneline --graph --all\ncat menu.md",
+     "caption": "La línea del `printf` escribe la resolución: el precio nuevo de Diego y, debajo, tu café doble. Cuando Git abra el editor con el mensaje «Agrega el café cortado doble», guárdalo sin cambios."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No termines el rebase con `git commit` y te olvides de él: si haces commit a mano, igualmente tienes que ejecutar `git rebase --continue` para aplicar los commits que faltan. Mientras `git status` diga *rebase in progress*, la operación sigue abierta y tu rama todavía no se ha movido."
+    },
+    {
+     "type": "h",
+     "text": "«Ours» y «theirs» están al revés"
+    },
+    {
+     "type": "p",
+     "text": "En un merge, «ours» es tu rama actual y «theirs» la que fusionas. En un rebase, Git se para en la **base nueva** y va aplicando **tus** commits sobre ella, así que los papeles se invierten. Fíjate en los marcadores de arriba: `<<<<<<< HEAD` muestra la línea de Diego (lo que ya está en la base) y `>>>>>>> cf1e26a` muestra tu commit."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Referencia",
+      "Durante un merge",
+      "Durante un rebase"
+     ],
+     "rows": [
+      [
+       "`HEAD` / «ours» / `git checkout --ours`",
+       "Tu rama actual",
+       "La base nueva (`main`) más los commits tuyos ya reaplicados"
+      ],
+      [
+       "«theirs» / `git checkout --theirs`",
+       "La rama que estás fusionando",
+       "El commit tuyo que se está reaplicando"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "--skip: cuando tu commit ya sobra"
+    },
+    {
+     "type": "p",
+     "text": "A veces el conflicto aparece porque tu commit hace algo que `main` **ya hizo de otra forma**: por ejemplo, corregiste un error en tu rama y una compañera lo corrigió en `main` con un código distinto. Tu commit ya no aporta nada: `git rebase --skip` lo descarta y sigue con el siguiente. Si en vez de eso resuelves el conflicto dejando la versión de `main` y el commit queda sin cambios, `git rebase --continue` también lo omite. Si el commit era idéntico al de `main`, ni siquiera habrá conflicto: el rebase lo detecta y lo salta solo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Durante un rebase detenido, `git rebase --show-current-patch` muestra el cambio del commit que se está intentando reaplicar. Y si repites los mismos conflictos a menudo, `rerere` (s15) recuerda cómo los resolviste. El estilo `merge.conflictStyle zdiff3` (s06) también funciona aquí y muestra la versión base entre los marcadores."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Durante un rebase, `git checkout --theirs archivo` deja **tu** versión (la del commit que se reaplica) y `--ours` la de la **base**. Es una pregunta trampa clásica porque en un merge es al revés."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "--continue",
+       "en": "--continue",
+       "def": "Retoma el rebase después de resolver y preparar (`git add`) los archivos en conflicto."
+      },
+      {
+       "term": "--skip",
+       "en": "--skip",
+       "def": "Descarta el commit que se estaba reaplicando y sigue con el siguiente."
+      },
+      {
+       "term": "--abort",
+       "en": "--abort",
+       "def": "Cancela el rebase y devuelve la rama, el índice y el directorio de trabajo al estado anterior."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l4",
+   "title": "Rebase interactivo: edita tu historia antes de compartirla",
+   "minutes": 25,
+   "goals": [
+    "Abrir la lista de tareas con `git rebase -i` y leerla en su orden (del commit más antiguo al más reciente)",
+    "Usar `reword`, `squash`, `fixup`, `drop` y el reordenamiento de líneas para limpiar una serie de commits",
+    "Detener el rebase con `edit` para corregir o dividir un commit antiguo",
+    "Automatizar comprobaciones por commit con `exec` y pausar con `break`"
+   ],
+   "takeaways": [
+    "`git rebase -i <base>` abre una lista de tareas con los commits posteriores a `<base>`: `HEAD~3` te deja editar los tres últimos.",
+    "La lista va del commit más antiguo (arriba) al más nuevo (abajo) porque Git la ejecuta de arriba hacia abajo.",
+    "Desde Git 2.50 el asunto de cada commit aparece después de `#`: es solo una referencia; para cambiar un mensaje usa `reword`.",
+    "`squash` funde un commit en el anterior y te deja combinar los mensajes; `fixup` lo funde descartando su mensaje.",
+    "Borrar una línea (o usar `drop`) elimina ese commit; si borras todas las líneas, el rebase se cancela."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora el rebase reaplicaba tus commits tal cual. Con `-i` (`--interactive`), Git te muestra primero **la lista de lo que va a hacer** y te deja modificarla: cambiar mensajes, unir commits, borrarlos, reordenarlos o detenerse en uno para editarlo. Es la herramienta para convertir una serie de commits desordenados («WIP», «arreglo», «ahora sí») en una historia que se pueda revisar con gusto."
+    },
+    {
+     "type": "p",
+     "text": "En la plataforma, cuando ejecutas `git rebase -i`, Git abre la lista en el **editor integrado**. Editas, guardas y Git continúa. Es exactamente lo que harías con VS Code u otro editor en tu computador."
+    },
+    {
+     "type": "h",
+     "text": "La lista de tareas"
+    },
+    {
+     "type": "p",
+     "text": "Con `git rebase -i HEAD~3` le pides a Git reaplicar los tres últimos commits sobre `HEAD~3`, es decir, sobre el mismo lugar: la base no cambia, pero puedes editar la serie. Esto es lo que verás (Git 2.50, comentarios recortados):"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "pick 445d223 # Agrega la portada\npick 4c710e8 # Agrega la página de proyectos\npick 13ec222 # Agrega la página de contacto\n\n# Rebase 5293a02..13ec222 onto 5293a02 (3 commands)\n#\n# Commands:\n# p, pick <commit> = use commit\n# r, reword <commit> = use commit, but edit the commit message\n# e, edit <commit> = use commit, but stop for amending\n# s, squash <commit> = use commit, but meld into previous commit\n# f, fixup [-C | -c] <commit> = like \"squash\" but keep only the previous\n#                    commit's log message, unless -C is used, in which case\n#                    keep only this commit's message; -c is same as -C but\n#                    opens the editor\n# x, exec <command> = run command (the rest of the line) using shell\n# b, break = stop here (continue rebase later with 'git rebase --continue')\n# d, drop <commit> = remove commit\n# ...\n# These lines can be re-ordered; they are executed from top to bottom.\n#\n# If you remove a line here THAT COMMIT WILL BE LOST.\n#\n# However, if you remove everything, the rebase will be aborted."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**El orden es el inverso de `git log`**: el commit más antiguo está arriba, porque es el primero que se reaplica. La lista se ejecuta de arriba hacia abajo.",
+      "Cada línea es `comando hash # asunto`. Lo que va después de `#` es un comentario que Git ignora: desde Git 2.50 se marca así para dejar claro que editar ese texto **no** cambia el mensaje.",
+      "Las líneas que empiezan con `#` son ayuda y no se ejecutan."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Si guardas la lista sin cambios, Git se da cuenta de que puede conservar los mismos commits y no reescribe nada: los hashes quedan idénticos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Mi portafolio' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo index.html '<h1>Hola, soy Alumno</h1>' 'Agrega la portada'\nfecha '2026-09-01 12:00'\ncommit_archivo proyectos.html '<h2>Proyectos</h2>' 'Agrega la página de proyectos'\nfecha '2026-09-01 13:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega la página de contacto'",
+     "cwd": "portafolio",
+     "code": "git log --oneline\ngit rebase -i HEAD~3\ngit log --oneline",
+     "caption": "Cuando se abra la lista, guárdala sin cambios."
+    },
+    {
+     "type": "h",
+     "text": "Los comandos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Abreviatura",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`pick`",
+       "`p`",
+       "Usa el commit tal cual (valor por defecto)."
+      ],
+      [
+       "`reword`",
+       "`r`",
+       "Usa el commit, pero se detiene para que edites su mensaje (se abre un segundo editor)."
+      ],
+      [
+       "`edit`",
+       "`e`",
+       "Aplica el commit y **se detiene** para que lo modifiques (`git commit --amend`) o lo dividas; sigues con `git rebase --continue`."
+      ],
+      [
+       "`squash`",
+       "`s`",
+       "Funde el commit con el de la línea anterior y abre el editor con **ambos mensajes** para que escribas el definitivo."
+      ],
+      [
+       "`fixup`",
+       "`f`",
+       "Funde el commit con el anterior **descartando su mensaje**. `fixup -C` usa en cambio el mensaje de este commit; `fixup -c`, lo mismo, pero abriendo el editor."
+      ],
+      [
+       "`drop`",
+       "`d`",
+       "Elimina el commit (igual que borrar la línea, pero explícito)."
+      ],
+      [
+       "`exec`",
+       "`x`",
+       "Ejecuta un comando de shell en ese punto; si falla, el rebase se detiene."
+      ],
+      [
+       "`break`",
+       "`b`",
+       "Se detiene ahí sin aplicar nada; sigues con `git rebase --continue`."
+      ],
+      [
+       "`label`, `reset`, `merge`, `update-ref`",
+       "`l`, `t`, `m`, `u`",
+       "Avanzados: los usan `--rebase-merges` y `--update-refs` (lección 6)."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Limpiar una serie: reword, squash, fixup, drop y reordenar"
+    },
+    {
+     "type": "p",
+     "text": "Imagina esta rama antes de pedir revisión:"
+    },
+    {
+     "type": "diagram",
+     "title": "Antes: una rama desordenada",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/login\n  checkout feature/login\n  commit id: \"Agrega formulario de login\"\n  commit id: \"WIP\"\n  commit id: \"console.log para depurar\"\n  commit id: \"Valdia el RUT\""
+    },
+    {
+     "type": "p",
+     "text": "Para dejarla lista, editas la lista de tareas así:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "pick 1a2b3c4 # Agrega formulario de login\nfixup 5d6e7f8 # WIP\ndrop 9a8b7c6 # console.log para depurar\nreword 3c4d5e6 # Valdia el RUT"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`fixup` funde «WIP» en «Agrega formulario de login» y conserva solo el mensaje de este último.",
+      "`drop` elimina el commit de depuración (borrar la línea tendría el mismo efecto).",
+      "`reword` abre un segundo editor con el mensaje «Valdia el RUT» para que lo corrijas a «Valida el RUT».",
+      "Para **reordenar**, basta mover las líneas: Git las ejecuta en el nuevo orden. Si dos commits tocan las mismas líneas de un archivo, cambiar su orden puede producir conflictos, que se resuelven como en la lección anterior."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Después: dos commits limpios",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/login\n  checkout feature/login\n  commit id: \"Agrega formulario de login'\"\n  commit id: \"Valida el RUT\""
+    },
+    {
+     "type": "p",
+     "text": "Con `squash` (en vez de `fixup`), Git abre un editor para combinar los mensajes. En Git 2.50 se ve así; todo lo que empieza con `#` se ignora, y lo que dejes sin `#` será el mensaje final:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# This is a combination of 2 commits.\n# This is the 1st commit message:\n\nAgrega la portada\n\n# This is the commit message #2:\n\nAgrega la página de proyectos\n\n# Please enter the commit message for your changes. Lines starting\n# with '#' will be ignored, and an empty message aborts the commit."
+    },
+    {
+     "type": "h",
+     "text": "Elegir la base"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git rebase -i HEAD~N`: los N últimos commits de la rama actual.",
+      "`git rebase -i main`: todos los commits de tu rama que no están en `main`. Si `main` avanzó, además los reaplica encima (actualizar y limpiar a la vez).",
+      "`git rebase -i --root`: toda la historia desde el primer commit (útil en repositorios nuevos)."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Mi portafolio' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo index.html '<h1>Hola, soy Alumno</h1>' 'Agrega la portada'\nfecha '2026-09-01 12:00'\ncommit_archivo proyectos.html '<h2>Proyectos</h2>' 'Agrega la página de proyectos'\nfecha '2026-09-01 13:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega la página de contacto'\ngit switch -q -c feature/blog HEAD~1\nfecha '2026-09-02 10:00'\ncommit_archivo blog.html '<h2>Blog</h2>' 'Agrega la página del blog'\nfecha '2026-09-02 11:00'\ncommit_archivo posts/primer-post.md '# Mi primer post' 'Agrega el primer post'",
+     "cwd": "portafolio",
+     "code": "git log --oneline main..HEAD\ngit rebase -i main\ngit log --oneline --graph --all",
+     "caption": "El primer comando lista tus commits que no están en `main`: son los mismos dos que verás en la lista de tareas. Guárdala sin cambios; como `main` avanzó, igualmente se reaplican encima."
+    },
+    {
+     "type": "h",
+     "text": "edit: detenerse en un commit"
+    },
+    {
+     "type": "p",
+     "text": "`edit` aplica el commit y te devuelve el control con ese commit como HEAD. Puedes corregirlo (cambiar archivos, `git add`, `git commit --amend`) o **dividirlo** en varios. La receta del libro Pro Git para dividir un commit:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git rebase -i HEAD~3          # marca con \"edit\" el commit que quieres dividir\ngit reset HEAD~1              # deshace ese commit, dejando sus cambios sin preparar\ngit add README.md\ngit commit -m \"Corrige error de tipeo en el README\"\ngit add login.html\ngit commit -m \"Agrega formulario de login\"\ngit rebase --continue         # reaplica el resto de la lista"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Borrar una línea de la lista **elimina ese commit**; si borras todas, el rebase se cancela. Si quieres que Git te avise cuando falte una línea, configura `rebase.missingCommitsCheck` en `warn` o `error` (por defecto, `ignore`). Y si ya guardaste la lista y te arrepientes, `git rebase --abort` todavía te devuelve al punto de partida."
+    },
+    {
+     "type": "h",
+     "text": "exec y break"
+    },
+    {
+     "type": "p",
+     "text": "`exec` ejecuta un comando de shell en ese punto de la lista, desde la raíz del repositorio; si el comando falla, el rebase se detiene para que arregles el commit. La opción `-x` (o `--exec`) agrega esa línea después de cada commit, algo muy usado para comprobar que **cada** commit de la serie compila y pasa las pruebas:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# En tu computador (en la terminal de práctica no hay npm):\ngit rebase -i -x \"npm test\" main\n\n# La lista queda así:\npick 1a2b3c4 # Agrega formulario de login\nexec npm test\npick 3c4d5e6 # Valida el RUT\nexec npm test"
+    },
+    {
+     "type": "p",
+     "text": "`break` detiene el rebase en ese punto sin aplicar nada, por ejemplo para revisar el estado a mitad de camino. Continúas con `git rebase --continue`. Y si a mitad de un rebase quieres cambiar lo que falta, `git rebase --edit-todo` vuelve a abrir la lista."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si prefieres escribir menos, `git config --global rebase.abbreviateCommands true` hace que la lista use `p`, `r`, `s`, `f`… en vez de los nombres completos. Las abreviaturas siempre se aceptan al editar."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda el orden: en `git log` el commit más nuevo está arriba; en la lista de `git rebase -i`, **abajo**. Y la diferencia clave: `squash` combina los mensajes (abre el editor), `fixup` descarta el mensaje del commit que se funde."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "lista de tareas",
+       "en": "todo list",
+       "def": "Archivo `git-rebase-todo` que Git abre en `git rebase -i` con una línea por commit y el comando a aplicar."
+      },
+      {
+       "term": "aplastar",
+       "en": "squash",
+       "def": "Fundir varios commits en uno solo."
+      },
+      {
+       "term": "commit WIP",
+       "en": "work in progress",
+       "def": "Commit provisional («trabajo en curso») que conviene fundir antes de compartir."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l5",
+   "title": "fixup! y --autosquash: arreglos que se colocan solos",
+   "minutes": 15,
+   "goals": [
+    "Crear commits de arreglo dirigidos a un commit anterior con `git commit --fixup` y `--squash`",
+    "Aplicar esos arreglos automáticamente con `git rebase -i --autosquash` o con `rebase.autoSquash`",
+    "Elegir entre `--fixup`, `--fixup=amend:` y `--fixup=reword:` según haya que corregir el contenido, el mensaje o ambos"
+   ],
+   "takeaways": [
+    "`git commit --fixup=<commit>` crea un commit con asunto `fixup! <asunto del commit>` que se fundirá en él.",
+    "`git rebase -i --autosquash` coloca cada `fixup!`/`squash!`/`amend!` justo debajo de su commit y le cambia el comando; tú solo guardas la lista.",
+    "Desde Git 2.44, `--autosquash` también funciona sin `-i`; `rebase.autoSquash = true` lo activa por defecto en el modo interactivo.",
+    "`--squash` combina también el mensaje; `--fixup=amend:` corrige contenido y mensaje; `--fixup=reword:` solo el mensaje.",
+    "Es el flujo ideal para responder a una revisión de código: commits de arreglo visibles durante la revisión y una historia limpia al integrar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Situación muy común: tienes tres commits en tu rama y el revisor encuentra un error en el **primero**. Podrías hacer un commit nuevo «Arregla crearReserva», pero la historia quedaría con un commit roto seguido de su arreglo. Con `rebase -i` podrías fundirlo a mano, moviendo líneas. Git tiene una forma más cómoda: marcar el arreglo **al crearlo**."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git add reservas.js\ngit commit --fixup=a1b2c3d     # a1b2c3d es el commit que arreglas (también sirve HEAD~1, una rama, etc.)\n# [feature/reservas 0b9d2f2] fixup! Agrega crearReserva"
+    },
+    {
+     "type": "p",
+     "text": "El commit nuevo se llama `fixup! Agrega crearReserva`. Más tarde, `git rebase -i --autosquash main` genera la lista **ya ordenada**: el `fixup!` aparece justo debajo de su destino y con el comando `fixup`. Solo tienes que guardar."
+    },
+    {
+     "type": "diagram",
+     "title": "Antes del autosquash",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/reservas\n  checkout feature/reservas\n  commit id: \"Agrega crearReserva\"\n  commit id: \"Agrega validarHora\"\n  commit id: \"fixup! Agrega crearReserva\""
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "pick 6d1b1b3 # Agrega crearReserva\nfixup 0b9d2f2 # fixup! Agrega crearReserva\npick dc9946d # Agrega validarHora"
+    },
+    {
+     "type": "diagram",
+     "title": "Después: el arreglo vive dentro del commit correcto",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/reservas\n  checkout feature/reservas\n  commit id: \"Agrega crearReserva'\"\n  commit id: \"Agrega validarHora'\""
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# API de reservas de canchas' 'Primer commit'\ngit switch -q -c feature/reservas\nfecha '2026-09-02 10:00'\ncommit_archivo reservas.js 'function crearReserva(cancha) { return { cancha }; }' 'Agrega crearReserva'\nfecha '2026-09-02 11:00'\ncommit_archivo horarios.js 'function validarHora(hora) { return hora >= 8 && hora <= 22; }' 'Agrega validarHora'\nfecha '2026-09-02 12:00'\nescribir reservas.js 'function crearReserva(cancha, hora) { return { cancha, hora }; }'",
+     "cwd": "reservas",
+     "code": "git log --oneline\ngit add reservas.js\ngit commit --fixup=HEAD~1\ngit log --oneline\ngit rebase -i --autosquash main\ngit log --oneline\ngit show --stat HEAD~1",
+     "caption": "En este repositorio, `reservas.js` ya tiene el arreglo sin confirmar, y su destino es «Agrega crearReserva» (`HEAD~1`). Cuando se abra la lista, fíjate en que el fixup ya está en su lugar y guárdala sin cambios."
+    },
+    {
+     "type": "h",
+     "text": "Las variantes"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Asunto del commit nuevo",
+      "Qué hace el autosquash"
+     ],
+     "rows": [
+      [
+       "`git commit --fixup=X`",
+       "`fixup! <asunto de X>`",
+       "`fixup`: funde el cambio en X y conserva el mensaje de X."
+      ],
+      [
+       "`git commit --squash=X`",
+       "`squash! <asunto de X>`",
+       "`squash`: funde el cambio y abre el editor para combinar los mensajes. Admite `-m` para agregar texto."
+      ],
+      [
+       "`git commit --fixup=amend:X`",
+       "`amend! <asunto de X>`",
+       "`fixup -C`: funde el cambio **y** reemplaza el mensaje de X por el que escribiste (se abre el editor al crearlo)."
+      ],
+      [
+       "`git commit --fixup=reword:X`",
+       "`amend! <asunto de X>`",
+       "Solo reemplaza el mensaje de X; ignora lo que haya en el área de preparación."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Si usas `--autosquash` a menudo, actívalo por defecto con `git config --global rebase.autoSquash true`: desde entonces, todo `git rebase -i` ordena los arreglos solo (y `--no-autosquash` lo desactiva en una ejecución). Desde Git 2.44, además, `git rebase --autosquash main` funciona sin `-i`: aplica los arreglos sin abrir la lista."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo reservas\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# API de reservas de canchas' 'Primer commit'\ngit switch -q -c feature/reservas\nfecha '2026-09-02 10:00'\ncommit_archivo reservas.js 'function crearReserva(cancha) { return { cancha }; }' 'Agrega crearReserva'\nfecha '2026-09-02 11:00'\ncommit_archivo horarios.js 'function validarHora(hora) { return hora >= 8 && hora <= 22; }' 'Agrega validarHora'\nfecha '2026-09-02 12:00'\nescribir reservas.js 'function crearReserva(cancha, hora) { return { cancha, hora }; }'",
+     "cwd": "reservas",
+     "code": "git config rebase.autoSquash true\ngit add reservas.js\ngit commit --squash=HEAD~1 -m \"Guarda también la hora de la reserva\"\ngit rebase -i main\ngit log --format=%B -1 HEAD~1",
+     "caption": "Guarda la lista sin cambios y luego el mensaje combinado tal como lo propone Git: la línea «squash! …» ya viene comentada con #, así que el commit queda con el mensaje original y, debajo, el texto que agregaste con -m."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "No necesitas copiar el hash: `--fixup` acepta cualquier forma de nombrar un commit (s03): `HEAD~2`, el nombre de una rama (`--fixup=feature/modelo` apunta a su último commit) o `:/texto`, que elige el commit más reciente cuyo mensaje coincide con ese texto, interpretado como expresión regular (por ejemplo, `--fixup=:/crearReserva`)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`--autosquash` solo reordena commits que entran en el rebase: el commit destino tiene que estar dentro del rango (por ejemplo, después de `main` en `git rebase -i --autosquash main`). Si el asunto no coincide con ningún commit del rango, el `fixup!` queda como un commit normal."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`git commit --fixup` no arregla nada por sí solo: crea un commit marcado. El arreglo se aplica al ejecutar `git rebase --autosquash` (con o sin `-i`), o con `rebase.autoSquash = true` en el modo interactivo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "commit fixup!",
+       "en": "fixup commit",
+       "def": "Commit cuyo asunto empieza con `fixup! ` seguido del asunto del commit que corrige."
+      },
+      {
+       "term": "--autosquash",
+       "en": "--autosquash",
+       "def": "Opción de rebase que mueve y marca automáticamente los commits `fixup!`, `squash!` y `amend!`."
+      },
+      {
+       "term": "commit amend!",
+       "en": "amend commit",
+       "def": "Commit creado con `--fixup=amend:` o `--fixup=reword:` que, además, reemplaza el mensaje del commit destino."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l6",
+   "title": "Mover ramas: --onto y --update-refs",
+   "minutes": 20,
+   "goals": [
+    "Trasplantar solo una parte de una rama con `git rebase --onto <nueva-base> <base-antigua> <rama>`",
+    "Eliminar un tramo de commits intermedios con `--onto`",
+    "Actualizar a la vez un grupo de ramas apiladas con `git rebase --update-refs` (Git 2.38 o posterior)"
+   ],
+   "takeaways": [
+    "`git rebase --onto N B R` reaplica los commits de `B..R` (los de R que no están en B) encima de N.",
+    "Sirve para rescatar una rama creada desde el lugar equivocado sin arrastrar commits ajenos.",
+    "`git rebase --onto HEAD~3 HEAD~1` conserva solo el último commit sobre `HEAD~3`: elimina los dos intermedios.",
+    "`--update-refs` mueve también las ramas que apuntaban a commits reescritos (ramas apiladas); `rebase.updateRefs = true` lo activa siempre.",
+    "Después de mover ramas publicadas, hay que volver a publicarlas con `--force-with-lease` (lección 7)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El rebase normal toma «todo lo que tu rama tiene y la base no». A veces necesitas más precisión: **qué** commits mover y **adónde** llevarlos son dos preguntas distintas. Para eso está `--onto`."
+    },
+    {
+     "type": "h",
+     "text": "Una rama que nació en el lugar equivocado"
+    },
+    {
+     "type": "p",
+     "text": "Creaste `feature/guia-avanzada` mientras estabas en `feature/guia-basica` (en vez de en `main`). Ahora la guía básica todavía no está lista, pero la avanzada sí, y quieres proponerla sola."
+    },
+    {
+     "type": "diagram",
+     "title": "Antes: la guía avanzada arrastra los commits de la básica",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/guia-basica\n  checkout feature/guia-basica\n  commit id: \"Agrega la guía básica\"\n  commit id: \"Agrega el paso de instalación\"\n  branch feature/guia-avanzada\n  checkout feature/guia-avanzada\n  commit id: \"Agrega la guía avanzada\"\n  checkout main\n  commit id: \"Agrega licencia\""
+    },
+    {
+     "type": "p",
+     "text": "Un `git rebase main` estando en `feature/guia-avanzada` no sirve: se llevaría también los dos commits de la guía básica, porque tampoco están en `main`. La solución:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git rebase --onto main feature/guia-basica feature/guia-avanzada\n#                  ↑ nueva base  ↑ base antigua     ↑ rama a mover"
+    },
+    {
+     "type": "p",
+     "text": "Se lee así: «toma los commits de `feature/guia-avanzada` que no están en `feature/guia-basica` (el rango `feature/guia-basica..feature/guia-avanzada`) y reaplícalos sobre `main`». El libro Pro Git lo explica con el ejemplo `git rebase --onto master server client`. El tercer argumento es opcional: si lo omites, se usa la rama actual."
+    },
+    {
+     "type": "diagram",
+     "title": "Después: solo el commit propio, sobre main",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/guia-basica\n  checkout feature/guia-basica\n  commit id: \"Agrega la guía básica\"\n  commit id: \"Agrega el paso de instalación\"\n  checkout main\n  commit id: \"Agrega licencia\"\n  branch feature/guia-avanzada\n  checkout feature/guia-avanzada\n  commit id: \"Agrega la guía avanzada'\""
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo docs\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Documentación' 'Primer commit'\ngit switch -q -c feature/guia-basica\nfecha '2026-09-02 10:00'\ncommit_archivo basica.md '# Guía básica' 'Agrega la guía básica'\nfecha '2026-09-02 11:00'\nanexar basica.md 'Paso 1: instalar'\ngit commit -qam 'Agrega el paso de instalación'\ngit switch -q -c feature/guia-avanzada\nfecha '2026-09-02 12:00'\ncommit_archivo avanzada.md '# Guía avanzada' 'Agrega la guía avanzada'\ngit switch -q main\nfecha '2026-09-03 09:00'\ncommit_archivo LICENSE 'CC BY 4.0' 'Agrega licencia'\ngit switch -q feature/guia-avanzada",
+     "cwd": "docs",
+     "code": "git log --oneline --graph --all\ngit rebase --onto main feature/guia-basica feature/guia-avanzada\ngit log --oneline --graph --all\nls"
+    },
+    {
+     "type": "h",
+     "text": "Borrar un tramo de commits"
+    },
+    {
+     "type": "p",
+     "text": "Como el segundo argumento marca dónde **empieza** lo que se reaplica, `--onto` también sirve para eliminar commits intermedios sin abrir el editor. En una rama A–B–C–D–E (E es HEAD):"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git rebase --onto HEAD~3 HEAD~1\n# reaplica HEAD~1..HEAD (solo E) sobre HEAD~3 (B): quedan A–B–E' y desaparecen C y D"
+    },
+    {
+     "type": "h",
+     "text": "Ramas apiladas y --update-refs"
+    },
+    {
+     "type": "p",
+     "text": "En proyectos grandes se suele dividir una funcionalidad en varias ramas que se apoyan unas en otras (*stacked branches*): `feature/modelo` → `feature/rutas` → `feature/vista`, cada una con su propio pull request. El problema aparece al hacer rebase de la rama de arriba: sus commits se reescriben, pero las ramas de abajo **siguen apuntando a los commits viejos**."
+    },
+    {
+     "type": "diagram",
+     "title": "Sin --update-refs: las ramas de abajo quedan colgando de la base antigua",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  branch feature/modelo\n  checkout feature/modelo\n  commit id: \"M\"\n  branch feature/rutas\n  checkout feature/rutas\n  commit id: \"R\"\n  checkout main\n  commit id: \"Agrega licencia MIT\"\n  branch feature/vista\n  checkout feature/vista\n  commit id: \"M'\"\n  commit id: \"R'\"\n  commit id: \"V'\""
+    },
+    {
+     "type": "p",
+     "text": "Desde **Git 2.38**, `--update-refs` resuelve esto: toda rama que apunte a un commit que se está reescribiendo se mueve a su copia nueva. En modo interactivo verás líneas `update-ref` en la lista, que puedes mover o borrar:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "pick 9fca1e8 # Agrega el modelo Reserva\nupdate-ref refs/heads/feature/modelo\n\npick a360e5e # Agrega la ruta POST /reservas\nupdate-ref refs/heads/feature/rutas\n\npick fd84045 # Agrega el formulario de reserva"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# API de canchas' 'Primer commit'\ngit switch -q -c feature/modelo\nfecha '2026-09-02 10:00'\ncommit_archivo modelo.js 'class Reserva {}' 'Agrega el modelo Reserva'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 11:00'\ncommit_archivo rutas.js 'POST /reservas' 'Agrega la ruta POST /reservas'\ngit switch -q -c feature/vista\nfecha '2026-09-02 12:00'\ncommit_archivo vista.html '<form></form>' 'Agrega el formulario de reserva'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo LICENSE 'MIT' 'Agrega licencia MIT'\nyo\ngit switch -q feature/vista",
+     "cwd": "api",
+     "code": "git log --oneline --graph --all\ngit rebase --update-refs main\ngit log --oneline --graph --all\ngit branch -v"
+    },
+    {
+     "type": "p",
+     "text": "Al terminar, Git lo informa con `Updated the following refs with --update-refs:` y la lista de ramas movidas. Si trabajas así a menudo, `git config --global rebase.updateRefs true` lo activa siempre (y `--no-update-refs` lo desactiva una vez). Las ramas que estén en uso en otro *worktree* (s14) no se tocan."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# API de canchas' 'Primer commit'\ngit switch -q -c feature/modelo\nfecha '2026-09-02 10:00'\ncommit_archivo modelo.js 'class Reserva {}' 'Agrega el modelo Reserva'\ngit switch -q -c feature/rutas\nfecha '2026-09-02 11:00'\ncommit_archivo rutas.js 'POST /reservas' 'Agrega la ruta POST /reservas'\ngit switch -q -c feature/vista\nfecha '2026-09-02 12:00'\ncommit_archivo vista.html '<form></form>' 'Agrega el formulario de reserva'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo LICENSE 'MIT' 'Agrega licencia MIT'\nyo\ngit switch -q feature/vista",
+     "cwd": "api",
+     "code": "git rebase -i --update-refs main\ngit branch -v",
+     "caption": "Mira las líneas update-ref en la lista y guárdala sin cambios."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`--update-refs` combina muy bien con `--autosquash`: si un revisor pide un cambio en la rama de más abajo, haces `git commit --fixup=feature/modelo` estando en la rama de arriba y luego `git rebase -i --autosquash --update-refs main`. El arreglo entra en el commit correcto y las tres ramas quedan al día."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si esas ramas ya estaban publicadas (por ejemplo, cada una con su pull request), ahora apuntan a commits nuevos y el servidor rechazará un `git push` normal. Tendrás que publicarlas con `git push --force-with-lease`, que es el tema de la próxima lección."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En `git rebase --onto N B R`, los commits que se reaplican son los de **`B..R`**: los alcanzables desde R que no lo son desde B. B no se reaplica; N es solo el destino."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "--onto",
+       "en": "--onto",
+       "def": "Indica la nueva base sobre la que se crean los commits, independiente de la base que delimita qué commits se toman."
+      },
+      {
+       "term": "ramas apiladas",
+       "en": "stacked branches",
+       "def": "Ramas que se construyen unas sobre otras para dividir un cambio grande en varias revisiones."
+      },
+      {
+       "term": "--update-refs",
+       "en": "--update-refs",
+       "def": "Opción (Git 2.38+) que actualiza las ramas que apuntan a commits reescritos durante el rebase."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s09-l7",
+   "title": "La regla de oro y cómo publicar historia reescrita",
+   "minutes": 20,
+   "goals": [
+    "Aplicar la regla de oro para decidir cuándo se puede reescribir una rama publicada",
+    "Traer cambios remotos sin commits de fusión con `git pull --rebase` y configurar `pull.rebase`",
+    "Publicar una rama reescrita con `git push --force-with-lease` y explicar qué agrega `--force-if-includes`",
+    "Interpretar los rechazos `(fetch first)`, `(stale info)` y `(remote ref updated since checkout)`"
+   ],
+   "takeaways": [
+    "Regla de oro: no hagas rebase de commits que existen fuera de tu repositorio y sobre los que otros pueden haber basado su trabajo.",
+    "`git pull --rebase` = `git fetch` + rebase de tus commits locales sobre la rama remota: historia lineal sin «Merge branch…».",
+    "`git push --force` pisa el servidor a ciegas; `--force-with-lease` solo fuerza si la rama del servidor sigue donde tu `origin/rama` cree que está.",
+    "Si un `git fetch` actualizó `origin/rama` sin que integraras esos commits, `--force-with-lease` ya no te protege: agrega `--force-if-includes` (Git 2.30+).",
+    "Si alguien reescribió una rama en la que te basaste, `git pull --rebase` suele bastar; en casos difíciles, `git rebase --onto`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Todo lo que viste en esta sección crea commits nuevos y abandona los viejos. En tu repositorio local eso no tiene riesgo. El problema aparece cuando esos commits viejos **ya estaban en el servidor** y otras personas trabajaron sobre ellos: su historia y la tuya dejan de coincidir, y al integrar aparecen commits duplicados, conflictos incomprensibles o, peor, trabajo perdido."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**La regla de oro del rebase.** Pro Git: «*Do not rebase commits that exist outside your repository and that people may have based work on*» (no hagas rebase de commits que existen fuera de tu repositorio y sobre los que otras personas pueden haber basado su trabajo). En la edición en español: «Nunca reorganices confirmaciones de cambio (commits) que hayas enviado (push) a un repositorio público». Atlassian lo resume en: nunca uses `git rebase` en ramas **públicas**."
+    },
+    {
+     "type": "h",
+     "text": "¿Cuándo sí se puede reescribir algo publicado?"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Nunca** en ramas compartidas de larga vida: `main`, `develop`, `release/*`. Para deshacer algo ahí se usa `git revert` (s04).",
+      "**Sí**, con cuidado, en tu propia rama de funcionalidad publicada solo para respaldo o para abrir un pull request, cuando nadie más construye sobre ella. Es lo habitual al responder a una revisión: `rebase -i` + `git push --force-with-lease`.",
+      "Si otra persona también sube commits a esa rama, **coordina antes** de reescribir: avísale, integra primero sus commits y luego fuerza con protección.",
+      "Muchos equipos protegen `main` en GitHub o GitLab para que el servidor rechace cualquier push forzado (lo viste en s08)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "git pull --rebase: traer cambios sin commits de fusión"
+    },
+    {
+     "type": "p",
+     "text": "Caso cotidiano: tienes un commit local sin publicar y alguien publicó en `main`. `git push` es rechazado con `(fetch first)`. Si ejecutas `git pull` sin haber configurado nada, Git 2.50 se detiene con `fatal: Need to specify how to reconcile divergent branches.` y te pide elegir: fusionar, hacer rebase o solo avanzar (fast-forward). `git pull --rebase` hace `git fetch` y luego reaplica tus commits locales encima de `origin/main`. Esto **sí** es seguro: solo reescribe tus commits locales, que nadie más tiene."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare ~/servidor/biblioteca.git\nnuevo_repo biblioteca\nfecha '2026-09-01 10:00'\ncommit_archivo lecturas.md '# Lecturas del club' 'Primer commit'\ngit remote add origin ~/servidor/biblioteca.git\ngit push -q -u origin main\ncd ~\ngit clone -q ~/servidor/biblioteca.git companera\ncd companera\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 09:00'\nanexar lecturas.md '- Cien años de soledad'\ngit commit -qam 'Agrega Cien años de soledad'\ngit push -q origin main\nyo\ncd ~/biblioteca\nfecha '2026-09-02 10:00'\ncommit_archivo autores.md '# Autores' 'Agrega la lista de autores'",
+     "cwd": "biblioteca",
+     "code": "git push\ngit pull --rebase\ngit log --oneline --graph --all\ngit push"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando o configuración",
+      "Qué hace cuando tu rama y la remota divergieron"
+     ],
+     "rows": [
+      [
+       "`git pull --rebase`",
+       "Reaplica tus commits locales encima de la rama remota."
+      ],
+      [
+       "`git pull --no-rebase`",
+       "Fusiona la rama remota en la tuya (crea un commit de fusión)."
+      ],
+      [
+       "`git pull --ff-only`",
+       "Solo actualiza si puede avanzar sin fusionar; si no, se detiene."
+      ],
+      [
+       "`git config --global pull.rebase true`",
+       "Hace que `git pull` use rebase por defecto."
+      ],
+      [
+       "`git config --global pull.ff only`",
+       "Hace que `git pull` solo acepte fast-forward."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "El rebase se niega a empezar si tienes cambios sin confirmar en archivos con seguimiento. `git pull --rebase --autostash` (o la configuración `rebase.autoStash true`) los guarda temporalmente y los recupera al terminar; el *stash* lo verás en s10."
+    },
+    {
+     "type": "h",
+     "text": "Publicar historia reescrita: --force-with-lease"
+    },
+    {
+     "type": "p",
+     "text": "Reescribiste tu rama `feature/carrito`, que ya estaba en el servidor. Un `git push` normal es rechazado porque tu rama ya no contiene los commits del servidor (no es un fast-forward). La tentación es `git push --force`, que **reemplaza la rama del servidor por la tuya sin mirar**: si alguien subió algo mientras tanto, lo borras."
+    },
+    {
+     "type": "p",
+     "text": "`git push --force-with-lease` es la versión prudente: fuerza **solo si la rama del servidor sigue apuntando al mismo commit que tu `origin/feature/carrito`**, es decir, al último estado que viste. Si alguien subió algo después de tu último `git fetch`, el push se rechaza con `(stale info)`. Es como tomar un «arriendo» (*lease*) sobre la rama: tu escritura solo es válida si nadie la tocó desde que la miraste."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo te protege --force-with-lease",
+     "mermaid": "sequenceDiagram\n  participant T as Tú (origin/feature/carrito = A)\n  participant S as Servidor\n  participant C as Camila\n  C->>S: git push (feature/carrito pasa de A a B)\n  Note over T: reescribes tu rama con rebase -i\n  T->>S: git push --force-with-lease\n  S-->>T: rechazado (stale info): la rama ya no está en A\n  T->>S: git fetch (origin/feature/carrito pasa a B)\n  Note over T: sin integrar B, --force-with-lease ahora sí forzaría y borraría B\n  T->>S: git push --force-with-lease --force-if-includes\n  S-->>T: rechazado (remote ref updated since checkout)"
+    },
+    {
+     "type": "p",
+     "text": "El diagrama muestra la trampa: si ejecutas `git fetch` (o tu editor lo hace solo, en segundo plano), tu `origin/feature/carrito` se actualiza y `--force-with-lease` cree que ya viste el commit de Camila, aunque no lo hayas integrado. Para cubrir ese caso, Git 2.30 agregó `--force-if-includes`: solo permite forzar si la punta remota está incluida en la historia reciente de tu rama local (según su reflog), es decir, si de verdad la integraste. Obsérvalo en vivo; aquí «reescribimos» con `git commit --amend` (s04):"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare ~/servidor/tienda.git\nnuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'Primer commit'\ngit remote add origin ~/servidor/tienda.git\ngit push -q -u origin main\ngit switch -q -c feature/carrito\nfecha '2026-09-02 10:00'\ncommit_archivo carrito.js 'let items = [];' 'carrito'\ngit push -q -u origin feature/carrito\ncd ~\ngit clone -q ~/servidor/tienda.git companera\ncd companera\ngit switch -q feature/carrito\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo estilos.css '.carrito { display: flex; }' 'Agrega estilos del carrito'\ngit push -q origin feature/carrito\nyo\ncd ~/tienda",
+     "cwd": "tienda",
+     "code": "git commit --amend -m \"Agrega el carrito de compras\"\ngit push\ngit push --force-with-lease\ngit fetch\ngit push --force-with-lease --force-if-includes\ngit log --oneline --graph --all"
+    },
+    {
+     "type": "p",
+     "text": "Lee los rechazos de arriba abajo. `(fetch first)`: el servidor tiene commits que tú no tienes. `(stale info)`: la rama del servidor no está donde tu `origin/feature/carrito` dice; alguien subió algo. `(remote ref updated since checkout)`: después del `git fetch`, ya conoces el commit de Camila, pero no está en tu rama. En ese último punto, un `git push --force-with-lease` a secas **sí habría funcionado** y habría borrado el commit de Camila del servidor. Lo correcto es integrar primero su trabajo (por ejemplo, rehaciendo tu limpieza sobre `origin/feature/carrito`) y luego forzar."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Resultado de un push forzado aceptado: el + y los tres puntos indican una actualización forzada\n + ab9a4da...8c6f166 feature/carrito -> feature/carrito (forced update)"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Después de reescribir una rama publicada, `git status` dirá que tu rama y `origin/…` *have diverged* y el rechazo del push sugerirá `git pull`. Aquí **no** sigas ese consejo: un `git pull` con merge mezclaría la historia vieja con la nueva, y un `git pull --rebase` descartaría tus commits limpios (`dropping … -- patch contents already upstream`) y te devolvería la historia antigua. Lo que corresponde es publicar con `--force-with-lease`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para no tener que recordarlo: `git config --global push.useForceIfIncludes true` agrega `--force-if-includes` a cada `git push --force-with-lease`. Muchos profesionales crean además un alias (s13), por ejemplo `pushf`, para `push --force-with-lease`. Y si quieres forzar solo una rama, puedes nombrarla: `git push --force-with-lease origin feature/carrito`."
+    },
+    {
+     "type": "h",
+     "text": "Si alguien reescribió la rama en la que te basaste"
+    },
+    {
+     "type": "p",
+     "text": "La documentación de `git rebase` dedica una sección a recuperarse de un rebase ajeno (*recovering from upstream rebase*). Caso fácil: el otro hizo un rebase simple, sin conflictos. Entonces `git pull --rebase` (o `git rebase origin/rama`) funciona, porque Git reconoce por su contenido (su *patch-id*) los commits que ya están en la nueva versión y los salta. Caso difícil: el otro unió, editó o borró commits con `rebase -i`. Hay que decirle a Git dónde terminaba la rama vieja y empezaba tu trabajo: `git rebase --onto origin/rama <punta-antigua>`. Por eso la regla de oro importa tanto: el problema se propaga a todos los que dependían de esa rama."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`--force` sobrescribe siempre. `--force-with-lease` sobrescribe solo si la rama remota sigue donde apunta tu referencia remota (si no, `stale info`). `--force-if-includes` exige además que la punta remota esté integrada en tu rama local. Y `git pull --rebase` es seguro porque solo reescribe commits que aún no publicaste."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "regla de oro",
+       "en": "golden rule of rebasing",
+       "def": "No reescribir commits publicados sobre los que otros pueden haber basado su trabajo."
+      },
+      {
+       "term": "push forzado",
+       "en": "force push",
+       "def": "Push que reemplaza una rama remota aunque el cambio no sea un fast-forward."
+      },
+      {
+       "term": "--force-with-lease",
+       "en": "--force-with-lease",
+       "def": "Push forzado que solo se acepta si la rama remota sigue en el commit que esperabas (tu referencia remota)."
+      },
+      {
+       "term": "--force-if-includes",
+       "en": "--force-if-includes",
+       "def": "Complemento (Git 2.30+) que exige que la punta remota esté integrada en tu rama local antes de forzar."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s09-e1",
+   "title": "Pon tu rama al día con main (sin merge)",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Trabajas en el sitio del **Almacén Don Pepe**. Creaste la rama `feature/ofertas` e hiciste dos commits. Mientras tanto, Camila agregó dos commits a `main`, así que tu rama quedó atrás.",
+    "Antes de pedir revisión, pon `feature/ofertas` al día **sin crear un commit de fusión**: tus dos commits deben quedar encima del último commit de `main`, en el mismo orden. `main` no debe cambiar.",
+    "Empieza mirando el gráfico con `git log --oneline --graph --all`."
+   ],
+   "setup": "nuevo_repo almacen\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Almacén Don Pepe</h1>' 'Primer commit'\ngit switch -q -c feature/ofertas\nfecha '2026-09-02 10:00'\ncommit_archivo ofertas.html '<h2>Ofertas</h2>' 'Agrega la página de ofertas'\nfecha '2026-09-02 11:00'\nanexar ofertas.html '<p>Marraqueta: $1.990 el kilo</p>'\ngit commit -qam 'Agrega ofertas de la semana'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo logo.svg '<svg></svg>' 'Agrega el logo'\nfecha '2026-09-03 10:00'\ncommit_archivo horario.html '<p>Lunes a domingo, 8 a 22</p>' 'Actualiza el horario de atención'\nyo\ngit switch -q feature/ofertas",
+   "cwd": "almacen",
+   "checks": [
+    {
+     "name": "feature/ofertas parte del último commit de main",
+     "script": "ancestro main feature/ofertas || falla \"feature/ofertas todavía no incluye los commits nuevos de main (¿hiciste el rebase estando en feature/ofertas?)\""
+    },
+    {
+     "name": "Encima de main quedan tus dos commits, en orden",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/ofertas 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega la página de ofertas|Agrega ofertas de la semana|\" ] || falla \"Encima de main deberían quedar solo tus dos commits, en el mismo orden (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "Sin commits de fusión",
+     "script": "[ \"$(git rev-list --merges --count feature/ofertas)\" = 0 ] || falla \"Hay un commit de fusión en feature/ofertas: esta vez integra con rebase, no con merge\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 3 ] || falla \"main debería seguir con sus 3 commits: el rebase se hace desde tu rama, sin tocar main\"\nmensaje_es main 'Actualiza el horario de atención' \"La punta de main debería seguir siendo el commit de Camila\""
+    },
+    {
+     "name": "Terminaste en tu rama, sin rebase a medias",
+     "script": "sin_operacion_en_curso\nen_rama feature/ofertas"
+    }
+   ],
+   "solution": [
+    "git rebase main"
+   ],
+   "hints": [
+    "Quieres que tu rama «empiece» en la punta de `main`: eso es exactamente lo que hace un rebase.",
+    "Estando en `feature/ofertas`, ejecuta `git rebase main` y vuelve a mirar el gráfico."
+   ],
+   "explain": "`git rebase main` busca el ancestro común (el «Primer commit»), toma tus dos commits, se sitúa en la punta de `main` y los reaplica uno por uno, creando copias con hashes nuevos. Al final mueve `feature/ofertas` a la última copia. Como nadie más tenía tus commits, reescribirlos es seguro. Alternativas: `git rebase main feature/ofertas` hace lo mismo desde cualquier rama; `git merge main` también pondría tu rama al día, pero con un commit de fusión. Si te arrepientes justo después, `git reset --hard ORIG_HEAD` deja la rama como estaba."
+  },
+  {
+   "id": "s09-e2",
+   "title": "Sal de un rebase que se complicó",
+   "level": "facil",
+   "minutes": 5,
+   "prompt": [
+    "En la **Librería Macondo** empezaste a hacer `git rebase main` en la rama `feature/catalogo-invierno` y el rebase se detuvo con un conflicto: Diego cambió en `main` el mismo precio que tú rebajaste.",
+    "Antes de resolver nada quieres preguntarle a Diego cuál es el precio correcto. **Cancela el rebase** y deja todo exactamente como estaba antes de empezarlo: de vuelta en tu rama, sin conflictos y con tus commits originales.",
+    "Mira primero la situación con `git status`."
+   ],
+   "setup": "nuevo_repo libreria\nfecha '2026-09-01 10:00'\nescribir catalogo.md '# Catálogo'\nanexar catalogo.md '- Papelucho: $8.900'\nanexar catalogo.md '- Cien años de soledad: $15.900'\ngit add catalogo.md\ngit commit -qm 'Primer commit'\ngit switch -q -c feature/catalogo-invierno\nfecha '2026-09-02 10:00'\nescribir catalogo.md '# Catálogo'\nanexar catalogo.md '- Papelucho: $6.900 (oferta de invierno)'\nanexar catalogo.md '- Cien años de soledad: $15.900'\ngit commit -qam 'Rebaja el precio de Papelucho'\nfecha '2026-09-02 11:00'\ncommit_archivo novedades.md '# Novedades' 'Agrega la sección de novedades'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\nescribir catalogo.md '# Catálogo'\nanexar catalogo.md '- Papelucho: $9.500'\nanexar catalogo.md '- Cien años de soledad: $15.900'\ngit commit -qam 'Actualiza el precio de Papelucho'\nyo\ngit switch -q feature/catalogo-invierno\ngit rebase main >/dev/null 2>&1 || true",
+   "cwd": "libreria",
+   "checks": [
+    {
+     "name": "No quedó ninguna operación a medias",
+     "script": "sin_operacion_en_curso"
+    },
+    {
+     "name": "Estás de vuelta en feature/catalogo-invierno",
+     "script": "en_rama feature/catalogo-invierno \"Deberías estar de vuelta en feature/catalogo-invierno (si estás en HEAD separado, el rebase sigue abierto)\""
+    },
+    {
+     "name": "La rama quedó como antes del rebase",
+     "script": "ancestro main feature/catalogo-invierno && falla \"feature/catalogo-invierno ya incluye el commit de Diego: la idea era cancelar el rebase, no terminarlo\"\n[ \"$(git merge-base main feature/catalogo-invierno)\" = \"$(git rev-parse main~1)\" ] || falla \"La rama debería seguir partiendo del commit inicial\"\nactual=\"$(git log --reverse --format=%s main~1..feature/catalogo-invierno 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Rebaja el precio de Papelucho|Agrega la sección de novedades|\" ] || falla \"Tus dos commits originales deberían seguir en la rama (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "Sin conflictos ni cambios sueltos",
+     "script": "sin_conflictos\nlimpio \"Quedaron cambios en el directorio de trabajo: al cancelar, todo debería volver a estar limpio\""
+    }
+   ],
+   "solution": [
+    "git rebase --abort"
+   ],
+   "hints": [
+    "`git status` te lista las tres salidas posibles de un rebase detenido. Una de ellas lo cancela por completo.",
+    "Ejecuta `git rebase --abort`."
+   ],
+   "explain": "`git rebase --abort` devuelve HEAD a la rama original y restaura el índice y el directorio de trabajo al estado anterior al rebase: como si nunca lo hubieras empezado. Es la salida de emergencia más segura. No la confundas con `git rebase --quit`, que detiene el rebase pero deja HEAD donde esté (a mitad de camino), ni con `--skip`, que solo descarta el commit actual y sigue. Cuando Diego te confirme el precio, vuelves a ejecutar `git rebase main` y resuelves el conflicto."
+  },
+  {
+   "id": "s09-e3",
+   "title": "Corrige un mensaje antiguo con reword",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En tu biblioteca para **validar RUT** hay un error de tipeo en el mensaje del penúltimo commit: dice «Agerga el cálculo del dígito verificador». Todavía no publicaste nada.",
+    "Corrige ese mensaje para que diga **Agrega el cálculo del dígito verificador**, sin cambiar nada más: mismos commits, mismo orden, mismo contenido.",
+    "Usa un rebase interactivo. Se abrirán **dos editores**: primero la lista de tareas (cambia `pick` por `reword` en la línea correcta y guarda) y luego el mensaje de ese commit (corrígelo y guarda)."
+   ],
+   "setup": "nuevo_repo rut\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Validador de RUT' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo rut.js 'function limpiarRut(rut) { return rut.replace(/[.-]/g, \"\"); }' 'Agrega la función limpiarRut'\nfecha '2026-09-01 12:00'\ncommit_archivo dv.js 'function digitoVerificador(numero) { /* módulo 11 */ }' 'Agerga el cálculo del dígito verificador'\nfecha '2026-09-01 13:00'\ncommit_archivo pruebas.js 'console.assert(digitoVerificador(12345678) === \"5\");' 'Agrega pruebas del validador'",
+   "cwd": "rut",
+   "checks": [
+    {
+     "name": "El mensaje quedó corregido",
+     "script": "mensaje_es HEAD~1 'Agrega el cálculo del dígito verificador' \"El penúltimo commit debería llamarse «Agrega el cálculo del dígito verificador» (ahora: «$(mensaje HEAD~1)»)\""
+    },
+    {
+     "name": "Ya no queda ningún «Agerga»",
+     "script": "git log --format=%B | grep -q 'Agerga' && falla \"Todavía hay un commit con «Agerga» en su mensaje\"; true"
+    },
+    {
+     "name": "Mismos commits y mismo contenido",
+     "script": "actual=\"$(git log --reverse --format=%s HEAD 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Primer commit|Agrega la función limpiarRut|Agrega el cálculo del dígito verificador|Agrega pruebas del validador|\" ] || falla \"La historia debería tener los mismos 4 commits, en el mismo orden (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\"\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1)\" = \"dv.js\" ] || falla \"El commit corregido debería seguir agregando dv.js (solo cambia su mensaje)\""
+    },
+    {
+     "name": "Rebase terminado y en main",
+     "script": "sin_operacion_en_curso\nen_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i HEAD~2",
+     "edit": [
+      "reword {{SHA:HEAD~1}} # Agerga el cálculo del dígito verificador\npick {{SHA:HEAD}} # Agrega pruebas del validador\n",
+      "Agrega el cálculo del dígito verificador\n"
+     ]
+    }
+   ],
+   "hints": [
+    "El commit está dos lugares atrás: `git rebase -i HEAD~2` te muestra justo los dos últimos commits (el más antiguo arriba).",
+    "En la lista, cambia `pick` por `reword` (o `r`) en la línea de «Agerga…» y guarda. No edites el texto después de `#`: eso no cambia el mensaje.",
+    "En el segundo editor aparece el mensaje antiguo: corrígelo a «Agrega el cálculo del dígito verificador», guarda y listo."
+   ],
+   "explain": "`reword` reaplica el commit tal cual, pero se detiene para que edites su mensaje. Como el hash depende del mensaje, ese commit y todos los posteriores (aquí, «Agrega pruebas del validador») se reescriben con hashes nuevos; los anteriores no se tocan. Si el error hubiera estado en el **último** commit, bastaba `git commit --amend` (s04). Otra opción moderna: `git commit --fixup=reword:HEAD~1` seguido de `git rebase --autosquash HEAD~2` (lección 5). Y recuerda: desde Git 2.50 el asunto aparece tras `#` en la lista precisamente para que nadie crea que editarlo ahí cambia el mensaje."
+  },
+  {
+   "id": "s09-e4",
+   "title": "Trae los cambios de Camila sin commit de fusión",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "Con Camila mantienen un **recetario** en `~/servidor/recetas.git`. Tú hiciste un commit local («Agrega receta de sopaipillas») y, cuando fuiste a publicarlo, resultó que Camila ya había subido otro («Agrega receta de pebre»).",
+    "Trae el commit de Camila y deja tu commit **encima**, sin commit de fusión, y publica el resultado en el servidor.",
+    "Si pruebas `git pull` a secas, fíjate en lo que responde Git 2.50 cuando las ramas divergieron."
+   ],
+   "setup": "git init -q --bare ~/servidor/recetas.git\nnuevo_repo recetas\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Recetario' 'Primer commit'\ngit remote add origin ~/servidor/recetas.git\ngit push -q -u origin main\ncd ~\ngit clone -q ~/servidor/recetas.git companera\ncd companera\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 09:00'\ncommit_archivo pebre.md '# Pebre' 'Agrega receta de pebre'\ngit push -q origin main\nyo\ncd ~/recetas\nfecha '2026-09-02 10:00'\ncommit_archivo sopaipillas.md '# Sopaipillas' 'Agrega receta de sopaipillas'",
+   "cwd": "recetas",
+   "checks": [
+    {
+     "name": "Tienes el commit de Camila",
+     "script": "git log --format=%s main | grep -qx 'Agrega receta de pebre' || falla \"Tu main todavía no tiene el commit de Camila («Agrega receta de pebre»)\""
+    },
+    {
+     "name": "Sin commits de fusión",
+     "script": "[ \"$(git rev-list --merges --count main)\" = 0 ] || falla \"Se creó un commit de fusión: esta vez trae los cambios con rebase\""
+    },
+    {
+     "name": "Tu commit quedó encima",
+     "script": "mensaje_es main 'Agrega receta de sopaipillas' \"Tu commit «Agrega receta de sopaipillas» debería quedar en la punta de main\"\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener 3 commits: el inicial, el de Camila y el tuyo\""
+    },
+    {
+     "name": "El servidor tiene tu versión",
+     "script": "[ \"$(git -C ~/servidor/recetas.git rev-parse main)\" = \"$(git rev-parse main)\" ] || falla \"El servidor todavía no tiene tu commit: falta publicarlo\""
+    },
+    {
+     "name": "Sin operaciones a medias y limpio",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git pull --rebase",
+    "git push"
+   ],
+   "hints": [
+    "`git pull` hace dos cosas: traer (`fetch`) e integrar. Puedes pedirle que integre con rebase en vez de con merge.",
+    "`git pull --rebase` reaplica tu commit encima del de Camila. Después, `git push`."
+   ],
+   "explain": "`git pull --rebase` equivale a `git fetch` + `git rebase origin/main`: tu commit local, que nadie más tenía, se reaplica encima del de Camila, y la historia queda lineal. Es seguro porque solo reescribe commits que aún no publicaste. Sin configuración, `git pull` se niega a elegir por ti cuando las ramas divergieron (`fatal: Need to specify how to reconcile divergent branches.`); para que use rebase siempre, `git config --global pull.rebase true`. Alternativas: `git pull --no-rebase` (merge, con commit de fusión) o `git fetch` seguido de `git rebase origin/main`."
+  },
+  {
+   "id": "s09-e5",
+   "title": "Rebase con conflicto: combina los dos cambios",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En el sitio de la **Panadería La Espiga**, tu rama `feature/horario` tiene dos commits. En `main`, Diego cambió el horario de «9 a 18» a «10 a 19». Tú, en tu rama, agregaste los días: «lunes a sábado, 9 a 18».",
+    "Pon tu rama al día con `git rebase main`. Habrá un conflicto en `index.html`. La versión correcta combina ambos cambios; la línea del horario debe quedar exactamente así:",
+    "```html\n<p>Horario: lunes a sábado, 10 a 19</p>\n```",
+    "Resuelve (con `code index.html`), marca el archivo como resuelto y termina el rebase. Tus dos commits deben quedar encima de `main`."
+   ],
+   "setup": "nuevo_repo panaderia\nfecha '2026-09-01 10:00'\nescribir index.html '<h1>Panadería La Espiga</h1>'\nanexar index.html '<p>Horario: 9 a 18</p>'\nanexar index.html '<p>Pan amasado y hallullas todos los días</p>'\ngit add index.html\ngit commit -qm 'Primer commit'\ngit switch -q -c feature/horario\nfecha '2026-09-02 10:00'\nescribir index.html '<h1>Panadería La Espiga</h1>'\nanexar index.html '<p>Horario: lunes a sábado, 9 a 18</p>'\nanexar index.html '<p>Pan amasado y hallullas todos los días</p>'\ngit commit -qam 'Detalla los días de atención'\nfecha '2026-09-02 11:00'\ncommit_archivo contacto.html '<p>Pedidos: pedidos@ejemplo.com</p>' 'Agrega el correo de pedidos'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\nescribir index.html '<h1>Panadería La Espiga</h1>'\nanexar index.html '<p>Horario: 10 a 19</p>'\nanexar index.html '<p>Pan amasado y hallullas todos los días</p>'\ngit commit -qam 'Cambia el horario a 10 a 19'\nyo\ngit switch -q feature/horario",
+   "cwd": "panaderia",
+   "checks": [
+    {
+     "name": "Rebase terminado y sin conflictos",
+     "script": "sin_operacion_en_curso\nsin_conflictos"
+    },
+    {
+     "name": "Tu rama parte del último commit de main",
+     "script": "ancestro main feature/horario || falla \"feature/horario todavía no está encima del commit de Diego\""
+    },
+    {
+     "name": "El horario combina los dos cambios",
+     "script": "h=\"$(contenido feature/horario index.html)\"\necho \"$h\" | grep -qF '<p>Horario: lunes a sábado, 10 a 19</p>' || falla \"En la rama, index.html debería decir exactamente «<p>Horario: lunes a sábado, 10 a 19</p>»\"\necho \"$h\" | grep -q '9 a 18' && falla \"Todavía aparece el horario antiguo (9 a 18)\"\necho \"$h\" | grep -qF 'Pan amasado y hallullas' || falla \"Se perdió la línea del pan amasado\"\ntrue"
+    },
+    {
+     "name": "Tus dos commits siguen ahí, en orden",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/horario 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Detalla los días de atención|Agrega el correo de pedidos|\" ] || falla \"Encima de main deberían quedar tus dos commits (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "En tu rama y con todo confirmado",
+     "script": "en_rama feature/horario\nlimpio"
+    }
+   ],
+   "solution": [
+    "git rebase main",
+    "printf '<h1>Panadería La Espiga</h1>\\n<p>Horario: lunes a sábado, 10 a 19</p>\\n<p>Pan amasado y hallullas todos los días</p>\\n' > index.html",
+    "git add index.html",
+    "git rebase --continue"
+   ],
+   "hints": [
+    "Después de `git rebase main`, `git status` te dice qué archivo está en conflicto y qué commit se está reaplicando.",
+    "En `index.html`, borra los marcadores `<<<<<<<`, `=======` y `>>>>>>>` y deja una sola línea de horario con los días y las horas nuevas. Luego `git add index.html`.",
+    "Termina con `git rebase --continue` y guarda el mensaje que te propone Git. El segundo commit se reaplica solo."
+   ],
+   "explain": "Durante el rebase, el bloque `<<<<<<< HEAD` muestra la versión de la **base** (la línea de Diego) y el bloque `>>>>>>> …` la de **tu commit**. Aquí ninguna de las dos es correcta por sí sola: hay que combinarlas. Después de `git add`, `git rebase --continue` crea el commit reaplicado (Git te ofrece el mensaje original) y sigue con «Agrega el correo de pedidos», que no choca con nada. Si te hubieras equivocado resolviendo, `git rebase --abort` te devolvía al principio. Con `merge.conflictStyle zdiff3` (s06) verías además la versión original («9 a 18») entre los marcadores, lo que ayuda a entender qué cambió cada uno."
+  },
+  {
+   "id": "s09-e6",
+   "title": "Aplasta los commits WIP en uno solo",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Tu rama `feature/reservar` del sistema de **reservas de canchas** tiene cuatro commits: uno bueno y tres provisionales («WIP», «wip: falta validar», «ahora sí funciona»). Nadie más la ha visto.",
+    "Déjala con **un único commit** encima de `main`, con el mensaje **Agrega el endpoint para reservar una cancha** (nada más en el mensaje) y con el código final que tienes ahora."
+   ],
+   "setup": "nuevo_repo canchas\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Reservas de canchas' 'Primer commit'\ngit switch -q -c feature/reservar\nfecha '2026-09-02 10:00'\ncommit_archivo reservar.js 'function reservar(cancha) {}' 'Agrega el endpoint para reservar una cancha'\nfecha '2026-09-02 11:00'\ncommit_archivo reservar.js 'function reservar(cancha, hora) {}' 'WIP'\nfecha '2026-09-02 12:00'\nescribir reservar.js 'function reservar(cancha, hora) {\n  // falta validar la hora\n}'\ngit commit -qam 'wip: falta validar'\nfecha '2026-09-02 13:00'\nescribir reservar.js 'function reservar(cancha, hora) {\n  if (hora < 8 || hora > 22) throw new Error(\"Horario no disponible\");\n  return { cancha, hora };\n}'\ngit commit -qam 'ahora sí funciona'",
+   "cwd": "canchas",
+   "checks": [
+    {
+     "name": "Queda un solo commit encima de main",
+     "script": "n=$(git rev-list --count main..feature/reservar); [ \"$n\" = 1 ] || falla \"Encima de main debería quedar un único commit (ahora hay $n)\""
+    },
+    {
+     "name": "Con el mensaje correcto y sin rastros de WIP",
+     "script": "mensaje_es feature/reservar 'Agrega el endpoint para reservar una cancha'\ngit log -1 --format=%B feature/reservar | grep -qiE 'wip|ahora s' && falla \"El mensaje todavía incluye textos de los commits provisionales: deja solo «Agrega el endpoint para reservar una cancha»\"\ntrue"
+    },
+    {
+     "name": "El código final se conserva",
+     "script": "contenido feature/reservar reservar.js | grep -qF 'Horario no disponible' || falla \"reservar.js no tiene la versión final: se perdió algún cambio al fusionar los commits\"\ncontenido feature/reservar reservar.js | grep -qF 'return { cancha, hora };' || falla \"reservar.js no tiene la versión final\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "[ \"$(num_commits main)\" = 1 ] || falla \"main no debería cambiar\""
+    },
+    {
+     "name": "Rebase terminado, en tu rama y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/reservar\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i main",
+     "edit": "pick {{SHA:HEAD~3}} # Agrega el endpoint para reservar una cancha\nfixup {{SHA:HEAD~2}} # WIP\nfixup {{SHA:HEAD~1}} # wip: falta validar\nfixup {{SHA:HEAD}} # ahora sí funciona\n"
+    }
+   ],
+   "hints": [
+    "`git rebase -i main` te muestra solo los commits de tu rama, del más antiguo (arriba) al más nuevo.",
+    "Deja `pick` en el primero y usa `fixup` (o `f`) en los otros tres: se funden en el de arriba y su mensaje se descarta.",
+    "Si usaste `squash` en vez de `fixup`, Git abre un segundo editor con todos los mensajes: borra todo menos «Agrega el endpoint para reservar una cancha»."
+   ],
+   "explain": "`fixup` funde cada commit en el anterior y descarta su mensaje, así que el resultado es un solo commit con el mensaje del primero y el contenido acumulado de los cuatro. Con `squash` obtienes lo mismo, pero Git te deja editar el mensaje combinado (útil cuando los mensajes aportan información). Otra forma, sin rebase: `git reset --soft main` + `git commit -m \"…\"` (s04), que deja todos los cambios preparados y crea un commit nuevo. La ventaja del rebase interactivo es que puedes elegir qué fundir y qué conservar por separado."
+  },
+  {
+   "id": "s09-e7",
+   "title": "Reordena y elimina commits",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Preparas el sitio de la **Hackatón Valparaíso**. La rama `feature/inscripciones` tiene cuatro commits, pero quedaron desordenados y uno sobra:",
+    "```text\nActualiza el CHANGELOG                       (debería ir al final)\nAgrega el formulario de inscripción\nconsole.log para depurar el formulario       (sobra: elimínalo)\nValida el correo en el formulario\n```",
+    "Deja la rama con estos tres commits, en este orden: **Agrega el formulario de inscripción**, **Valida el correo en el formulario**, **Actualiza el CHANGELOG**. El archivo `depuracion.js` no debe quedar en la rama."
+   ],
+   "setup": "nuevo_repo hackaton\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Hackatón Valparaíso</h1>' 'Primer commit'\ngit switch -q -c feature/inscripciones\nfecha '2026-09-02 10:00'\ncommit_archivo CHANGELOG.md '- Nueva página de inscripciones' 'Actualiza el CHANGELOG'\nfecha '2026-09-02 11:00'\ncommit_archivo inscripcion.html '<form id=\"inscripcion\"></form>' 'Agrega el formulario de inscripción'\nfecha '2026-09-02 12:00'\ncommit_archivo depuracion.js 'console.log(\"formulario\", datos);' 'console.log para depurar el formulario'\nfecha '2026-09-02 13:00'\ncommit_archivo validacion.js 'function validarCorreo(correo) { return correo.includes(\"@\"); }' 'Valida el correo en el formulario'",
+   "cwd": "hackaton",
+   "checks": [
+    {
+     "name": "Los tres commits en el orden pedido",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/inscripciones 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega el formulario de inscripción|Valida el correo en el formulario|Actualiza el CHANGELOG|\" ] || falla \"Encima de main deberían quedar: formulario, validación y CHANGELOG, en ese orden (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "El commit de depuración desapareció",
+     "script": "git log --format=%s main..feature/inscripciones | grep -q 'console.log' && falla \"El commit de depuración sigue en la rama\"\ngit cat-file -e feature/inscripciones:depuracion.js 2>/dev/null && falla \"depuracion.js sigue en la rama\"\ntrue"
+    },
+    {
+     "name": "No se perdió nada más",
+     "script": "for f in inscripcion.html validacion.js CHANGELOG.md; do git cat-file -e \"feature/inscripciones:$f\" 2>/dev/null || falla \"Falta $f en la rama: ¿borraste una línea de más en la lista?\"; done"
+    },
+    {
+     "name": "Rebase terminado, en tu rama y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/inscripciones\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i main",
+     "edit": "pick {{SHA:HEAD~2}} # Agrega el formulario de inscripción\ndrop {{SHA:HEAD~1}} # console.log para depurar el formulario\npick {{SHA:HEAD}} # Valida el correo en el formulario\npick {{SHA:HEAD~3}} # Actualiza el CHANGELOG\n"
+    }
+   ],
+   "hints": [
+    "Todo se hace en una sola lista de `git rebase -i main`: el orden de las líneas es el orden en que quedarán los commits.",
+    "Mueve la línea del CHANGELOG al final y cambia `pick` por `drop` en la del `console.log` (o borra esa línea)."
+   ],
+   "explain": "En la lista de tareas, el orden de las líneas **es** el orden de la nueva historia (de arriba = más antiguo a abajo = más nuevo), y `drop` (o borrar la línea) elimina el commit. Como cada commit toca archivos distintos, reordenar no produce conflictos; si dos commits modificaran las mismas líneas, invertir su orden podría obligarte a resolver. Todos los commits desde el primero que cambia de lugar se reescriben con hashes nuevos. Si te equivocas al editar la lista, `git rebase --abort` (mientras el rebase siga en curso) o `git reset --hard ORIG_HEAD` (justo al terminar) te devuelven al punto de partida."
+  },
+  {
+   "id": "s09-e8",
+   "title": "Un arreglo que se coloca solo: fixup! y --autosquash",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En la tienda de **empanadas en línea**, tu rama `feature/carrito` tiene tres commits. En la revisión te pidieron que `agregarAlCarrito` acepte una **cantidad**. Ya hiciste el cambio en `carrito.js`, pero aún no lo confirmas.",
+    "Ese cambio pertenece al commit «Agrega la función agregarAlCarrito» (el más antiguo de la rama), no a un commit nuevo. Confírmalo como **commit de arreglo** con `git commit --fixup` y luego aplícalo con un rebase con `--autosquash`.",
+    "Al final deben quedar los mismos tres commits, con el arreglo dentro del primero y sin ningún commit `fixup!`."
+   ],
+   "setup": "nuevo_repo empanadas\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Empanadas en línea' 'Primer commit'\ngit switch -q -c feature/carrito\nfecha '2026-09-02 10:00'\ncommit_archivo carrito.js 'function agregarAlCarrito(carrito, empanada) { carrito.push(empanada); }' 'Agrega la función agregarAlCarrito'\nfecha '2026-09-02 11:00'\ncommit_archivo total.js 'function total(carrito) { return carrito.length * 2500; }' 'Agrega el cálculo del total'\nfecha '2026-09-02 12:00'\ncommit_archivo pagar.html '<button>Pagar</button>' 'Agrega el botón de pagar'\nescribir carrito.js 'function agregarAlCarrito(carrito, empanada, cantidad = 1) { for (let i = 0; i < cantidad; i++) carrito.push(empanada); }'",
+   "cwd": "empanadas",
+   "checks": [
+    {
+     "name": "El arreglo está dentro del commit original",
+     "script": "c=$(git log --format='%H %s' main..feature/carrito | grep ' Agrega la función agregarAlCarrito$' | head -1 | cut -d' ' -f1)\n[ -n \"$c\" ] || falla \"No encuentro el commit «Agrega la función agregarAlCarrito» en la rama\"\ncontenido \"$c\" carrito.js | grep -q 'cantidad' || falla \"El commit «Agrega la función agregarAlCarrito» todavía no incluye el parámetro cantidad\""
+    },
+    {
+     "name": "Siguen siendo tres commits, en el mismo orden",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/carrito 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega la función agregarAlCarrito|Agrega el cálculo del total|Agrega el botón de pagar|\" ] || falla \"Encima de main deberían quedar los mismos tres commits (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "No quedan commits fixup!",
+     "script": "git log --format=%s feature/carrito | grep -q '^fixup!' && falla \"Todavía hay un commit «fixup!»: falta el rebase con --autosquash\"; true"
+    },
+    {
+     "name": "Rebase terminado, en tu rama y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/carrito\nlimpio"
+    }
+   ],
+   "solution": [
+    "git add carrito.js",
+    "git commit --fixup=HEAD~2",
+    "git rebase -i --autosquash main"
+   ],
+   "hints": [
+    "Prepara `carrito.js` y crea el commit con `git commit --fixup=<commit>`. El destino está dos commits antes de HEAD (`HEAD~2`), o usa su hash de `git log --oneline`.",
+    "Luego `git rebase -i --autosquash main`: la lista ya vendrá con `fixup` debajo del commit correcto; solo guárdala."
+   ],
+   "explain": "`git commit --fixup=HEAD~2` crea un commit llamado «fixup! Agrega la función agregarAlCarrito». Al hacer `git rebase -i --autosquash main`, Git lo mueve justo debajo de su destino y le pone el comando `fixup`, así que el cambio se funde en el commit original conservando su mensaje. Desde Git 2.44 también funciona sin `-i` (`git rebase --autosquash main`), y con `git config --global rebase.autoSquash true` todo `rebase -i` lo hace por defecto. Ojo con el orden: `HEAD~2` se calcula en el momento de ejecutar el comando; después de crear el commit de arreglo, el mismo destino sería `HEAD~3`."
+  },
+  {
+   "id": "s09-e9",
+   "title": "Publica tu rama reescrita con --force-with-lease",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Publicaste `feature/paraderos` en `~/servidor/micros.git` (la app de **horarios de micros**) para abrir un pull request. La rama es solo tuya y tiene tres commits: «Agrega la lista de paraderos», «WIP» y «más paraderos».",
+    "Antes de pedir revisión, déjala con **un único commit** encima de `main`, llamado **Agrega la lista de paraderos**, con el contenido final (tres paraderos), y publícala en el servidor **de forma segura**, sin usar `--force` a ciegas.",
+    "Después de reescribir, un `git push` normal será rechazado y `git status` dirá que tu rama y `origin/feature/paraderos` divergieron, sugiriendo `git pull`. Es esperable, y aquí **no** conviene seguir esa sugerencia: traería de vuelta la historia antigua."
+   ],
+   "setup": "git init -q --bare ~/servidor/micros.git\nnuevo_repo micros\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Horarios de micros' 'Primer commit'\ngit remote add origin ~/servidor/micros.git\ngit push -q -u origin main\ngit switch -q -c feature/paraderos\nfecha '2026-09-02 10:00'\ncommit_archivo paraderos.json '[\"Plaza de Armas\"]' 'Agrega la lista de paraderos'\nfecha '2026-09-02 11:00'\ncommit_archivo paraderos.json '[\"Plaza de Armas\", \"Estación Central\"]' 'WIP'\nfecha '2026-09-02 12:00'\ncommit_archivo paraderos.json '[\"Plaza de Armas\", \"Estación Central\", \"Los Leones\"]' 'más paraderos'\ngit push -q -u origin feature/paraderos",
+   "cwd": "micros",
+   "checks": [
+    {
+     "name": "Localmente, un solo commit con el contenido final",
+     "script": "n=$(git rev-list --count main..feature/paraderos); [ \"$n\" = 1 ] || falla \"Encima de main debería quedar un único commit (ahora hay $n)\"\nmensaje_es feature/paraderos 'Agrega la lista de paraderos'\ncontenido feature/paraderos paraderos.json | grep -qF 'Los Leones' || falla \"paraderos.json debería tener los tres paraderos\""
+    },
+    {
+     "name": "El servidor tiene tu versión reescrita",
+     "script": "srv=$(git -C ~/servidor/micros.git rev-parse feature/paraderos)\n[ \"$srv\" = \"$(git rev-parse feature/paraderos)\" ] || falla \"El servidor todavía tiene la versión antigua de feature/paraderos: publícala (un push normal será rechazado)\"\n[ \"$(git -C ~/servidor/micros.git rev-list --count main..feature/paraderos)\" = 1 ] || falla \"En el servidor, feature/paraderos debería tener un único commit encima de main\""
+    },
+    {
+     "name": "Tu referencia remota está al día",
+     "script": "[ \"$(git rev-parse origin/feature/paraderos)\" = \"$(git rev-parse feature/paraderos)\" ] || falla \"origin/feature/paraderos no coincide con tu rama\""
+    },
+    {
+     "name": "main del servidor intacto",
+     "script": "[ \"$(git -C ~/servidor/micros.git rev-list --count main)\" = 1 ] || falla \"main del servidor no debería cambiar\""
+    },
+    {
+     "name": "Sin operaciones a medias, en tu rama y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/paraderos\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i main",
+     "edit": "pick {{SHA:HEAD~2}} # Agrega la lista de paraderos\nfixup {{SHA:HEAD~1}} # WIP\nfixup {{SHA:HEAD}} # más paraderos\n"
+    },
+    "git push --force-with-lease"
+   ],
+   "hints": [
+    "Primero la limpieza: `git rebase -i main` con `fixup` en los dos últimos commits.",
+    "Después, `git push` será rechazado porque tu rama ya no contiene los commits del servidor. No es un error tuyo: es la protección normal ante un cambio que no es fast-forward. No hagas `git pull`: desharía tu limpieza.",
+    "Publica con `git push --force-with-lease`: fuerza solo si el servidor sigue donde tu `origin/feature/paraderos` cree que está."
+   ],
+   "explain": "Tras el rebase, tu rama y la del servidor divergen (tu único commit no es descendiente de los tres antiguos), así que `git push` responde `! [rejected] … (non-fast-forward)`. `git push --force-with-lease` reemplaza la rama remota **solo si** sigue en el commit que registra tu `origin/feature/paraderos`; si alguien hubiera subido algo entretanto, se rechazaría con `(stale info)` en vez de borrarlo. La salida del push aceptado muestra `+ viejo...nuevo feature/paraderos -> feature/paraderos (forced update)`. Para mayor seguridad, agrega `--force-if-includes` o configura `push.useForceIfIncludes true`. ¿Y la sugerencia de `git pull`? En este caso sería un error: `git pull --rebase` descartaría tu commit limpio (`dropping … -- patch contents already upstream`) y te dejaría con los tres commits antiguos, y un merge mezclaría ambas historias. Si ya te pasó, `git reset --hard ORIG_HEAD` lo deshace justo después. Recuerda: esto está bien porque la rama es solo tuya; en una rama compartida como `main`, nunca."
+  },
+  {
+   "id": "s09-e10",
+   "title": "Tu arreglo ya está en main: --skip",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "En la caja del **minimarket**, tu rama `feature/pagos` tiene tres commits. Uno de ellos, «Corrige el IVA al 19 %», arreglaba un error en `precios.js`. Mientras tanto, Camila corrigió el mismo error en `main`, con un código distinto.",
+    "Pon `feature/pagos` al día con `main` usando rebase. Cuando aparezca el conflicto en `precios.js`, ten en cuenta que **tu corrección sobra**: la versión de `main` es la buena.",
+    "Al terminar, encima de `main` deben quedar solo tus otros dos commits (**Agrega el módulo de pagos** y **Agrega la emisión de boletas**), y `precios.js` debe ser idéntico al de `main`."
+   ],
+   "setup": "nuevo_repo minimarket\nfecha '2026-09-01 10:00'\nescribir precios.js 'const IVA = 0.18;'\nanexar precios.js 'function total(neto) { return neto * (1 + IVA); }'\ngit add precios.js\ngit commit -qm 'Primer commit'\ngit switch -q -c feature/pagos\nfecha '2026-09-02 10:00'\ncommit_archivo pagos.js 'function pagar(total) {}' 'Agrega el módulo de pagos'\nfecha '2026-09-02 11:00'\nescribir precios.js 'const IVA = 19 / 100;'\nanexar precios.js 'function total(neto) { return neto * (1 + IVA); }'\ngit commit -qam 'Corrige el IVA al 19 %'\nfecha '2026-09-02 12:00'\ncommit_archivo boleta.js 'function emitirBoleta(venta) {}' 'Agrega la emisión de boletas'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-03 09:00'\nescribir precios.js 'const IVA = 0.19; // IVA vigente en Chile'\nanexar precios.js 'function total(neto) { return neto * (1 + IVA); }'\ngit commit -qam 'Actualiza el IVA a 19 %'\nyo\ngit switch -q feature/pagos",
+   "cwd": "minimarket",
+   "checks": [
+    {
+     "name": "No quedó ninguna operación a medias",
+     "script": "sin_operacion_en_curso"
+    },
+    {
+     "name": "feature/pagos parte del último commit de main",
+     "script": "ancestro main feature/pagos || falla \"feature/pagos todavía no está encima del commit de Camila\""
+    },
+    {
+     "name": "Solo quedan tus otros dos commits",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/pagos 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega el módulo de pagos|Agrega la emisión de boletas|\" ] || falla \"Encima de main deberían quedar solo «Agrega el módulo de pagos» y «Agrega la emisión de boletas»: tu corrección del IVA sobra (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "precios.js es idéntico al de main",
+     "script": "[ \"$(git rev-parse feature/pagos:precios.js)\" = \"$(git rev-parse main:precios.js)\" ] || falla \"precios.js debería quedar exactamente como en main (la corrección de Camila)\""
+    },
+    {
+     "name": "Nada más se perdió",
+     "script": "for f in pagos.js boleta.js; do git cat-file -e \"feature/pagos:$f\" 2>/dev/null || falla \"Falta $f en la rama\"; done\nen_rama feature/pagos\nlimpio"
+    }
+   ],
+   "solution": [
+    "git rebase main",
+    "git rebase --skip"
+   ],
+   "hints": [
+    "Ejecuta `git rebase main`. Mira con `git status` qué commit se detuvo: es justamente tu corrección del IVA.",
+    "Ese commit ya no aporta nada, porque `main` tiene su propia corrección. Hay una opción de rebase que descarta el commit actual y sigue con el resto.",
+    "`git rebase --skip`."
+   ],
+   "explain": "`git rebase --skip` descarta el commit que se estaba reaplicando y continúa con los siguientes. Es la decisión correcta cuando tu cambio quedó obsoleto por algo que ya está en la base. Otra forma válida: resolver el conflicto quedándote con la versión de `main` (`git checkout --ours precios.js`; recuerda que en un rebase «ours» es la base) y `git add`; al ejecutar `git rebase --continue`, como el commit quedó sin cambios, Git lo omite. Si las dos correcciones hubieran sido **idénticas**, ni siquiera habría conflicto: el rebase reconoce los cambios que ya están en `main` y los salta solo."
+  },
+  {
+   "id": "s09-e11",
+   "title": "Rescata una rama que nació en el lugar equivocado (--onto)",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "En el proyecto de la **caja registradora**, creaste `feature/boleta` estando en `feature/carrito` en vez de en `main`. El carrito todavía no está listo, pero la boleta sí, y quieres proponerla sola.",
+    "Deja `feature/boleta` con **solo sus dos commits** («Agrega la emisión de boletas» y «Agrega el RUT del cliente a la boleta») encima del **último commit de `main`**, sin los commits del carrito. `feature/carrito` no debe cambiar.",
+    "Estás en `main`. Mira primero el gráfico: `git log --oneline --graph --all`."
+   ],
+   "setup": "nuevo_repo caja\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Caja registradora' 'Primer commit'\ngit switch -q -c feature/carrito\nfecha '2026-09-02 10:00'\ncommit_archivo carrito.js 'let carrito = [];' 'Agrega el carrito'\nfecha '2026-09-02 11:00'\nanexar carrito.js 'function descuento(total) { return total * 0.9; }'\ngit commit -qam 'Agrega descuentos al carrito'\ngit switch -q -c feature/boleta\nfecha '2026-09-02 12:00'\ncommit_archivo boleta.js 'function emitirBoleta(venta) {}' 'Agrega la emisión de boletas'\nfecha '2026-09-02 13:00'\nanexar boleta.js 'function rutCliente(boleta) {}'\ngit commit -qam 'Agrega el RUT del cliente a la boleta'\ngit switch -q main\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo LICENSE 'MIT' 'Agrega licencia MIT'\nyo",
+   "cwd": "caja",
+   "checks": [
+    {
+     "name": "No quedó ninguna operación a medias",
+     "script": "sin_operacion_en_curso"
+    },
+    {
+     "name": "feature/boleta parte del último commit de main",
+     "script": "[ \"$(git merge-base main feature/boleta)\" = \"$(git rev-parse main)\" ] || falla \"feature/boleta debería partir del último commit de main («Agrega licencia MIT»)\""
+    },
+    {
+     "name": "Solo los dos commits de la boleta",
+     "script": "actual=\"$(git log --reverse --format=%s main..feature/boleta 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega la emisión de boletas|Agrega el RUT del cliente a la boleta|\" ] || falla \"Encima de main, feature/boleta debería tener solo sus dos commits (sin los del carrito) (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "Nada del carrito en feature/boleta",
+     "script": "git cat-file -e feature/boleta:carrito.js 2>/dev/null && falla \"feature/boleta todavía contiene carrito.js: arrastró los commits del carrito\"; true"
+    },
+    {
+     "name": "feature/carrito no se tocó",
+     "script": "ancestro main feature/carrito && falla \"feature/carrito no debería moverse: solo había que trasladar feature/boleta\"\n[ \"$(git rev-list --count main~1..feature/carrito)\" = 2 ] || falla \"feature/carrito debería seguir con sus dos commits sobre el commit inicial\"\nmensaje_es feature/carrito 'Agrega descuentos al carrito'"
+    },
+    {
+     "name": "Terminaste en feature/boleta y limpio",
+     "script": "en_rama feature/boleta\nlimpio"
+    }
+   ],
+   "solution": [
+    "git rebase --onto main feature/carrito feature/boleta"
+   ],
+   "hints": [
+    "Un `git rebase main` desde `feature/boleta` se llevaría también los commits del carrito, porque tampoco están en `main`.",
+    "Necesitas decir dos cosas distintas: **adónde** llevar los commits (`main`) y **desde dónde** empiezan los que quieres mover (después de `feature/carrito`).",
+    "`git rebase --onto main feature/carrito feature/boleta` reaplica `feature/carrito..feature/boleta` sobre `main`."
+   ],
+   "explain": "`git rebase --onto <nueva-base> <base-antigua> <rama>` reaplica los commits del rango `base-antigua..rama` (los de la rama que no están en la base antigua) sobre la nueva base. Aquí: los dos commits de la boleta sobre `main`. El tercer argumento hace además el `git switch feature/boleta`; equivale a `git switch feature/boleta` + `git rebase --onto main feature/carrito`. Si `feature/carrito` ya hubiera cambiado desde que creaste la boleta, podrías usar como base antigua el hash del commit donde nació la boleta. Es el mismo ejemplo del libro Pro Git: `git rebase --onto master server client`."
+  },
+  {
+   "id": "s09-e12",
+   "title": "Divide un commit que mezcla dos cambios (edit)",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "En tu **blog de viajes por Chile**, el penúltimo commit, «Agrega post de Chiloé y corrige README», mezcla dos cambios que no tienen nada que ver: la corrección de un error de tipeo en `README.md` y un post nuevo (`posts/chiloe.md`).",
+    "Divídelo en dos commits, en este orden: primero **Corrige error de tipeo en el README** (solo `README.md`) y luego **Agrega post de Chiloé** (solo `posts/chiloe.md`). El resto de la historia y el contenido final no deben cambiar.",
+    "Pista de método: detén el rebase interactivo en ese commit con `edit`."
+   ],
+   "setup": "nuevo_repo blog\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Blog de viajs por Chile' 'Primer commit'\nfecha '2026-09-01 11:00'\ncommit_archivo posts/atacama.md '# San Pedro de Atacama' 'Agrega post sobre San Pedro de Atacama'\nfecha '2026-09-01 12:00'\nescribir README.md '# Blog de viajes por Chile'\nescribir posts/chiloe.md '# Chiloé y sus palafitos'\ngit add README.md posts/chiloe.md\ngit commit -qm 'Agrega post de Chiloé y corrige README'\nfecha '2026-09-01 13:00'\ncommit_archivo posts/valparaiso.md '# Valparaíso y sus cerros' 'Agrega post de Valparaíso'",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "No quedó ninguna operación a medias",
+     "script": "sin_operacion_en_curso"
+    },
+    {
+     "name": "La historia tiene los cinco commits pedidos",
+     "script": "actual=\"$(git log --reverse --format=%s HEAD 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Primer commit|Agrega post sobre San Pedro de Atacama|Corrige error de tipeo en el README|Agrega post de Chiloé|Agrega post de Valparaíso|\" ] || falla \"La historia debería quedar con el commit dividido en dos, en el orden pedido (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "Cada commit nuevo toca un solo archivo",
+     "script": "[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~2)\" = \"README.md\" ] || falla \"«Corrige error de tipeo en el README» debería modificar solo README.md\"\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1)\" = \"posts/chiloe.md\" ] || falla \"«Agrega post de Chiloé» debería agregar solo posts/chiloe.md\""
+    },
+    {
+     "name": "El contenido final es el mismo",
+     "script": "contenido HEAD README.md | grep -qx '# Blog de viajes por Chile' || falla \"README.md debería quedar corregido («viajes»)\"\nfor f in posts/atacama.md posts/chiloe.md posts/valparaiso.md; do git cat-file -e \"HEAD:$f\" 2>/dev/null || falla \"Falta $f\"; done"
+    },
+    {
+     "name": "En main y con todo confirmado",
+     "script": "en_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    {
+     "cmd": "git rebase -i HEAD~2",
+     "edit": "edit {{SHA:HEAD~1}} # Agrega post de Chiloé y corrige README\npick {{SHA:HEAD}} # Agrega post de Valparaíso\n"
+    },
+    "git reset HEAD~1",
+    "git add README.md",
+    "git commit -m 'Corrige error de tipeo en el README'",
+    "git add posts/chiloe.md",
+    "git commit -m 'Agrega post de Chiloé'",
+    "git rebase --continue"
+   ],
+   "hints": [
+    "`git rebase -i HEAD~2` y cambia `pick` por `edit` en la línea del commit mezclado. El rebase se detendrá con ese commit como HEAD.",
+    "Deshaz ese commit conservando sus cambios en el directorio de trabajo: `git reset HEAD~1` (reset mixto, s04).",
+    "Ahora prepara y confirma cada archivo por separado, con su mensaje, y termina con `git rebase --continue`."
+   ],
+   "explain": "`edit` detiene el rebase justo después de aplicar el commit. `git reset HEAD~1` mueve HEAD al commit anterior y deja los cambios del commit sin preparar; entonces creas los commits que quieras (aquí, dos) y `git rebase --continue` reaplica el resto de la lista («Agrega post de Valparaíso») encima. Es la receta del libro Pro Git para dividir un commit. Si solo hubieras querido **corregir** ese commit (no dividirlo), bastaba con cambiar los archivos, `git add` y `git commit --amend` antes de continuar. Ojo: no uses `git reset --hard` en ese momento, porque borraría los cambios que quieres repartir."
+  },
+  {
+   "id": "s09-e13",
+   "title": "Proyecto: deja tu rama lista para el pull request",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "Tu rama `feature/precios` de la app de **precios de la feria** está publicada en `~/servidor/feria.git` y tiene un pull request abierto. Antes de pedir la revisión final quieres dejarla impecable, pero hay novedades en el servidor que todavía no has traído:",
+    "- Camila subió un commit a **tu** rama («Agrega precios de verduras»).\n- Diego actualizó `main` en el servidor («Agrega licencia MIT»).\n- Tú tienes, además, un commit local sin publicar llamado simplemente «estilos».",
+    "Deja la rama así, tanto en tu repositorio como en el servidor, **encima del `main` actualizado del servidor** (del más antiguo al más nuevo):",
+    "```text\nAgrega la lista de precios              ← tu primer commit con el «WIP» fundido dentro\nAgrega precios de verduras              ← el commit de Camila, intacto y a su nombre\nAgrega estilos de la tabla de precios   ← tu commit «estilos», con un mensaje decente\n```",
+    "Sin commits de fusión y sin pisar el trabajo de nadie: nada de `--force` a ciegas. Consejo: primero integra lo que hay en el servidor y después limpia."
+   ],
+   "setup": "git init -q --bare ~/servidor/feria.git\nnuevo_repo feria\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Precios de la feria' 'Primer commit'\ngit remote add origin ~/servidor/feria.git\ngit push -q -u origin main\ngit switch -q -c feature/precios\nfecha '2026-09-02 10:00'\ncommit_archivo precios.js 'const precios = { palta: 4500 };' 'Agrega la lista de precios'\nfecha '2026-09-02 11:00'\ncommit_archivo precios.js 'const precios = { palta: 4500, tomate: 1200 };' 'WIP'\ngit push -q -u origin feature/precios\ncd ~\ngit clone -q ~/servidor/feria.git camila\ncd camila\ngit switch -q feature/precios\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo verduras.json '{ \"lechuga\": 900, \"choclo\": 700 }' 'Agrega precios de verduras'\ngit push -q origin feature/precios\ncd ~\ngit clone -q ~/servidor/feria.git diego\ncd diego\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo LICENSE 'MIT' 'Agrega licencia MIT'\ngit push -q origin main\nyo\ncd ~/feria\nfecha '2026-09-03 10:00'\ncommit_archivo estilos.css 'table { border-collapse: collapse; }' 'estilos'",
+   "cwd": "feria",
+   "checks": [
+    {
+     "name": "Todo terminado, en tu rama y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/precios\nlimpio"
+    },
+    {
+     "name": "La rama parte del main actualizado del servidor",
+     "script": "srv=$(git -C ~/servidor/feria.git rev-parse main)\ngit cat-file -e \"$srv\" 2>/dev/null || falla \"Todavía no conoces el último main del servidor: empieza trayendo los cambios con git fetch\"\nancestro \"$srv\" feature/precios || falla \"feature/precios no está encima del último main del servidor (la licencia de Diego): ¿trajiste los cambios y reaplicaste sobre origin/main?\""
+    },
+    {
+     "name": "Los tres commits pedidos, en orden",
+     "script": "srv=$(git -C ~/servidor/feria.git rev-parse main)\ngit cat-file -e \"$srv\" 2>/dev/null || falla \"Todavía no conoces el último main del servidor (git fetch)\"\nactual=\"$(git log --reverse --format=%s \"$srv\"..feature/precios 2>/dev/null | tr '\\n' '|')\"\n[ \"$actual\" = \"Agrega la lista de precios|Agrega precios de verduras|Agrega estilos de la tabla de precios|\" ] || falla \"Encima del main del servidor deberían quedar exactamente esos tres commits (ahora: $(printf '%s' \"$actual\" | sed 's/|$//; s/|/ · /g'))\""
+    },
+    {
+     "name": "El commit de Camila sigue siendo suyo",
+     "script": "c=$(git log --format='%H %s' feature/precios | grep ' Agrega precios de verduras$' | head -1 | cut -d' ' -f1)\n[ -n \"$c\" ] || falla \"El commit de Camila («Agrega precios de verduras») no está en tu rama: tráelo del servidor antes de reescribir\"\n[ \"$(git log -1 --format=%an \"$c\")\" = \"Camila Rojas\" ] || falla \"«Agrega precios de verduras» debería conservar a Camila como autora\"\ngit cat-file -e feature/precios:verduras.json 2>/dev/null || falla \"Falta verduras.json: se perdió el trabajo de Camila\""
+    },
+    {
+     "name": "El WIP quedó dentro del primer commit",
+     "script": "c=$(git log --format='%H %s' feature/precios | grep ' Agrega la lista de precios$' | head -1 | cut -d' ' -f1)\n[ -n \"$c\" ] || falla \"No encuentro el commit «Agrega la lista de precios»\"\ngit log --format=%s feature/precios | grep -qx 'WIP' && falla \"Todavía hay un commit «WIP» en la rama\"\ncontenido \"$c\" precios.js | grep -qF 'tomate: 1200' || falla \"«Agrega la lista de precios» debería incluir el cambio del WIP (el precio del tomate)\"\ngit cat-file -e feature/precios:estilos.css 2>/dev/null || falla \"Falta estilos.css\""
+    },
+    {
+     "name": "Sin commits de fusión",
+     "script": "[ \"$(git rev-list --merges --count feature/precios)\" = 0 ] || falla \"Hay un commit de fusión en la rama: integra con rebase\""
+    },
+    {
+     "name": "El servidor tiene tu versión y main sigue intacto",
+     "script": "[ \"$(git -C ~/servidor/feria.git rev-parse feature/precios)\" = \"$(git rev-parse feature/precios)\" ] || falla \"El servidor todavía no tiene tu versión de feature/precios\"\n[ \"$(git -C ~/servidor/feria.git log -1 --format=%s main)\" = \"Agrega licencia MIT\" ] || falla \"main del servidor no debería cambiar\""
+    }
+   ],
+   "solution": [
+    "git fetch",
+    "git pull --rebase",
+    {
+     "cmd": "git rebase -i origin/main",
+     "edit": [
+      "pick {{SHA:HEAD~3}} # Agrega la lista de precios\nfixup {{SHA:HEAD~2}} # WIP\npick {{SHA:HEAD~1}} # Agrega precios de verduras\nreword {{SHA:HEAD}} # estilos\n",
+      "Agrega estilos de la tabla de precios\n"
+     ]
+    },
+    "git push --force-with-lease"
+   ],
+   "hints": [
+    "Empieza por `git fetch` y `git log --oneline --graph --all`: verás el commit de Camila en `origin/feature/precios` y el de Diego en `origin/main`.",
+    "Integra primero el commit de Camila en tu rama sin commit de fusión: `git pull --rebase` reaplica tu «estilos» encima de él.",
+    "Ahora limpia y actualiza a la vez con `git rebase -i origin/main`: `fixup` para el WIP, `pick` para Camila, `reword` para «estilos».",
+    "Publica con `git push --force-with-lease`. Si lo intentas antes de traer los cambios, el servidor te lo rechazará: esa es la protección funcionando."
+   ],
+   "explain": "El orden importa. Si reescribieras primero y publicaras con `--force-with-lease` sin haber hecho `git fetch`, el push sería rechazado con `(stale info)`; si lo hicieras después de un `git fetch` pero sin integrar, `--force-with-lease` **sí** pasaría y borraría el commit de Camila del servidor (para eso existe `--force-if-includes`). Por eso: 1) `git fetch` + `git pull --rebase` para incorporar su commit; 2) `git rebase -i origin/main` para, en una sola pasada, reaplicar todo sobre el `main` nuevo, fundir el WIP y corregir el mensaje (con `pick`, el commit de Camila conserva su autoría: cambia el committer, no el autor); 3) `git push --force-with-lease`. En un equipo real, además, le avisarías a Camila: su copia local de la rama quedó con la historia antigua y tendrá que actualizarla (por ejemplo, con `git pull --rebase`)."
+  },
+  {
+   "id": "s09-e14",
+   "title": "Proyecto: ramas apiladas después de la revisión",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "En la API de **arriendo de bicicletas** trabajas con tres ramas apiladas, cada una con su pull request y publicadas en `~/servidor/bicis.git`:",
+    "```text\nmain ← feature/modelo ← feature/rutas ← feature/vista\n```",
+    "El revisor pidió que el modelo tenga una duración por defecto de **60 minutos**. Ya escribiste el cambio en `modelo.js` (sin confirmar), estando en `feature/vista`. Además, Diego actualizó `main` en el servidor.",
+    "Objetivos:\n1. El arreglo debe quedar **dentro** del commit «Agrega el modelo Arriendo» (sin commits `fixup!` sueltos).\n2. Las tres ramas deben quedar encima del `main` actualizado del servidor, cada una sobre la anterior y con un solo commit propio.\n3. Las tres ramas deben quedar publicadas en el servidor con su nueva versión, sin usar `--force` a ciegas.",
+    "Hazlo sin cambiarte de rama: todo se puede resolver desde `feature/vista`."
+   ],
+   "setup": "git init -q --bare ~/servidor/bicis.git\nnuevo_repo bicis\nfecha '2026-09-01 10:00'\ncommit_archivo README.md '# Arriendo de bicicletas' 'Primer commit'\ngit remote add origin ~/servidor/bicis.git\ngit push -q -u origin main\ngit switch -q -c feature/modelo\nfecha '2026-09-02 10:00'\ncommit_archivo modelo.js 'class Arriendo { constructor(bici) { this.bici = bici; } }' 'Agrega el modelo Arriendo'\ngit push -q -u origin feature/modelo\ngit switch -q -c feature/rutas\nfecha '2026-09-02 11:00'\ncommit_archivo rutas.js 'app.post(\"/arriendos\", crearArriendo);' 'Agrega la ruta POST /arriendos'\ngit push -q -u origin feature/rutas\ngit switch -q -c feature/vista\nfecha '2026-09-02 12:00'\ncommit_archivo vista.html '<form id=\"arriendo\"></form>' 'Agrega el formulario de arriendo'\ngit push -q -u origin feature/vista\ncd ~\ngit clone -q ~/servidor/bicis.git diego\ncd diego\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo package.json '{ \"name\": \"bicis\", \"version\": \"1.1.0\" }' 'Actualiza la versión a 1.1.0'\ngit push -q origin main\nyo\ncd ~/bicis\nescribir modelo.js 'class Arriendo { constructor(bici, minutos = 60) { this.bici = bici; this.minutos = minutos; } }'",
+   "cwd": "bicis",
+   "checks": [
+    {
+     "name": "Todo terminado, en feature/vista y limpio",
+     "script": "sin_operacion_en_curso\nen_rama feature/vista\nlimpio"
+    },
+    {
+     "name": "El arreglo está dentro del commit del modelo",
+     "script": "mensaje_es feature/modelo 'Agrega el modelo Arriendo' \"feature/modelo debería apuntar al commit «Agrega el modelo Arriendo»\"\ncontenido feature/modelo modelo.js | grep -qF 'minutos = 60' || falla \"El commit «Agrega el modelo Arriendo» (feature/modelo) todavía no incluye la duración por defecto\"\ngit log --format=%s feature/vista | grep -q '^fixup!' && falla \"Todavía hay un commit «fixup!» en la pila: falta aplicarlo con --autosquash\"\ntrue"
+    },
+    {
+     "name": "La pila está encima del main actualizado del servidor",
+     "script": "srv=$(git -C ~/servidor/bicis.git rev-parse main)\nancestro \"$srv\" feature/modelo || falla \"feature/modelo no está encima del último main del servidor (el commit de Diego)\"\n[ \"$(git rev-list --count \"$srv\"..feature/modelo)\" = 1 ] || falla \"feature/modelo debería tener un solo commit encima de main\""
+    },
+    {
+     "name": "Cada rama sobre la anterior, con un commit propio",
+     "script": "[ \"$(git rev-parse feature/rutas~1)\" = \"$(git rev-parse feature/modelo)\" ] || falla \"feature/rutas debería tener un solo commit encima de feature/modelo (¿se quedó en la base antigua? mira --update-refs)\"\n[ \"$(git rev-parse feature/vista~1)\" = \"$(git rev-parse feature/rutas)\" ] || falla \"feature/vista no está justo encima de feature/rutas: si hiciste el rebase sin --update-refs, las ramas de abajo se quedaron en la base antigua\""
+    },
+    {
+     "name": "El servidor tiene las tres ramas nuevas",
+     "script": "for b in feature/modelo feature/rutas feature/vista; do [ \"$(git -C ~/servidor/bicis.git rev-parse $b)\" = \"$(git rev-parse $b)\" ] || falla \"En el servidor, $b todavía tiene la versión antigua\"; done"
+    },
+    {
+     "name": "main del servidor intacto",
+     "script": "[ \"$(git -C ~/servidor/bicis.git log -1 --format=%s main)\" = \"Actualiza la versión a 1.1.0\" ] || falla \"main del servidor no debería cambiar\""
+    }
+   ],
+   "solution": [
+    "git add modelo.js",
+    "git commit --fixup=feature/modelo",
+    "git fetch",
+    "git rebase -i --autosquash --update-refs origin/main",
+    "git push --force-with-lease origin feature/modelo feature/rutas feature/vista"
+   ],
+   "hints": [
+    "Paso 1: confirma el arreglo como commit de arreglo del modelo. `--fixup` acepta un nombre de rama: `feature/modelo` apunta justo al commit que quieres corregir.",
+    "Paso 2: `git fetch` para ver el `main` nuevo. Luego un solo rebase desde `feature/vista` sobre `origin/main`, con `--autosquash` (coloca el arreglo) y `--update-refs` (mueve también `feature/modelo` y `feature/rutas`).",
+    "Paso 3: publica las tres ramas en un solo comando: `git push --force-with-lease origin feature/modelo feature/rutas feature/vista`."
+   ],
+   "explain": "`git commit --fixup=feature/modelo` crea «fixup! Agrega el modelo Arriendo» en la punta de `feature/vista`. `git rebase -i --autosquash --update-refs origin/main` genera una lista con el `fixup` justo debajo del commit del modelo, **antes** de la línea `update-ref refs/heads/feature/modelo`, así que la rama del modelo queda apuntando al commit ya corregido; luego reaplica rutas y vista y mueve cada rama a su copia. Sin `--update-refs`, solo se habría movido `feature/vista` y las otras dos seguirían en la base antigua (sin el arreglo). Finalmente, `git push --force-with-lease` con las tres ramas reemplaza cada una en el servidor solo si nadie la tocó desde tu último `git fetch`. Con `git config --global rebase.updateRefs true` y `rebase.autoSquash true`, el rebase se reduce a `git rebase -i origin/main`."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué hace `git rebase main` estando en `feature`?",
+   "back": "Toma los commits de `feature` que no están en `main`, se sitúa en la punta de `main` y los reaplica uno por uno encima; al final mueve `feature` al último commit reaplicado."
+  },
+  {
+   "front": "¿Por qué los commits tienen otro hash después de un rebase?",
+   "back": "Porque se crean commits nuevos con otro padre (y otra fecha de commit). El hash resume todo el commit, incluido su padre."
+  },
+  {
+   "front": "Tras un rebase, ¿qué se conserva y qué cambia en cada commit?",
+   "back": "Se conservan mensaje, autor, fecha de autor y cambio. Cambian padre, committer, fecha de commit y hash."
+  },
+  {
+   "front": "Atajo de `git switch feature` + `git rebase main`",
+   "back": "`git rebase main feature`"
+  },
+  {
+   "front": "¿Cómo deshaces un rebase que acabas de terminar?",
+   "back": "`git reset --hard ORIG_HEAD` (ORIG_HEAD guarda la punta anterior). Para casos más complejos, el reflog (s10)."
+  },
+  {
+   "front": "Merge vs rebase en una línea",
+   "back": "Merge conserva la historia real y agrega un commit de fusión; rebase deja historia lineal reescribiendo commits."
+  },
+  {
+   "front": "Las tres salidas de un rebase detenido por un conflicto",
+   "back": "Resolver + `git add` + `git rebase --continue`; descartar ese commit con `git rebase --skip`; cancelar todo con `git rebase --abort`."
+  },
+  {
+   "front": "Durante un rebase, ¿qué es «ours» y qué es «theirs»?",
+   "back": "«ours» (HEAD) es la base nueva con los commits ya reaplicados; «theirs» es tu commit que se está reaplicando. Al revés que en un merge."
+  },
+  {
+   "front": "¿Qué commits muestra `git rebase -i HEAD~3`?",
+   "back": "Los tres últimos commits de la rama actual, del más antiguo (arriba) al más reciente (abajo)."
+  },
+  {
+   "front": "¿Por qué la lista de `rebase -i` está al revés que `git log`?",
+   "back": "Porque se ejecuta de arriba hacia abajo: el primero que se reaplica es el más antiguo."
+  },
+  {
+   "front": "`pick 1a2b3c4 # Agrega login`: ¿qué significa el `#` (Git 2.50)?",
+   "back": "Que el asunto es solo un comentario de referencia. Cambiarlo no cambia el mensaje; para eso se usa `reword`."
+  },
+  {
+   "front": "`squash` vs `fixup`",
+   "back": "Ambos funden el commit con el anterior. `squash` abre el editor para combinar los mensajes; `fixup` descarta el mensaje del commit fundido (salvo `fixup -C`/`-c`)."
+  },
+  {
+   "front": "¿Qué pasa si borras una línea de la lista de `rebase -i`?",
+   "back": "Ese commit se elimina (como `drop`). Si borras todas las líneas, el rebase se cancela."
+  },
+  {
+   "front": "Receta para dividir un commit antiguo",
+   "back": "`git rebase -i` con `edit` en ese commit → `git reset HEAD~1` → varios `git add` + `git commit` → `git rebase --continue`."
+  },
+  {
+   "front": "¿Para qué sirve `exec` (o `-x`) en un rebase interactivo?",
+   "back": "Ejecuta un comando de shell en ese punto (por ejemplo, las pruebas después de cada commit); si falla, el rebase se detiene."
+  },
+  {
+   "front": "¿Qué crea `git commit --fixup=a1b2c3d`?",
+   "back": "Un commit con asunto `fixup! <asunto de a1b2c3d>`, que `git rebase --autosquash` fundirá en a1b2c3d."
+  },
+  {
+   "front": "¿Qué hace `--autosquash`?",
+   "back": "Coloca los commits `fixup!`, `squash!` y `amend!` justo debajo de su commit destino y les cambia el comando (`fixup`, `squash`, `fixup -C`)."
+  },
+  {
+   "front": "¿Cómo activar el autosquash siempre?",
+   "back": "`git config --global rebase.autoSquash true` (afecta al modo interactivo). Desde Git 2.44, `--autosquash` también funciona sin `-i`."
+  },
+  {
+   "front": "`--fixup=amend:X` vs `--fixup=reword:X`",
+   "back": "Ambos crean un commit `amend!` que reemplaza el mensaje de X; `amend:` también aporta cambios de contenido, `reword:` solo el mensaje."
+  },
+  {
+   "front": "¿Qué reaplica `git rebase --onto N B R`?",
+   "back": "Los commits del rango `B..R` (los de R que no están en B), encima de N."
+  },
+  {
+   "front": "¿Cómo eliminar con `--onto` los dos commits anteriores a HEAD?",
+   "back": "`git rebase --onto HEAD~3 HEAD~1`: conserva solo el último commit, reaplicado sobre `HEAD~3`."
+  },
+  {
+   "front": "¿Qué hace `--update-refs` y desde qué versión existe?",
+   "back": "Mueve también las ramas que apuntaban a commits reescritos (ramas apiladas). Existe desde Git 2.38; `rebase.updateRefs = true` lo activa siempre."
+  },
+  {
+   "front": "La regla de oro del rebase",
+   "back": "No hagas rebase de commits que existen fuera de tu repositorio y sobre los que otras personas pueden haber basado su trabajo."
+  },
+  {
+   "front": "¿Qué hace `git pull --rebase`?",
+   "back": "`git fetch` + rebase de tus commits locales sobre la rama remota: historia lineal, sin commit de fusión."
+  },
+  {
+   "front": "¿Qué comprueba `git push --force-with-lease`?",
+   "back": "Que la rama del servidor siga apuntando al commit de tu referencia remota (`origin/rama`). Si no, rechaza con `(stale info)`."
+  },
+  {
+   "front": "¿Qué agrega `--force-if-includes`?",
+   "back": "Exige que la punta remota esté integrada en tu rama local (según su reflog). Protege cuando un `git fetch` actualizó `origin/rama` sin que integraras esos commits. Desde Git 2.30."
+  },
+  {
+   "front": "¿Qué hace `git rebase` con los commits de fusión de la rama?",
+   "back": "Por defecto los descarta y deja una historia lineal. `--rebase-merges` intenta recrearlos."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s09-q1",
+   "type": "single",
+   "q": "Estás en `feature` y ejecutas `git rebase main`. ¿Qué ocurre con los commits de `feature` que no están en `main`?",
+   "options": [
+    "Se mueven sobre `main` conservando exactamente el mismo hash",
+    "Se crean commits nuevos con los mismos cambios encima de `main`, y `feature` pasa a apuntar al último",
+    "Se combinan en un commit de fusión con dos padres",
+    "Se copian a `main` y `main` avanza hasta ellos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El rebase reaplica cada commit sobre la nueva base, como un cherry-pick: nacen commits nuevos (C', D') con otro padre y otro hash, y la rama se mueve al último. `main` no cambia."
+  },
+  {
+   "id": "s09-q2",
+   "type": "single",
+   "q": "Tras reaplicar un commit con `git rebase`, ¿cuál de estos datos **cambia**?",
+   "options": [
+    "El mensaje",
+    "El autor",
+    "La fecha de autor",
+    "La fecha de commit (committer date)"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "El rebase conserva mensaje, autor y fecha de autor. El committer pasa a ser quien hace el rebase y la fecha de commit, el momento actual; junto con el nuevo padre, eso produce un hash distinto."
+  },
+  {
+   "id": "s09-q3",
+   "type": "single",
+   "q": "¿Qué comando equivale a `git switch feature` seguido de `git rebase main`?",
+   "options": [
+    "`git rebase feature main`",
+    "`git rebase main feature`",
+    "`git rebase --onto main feature`",
+    "`git merge --rebase main feature`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git rebase <base> <rama>` primero se cambia a `<rama>` y luego la reaplica sobre `<base>`. El orden importa: `git rebase feature main` reaplicaría `main` sobre `feature`."
+  },
+  {
+   "id": "s09-q4",
+   "type": "single",
+   "q": "Acabas de terminar un rebase y el resultado no te gusta. No has ejecutado ningún otro comando. ¿Qué lo deshace?",
+   "options": [
+    "`git rebase --abort`",
+    "`git revert HEAD`",
+    "`git reset --hard ORIG_HEAD`",
+    "`git restore .`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Al empezar el rebase, Git guarda la punta anterior en `ORIG_HEAD`. `--abort` solo sirve mientras el rebase está en curso. `git revert` crearía un commit nuevo, y `git restore` solo toca el directorio de trabajo."
+  },
+  {
+   "id": "s09-q5",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre merge y rebase es correcta.",
+   "statements": [
+    {
+     "text": "Después de `git rebase main` en `feature`, `git switch main && git merge feature` es un fast-forward.",
+     "answer": true
+    },
+    {
+     "text": "Con rebase los conflictos se resuelven una sola vez, todos juntos.",
+     "answer": false
+    },
+    {
+     "text": "`git merge` no reescribe commits existentes.",
+     "answer": true
+    },
+    {
+     "text": "Por defecto, `git rebase` conserva los commits de fusión de la rama que reaplica.",
+     "answer": false
+    }
+   ],
+   "explain": "Tras el rebase, `main` es ancestro de `feature`, así que el merge solo avanza el puntero. En un rebase los conflictos aparecen commit por commit. Merge solo agrega un commit nuevo. Y el rebase, por defecto, descarta los commits de fusión y aplana la historia (salvo con `--rebase-merges`)."
+  },
+  {
+   "id": "s09-q6",
+   "type": "single",
+   "q": "¿Qué muestra este comando en una historia sin commits de fusión?\n```bash\ngit rev-list --merges --count HEAD\n```",
+   "options": [
+    "`0`",
+    "El número total de commits",
+    "Un error, porque no hay fusiones",
+    "Nada"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git rev-list --merges` lista solo los commits con más de un padre y `--count` los cuenta: en una historia lineal, 0. Es una forma robusta de comprobar que no quedaron fusiones."
+  },
+  {
+   "id": "s09-q7",
+   "type": "single",
+   "q": "Durante un rebase, Git se detiene con `CONFLICT (content): Merge conflict in menu.md`. Ya editaste el archivo y quitaste los marcadores. ¿Qué haces ahora?",
+   "options": [
+    "`git commit -am \"Resuelve conflicto\"` y listo",
+    "`git add menu.md` y luego `git rebase --continue`",
+    "`git rebase --skip`",
+    "`git merge --continue`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Marcas el archivo como resuelto con `git add` y continúas el rebase, que creará el commit reaplicado (ofreciéndote el mensaje original) y seguirá con los siguientes. `--skip` descartaría tu commit."
+  },
+  {
+   "id": "s09-q8",
+   "type": "single",
+   "q": "En medio de un rebase con conflictos decides que prefieres no hacerlo ahora. ¿Qué comando deja todo como estaba antes de empezar?",
+   "options": [
+    "`git rebase --quit`",
+    "`git rebase --skip`",
+    "`git rebase --abort`",
+    "`git reset --soft HEAD~1`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`--abort` restaura la rama original, el índice y el directorio de trabajo. `--quit` detiene el rebase pero deja HEAD donde esté (a mitad de camino); `--skip` descarta solo el commit actual."
+  },
+  {
+   "id": "s09-q9",
+   "type": "single",
+   "q": "Durante un rebase de `feature` sobre `main` hay un conflicto en `app.js`. ¿Qué versión deja `git checkout --theirs app.js`?",
+   "options": [
+    "La de `main` (la base nueva)",
+    "La del commit de `feature` que se está reaplicando",
+    "La del ancestro común",
+    "Ninguna: `--theirs` no funciona en un rebase"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En un rebase los papeles se invierten: HEAD («ours») es la base nueva con lo ya reaplicado, y «theirs» es tu commit que se está reaplicando."
+  },
+  {
+   "id": "s09-q10",
+   "type": "single",
+   "q": "Al reaplicar tu commit «Corrige el IVA» aparece un conflicto porque `main` ya corrigió lo mismo de otra forma, y la versión de `main` es la correcta. ¿Qué es lo más directo?",
+   "options": [
+    "`git rebase --abort`",
+    "`git rebase --skip`",
+    "`git rebase --edit-todo`",
+    "`git merge main`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--skip` descarta el commit actual (que ya sobra) y continúa con los siguientes. `--abort` cancelaría todo el rebase."
+  },
+  {
+   "id": "s09-q11",
+   "type": "single",
+   "q": "Quieres editar los tres últimos commits de tu rama. ¿Qué comando usas?",
+   "options": [
+    "`git rebase -i HEAD~2`",
+    "`git rebase -i HEAD~3`",
+    "`git rebase -i HEAD^3`",
+    "`git rebase -i HEAD`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git rebase -i HEAD~3` reaplica los commits posteriores a `HEAD~3`, es decir, los tres últimos. (`HEAD^3` sería el tercer padre de un commit de fusión.)"
+  },
+  {
+   "id": "s09-q12",
+   "type": "single",
+   "q": "En la lista de tareas de `git rebase -i`, ¿dónde está el commit más reciente?",
+   "options": [
+    "En la primera línea",
+    "En la última línea",
+    "Depende de la fecha de autor",
+    "No aparece: solo se listan los anteriores"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La lista va del más antiguo (arriba) al más reciente (abajo), al revés que `git log`, porque Git la ejecuta de arriba hacia abajo."
+  },
+  {
+   "id": "s09-q13",
+   "type": "single",
+   "q": "En Git 2.50 la lista muestra `pick 1a2b3c4 # Agrega login`. Cambias el texto a `pick 1a2b3c4 # Agrega el login` y guardas. ¿Qué pasa con el mensaje del commit?",
+   "options": [
+    "Cambia a «Agrega el login»",
+    "No cambia: lo que va tras `#` es un comentario; para cambiar el mensaje se usa `reword`",
+    "Git rechaza la lista por modificar el asunto",
+    "El commit se elimina"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Desde Git 2.50 el asunto aparece tras `#` precisamente para dejar claro que es solo una referencia. Para editar el mensaje, cambia `pick` por `reword`."
+  },
+  {
+   "id": "s09-q14",
+   "type": "multi",
+   "q": "¿Qué comandos de la lista de `rebase -i` funden un commit con el de la línea anterior? (Selecciona DOS.)",
+   "options": [
+    "`squash`",
+    "`reword`",
+    "`fixup`",
+    "`edit`",
+    "`drop`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`squash` y `fixup` funden el commit en el anterior. `squash` te deja combinar los mensajes; `fixup` descarta el del commit fundido. `reword` solo edita el mensaje, `edit` se detiene y `drop` elimina."
+  },
+  {
+   "id": "s09-q15",
+   "type": "single",
+   "q": "Tienes `pick A`, `fixup B`, `fixup C` en la lista. ¿Qué mensaje tendrá el commit resultante?",
+   "options": [
+    "El de C",
+    "El de A",
+    "Los tres mensajes concatenados",
+    "Git abrirá el editor sí o sí para que escribas uno"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`fixup` descarta el mensaje del commit que se funde, así que queda el de A con los cambios de A, B y C. Con `squash` se abriría el editor con los tres mensajes; con `fixup -C` se usaría el mensaje de ese commit."
+  },
+  {
+   "id": "s09-q16",
+   "type": "single",
+   "q": "Quieres dividir un commit antiguo en dos. Marcaste `edit` en su línea y el rebase se detuvo. ¿Cuál es el siguiente paso de la receta clásica?",
+   "options": [
+    "`git reset --hard HEAD~1`",
+    "`git reset HEAD~1`",
+    "`git rebase --continue`",
+    "`git commit --amend`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git reset HEAD~1` (mixto) deshace el commit pero conserva sus cambios en el directorio de trabajo, sin preparar; luego haces varios `git add` + `git commit` y `git rebase --continue`. `--hard` borraría los cambios."
+  },
+  {
+   "id": "s09-q17",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre la lista de tareas es correcta.",
+   "statements": [
+    {
+     "text": "Borrar la línea de un commit lo elimina de la historia.",
+     "answer": true
+    },
+    {
+     "text": "Si borras todas las líneas, el rebase se cancela.",
+     "answer": true
+    },
+    {
+     "text": "Mover líneas cambia el orden de los commits.",
+     "answer": true
+    },
+    {
+     "text": "Por defecto, Git avisa con un error si falta una línea (`rebase.missingCommitsCheck` vale `error`).",
+     "answer": false
+    }
+   ],
+   "explain": "Los comentarios de la propia lista lo advierten: «If you remove a line here THAT COMMIT WILL BE LOST» y «if you remove everything, the rebase will be aborted». `rebase.missingCommitsCheck` vale `ignore` por defecto; puedes ponerlo en `warn` o `error`."
+  },
+  {
+   "id": "s09-q18",
+   "type": "single",
+   "q": "¿Qué hace esta línea dentro de la lista de un rebase interactivo?\n```text\nexec npm test\n```",
+   "options": [
+    "Nada: las líneas `exec` son comentarios",
+    "Ejecuta `npm test` en ese punto; si falla, el rebase se detiene",
+    "Ejecuta `npm test` solo al final del rebase",
+    "Crea un commit con la salida de `npm test`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`exec` lanza el comando en una shell desde la raíz del repositorio en ese punto de la lista. Si termina con error, el rebase se interrumpe para que arregles el commit. `git rebase -x \"npm test\"` agrega esa línea tras cada commit."
+  },
+  {
+   "id": "s09-q19",
+   "type": "single",
+   "q": "El commit `a1b2c3d` tiene el asunto «Agrega crearReserva». ¿Qué asunto tendrá el commit creado con `git commit --fixup=a1b2c3d`?",
+   "options": [
+    "`fixup! a1b2c3d`",
+    "`fixup! Agrega crearReserva`",
+    "`Agrega crearReserva (fixup)`",
+    "`squash! Agrega crearReserva`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--fixup` toma el asunto del commit destino y le antepone `fixup! `. Así `git rebase --autosquash` sabe dónde colocarlo."
+  },
+  {
+   "id": "s09-q20",
+   "type": "single",
+   "q": "Tienes un commit `fixup! Agrega crearReserva` en la punta de tu rama. ¿Qué hace `git rebase -i --autosquash main`?",
+   "options": [
+    "Elimina el commit `fixup!`",
+    "Abre la lista con el `fixup!` movido justo debajo de «Agrega crearReserva» y con el comando `fixup`",
+    "Funde todos los commits de la rama en uno",
+    "Nada, porque `--autosquash` no funciona con `-i`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--autosquash` reordena y marca los commits `fixup!`/`squash!`/`amend!` según su asunto. Tú solo revisas la lista y guardas."
+  },
+  {
+   "id": "s09-q21",
+   "type": "yesno",
+   "q": "Indica si cada afirmación sobre autosquash es correcta (Git 2.50).",
+   "statements": [
+    {
+     "text": "`git rebase --autosquash main` funciona también sin `-i` (desde Git 2.44).",
+     "answer": true
+    },
+    {
+     "text": "`rebase.autoSquash = true` activa el autosquash por defecto en el modo interactivo.",
+     "answer": true
+    },
+    {
+     "text": "`git commit --fixup=reword:X` incorpora los cambios que tengas preparados en el área de preparación.",
+     "answer": false
+    },
+    {
+     "text": "`git commit --squash=X -m \"texto\"` crea un commit cuyo asunto empieza por `squash! `.",
+     "answer": true
+    }
+   ],
+   "explain": "Desde 2.44 `--autosquash` funciona en rebases no interactivos. `rebase.autoSquash` afecta al modo interactivo. `--fixup=reword:` solo reemplaza el mensaje e ignora lo preparado (equivale a `--fixup=amend:X --only`). `--squash` admite `-m` para agregar texto al mensaje."
+  },
+  {
+   "id": "s09-q22",
+   "type": "single",
+   "q": "Historia: `main` ← `feature/a` (2 commits) ← `feature/b` (2 commits, creada desde `feature/a`). ¿Qué hace `git rebase --onto main feature/a feature/b`?",
+   "options": [
+    "Reaplica los 4 commits sobre `main`",
+    "Reaplica solo los 2 commits propios de `feature/b` sobre `main`",
+    "Mueve `feature/a` sobre `main`",
+    "Fusiona `feature/a` en `feature/b`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `--onto N B R` se reaplican los commits de `B..R`: los de `feature/b` que no están en `feature/a`. `feature/a` no se toca."
+  },
+  {
+   "id": "s09-q23",
+   "type": "single",
+   "q": "Tu rama es A–B–C–D–E (E es HEAD). ¿Cómo queda tras `git rebase --onto HEAD~3 HEAD~1`?",
+   "options": [
+    "A–B–E'",
+    "A–B–C–E'",
+    "A–E'",
+    "A–B–D'–E'"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`HEAD~1` es D, así que se reaplica solo `D..E` (el commit E) sobre `HEAD~3`, que es B. C y D desaparecen de la rama."
+  },
+  {
+   "id": "s09-q24",
+   "type": "single",
+   "q": "Trabajas con ramas apiladas (`feature/modelo` ← `feature/rutas` ← `feature/vista`) y haces rebase de `feature/vista` sobre `main`. ¿Qué opción mueve también las otras dos ramas?",
+   "options": [
+    "`--rebase-merges`",
+    "`--update-refs`",
+    "`--keep-base`",
+    "`--autostash`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--update-refs` (Git 2.38) actualiza las ramas que apuntaban a commits reescritos; en modo interactivo aparecen como líneas `update-ref`. `rebase.updateRefs = true` lo activa siempre."
+  },
+  {
+   "id": "s09-q25",
+   "type": "multi",
+   "q": "¿En qué casos es razonable reescribir commits con rebase? (Selecciona DOS.)",
+   "options": [
+    "Commits locales que todavía no publicaste",
+    "`main` compartida, para dejar la historia más bonita",
+    "Tu propia rama de pull request que nadie más usa, publicándola luego con `--force-with-lease`",
+    "Una rama `release` de la que tus compañeros ya crearon ramas"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "La regla de oro prohíbe reescribir commits publicados sobre los que otros pueden haber basado su trabajo (`main`, `release`). Reescribir lo local, o tu rama personal de PR con push protegido, es práctica habitual."
+  },
+  {
+   "id": "s09-q26",
+   "type": "single",
+   "q": "Tienes un commit local y `origin/main` avanzó. No configuraste `pull.rebase` ni `pull.ff`. ¿Qué hace `git pull` en Git 2.50?",
+   "options": [
+    "Fusiona automáticamente",
+    "Hace rebase automáticamente",
+    "Se detiene con `fatal: Need to specify how to reconcile divergent branches.`",
+    "Descarta tu commit local"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Cuando las ramas divergieron y no hay preferencia configurada, `git pull` trae los cambios pero se niega a integrar, y sugiere `pull.rebase false`, `pull.rebase true` o `pull.ff only` (o las opciones `--no-rebase`, `--rebase`, `--ff-only`)."
+  },
+  {
+   "id": "s09-q27",
+   "type": "single",
+   "q": "¿Qué hace `git pull --rebase`?",
+   "options": [
+    "`git fetch` y luego reaplica tus commits locales sobre la rama remota",
+    "Reescribe la rama remota para que coincida con la tuya",
+    "`git fetch` y luego un merge con `--no-ff`",
+    "Hace rebase de la rama remota sobre la tuya y la publica"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Trae los cambios y reaplica tus commits locales (que nadie más tiene) encima. Por eso es compatible con la regla de oro."
+  },
+  {
+   "id": "s09-q28",
+   "type": "single",
+   "q": "Reescribiste tu rama publicada `feature/x`. Entre tu último `git fetch` y ahora, una compañera subió un commit a `feature/x`. ¿Qué pasa con `git push --force-with-lease`?",
+   "options": [
+    "Se acepta y borra el commit de tu compañera",
+    "Se rechaza con `(stale info)`, porque la rama remota ya no está donde tu `origin/feature/x` esperaba",
+    "Se rechaza con `(non-fast-forward)` y no hay forma de forzar",
+    "Hace un merge automático en el servidor"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--force-with-lease` solo fuerza si la rama remota sigue apuntando al valor de tu referencia remota. Como tu compañera la movió, el «arriendo» ya no es válido: `! [rejected] … (stale info)`."
+  },
+  {
+   "id": "s09-q29",
+   "type": "single",
+   "q": "Mismo caso, pero ahora ejecutas antes `git fetch` (sin integrar el commit de tu compañera). ¿Qué hace `git push --force-with-lease --force-if-includes`?",
+   "options": [
+    "Se acepta, porque tu `origin/feature/x` ya coincide con el servidor",
+    "Se rechaza con `(remote ref updated since checkout)`, porque el commit remoto no está integrado en tu rama",
+    "Se rechaza con `(fetch first)`",
+    "Se acepta, pero conserva el commit de tu compañera"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Tras el `fetch`, `--force-with-lease` a secas **sí** pasaría y borraría el commit. `--force-if-includes` (Git 2.30) comprueba además que la punta remota esté en la historia reciente de tu rama local y, como no lo está, rechaza."
+  },
+  {
+   "id": "s09-q30",
+   "type": "single",
+   "q": "¿Qué indica el `+` en esta línea de salida de `git push`?\n```text\n + ab9a4da...8c6f166 feature/carrito -> feature/carrito (forced update)\n```",
+   "options": [
+    "Que se creó una rama nueva",
+    "Que fue una actualización forzada",
+    "Que se agregaron commits sin forzar",
+    "Que el push fue rechazado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En la salida de `git push`, `+` marca una actualización forzada exitosa (y `viejo...nuevo`, con tres puntos, lo confirma). `*` es rama nueva, `!` rechazo y un espacio, fast-forward."
+  },
+  {
+   "id": "s09-q31",
+   "type": "single",
+   "q": "¿Cuál es la regla de oro del rebase según Pro Git?",
+   "options": [
+    "Haz siempre rebase antes de cada commit",
+    "No hagas rebase de commits que existen fuera de tu repositorio y sobre los que otros pueden haber basado su trabajo",
+    "Nunca uses rebase interactivo en ramas con más de 10 commits",
+    "Usa siempre `--force` después de un rebase"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "«Do not rebase commits that exist outside your repository and that people may have based work on». Reescribir esos commits obliga a los demás a reparar su historia."
+  },
+  {
+   "id": "s09-q32",
+   "type": "single",
+   "q": "Tienes cambios sin confirmar en un archivo con seguimiento y ejecutas `git rebase main`. ¿Qué ocurre?",
+   "options": [
+    "Git hace el rebase y mezcla tus cambios en el último commit",
+    "Git se niega: `error: cannot rebase: You have unstaged changes.`",
+    "Git descarta tus cambios sin avisar",
+    "Git crea un commit WIP automáticamente"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El rebase necesita un directorio de trabajo limpio. Confirma o guarda tus cambios (stash, s10), o usa `--autostash` / `rebase.autoStash`."
+  },
+  {
+   "id": "s09-q33",
+   "type": "multi",
+   "q": "Después de reescribir con `rebase -i` tu rama `feature/pagos` (ya publicada y solo tuya), ¿qué comandos la publican de forma **segura**? (Selecciona DOS.)",
+   "options": [
+    "`git push`",
+    "`git push --force-with-lease`",
+    "`git push --force`",
+    "`git push --force-with-lease --force-if-includes`"
+   ],
+   "answer": [
+    1,
+    3
+   ],
+   "explain": "Un `git push` normal será rechazado (no es fast-forward). `--force` sobrescribe a ciegas. `--force-with-lease`, y mejor aún con `--force-if-includes`, solo fuerza si nadie cambió la rama remota sin que lo hayas integrado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-rebase — documentación oficial",
+   "url": "https://git-scm.com/docs/git-rebase"
+  },
+  {
+   "title": "git-push — documentación oficial (--force-with-lease, --force-if-includes)",
+   "url": "https://git-scm.com/docs/git-push"
+  },
+  {
+   "title": "git-commit — documentación oficial (--fixup, --squash)",
+   "url": "https://git-scm.com/docs/git-commit"
+  },
+  {
+   "title": "git-pull — documentación oficial",
+   "url": "https://git-scm.com/docs/git-pull"
+  },
+  {
+   "title": "git-config — rebase.autoSquash, rebase.updateRefs, pull.rebase, push.useForceIfIncludes",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — Git Branching: Rebasing",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Rebasing"
+  },
+  {
+   "title": "Pro Git 2.ª ed. (español) — Reorganizar el trabajo realizado",
+   "url": "https://git-scm.com/book/es/v2/Ramificaciones-en-Git-Reorganizar-el-Trabajo-Realizado"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — Git Tools: Rewriting History",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History"
+  },
+  {
+   "title": "Notas de versión de Git 2.30 (--force-if-includes)",
+   "url": "https://raw.githubusercontent.com/git/git/v2.30.0/Documentation/RelNotes/2.30.0.txt"
+  },
+  {
+   "title": "Notas de versión de Git 2.44 (--autosquash sin -i)",
+   "url": "https://raw.githubusercontent.com/git/git/v2.44.0/Documentation/RelNotes/2.44.0.txt"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.38 (--update-refs)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-38/"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.50 (el # en la lista de rebase -i)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-50/"
+  },
+  {
+   "title": "GitHub Docs — About pull request merges",
+   "url": "https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges"
+  },
+  {
+   "title": "Atlassian — Merging vs. Rebasing",
+   "url": "https://www.atlassian.com/git/tutorials/merging-vs-rebasing"
+  }
+ ]
+}

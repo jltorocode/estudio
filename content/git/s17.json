@@ -1,0 +1,3208 @@
+{
+ "id": "s17",
+ "order": 17,
+ "title": "Examen final y certificaciones",
+ "domain": "extra",
+ "summary": "Cierra el curso con un simulacro de 100 preguntas repartidas según el peso de cada sección, ocho rescates integradores en la terminal real y los datos oficiales de las certificaciones de GitHub (Foundations, Actions, Administration, Advanced Security y Copilot). También aprendes a leer escenarios de Git bajo presión y a responder las preguntas típicas de una entrevista.",
+ "goal": "Superar el simulacro final con al menos un 80 % y resolver los ocho rescates sin mirar la solución, eligiendo con datos oficiales qué certificación de GitHub rendir y cómo prepararla.",
+ "objectives": [
+  "Comparar las certificaciones de GitHub (GH-900, GH-200, GH-100, GH-500 y GH-300) por temario, duración, puntaje de aprobación, precio, idiomas y vigencia, con datos oficiales.",
+  "Relacionar cada dominio del examen GitHub Foundations con las secciones del curso e identificar lo que hay que estudiar aparte.",
+  "Predecir el resultado de un comando (gráfico de commits y tres áreas) antes de ejecutarlo, en preguntas de escenario.",
+  "Resolver rescates integradores que combinan ramas, remotos, rebase, reflog, bisect, worktrees y hooks en la terminal real.",
+  "Gestionar el tiempo de un examen de opción múltiple con un ritmo por pregunta y dos pasadas.",
+  "Explicar en una entrevista, con ejemplos concretos, las diferencias entre merge y rebase, reset y revert, y fetch y pull."
+ ],
+ "lessons": [
+  {
+   "id": "s17-l1",
+   "title": "Certificaciones de GitHub: qué miden y cómo te prepara este curso",
+   "minutes": 30,
+   "goals": [
+    "Comparar las cinco certificaciones de GitHub por temario, duración, puntaje, precio, idiomas y vigencia usando los datos oficiales.",
+    "Relacionar cada dominio del examen GH-900 (GitHub Foundations) con las secciones del curso y listar lo que hay que estudiar aparte.",
+    "Planificar la inscripción y el día del examen en Pearson VUE: cuenta, idioma, pausas, reintentos y reprogramación."
+   ],
+   "takeaways": [
+    "Desde el **1 de julio de 2025** las certificaciones de GitHub se rinden en **Pearson VUE** y se gestionan en **Microsoft Learn**: 100 minutos, supervisadas y aprobadas con **700 de 1000** (puntaje escalado).",
+    "**GitHub Foundations (GH-900)** es de nivel inicial, se puede rendir en español y **no requiere renovación**; en Chile cuesta **59 USD** (99 USD en EE. UU.).",
+    "Actions (GH-200), Administration (GH-100), Advanced Security (GH-500) y Copilot (GH-300) son de nivel intermedio y **valen 2 años**; GitHub está adoptando la renovación de Microsoft, sin repetir el examen completo.",
+    "Este curso cubre a fondo el Git que piden los exámenes (sobre todo el dominio de más peso de GH-900); las funciones de la plataforma (Projects, Codespaces, Copilot, administración de organizaciones) se estudian aparte en Microsoft Learn.",
+    "Microsoft no publica el número exacto de preguntas (la mayoría de sus exámenes tiene entre 40 y 60), no descuenta por errores y da crédito parcial en las preguntas de varias partes."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Git es software libre y no tiene una certificación «oficial» propia. Las credenciales más reconocidas del ecosistema son las de **GitHub**, que evalúan Git **y** la plataforma: colaboración con *pull requests*, automatización, seguridad y administración. Desde el **1 de julio de 2025** se rinden exclusivamente a través de **Pearson VUE**, en alianza con **Microsoft Learn**; las que obtengas desde esa fecha aparecen en tu perfil de Microsoft Learn (no como insignia de Credly)."
+    },
+    {
+     "type": "p",
+     "text": "Todos los datos de esta lección se verificaron el **27 de septiembre de 2026** en las páginas oficiales de GitHub Learn y Microsoft Learn (enlaces en las fuentes). Los temarios cambian varias veces al año: antes de pagar, revisa la **guía de estudio** (*study guide*) de tu examen."
+    },
+    {
+     "type": "diagram",
+     "title": "Itinerario de certificaciones de GitHub",
+     "mermaid": "flowchart LR\n  C[\"Este curso: s01–s16\"] --> F[\"GitHub Foundations · GH-900 · inicial\"]\n  F --> AC[\"GitHub Actions · GH-200\"]\n  F --> AS[\"GitHub Advanced Security · GH-500\"]\n  F --> AD[\"GitHub Administration · GH-100\"]\n  F --> CP[\"GitHub Copilot · GH-300\"]\n  CP --> AG[\"Agentic AI Developer · GH-600 · beta\"]"
+    },
+    {
+     "type": "h",
+     "text": "Ficha comparativa (datos oficiales, 27-sep-2026)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Dato",
+      "Foundations",
+      "Actions",
+      "Administration",
+      "Advanced Security",
+      "Copilot"
+     ],
+     "rows": [
+      [
+       "Código",
+       "GH-900",
+       "GH-200",
+       "GH-100",
+       "GH-500",
+       "GH-300"
+      ],
+      [
+       "Nivel",
+       "Inicial (*Beginner*)",
+       "Intermedio",
+       "Intermedio",
+       "Intermedio",
+       "Intermedio"
+      ],
+      [
+       "Para quién",
+       "Cualquier usuario de GitHub, incluso sin perfil técnico",
+       "Quien automatiza CI/CD con flujos de trabajo",
+       "Quien administra GitHub Enterprise (Cloud y Server)",
+       "Quien protege código, secretos y dependencias",
+       "Quien programa con asistencia de IA"
+      ],
+      [
+       "Duración",
+       "100 min",
+       "100 min",
+       "100 min",
+       "100 min",
+       "100 min"
+      ],
+      [
+       "N.º de preguntas",
+       "No se publica",
+       "No se publica",
+       "No se publica",
+       "No se publica",
+       "No se publica"
+      ],
+      [
+       "Aprobación",
+       "700 / 1000",
+       "700 / 1000",
+       "700 / 1000",
+       "700 / 1000",
+       "700 / 1000"
+      ],
+      [
+       "Precio Chile / EE. UU.",
+       "59 / 99 USD",
+       "59 / 99 USD",
+       "59 / 99 USD",
+       "59 / 99 USD",
+       "59 / 99 USD"
+      ],
+      [
+       "Idiomas",
+       "Inglés, español, portugués (Brasil), coreano y japonés",
+       "Inglés, español, portugués (Brasil), coreano y japonés",
+       "Inglés (puedes pedir 30 min extra)",
+       "Inglés, español, portugués (Brasil), coreano y japonés",
+       "Inglés, español, portugués (Brasil), coreano y japonés"
+      ],
+      [
+       "Vigencia",
+       "No requiere renovación",
+       "2 años",
+       "2 años",
+       "2 años",
+       "2 años"
+      ],
+      [
+       "Temario vigente desde",
+       "Enero de 2026",
+       "Enero de 2026",
+       "Julio de 2026",
+       "Julio de 2026",
+       "7 de agosto de 2026"
+      ],
+      [
+       "Requisitos",
+       "Ninguno formal",
+       "Ninguno formal",
+       "Ninguno formal",
+       "Ninguno formal",
+       "Ninguno formal"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Vigencia en transición.** Las páginas oficiales indican que las certificaciones de GitHub (salvo Foundations) valen **2 años** y que GitHub está adoptando el proceso de recertificación de Microsoft, que permitirá mantenerlas **sin repetir el examen completo** (en Microsoft, la renovación es una evaluación en línea gratuita). Mientras ese proceso no exista, las que venzan se **extienden 6 meses**; si la tuya ya venció, GitHub ofrece un voucher para el primer intento de renovación escribiendo a learn@github.com. Foundations sigue la política de Microsoft para exámenes de nivel fundamental, que **no tienen recertificación**."
+    },
+    {
+     "type": "h",
+     "text": "GitHub Foundations (GH-900): temario y dónde lo estudiaste"
+    },
+    {
+     "type": "p",
+     "text": "Es el examen natural al terminar este curso. Según su guía de estudio (*skills measured as of January 2026*), está pensado para desarrolladores y también para quienes no programan, y evalúa siete dominios:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Dominio (peso)",
+      "Qué evalúa (resumen del temario oficial)",
+      "En este curso"
+     ],
+     "rows": [
+      [
+       "Git y GitHub: lo básico (25–30 %)",
+       "Propósito y beneficios del control de versiones; Git frente a GitHub; repositorios, commits y ramas; cuentas, organizaciones y *enterprise*; GitHub Flow; Markdown en issues y PR; cuándo usar GitHub Desktop y GitHub Mobile",
+       "s01, s02, s05 y s08 (GitHub Flow). Markdown, tipos de cuenta y las apps de escritorio y celular: aparte"
+      ],
+      [
+       "Repositorios en GitHub (10–15 %)",
+       "Estructura y archivos clave (README, LICENSE, CONTRIBUTING, CODEOWNERS, SECURITY); crear y mantener repos con plantillas y ramas; agregar y gestionar archivos; *insights*, estrellas y métricas",
+       "s02, s03, s05 y s08 (CODEOWNERS). *Insights* y métricas: aparte"
+      ],
+      [
+       "Colaborar con GitHub (10–15 %)",
+       "Issues, pull requests y discussions; enlazar PR con issues, plantillas, filtros y asignaciones; notificaciones; Gists, wikis y GitHub Pages",
+       "s07 y s08 (flujo de PR y revisión, simulado con ramas y servidor). Discussions, Gists, wikis y Pages: aparte"
+      ],
+      [
+       "Prácticas modernas de desarrollo (10–15 %)",
+       "GitHub Actions; GitHub Copilot (agentes, *Agent Mode*, varios modelos) y sus planes Individual, Business y Enterprise; Codespaces y *dev containers*; el editor github.dev",
+       "s16 (CI/CD con Actions, explicado). Copilot, Codespaces y github.dev: aparte"
+      ],
+      [
+       "Gestión de proyectos (5–10 %)",
+       "GitHub Projects y sus vistas; etiquetas, hitos y automatizaciones; respuestas guardadas y asignaciones; *insights* del proyecto",
+       "Aparte: es funcionalidad de la plataforma"
+      ],
+      [
+       "Privacidad, seguridad y administración (10–15 %)",
+       "2FA y *passkeys*; permisos y roles en repos y organizaciones; Enterprise Managed Users y políticas de Copilot; visibilidad de repos y reglas de protección de ramas; equipos y roles",
+       "s07 (llaves SSH y tokens), s08 (protección de ramas) y s15 (secretos). 2FA, EMU y roles: aparte"
+      ],
+      [
+       "Comunidad de GitHub (5–10 %)",
+       "Beneficios del código abierto y GitHub Sponsors; seguir usuarios y organizaciones; GitHub Marketplace; InnerSource; *forks*, plantillas y repos descubribles",
+       "s08 (forks y remoto `upstream`). Sponsors, Marketplace e InnerSource: aparte"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En resumen: el dominio de más peso es el corazón de este curso, y para los demás ya tienes la base de Git que los explica (qué es un fork por dentro, qué integra un PR, por qué se protege `main`). Lo que falta son **funciones de la plataforma**: para eso están las rutas gratuitas *GitHub Foundations Part 1* y *Part 2* de Microsoft Learn, que se practican en GitHub real. La mayoría de las preguntas trata funciones disponibles de forma general (GA), aunque puede aparecer alguna *preview* de uso común."
+    },
+    {
+     "type": "h",
+     "text": "Las otras cuatro certificaciones"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Certificación",
+      "Dominios (peso)",
+      "Qué te aporta este curso"
+     ],
+     "rows": [
+      [
+       "GitHub Actions (GH-200)",
+       "Crear y gestionar flujos de trabajo (20–25 %) · Consumir y depurar flujos (15–20 %) · Crear y mantener acciones (15–20 %) · Gestionar Actions en la empresa (20–25 %) · Seguridad y optimización de la automatización (10–15 %)",
+       "s16: `actions/checkout`, `fetch-depth`, etiquetas de release; s13: hooks como automatización local. El YAML de los flujos, *runners* y *secrets* se estudian aparte"
+      ],
+      [
+       "GitHub Administration (GH-100)",
+       "Identidades y acceso (15–20 %) · Administrar el entorno de GitHub Enterprise (10–15 %) · Desarrollo seguro y cumplimiento (25–30 %) · Gestionar GitHub Actions (20–25 %) · Monitorear y optimizar el uso (10–15 %)",
+       "s08 (protección de ramas y flujos de equipo) y s16 (hooks del servidor como `pre-receive`, que también existen en GitHub Enterprise Server). SAML, SCIM y licencias: aparte"
+      ],
+      [
+       "GitHub Advanced Security (GH-500)",
+       "Suites, funciones y ecosistema de seguridad (15–20 %) · *Secret Protection* (15–20 %) · Seguridad de la cadena de suministro (15–20 %) · *Code Security* con CodeQL (10–15 %) · Operaciones de seguridad (15–20 %) · Administración de las suites (10–15 %)",
+       "s15 (purgar un secreto de la historia y rotar la credencial) y s13 (hook `pre-commit` que bloquea secretos): justo lo que *push protection* evita a escala. CodeQL y Dependabot: aparte"
+      ],
+      [
+       "GitHub Copilot (GH-300)",
+       "Uso responsable (15–20 %) · Funciones de Copilot (25–30 %) · Datos y arquitectura (10–15 %) · *Prompt engineering* y contexto (10–15 %) · Productividad (10–15 %) · Privacidad, exclusiones y salvaguardas (10–15 %)",
+       "Poco: es un examen de la herramienta de IA. Sí te sirve el criterio del curso para revisar lo que propone la IA (leer el diff, commits atómicos, probar antes de publicar)"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En 2026 apareció además **GitHub Certified: Agentic AI Developer (GH-600)**, todavía en **beta**: 120 minutos, solo en inglés, centrada en operar agentes de IA dentro del ciclo de desarrollo (herramientas y servidores MCP, memoria y estado, orquestación de varios agentes y salvaguardas). Un examen beta solo se puede rendir una vez durante la beta y sus resultados llegan cuando el examen pasa a estar disponible de forma general."
+    },
+    {
+     "type": "h",
+     "text": "Precio, inscripción y día del examen"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Precio según el país donde rindes.** La tabla oficial de precios de Microsoft Learn fija los exámenes de GitHub en **99 USD en EE. UU.** y **59 USD en Chile** (igual en Argentina, México y Brasil). Cada reintento se paga de nuevo, salvo ofertas como *Exam Replay*.",
+      "**Inscripción**: en la página de la certificación en Microsoft Learn, botón *Schedule exam*, que te lleva a Pearson VUE. Microsoft recomienda una **cuenta personal (MSA)**: si usas la del trabajo o de la universidad y te vas, pierdes el historial de exámenes.",
+      "**Modalidad**: en la mayoría de los casos puedes elegir rendir **en línea** (OnVUE, desde tu casa, con cámara y revisión de la sala) o en un **centro de evaluación**. Reprograma o cancela con **al menos 24 horas** de anticipación o pierdes el pago.",
+      "**Idioma**: elige español en Foundations, Actions, Advanced Security o Copilot. Si el examen no está en tu idioma (Administration), puedes pedir **30 minutos extra**. Las versiones traducidas se actualizan unas ocho semanas después de la versión en inglés.",
+      "**Antes de rendir**: prueba el **sandbox** oficial del examen (GHCertDemo.starttest.com), que imita la interfaz real, y la **evaluación de práctica gratuita** de cada certificación en Microsoft Learn.",
+      "**Durante el examen**: en los exámenes de GitHub **no** tienes acceso a Microsoft Learn (a diferencia de los exámenes de rol de Microsoft). Hay 5 minutos incorporados para pausas, pero el reloj sigue corriendo y **no puedes volver** a las preguntas vistas antes de una pausa.",
+      "**Puntaje**: escala de 1 a 1000; apruebas con **700**, que no equivale a un 70 % de aciertos. No se descuenta por respuestas incorrectas, las preguntas de varias partes dan crédito parcial y algunas preguntas pueden no puntuar (no sabes cuáles). Microsoft no revela qué preguntas fallaste: el informe muestra barras por dominio.",
+      "**Si repruebas**: puedes repetir a las **24 horas**; después hay que esperar **14 días** entre intentos, con un máximo de **5 intentos en 12 meses** desde el primero.",
+      "**Estudiantes**: GitHub Education ha ofrecido vouchers gratuitos (mientras haya disponibles) en el *Student Developer Pack*, válidos para Foundations o Copilot; revisa si la oferta está vigente cuando te inscribas."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "**Trampas de examen que conviene tener frías**: Git ≠ GitHub (Git es local y libre; GitHub, una plataforma); *fork*, *pull request*, *issue* y protección de ramas son de la plataforma, no comandos de Git; `git fetch` no toca tu rama; `git revert` no borra historia; un clon trae **toda** la historia; `main` es solo el nombre por defecto de la rama inicial (`init.defaultBranch`)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "caption": "GitHub Flow en miniatura: rama corta, commit, push, PR (simulado) y merge a main",
+     "setup": "git init -q --bare ~/servidor/sitio.git\nnuevo_repo sitio\nfecha '2026-09-01 09:00'\ncommit_archivo README.md '# Sitio del estudio' 'Crea el sitio'\ngit remote add origin ~/servidor/sitio.git\ngit push -q -u origin main",
+     "cwd": "sitio",
+     "code": "git switch -c feature/contacto\necho \"<form></form>\" > contacto.html\ngit add contacto.html\ngit commit -m \"feat: agrega el formulario de contacto\"\ngit push -u origin feature/contacto\n# En GitHub abrirías aquí el pull request; tras la revisión se fusiona en main:\ngit switch main\ngit merge --no-ff --no-edit feature/contacto\ngit push\ngit log --oneline --graph --all"
+    },
+    {
+     "type": "h",
+     "text": "Plan de preparación con este curso"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Objetivo",
+      "Repasa",
+      "Practica",
+      "Señal de que estás listo"
+     ],
+     "rows": [
+      [
+       "GH-900 Foundations",
+       "s01–s08 y los temas marcados como «aparte» (rutas *GitHub Foundations Part 1* y *Part 2*)",
+       "Este simulacro (sobre todo s01–s08) y la evaluación de práctica oficial",
+       "≥ 85 % en la evaluación de práctica y explicas GitHub Flow sin apuntes"
+      ],
+      [
+       "GH-200 Actions",
+       "s13 (hooks), s14 (clones superficiales) y s16",
+       "Flujos de trabajo reales en un repo propio de GitHub",
+       "Escribes un flujo con matriz, caché y *secrets* sin copiar"
+      ],
+      [
+       "GH-500 Advanced Security",
+       "s13, s15 y s16",
+       "*Secret scanning* y CodeQL en un repo público propio",
+       "Sabes qué hacer ante un secreto filtrado, y en qué orden"
+      ],
+      [
+       "GH-100 Administration",
+       "s07, s08 y s16 (hooks del servidor)",
+       "Una organización de prueba: equipos, roles, reglas de ramas",
+       "Distingues permisos de repo, organización y *enterprise*"
+      ],
+      [
+       "GH-300 Copilot",
+       "El criterio de revisión del curso (s03, s09)",
+       "Rutas *GitHub Copilot Fundamentals* de Microsoft Learn",
+       "Explicas planes, exclusiones de contenido y uso responsable"
+      ]
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Examen supervisado",
+       "en": "proctored exam",
+       "def": "Examen vigilado por una persona (en línea con cámara o en un centro) para garantizar que no usas ayudas no permitidas."
+      },
+      {
+       "term": "Puntaje escalado",
+       "en": "scaled score",
+       "def": "Puntaje de 1 a 1000 ajustado a la dificultad de las preguntas; 700 aprueba, pero no equivale a un 70 % de aciertos."
+      },
+      {
+       "term": "Guía de estudio",
+       "en": "study guide",
+       "def": "Documento oficial con los dominios, sus pesos y los objetivos que evalúa cada versión del examen."
+      },
+      {
+       "term": "Evaluación de práctica",
+       "en": "practice assessment",
+       "def": "Cuestionario gratuito en Microsoft Learn con el estilo y la dificultad del examen (no son las mismas preguntas)."
+      },
+      {
+       "term": "Voucher",
+       "en": "exam voucher",
+       "def": "Código prepagado que cubre un intento de examen."
+      },
+      {
+       "term": "Recertificación",
+       "en": "renewal",
+       "def": "Proceso para mantener vigente una certificación; en Microsoft es una evaluación en línea gratuita."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s17-l2",
+   "title": "Estrategia para exámenes y entrevistas de Git",
+   "minutes": 30,
+   "goals": [
+    "Aplicar un método de cinco pasos (dibujar el gráfico, ubicar HEAD, revisar las tres áreas, ejecutar mentalmente y contrastar opciones) para responder preguntas de escenario sin ejecutar Git.",
+    "Calcular el ritmo por pregunta de un examen de 100 minutos y organizarlo en dos pasadas.",
+    "Distinguir los pares de comandos que más se confunden (reset/revert, merge/rebase, fetch/pull, `-X ours`/`-s ours`) y justificar cuándo usar cada uno.",
+    "Responder preguntas típicas de entrevista con ejemplos de rescates reales y la forma de verificarlos."
+   ],
+   "takeaways": [
+    "En una pregunta de escenario, **dibuja el gráfico** (commits, ramas y HEAD) y las **tres áreas** antes de mirar las opciones.",
+    "Clasifica cada comando por **qué mueve**: HEAD, la rama, el index, el directorio de trabajo o el remoto. Casi todas las trampas están ahí.",
+    "Ritmo: en 100 minutos, con 60 preguntas tienes ≈ 1 min 40 s por pregunta y con 50, 2 minutos. Primera pasada para lo seguro; marca lo dudoso y revísalo **antes** de tomar una pausa.",
+    "¿Historia publicada? → `revert` (y `--force-with-lease` solo en ramas propias). ¿Local? → `reset`, `--amend`, `rebase -i`. ¿Perdiste algo? → `reflog`.",
+    "En una entrevista, cuenta un rescate real con el método STAR y di siempre cómo verificaste el resultado (`git log --graph`, `git status`, pruebas)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los exámenes de GitHub y las entrevistas técnicas preguntan Git de la misma forma: te describen una situación («estás en X, quieres Y») y te piden el comando o el resultado. Nadie te va a pedir que memorices opciones raras; sí que **predigas** qué pasa. Eso se entrena con método."
+    },
+    {
+     "type": "h",
+     "text": "El método: dibuja antes de responder"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**1. Dibuja el gráfico**: un punto por commit, flechas hacia el padre, etiquetas para las ramas y para HEAD. Si la pregunta muestra `git log --oneline --graph`, léelo de arriba (lo más nuevo) hacia abajo.",
+      "**2. Ubica HEAD**: ¿apunta a una rama o está separado? El próximo commit mueve la rama a la que apunta HEAD, y solo esa.",
+      "**3. Revisa las tres áreas**: ¿qué hay en el directorio de trabajo, en el index y en el último commit? `git status -s` lo resume en dos columnas: la izquierda es el index y la derecha, el directorio de trabajo.",
+      "**4. Ejecuta mentalmente el comando**: ¿qué mueve (HEAD, rama, index, trabajo, remoto)? ¿Crea commits nuevos (hashes nuevos) o solo mueve punteros?",
+      "**5. Solo entonces mira las opciones** y descarta las que contradigan tu dibujo."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Escenario típico: feature y main divergieron",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  branch feature\n  commit id: \"C1\"\n  commit id: \"C2\"\n  checkout main\n  commit id: \"D\""
+    },
+    {
+     "type": "p",
+     "text": "Ante ese gráfico, tres preguntas clásicas: ¿qué hace `git merge feature` estando en `main`? Una fusión de tres vías con **commit de fusión**, porque las ramas divergieron. ¿Y `git rebase main` estando en `feature`? C1 y C2 se reaplican encima de D con **hashes nuevos** y la historia queda lineal. ¿Y `git merge --ff-only feature`? Falla con `fatal: Not possible to fast-forward, aborting.`"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "caption": "Predice y comprueba: ¿qué mueve cada variante de git reset?",
+     "setup": "nuevo_repo demo\nfecha '2026-09-01 09:00'\ncommit_archivo app.js 'v1' 'C1'\nescribir app.js 'v2'\ngit commit -q -am 'C2'\nescribir app.js 'v3'\ngit commit -q -am 'C3'",
+     "cwd": "demo",
+     "code": "git log --oneline\n# --soft solo mueve la rama: el cambio de C3 queda PREPARADO (M en la columna izquierda)\ngit reset --soft HEAD~1\ngit status -s\n# --mixed (el modo por defecto) mueve la rama y el index: queda SIN PREPARAR\ngit reset HEAD~1\ngit status -s\ngit log --oneline\n# El directorio de trabajo nunca se tocó: sigue la versión de C3\ncat app.js"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "HEAD / rama",
+      "Index",
+      "Directorio de trabajo",
+      "¿Apto con historia publicada?"
+     ],
+     "rows": [
+      [
+       "`git reset --soft <c>`",
+       "Mueve la rama a `<c>`",
+       "No cambia",
+       "No cambia",
+       "No (reescribe)"
+      ],
+      [
+       "`git reset [--mixed] <c>`",
+       "Mueve la rama",
+       "Copia `<c>`",
+       "No cambia",
+       "No"
+      ],
+      [
+       "`git reset --hard <c>`",
+       "Mueve la rama",
+       "Copia `<c>`",
+       "Copia `<c>` (¡pierdes lo no confirmado!)",
+       "No"
+      ],
+      [
+       "`git revert <c>`",
+       "Avanza con un commit nuevo",
+       "Actualiza",
+       "Actualiza",
+       "Sí"
+      ],
+      [
+       "`git restore <archivo>`",
+       "No",
+       "No",
+       "Copia desde el index",
+       "Sí (no toca la historia)"
+      ],
+      [
+       "`git restore --staged <archivo>`",
+       "No",
+       "Copia desde HEAD",
+       "No",
+       "Sí"
+      ],
+      [
+       "`git switch <rama>`",
+       "HEAD pasa a otra rama",
+       "Actualiza",
+       "Actualiza (conserva cambios compatibles)",
+       "Sí"
+      ],
+      [
+       "`git commit --amend`",
+       "Reemplaza el último commit",
+       "Se usa para el commit nuevo",
+       "No cambia",
+       "No"
+      ],
+      [
+       "`git fetch`",
+       "No; actualiza `origin/*`",
+       "No",
+       "No",
+       "Sí"
+      ],
+      [
+       "`git pull`",
+       "`fetch` + integra en tu rama",
+       "Actualiza",
+       "Actualiza",
+       "Sí"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Los pares que más se confunden"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Par",
+      "La diferencia en una frase",
+      "Pista de examen"
+     ],
+     "rows": [
+      [
+       "`reset` / `revert`",
+       "`reset` mueve la rama hacia atrás (reescribe); `revert` agrega un commit que deshace",
+       "«ya está en origin» → `revert`"
+      ],
+      [
+       "`merge` / `rebase`",
+       "`merge` une historias con un commit de fusión; `rebase` reaplica tus commits con hashes nuevos",
+       "«historia lineal» → `rebase`; «rama compartida» → `merge`"
+      ],
+      [
+       "`fetch` / `pull`",
+       "`fetch` solo descarga; `pull` descarga e integra",
+       "«sin tocar mi rama» → `fetch`"
+      ],
+      [
+       "`restore` / `restore --staged`",
+       "El primero descarta cambios del trabajo; el segundo solo quita del index",
+       "«sin perder mis cambios» → `--staged`"
+      ],
+      [
+       "`-X ours` / `-s ours`",
+       "`-X ours` fusiona y solo en los conflictos gana lo tuyo; `-s ours` descarta todo lo de la otra rama",
+       "«registrar la fusión sin traer nada» → `-s ours`"
+      ],
+      [
+       "`--force` / `--force-with-lease`",
+       "El segundo rechaza el push si el remoto cambió desde tu último fetch",
+       "«sin pisar el trabajo de otros» → `--force-with-lease`"
+      ],
+      [
+       "`stash` / `stash -u`",
+       "Sin `-u` no se guardan los archivos sin seguimiento",
+       "«incluye archivos nuevos» → `-u`"
+      ],
+      [
+       "`branch -d` / `branch -D`",
+       "`-d` se niega si la rama no está fusionada",
+       "«not fully merged» → revisa antes de usar `-D`"
+      ],
+      [
+       "Etiqueta ligera / anotada",
+       "La anotada es un objeto con autor, fecha y mensaje",
+       "«para un release» → anotada (`-a`)"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "caption": "Predice y comprueba: revertir un merge exige elegir el padre con -m",
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'Crea la portada'\ngit switch -q -c feature/ofertas\ncommit_archivo ofertas.js 'export const ofertas = [];' 'Agrega las ofertas'\ngit switch -q main\ncommit_archivo estilos.css 'h1 { color: navy; }' 'Agrega estilos'\ngit merge -q --no-ff --no-edit feature/ofertas",
+     "cwd": "tienda",
+     "code": "git log --oneline --graph\n# Sin -m, Git no sabe contra qué padre deshacer: da error\ngit revert HEAD\ngit revert -m 1 --no-edit HEAD\ngit log --oneline --graph\nls"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "**Ritmo por pregunta.** Microsoft no publica cuántas preguntas trae cada examen de GitHub (la mayoría de sus exámenes tiene entre 40 y 60). Con 100 minutos: si son 60, tienes ≈ 1 min 40 s por pregunta; si son 50, 2 minutos. Haz una **primera pasada** respondiendo lo que sepas en menos de un minuto, **marca** lo dudoso y vuelve al final. Ojo: si tomas una pausa ya no podrás volver a las preguntas vistas antes de ella, así que revisa las marcadas **antes** de pausar."
+    },
+    {
+     "type": "h",
+     "text": "Técnicas para opción múltiple"
+    },
+    {
+     "type": "list",
+     "items": [
+      "No se descuenta por errores: **nunca dejes una pregunta en blanco**.",
+      "En «Selecciona DOS/TRES», evalúa cada opción como verdadero o falso por separado; en las preguntas de varias partes hay crédito parcial.",
+      "Desconfía de los absolutos («siempre», «nunca»), salvo en reglas firmes como «`git fetch` nunca modifica tu rama actual».",
+      "Si dos opciones son casi iguales, la diferencia es la trampa: `--soft` frente a `--mixed`, `origin/main` frente a `main`, `-X ours` frente a `-s ours`.",
+      "Lee el verbo y los matices: «deshacer **sin perder** los cambios», «ya **publicado**», «**sin crear** commits nuevos». Cada uno descarta la mitad de las opciones.",
+      "Separa Git de GitHub: forks, pull requests, issues, protección de ramas y Actions son de la plataforma; commits, ramas, merge y rebase son de Git."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué comando uso para deshacer?",
+     "mermaid": "flowchart TD\n  Q[\"¿Dónde está lo que quieres deshacer?\"] --> W[\"Solo en el directorio de trabajo\"]\n  Q --> I[\"Preparado en el index\"]\n  Q --> Lc[\"En commits locales sin publicar\"]\n  Q --> P[\"En commits ya publicados\"]\n  Q --> X[\"Lo perdí tras un reset, rebase o borrado\"]\n  W --> W1[\"git restore archivo\"]\n  I --> I1[\"git restore --staged archivo\"]\n  Lc --> L1[\"git reset --soft, --mixed o --hard · git commit --amend · git rebase -i\"]\n  P --> P1[\"git revert · merge: git revert -m 1\"]\n  X --> X1[\"git reflog y git branch o git reset al hash\"]"
+    },
+    {
+     "type": "h",
+     "text": "Entrevistas: lo que suelen preguntar"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Pregunta",
+      "Respuesta corta (30 segundos)"
+     ],
+     "rows": [
+      [
+       "¿Qué es un commit?",
+       "Una instantánea completa del proyecto (un árbol) con autor, fecha, mensaje y el hash de su padre; su propio hash depende de todo eso."
+      ],
+      [
+       "¿Merge o rebase?",
+       "Merge conserva la historia real y es seguro en ramas compartidas; rebase deja una historia lineal pero reescribe hashes: solo en ramas propias o sin publicar."
+      ],
+      [
+       "¿Reset o revert?",
+       "Reset mueve la rama (reescribe; para lo local); revert crea un commit inverso (para lo publicado)."
+      ],
+      [
+       "¿Fetch o pull?",
+       "Fetch descarga y actualiza `origin/*`; pull además integra en tu rama (merge, rebase o solo fast-forward, según la configuración)."
+      ],
+      [
+       "¿Cómo recuperas un commit «perdido»?",
+       "`git reflog`, ubico el hash y creo una rama o hago `reset` a él; si ya no está en el reflog, `git fsck --lost-found`."
+      ],
+      [
+       "Hiciste commits en la rama equivocada",
+       "Si no están publicados: `git branch nueva` para guardarlos, `git reset --hard` de la rama equivocada al punto correcto, y sigo en `nueva` (o uso `cherry-pick`)."
+      ],
+      [
+       "Subiste un secreto",
+       "Primero **rotar** la credencial; después purgar la historia con `git filter-repo`, forzar el push de forma coordinada y pedir al equipo que vuelva a clonar."
+      ],
+      [
+       "¿Cómo encuentras qué commit rompió algo?",
+       "`git bisect` entre un commit bueno y uno malo; mejor aún, `git bisect run` con una prueba automática."
+      ],
+      [
+       "¿Qué es HEAD?",
+       "Un puntero, normalmente simbólico, a la rama actual; está separado (*detached*) si apunta directo a un commit."
+      ],
+      [
+       "¿Cómo trabajas en equipo con Git?",
+       "Ramas cortas, commits atómicos con buenos mensajes, PR con revisión, `main` protegida, CI en cada PR y nada de force push en ramas compartidas."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Para las preguntas de comportamiento («cuéntame de un problema con Git que resolviste») usa **STAR**: *Situación* (rama compartida con un merge equivocado ya publicado), *Tarea* (dejar `main` sana sin reescribir), *Acción* (`git revert -m 1`, arreglo en la rama y *revert del revert* al reintegrar) y *Resultado* (nadie tuvo que re-clonar; lo verificaste con `git log --graph` y las pruebas). Los ocho retos de esta sección son justamente historias STAR listas para contar."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Errores que hunden una entrevista de Git**: recomendar `git push --force` sobre `main`, confundir Git con GitHub, decir que `git revert` «borra» un commit, no saber recuperar algo con `reflog` y no verificar el resultado. Decir «no lo sé, pero lo comprobaría así…» (y nombrar `git log --graph`, `git status` o una rama de prueba) suma puntos."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "**Cómo usar esta sección como simulacro**: haz el quiz final de una sentada con reloj (por ejemplo, 60 preguntas en 100 minutos) y sin ejecutar nada; después resuelve los ocho retos en la terminal y repasa las flashcards. Cada pregunta indica la sección que evalúa: vuelve a esa sección si fallas dos o más del mismo tema."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Pregunta de escenario",
+       "en": "scenario-based question",
+       "def": "Pregunta que describe un estado del repositorio y pide el comando adecuado o el resultado de ejecutarlo."
+      },
+      {
+       "term": "Crédito parcial",
+       "en": "partial credit",
+       "def": "En preguntas de varias partes, cada parte correcta suma aunque otras estén mal."
+      },
+      {
+       "term": "Dos pasadas",
+       "en": "two-pass strategy",
+       "def": "Responder primero lo seguro, marcar lo dudoso y volver a ello con el tiempo que sobre."
+      },
+      {
+       "term": "Historia publicada",
+       "en": "published history",
+       "def": "Commits que ya están en un remoto compartido: no se reescriben, se corrigen con commits nuevos."
+      },
+      {
+       "term": "STAR",
+       "en": "Situation, Task, Action, Result",
+       "def": "Estructura para contar un caso real en una entrevista: situación, tarea, acción y resultado."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s17-e1",
+   "title": "Rescate 1 · Los commits que cayeron en main",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Integra **s04** (reset), **s05** (ramas), **s07** (remotos) y **s10** (stash). Llevas la mañana programando el carrito de la tienda y te das cuenta de que hiciste **dos commits directamente en `main`** (todavía sin publicar). Además tienes a medio hacer un cambio en `index.html` (el horario de atención) que **sí** va en `main`, pero que aún no quieres confirmar.",
+    "Objetivo:\n1. Los dos commits del carrito deben quedar en una rama nueva **`feature/carrito`**, publicada en `origin` y con seguimiento (*upstream*) a `origin/feature/carrito`.\n2. Tu `main` local debe volver a coincidir con `origin/main`. No publiques nada en el `main` del servidor.\n3. Termina en `main` con el cambio del horario **intacto y sin confirmar**, y sin `carrito.js` en el directorio de trabajo.",
+    "Empieza mirando la situación:\n```bash\ngit status -s\ngit log --oneline --graph --all\n```"
+   ],
+   "setup": "git init -q --bare ~/servidor/tienda.git\nnuevo_repo tienda\nfecha '2026-09-21 09:00'\ncommit_archivo index.html '<h1>Tienda Don Pepe</h1>' 'Crea la portada de la tienda'\nfecha '2026-09-21 09:30'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\ngit remote add origin ~/servidor/tienda.git\ngit push -q -u origin main\nfecha '2026-09-22 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el módulo del carrito'\nfecha '2026-09-22 10:40'\nanexar carrito.js 'export function agregar(producto) { carrito.push(producto); }'\ngit commit -q -am 'Agrega la función agregar al carrito'\nanexar index.html '<p>Horario: lunes a sábado, de 9 a 19 h</p>'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "feature/carrito tiene los dos commits del carrito",
+     "script": "rama_existe feature/carrito 'Crea la rama feature/carrito con los commits del carrito'\n[ \"$(git rev-list --count main..feature/carrito)\" = 2 ] || falla 'feature/carrito debería tener exactamente los 2 commits del carrito por delante de main'\nmensaje_es feature/carrito 'Agrega la función agregar al carrito'\nancestro origin/main feature/carrito || falla 'feature/carrito debe salir de origin/main'"
+    },
+    {
+     "name": "main vuelve a coincidir con origin/main",
+     "script": "[ \"$(git rev-parse main)\" = \"$(git rev-parse origin/main)\" ] || falla 'Tu main local todavía no coincide con origin/main (tiene commits que no van ahí)'\n[ \"$(git -C ~/servidor/tienda.git rev-list --count main)\" = 2 ] || falla 'El main del servidor cambió: no debías publicar nada en main'"
+    },
+    {
+     "name": "feature/carrito está publicada con upstream",
+     "script": "[ \"$(git -C ~/servidor/tienda.git rev-parse --verify -q refs/heads/feature/carrito)\" = \"$(git rev-parse feature/carrito)\" ] || falla 'Publica feature/carrito en origin'\n[ \"$(git rev-parse --abbrev-ref 'feature/carrito@{upstream}' 2>/dev/null)\" = origin/feature/carrito ] || falla 'feature/carrito no sigue a origin/feature/carrito (usa -u al publicar)'"
+    },
+    {
+     "name": "Sigues en main con el horario sin confirmar",
+     "script": "en_rama main\narchivo_tiene index.html 'Horario' 'Perdiste el cambio del horario en index.html'\n[ -n \"$(git diff HEAD --name-only -- index.html)\" ] || falla 'El horario debe seguir sin confirmar en main'\n[ ! -e carrito.js ] || falla 'carrito.js no debería estar en el directorio de trabajo de main: pertenece a feature/carrito'"
+    },
+    {
+     "name": "Sin operaciones a medias",
+     "script": "sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git stash",
+    "git branch feature/carrito",
+    "git reset --hard origin/main",
+    "git push -u origin feature/carrito",
+    "git stash pop",
+    "git status -s",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Antes de mover `main`, pon a salvo lo que no quieres perder: los commits (una rama que apunte a ellos) y el cambio sin confirmar (¿stash?).",
+    "Una rama es solo un puntero: `git branch feature/carrito` guarda los dos commits sin cambiarte de rama. Después `main` puede volver a `origin/main` con un `reset`.",
+    "`git stash` → `git branch feature/carrito` → `git reset --hard origin/main` → `git push -u origin feature/carrito` → `git stash pop`."
+   ],
+   "explain": "La clave es separar los tres problemas. **Los commits**: `git branch feature/carrito` crea un puntero en el commit actual, así que los dos commits quedan a salvo en esa rama. **La rama `main`**: como esos commits no están publicados, se puede mover `main` hacia atrás con `git reset --hard origin/main` (reescribir historia local es seguro). **El cambio sin confirmar**: `reset --hard` lo borraría, por eso va antes a un `git stash` y vuelve con `git stash pop`. Por último, `git push -u origin feature/carrito` publica la rama **sin tener que cambiarte a ella** y configura su upstream.\n\nAlternativas: `git reset --keep origin/main` mueve la rama pero conserva los cambios locales de archivos que el reset no toca (aquí `index.html`), así que te ahorra el stash; también podías hacer `git switch -c feature/carrito`, publicar y luego `git branch -f main origin/main` desde la otra rama. Si los commits **ya** hubieran estado en `origin/main`, nada de esto valdría: tocaría `git revert` y llevar el trabajo a la rama nueva con `cherry-pick`."
+  },
+  {
+   "id": "s17-e2",
+   "title": "Rescate 2 · Rama borrada, reset --hard y un commit encima",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Integra **s04**, **s05** y **s10** (reflog y cherry-pick). Ayer fue un mal día en el blog de recetas: primero borraste con `git branch -D` la rama **`feature/comentarios`** (3 commits sin fusionar), luego ejecutaste `git reset --hard HEAD~2` en `main` y perdiste las recetas de **sopaipillas** y **mote con huesillo**, y encima de eso hiciste un commit nuevo: *Corrige el título del README*.",
+    "Objetivo:\n1. `feature/comentarios` debe existir otra vez, con sus 3 commits (el último: *Agrega moderación de comentarios*).\n2. `main` debe tener las 5 recetas originales **y**, encima, la corrección del README como último commit (6 commits en total).\n3. Termina en `main`, sin cambios pendientes ni operaciones a medias.",
+    "Nada de esto está publicado. Tu mejor amigo aquí es:\n```bash\ngit reflog\n```"
+   ],
+   "setup": "nuevo_repo blog\nfecha '2026-09-10 09:00'\ncommit_archivo README.md '# Blog de recetas' 'Crea el README'\nfecha '2026-09-10 10:00'\ncommit_archivo index.html '<h1>Recetas chilenas</h1>' 'Crea la portada'\nfecha '2026-09-11 10:00'\ncommit_archivo recetas/pastel-de-choclo.md '# Pastel de choclo' 'Agrega la receta del pastel de choclo'\nfecha '2026-09-12 10:00'\ncommit_archivo recetas/sopaipillas.md '# Sopaipillas' 'Agrega la receta de sopaipillas'\nfecha '2026-09-13 10:00'\ncommit_archivo recetas/mote-con-huesillo.md '# Mote con huesillo' 'Agrega la receta de mote con huesillo'\ngit switch -q -c feature/comentarios\nfecha '2026-09-14 10:00'\ncommit_archivo comentarios.js 'const comentarios = [];' 'Crea el módulo de comentarios'\nfecha '2026-09-14 11:00'\nanexar comentarios.js 'function publicar(texto) { comentarios.push(texto); }'\ngit commit -q -am 'Permite publicar comentarios'\nfecha '2026-09-14 12:00'\nanexar comentarios.js 'function moderar(i) { comentarios.splice(i, 1); }'\ngit commit -q -am 'Agrega moderación de comentarios'\ngit switch -q main\ngit branch -q -D feature/comentarios\ngit reset -q --hard HEAD~2\nfecha '2026-09-15 09:00'\nescribir README.md '# Blog de recetas chilenas'\ngit commit -q -am 'Corrige el título del README'",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "Recuperaste feature/comentarios completa",
+     "script": "rama_existe feature/comentarios 'La rama feature/comentarios sigue borrada (búscala en git reflog)'\nmensaje_es feature/comentarios 'Agrega moderación de comentarios' 'feature/comentarios debe apuntar a su último commit: Agrega moderación de comentarios'\n[ \"$(git rev-list --count feature/comentarios)\" = 8 ] || falla 'feature/comentarios debería tener sus 3 commits encima de las 5 recetas'"
+    },
+    {
+     "name": "main recuperó las recetas perdidas",
+     "script": "mensaje_es main~1 'Agrega la receta de mote con huesillo' 'main todavía no recupera los commits de sopaipillas y mote con huesillo (justo debajo de la corrección del README)'\nmensaje_es main~2 'Agrega la receta de sopaipillas'\n[ \"$(git rev-list --count main)\" = 6 ] || falla 'main debería tener 6 commits: las 5 del principio más la corrección del README'"
+    },
+    {
+     "name": "Conservaste la corrección del README",
+     "script": "mensaje_es main 'Corrige el título del README' 'El último commit de main debería ser la corrección del README'\ncontenido main README.md | grep -q 'recetas chilenas' || falla 'El README de main no tiene el título corregido'"
+    },
+    {
+     "name": "Todo en orden",
+     "script": "en_rama main\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git reflog",
+    "git branch feature/comentarios HEAD@{3}",
+    "git reset --hard HEAD@{2}",
+    "git cherry-pick HEAD@{1}",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Lee `git reflog` de arriba abajo: el commit del README, el `reset: moving to HEAD~2`, el `checkout: moving from feature/comentarios to main` y, antes, los commits de la rama borrada.",
+    "Crear una rama no agrega entradas al reflog de HEAD: rescata primero `feature/comentarios` con `git branch feature/comentarios HEAD@{…}` (la entrada del commit *Agrega moderación…*).",
+    "Después devuelve `main` al punto previo al reset (la entrada del `checkout … to main`) con `git reset --hard HEAD@{…}` y trae la corrección del README con `git cherry-pick` (tras el reset, esa corrección queda en `HEAD@{1}`)."
+   ],
+   "explain": "El reflog de HEAD registra **cada** movimiento, incluso los de ramas que ya no existen. Tras el escenario queda así: `HEAD@{0}` corrección del README, `HEAD@{1}` el `reset`, `HEAD@{2}` el `checkout` a `main` (que dejó HEAD en *mote con huesillo*) y `HEAD@{3}` el último commit de la rama borrada.\n\n1. `git branch feature/comentarios HEAD@{3}` resucita la rama (crear ramas no mueve HEAD, así que los índices no cambian).\n2. `git reset --hard HEAD@{2}` devuelve `main` a *mote con huesillo*. Ese reset agrega una entrada nueva, así que la corrección del README pasa a ser `HEAD@{1}`.\n3. `git cherry-pick HEAD@{1}` la vuelve a aplicar encima (con un hash nuevo).\n\nEn la vida real es más cómodo copiar los hashes que muestra `git reflog` en vez de contar posiciones. Alternativas: como `git commit` no modifica `ORIG_HEAD`, este sigue donde lo dejó el `reset` (en *mote con huesillo*), así que `git rebase --onto ORIG_HEAD HEAD~1` reubica la corrección del README en un solo paso; y el mensaje `Deleted branch feature/comentarios (was …)` que imprime `git branch -D` ya te daba el hash de la rama."
+  },
+  {
+   "id": "s17-e3",
+   "title": "Rescate 3 · Un PR limpio: squash, rebase con conflicto y force-with-lease",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Integra **s06** (conflictos), **s07** (remotos) y **s09** (rebase interactivo y `--force-with-lease`). Tu rama **`feature/busqueda`** ya está publicada con tres commits: *Agrega búsqueda por nombre*, *wip* y *arregla typo*. En la revisión del PR te piden:",
+    "1. Dejarla como **un solo commit** con el mensaje `feat: agrega búsqueda de productos`.\n2. Basarla en el `main` **más reciente del servidor**: Camila acaba de publicar la ruta de productos destacados en `rutas.js`, justo donde tú agregaste la tuya. Conserva **las dos** rutas: primero la de destacados y después la de búsqueda.\n3. Publicar la rama reescrita **sin pisar trabajo ajeno** (nada de `--force` a secas). El `main` del servidor no debe cambiar.",
+    "Cuando Git abra el editor del rebase interactivo, verás algo como:\n```\npick 1a2b3c4 Agrega búsqueda por nombre\npick 5d6e7f8 wip\npick 9a0b1c2 arregla typo\n```"
+   ],
+   "setup": "git init -q --bare ~/servidor/api.git\nnuevo_repo api\nfecha '2026-09-15 09:00'\ncommit_archivo rutas.js \"app.get('/productos', listar);\" 'Crea las rutas de productos'\ngit remote add origin ~/servidor/api.git\ngit push -q -u origin main\ngit switch -q -c feature/busqueda\nfecha '2026-09-16 10:00'\nanexar rutas.js \"app.get('/productos/buscar', buscar);\"\nescribir busqueda.js 'function buscar(req, res) { res.json([]); }'\ngit add . && git commit -q -m 'Agrega búsqueda por nombre'\nfecha '2026-09-16 11:00'\nescribir busqueda.js 'function buscar(req, res) { res.json(filtrar(req.query.q)); }'\ngit commit -q -am 'wip'\nfecha '2026-09-16 11:30'\nescribir busqueda.js 'function buscar(req, res) { res.json(filtrarPorNombre(req.query.q)); }'\ngit commit -q -am 'arregla typo'\ngit push -q -u origin feature/busqueda\ncd ~\ngit clone -q ~/servidor/api.git companera\ncd companera\nautor 'Camila Rojas' 'camila@tienda.cl'\nfecha '2026-09-16 12:00'\nanexar rutas.js \"app.get('/productos/destacados', destacados);\"\ngit commit -q -am 'Agrega la ruta de productos destacados'\ngit push -q\nyo\ncd ~/api",
+   "cwd": "api",
+   "checks": [
+    {
+     "name": "Un solo commit encima del main actual del servidor",
+     "script": "srv=$(git -C ~/servidor/api.git rev-parse main)\n[ \"$(git rev-parse feature/busqueda~1 2>/dev/null)\" = \"$srv\" ] || falla 'feature/busqueda debe ser exactamente UN commit encima del main actual del servidor (¿hiciste git fetch y el rebase sobre origin/main?)'\nmensaje_es feature/busqueda 'feat: agrega búsqueda de productos'"
+    },
+    {
+     "name": "El conflicto quedó bien resuelto",
+     "script": "c=$(contenido feature/busqueda rutas.js)\necho \"$c\" | grep -qF '/productos/destacados' || falla 'Se perdió la ruta de destacados de Camila'\necho \"$c\" | grep -qF '/productos/buscar' || falla 'Se perdió tu ruta de búsqueda'\necho \"$c\" | grep -qE '^(<<<<<<<|=======|>>>>>>>)' && falla 'rutas.js quedó con marcadores de conflicto'\n[ \"$(echo \"$c\" | grep -n destacados | cut -d: -f1)\" -lt \"$(echo \"$c\" | grep -n buscar | cut -d: -f1)\" ] || falla 'Deja primero la ruta de destacados y después la de búsqueda'\ncontenido feature/busqueda busqueda.js | grep -qF filtrarPorNombre || falla 'busqueda.js debe quedar con su versión final (filtrarPorNombre)'\nexit 0"
+    },
+    {
+     "name": "Publicada sin pisar a nadie",
+     "script": "[ \"$(git -C ~/servidor/api.git rev-parse feature/busqueda)\" = \"$(git rev-parse feature/busqueda)\" ] || falla 'Publica la rama reescrita en origin (necesitarás --force-with-lease)'\n[ \"$(git -C ~/servidor/api.git rev-list --count main)\" = 2 ] || falla 'El main del servidor no debía cambiar'"
+    },
+    {
+     "name": "Sin rebase a medias",
+     "script": "en_rama feature/busqueda\nsin_operacion_en_curso\nsin_conflictos\nlimpio"
+    }
+   ],
+   "solution": [
+    "git fetch",
+    {
+     "cmd": "git rebase -i origin/main",
+     "edit": "pick {{SHA:feature/busqueda~2}} Agrega búsqueda por nombre\nfixup {{SHA:feature/busqueda~1}} wip\nfixup {{SHA:feature/busqueda}} arregla typo\n"
+    },
+    "printf \"app.get('/productos', listar);\\napp.get('/productos/destacados', destacados);\\napp.get('/productos/buscar', buscar);\\n\" > rutas.js",
+    "git add rutas.js",
+    "git rebase --continue",
+    "git commit --amend -m \"feat: agrega búsqueda de productos\"",
+    "git push --force-with-lease",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Primero `git fetch`: sin él, tu `origin/main` no conoce el commit de Camila y además `--force-with-lease` compararía contra información vieja.",
+    "`git rebase -i origin/main` hace las dos cosas a la vez: cambia la base y te deja fusionar commits. Deja `pick` en el primero y `fixup` en *wip* y *arregla typo*.",
+    "Al aplicar el primer commit aparece el conflicto en `rutas.js`: edítalo con `code rutas.js` (deja las tres rutas, sin marcadores), `git add rutas.js` y `git rebase --continue`. Al final: `git commit --amend -m \"feat: …\"` y `git push --force-with-lease`."
+   ],
+   "explain": "`git rebase -i origin/main` reaplica tus commits encima del `main` actualizado **y** te deja reorganizarlos: `fixup` funde *wip* y *arregla typo* en el primero descartando sus mensajes (`squash` abriría el editor para combinarlos). El conflicto aparece al reaplicar el primer commit, porque tú y Camila agregaron una línea en el mismo lugar de `rutas.js`; durante el rebase, *ours* es la base (`origin/main`, con la ruta de Camila) y *theirs* es tu commit. Tras resolver: `git add` + `git rebase --continue` (nunca `git commit` a mano en medio de un rebase).\n\nEl mensaje final se cambia con `git commit --amend -m …` (o marcando el primer commit como `reword`). Como reescribiste una rama publicada, el push normal sería rechazado: `--force-with-lease` solo sobrescribe si `origin/feature/busqueda` sigue donde tu último `fetch` lo vio; si alguien hubiera publicado en tu rama, respondería `(stale info)`. Para más seguridad, combínalo con `--force-if-includes`."
+  },
+  {
+   "id": "s17-e4",
+   "title": "Rescate 4 · Volver a integrar una funcionalidad revertida",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Integra **s04** (revert), **s06** (merge), **s07** (push) y **s16** (revertir un merge). Hace unos días se fusionó `feature/descuentos` en `main` con un commit de fusión y se publicó. Al día siguiente se **revirtió** ese merge (`git revert -m 1`) porque faltaban pruebas, y el revert también se publicó.",
+    "Hoy la rama ya tiene las pruebas (*Agrega pruebas de descuentos*). Objetivo:\n1. Reintegrar en `main` la funcionalidad **completa**: `descuentos.js`, el `<script>` de la portada **y** `descuentos.test.js`.\n2. Hacerlo con un **commit de fusión** de `feature/descuentos` y **sin reescribir** la historia publicada (el commit del revert debe seguir existiendo; nada de `reset` ni force push).\n3. Publicar `main`.",
+    "Antes de actuar, pregúntate qué traería un simple `git merge feature/descuentos`. Puedes comprobar tus hipótesis con:\n```bash\ngit log --oneline --graph --all\n```"
+   ],
+   "setup": "git init -q --bare ~/servidor/tienda.git\nnuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'Crea la portada'\ngit remote add origin ~/servidor/tienda.git\ngit push -q -u origin main\ngit switch -q -c feature/descuentos\nfecha '2026-09-02 10:00'\ncommit_archivo descuentos.js 'export const descuento = (precio) => precio * 0.9;' 'Agrega el cálculo de descuentos'\nfecha '2026-09-02 11:00'\nanexar index.html '<script src=\"descuentos.js\"></script>'\ngit commit -q -am 'Muestra los descuentos en la portada'\ngit switch -q main\nfecha '2026-09-03 09:00'\ngit merge -q --no-ff --no-edit feature/descuentos\ngit push -q\nfecha '2026-09-03 15:00'\ngit revert -m 1 --no-edit HEAD >/dev/null\ngit push -q\ngit switch -q feature/descuentos\nfecha '2026-09-04 10:00'\ncommit_archivo descuentos.test.js 'test(\"aplica el 10 %\", () => expect(descuento(100)).toBe(90));' 'Agrega pruebas de descuentos'\ngit switch -q main",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "main tiene la funcionalidad completa",
+     "script": "contenido main descuentos.js | grep -qF 'descuento' || falla 'descuentos.js no está en main: un merge normal solo trae los commits NUEVOS de la rama (¿qué pasa con los que se revirtieron?)'\ncontenido main index.html | grep -qF 'descuentos.js' || falla 'La portada de main no carga descuentos.js'\ncontenido main descuentos.test.js >/dev/null || falla 'Faltan las pruebas (descuentos.test.js) en main'"
+    },
+    {
+     "name": "Integrada con un merge y sin reescribir la historia",
+     "script": "f=$(git rev-parse feature/descuentos)\ngit rev-list --merges --parents main | grep -q \" $f\\$\" || falla 'Integra feature/descuentos en main con un commit de fusión (git merge)'\ngit log --format=%s main | grep -q '^Revert \"Merge branch' || falla 'Reescribiste la historia publicada: el commit del revert debe seguir en main'\n[ \"$(git rev-list --count main)\" -ge 7 ] || falla 'main perdió commits de la historia publicada'"
+    },
+    {
+     "name": "main publicado",
+     "script": "[ \"$(git -C ~/servidor/tienda.git rev-parse main)\" = \"$(git rev-parse main)\" ] || falla 'Publica main en origin (un push normal debería bastar)'"
+    },
+    {
+     "name": "Todo en orden",
+     "script": "en_rama main\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline --graph --all",
+    "git revert --no-edit HEAD",
+    "git merge --no-edit feature/descuentos",
+    "git push",
+    "ls"
+   ],
+   "hints": [
+    "Los commits originales de `feature/descuentos` ya son ancestros de `main` (se fusionaron), así que un nuevo `git merge` solo trae el commit de las pruebas. Lo que los «apagó» fue el revert.",
+    "Para deshacer un revert publicado… se revierte el revert. El último commit de `main` es justamente ese revert.",
+    "`git revert --no-edit HEAD`, luego `git merge --no-edit feature/descuentos` y `git push`."
+   ],
+   "explain": "Revertir un merge deshace sus **cambios**, pero no su **historia**: los commits de `feature/descuentos` siguen siendo ancestros de `main`. Por eso un `git merge feature/descuentos` posterior calcula la base común en la punta vieja de la rama y solo trae lo nuevo (las pruebas), sin `descuentos.js` ni el `<script>`: un error silencioso muy común.\n\nLa receta clásica (documentada en *revert-a-faulty-merge* de Git) es **revertir el revert** y luego fusionar lo nuevo. En Git 2.50 ese commit se titula `Reapply \"Merge branch 'feature/descuentos'\"`. El orden inverso (merge primero, revert del revert después) también funciona. Como todo son commits nuevos, el `git push` es un avance normal: nadie tiene que forzar ni re-clonar. La alternativa de reescribir (`reset` para quitar el revert y force push) está prohibida en una rama compartida."
+  },
+  {
+   "id": "s17-e5",
+   "title": "Rescate 5 · Bisect, revert y versión de parche",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Integra **s04** (revert), **s08** (etiquetas) y **s11** (bisect). La calculadora de precios cobra IVA: `sh calc.sh 100` debe imprimir `119`. En la versión `v1.0.0` la prueba `test.sh` pasaba; en `main` falla. La historia ya está publicada y hay commits buenos después del error.",
+    "Objetivo:\n1. Encuentra con **`git bisect`** el commit que rompió la prueba (usa `git bisect run ./test.sh`: la terminal no ejecuta scripts directamente, pero Git sí puede).\n2. Deshazlo en `main` **sin reescribir la historia** (conserva los commits posteriores).\n3. Cierra la sesión de bisect.\n4. Crea la etiqueta **anotada** `v1.1.0` en el `main` arreglado, con el mensaje `Versión 1.1.0`.",
+    "Mira la prueba y el cálculo actual:\n```bash\ncat test.sh\ncat calc.sh\ngit log --oneline v1.0.0..main\n```"
+   ],
+   "setup": "nuevo_repo precios\nfecha '2026-08-01 09:00'\nescribir calc.sh 'echo $(( $1 * 119 / 100 ))'\nprintf '#!/bin/sh\\n[ \"$(sh calc.sh 100)\" = \"119\" ]\\n' > test.sh\nchmod +x test.sh\ngit add . && git commit -q -m 'Crea la calculadora de precios con IVA'\ngit tag -a v1.0.0 -m 'Versión 1.0.0'\nfecha '2026-08-05 09:00'\ncommit_archivo envio.sh 'echo 3990' 'Agrega el costo de envío'\nfecha '2026-08-08 09:00'\ncommit_archivo README.md '# Calculadora de precios' 'Crea el README'\nfecha '2026-08-12 09:00'\nescribir calc.sh 'echo $(( $1 + $1 * 18 / 100 ))'\ngit commit -q -am 'Simplifica el cálculo del IVA'\nfecha '2026-08-15 09:00'\ncommit_archivo descuento.sh 'echo 0' 'Agrega el descuento por volumen'\nfecha '2026-08-20 09:00'\nanexar README.md 'Uso: sh calc.sh NETO'\ngit commit -q -am 'Documenta el uso de la calculadora'",
+   "cwd": "precios",
+   "checks": [
+    {
+     "name": "El commit culpable fue revertido",
+     "script": "mensaje_es main 'Revert \"Simplifica el cálculo del IVA\"' 'El último commit de main debería ser el revert del commit culpable (usa git revert)'\n[ \"$(git show main:calc.sh | sh -s 100)\" = 119 ] || falla 'Con el main actual, sh calc.sh 100 todavía no da 119'"
+    },
+    {
+     "name": "No reescribiste la historia",
+     "script": "[ \"$(git rev-list --count main)\" = 7 ] || falla 'main debería tener sus 6 commits más el revert (7)'\ngit log --format=%s main | grep -qx 'Agrega el descuento por volumen' || falla 'Se perdieron commits posteriores al error'"
+    },
+    {
+     "name": "Etiqueta anotada v1.1.0 en main",
+     "script": "[ \"$(git cat-file -t v1.1.0 2>/dev/null)\" = tag ] || falla 'Crea la etiqueta ANOTADA v1.1.0 (git tag -a)'\n[ \"$(git rev-parse 'v1.1.0^{commit}')\" = \"$(git rev-parse main)\" ] || falla 'v1.1.0 debe apuntar al main arreglado'\n[ \"$(git tag -l --format='%(contents:subject)' v1.1.0)\" = 'Versión 1.1.0' ] || falla 'El mensaje de v1.1.0 debe ser: Versión 1.1.0'"
+    },
+    {
+     "name": "Sesión de bisect cerrada",
+     "script": "[ ! -e \"$(git rev-parse --git-dir)/BISECT_LOG\" ] || falla 'Termina la sesión con git bisect reset'\nen_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    "git bisect start main v1.0.0",
+    "git bisect run ./test.sh",
+    "git bisect reset",
+    "git revert --no-edit main~2",
+    "git tag -a v1.1.0 -m \"Versión 1.1.0\"",
+    "git log --oneline -3"
+   ],
+   "hints": [
+    "`git bisect start <malo> <bueno>`: aquí el malo es `main` y el bueno `v1.0.0`. Luego `git bisect run ./test.sh` prueba cada commit por ti (salida 0 = bueno).",
+    "Anota el hash que imprime `… is the first bad commit` **antes** de `git bisect reset`, que te devuelve a `main` y borra las referencias del bisect.",
+    "Como la historia está publicada: `git revert --no-edit <hash>` (en la solución usamos `main~2`, que es ese mismo commit) y después `git tag -a v1.1.0 -m \"Versión 1.1.0\"`."
+   ],
+   "explain": "`git bisect` hace una búsqueda binaria entre un commit bueno y uno malo: con 5 commits sospechosos bastan 2 o 3 pruebas. Con `git bisect run ./test.sh`, Git ejecuta el script en cada paso y lo interpreta por su código de salida (0 = bueno, 125 = saltar, de 1 a 127 salvo 125 = malo) hasta imprimir `… is the first bad commit`: *Simplifica el cálculo del IVA*, que cambió `* 119 / 100` por `+ $1 * 18 / 100` (IVA del 18 %).\n\nDurante el bisect HEAD queda separado; `git bisect reset` te devuelve a la rama original. Como la historia está publicada, el arreglo es `git revert` (un commit nuevo que invierte solo ese cambio y conserva *descuento por volumen* y la documentación), no `reset` ni `rebase -i`. Por último, una etiqueta **anotada** (`-a`) guarda autor, fecha y mensaje, que es lo que se espera en un release; `git describe` y las plataformas la tratan como versión. Siguiente paso real: `git push origin main v1.1.0`."
+  },
+  {
+   "id": "s17-e6",
+   "title": "Rescate 6 · Una clave en medio de la historia (sin publicar)",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Integra **s03** (.gitignore y `rm --cached`), **s04** (amend), **s07** (push) y **s09** (rebase interactivo con `edit`). Tienes tres commits locales en el servicio de pagos. En el **segundo**, *Configura las credenciales de la pasarela*, confirmaste por error el archivo `.env` con la clave de la API. Todavía no has publicado nada de esto.",
+    "Objetivo:\n1. Que `.env` **no aparezca en ningún commit** (ni local ni en el servidor).\n2. Que `.env` siga **en tu disco** e **ignorado** mediante una línea `.env` confirmada en `.gitignore`.\n3. Conservar los **tres commits con sus mensajes** (y `config.js`, que sí debe quedar en la historia).\n4. Publicar `main`.",
+    "Pista de lectura: `git log --stat origin/main..main` te muestra qué archivos toca cada commit local."
+   ],
+   "setup": "git init -q --bare ~/servidor/pagos.git\nnuevo_repo pagos\nfecha '2026-09-18 09:00'\nescribir .gitignore 'node_modules/'\nescribir LEEME.md '# Servicio de pagos'\ngit add . && git commit -q -m 'Crea el proyecto'\ngit remote add origin ~/servidor/pagos.git\ngit push -q -u origin main\nfecha '2026-09-19 10:00'\ncommit_archivo pasarela.js 'export async function cobrar(monto) { return enviar(monto); }' 'Agrega el cliente de la pasarela de pagos'\nfecha '2026-09-19 11:00'\nescribir .env 'PASARELA_API_KEY=clave-de-prueba-no-real-123'\nescribir config.js 'export const apiKey = process.env.PASARELA_API_KEY;'\ngit add . && git commit -q -m 'Configura las credenciales de la pasarela'\nfecha '2026-09-19 12:00'\nanexar pasarela.js 'export const REINTENTOS = 3;'\ngit commit -q -am 'Agrega reintentos a la pasarela'",
+   "cwd": "pagos",
+   "checks": [
+    {
+     "name": ".env no aparece en ningún commit",
+     "script": "[ -z \"$(git rev-list --all -- .env)\" ] || falla '.env todavía aparece en algún commit de la historia'\n[ -z \"$(git -C ~/servidor/pagos.git rev-list --all -- .env)\" ] || falla '.env llegó al servidor'"
+    },
+    {
+     "name": ".env sigue en tu disco e ignorado",
+     "script": "archivo_tiene .env 'PASARELA_API_KEY' 'Borraste .env del disco: solo debía salir de la historia'\ngit check-ignore -q .env || falla '.env debe quedar ignorado por .gitignore'\ncontenido main .gitignore | grep -qxE '/?\\.env' || falla 'Confirma en .gitignore una línea con .env'"
+    },
+    {
+     "name": "Se conservan los tres commits",
+     "script": "[ \"$(git log --format=%s -3 main)\" = \"$(printf 'Agrega reintentos a la pasarela\\nConfigura las credenciales de la pasarela\\nAgrega el cliente de la pasarela de pagos')\" ] || falla 'Conserva los tres commits locales con sus mensajes originales y en el mismo orden'\n[ \"$(git rev-list --count main)\" = 4 ] || falla 'main debería tener 4 commits'\ncontenido main config.js >/dev/null || falla 'config.js debe seguir en el proyecto'"
+    },
+    {
+     "name": "main publicado",
+     "script": "[ \"$(git -C ~/servidor/pagos.git rev-parse main)\" = \"$(git rev-parse main)\" ] || falla 'Publica main en origin'"
+    },
+    {
+     "name": "Todo en orden",
+     "script": "en_rama main\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --stat --oneline origin/main..main",
+    {
+     "cmd": "git rebase -i origin/main",
+     "edit": "pick {{SHA:main~2}} Agrega el cliente de la pasarela de pagos\nedit {{SHA:main~1}} Configura las credenciales de la pasarela\npick {{SHA:main}} Agrega reintentos a la pasarela\n"
+    },
+    "git rm --cached .env",
+    "echo .env >> .gitignore",
+    "git add .gitignore",
+    "git commit --amend --no-edit",
+    "git rebase --continue",
+    "git push",
+    "git log --stat --oneline -3"
+   ],
+   "hints": [
+    "Como el commit está en medio y nada está publicado, puedes reescribir: `git rebase -i origin/main` y marca ese commit con `edit`.",
+    "Cuando el rebase se detenga en él: `git rm --cached .env` (lo saca del commit pero no del disco), agrega `.env` a `.gitignore`, prepáralo y `git commit --amend --no-edit`.",
+    "Luego `git rebase --continue` reaplica el tercer commit y `git push` publica (es un avance normal: `origin/main` no tenía nada de esto)."
+   ],
+   "explain": "Un `edit` en el rebase interactivo detiene la reescritura **justo después** de aplicar ese commit, con HEAD en él: es el momento de enmendarlo. `git rm --cached .env` elimina el archivo del index (y por tanto del commit enmendado) pero lo deja en el disco; la línea `.env` en `.gitignore` evita que vuelva a colarse y que aparezca como archivo sin seguimiento. `git commit --amend --no-edit` reemplaza el commit conservando su mensaje, y `git rebase --continue` reaplica *Agrega reintentos…* encima con un hash nuevo.\n\nComo nada estaba publicado, el `git push` es normal y **la clave nunca salió de tu computador**: no hace falta rotarla. Si ya hubiera llegado al servidor, el orden sería otro: **rotar la credencial primero**, luego purgar toda la historia con `git filter-repo --path .env --invert-paths` (s15), forzar el push de forma coordinada y pedir al equipo que re-clone. Alternativa aquí: `git reset --soft origin/main` y rehacer los tres commits a mano (más trabajo y más fácil equivocarse)."
+  },
+  {
+   "id": "s17-e7",
+   "title": "Rescate 7 · Hotfix urgente con worktree sin tocar tu trabajo",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Integra **s06** (fast-forward), **s07** (push), **s08** (etiquetas y versiones) y **s14** (worktrees). Producción (`v2.3.0`) cobra IVA del **18 %** y debe ser **19 %**. Tú estás a mitad de `feature/reportes` con `reportes/graficos.js` **preparado** e `index.html` **modificado sin preparar**, y no quieres hacer un commit a medias ni usar stash.",
+    "Objetivo:\n1. Crea un **worktree** en `~/app-hotfix` con una rama nueva **`hotfix/2.3.1`** que salga de `v2.3.0`.\n2. Allí corrige `precios.js` (`IVA = 0.19`) y confirma con el mensaje `fix: corrige la tasa de IVA al 19 %`.\n3. Crea la etiqueta anotada **`v2.3.1`** (mensaje `Versión 2.3.1`) en ese commit.\n4. Lleva `main` hasta el arreglo con un **fast-forward** y publica `main` y la etiqueta.\n5. Elimina el worktree y vuelve a `~/app`: tu trabajo en `feature/reportes` debe estar exactamente como lo dejaste.",
+    "Contenido actual de `precios.js`:\n```\nexport const IVA = 0.18;\nexport const conIva = (neto) => Math.round(neto * (1 + IVA));\n```"
+   ],
+   "setup": "git init -q --bare ~/servidor/app.git\nnuevo_repo app\nfecha '2026-08-20 09:00'\nescribir index.html '<h1>Ventas</h1>'\ngit add . && git commit -q -m 'Crea el sistema de ventas'\nfecha '2026-08-25 09:00'\nprintf 'export const IVA = 0.18;\\nexport const conIva = (neto) => Math.round(neto * (1 + IVA));\\n' > precios.js\ngit add precios.js && git commit -q -m 'Agrega el cálculo de precios con IVA'\ngit tag -a v2.3.0 -m 'Versión 2.3.0'\ngit remote add origin ~/servidor/app.git\ngit push -q -u origin main\ngit push -q origin v2.3.0\ngit switch -q -c feature/reportes\nfecha '2026-09-20 10:00'\ncommit_archivo reportes/ventas.js 'export function ventasDelDia() { return []; }' 'Crea el módulo de reportes'\nescribir reportes/graficos.js 'export function graficar(datos) { return datos.length; }'\ngit add reportes/graficos.js\nanexar index.html '<a href=\"/reportes\">Reportes</a>'",
+   "cwd": "app",
+   "checks": [
+    {
+     "name": "v2.3.1 anotada con el arreglo, encima de v2.3.0",
+     "script": "[ \"$(git cat-file -t v2.3.1 2>/dev/null)\" = tag ] || falla 'Crea la etiqueta ANOTADA v2.3.1'\ncontenido v2.3.1 precios.js | grep -qF 'IVA = 0.19' || falla 'En v2.3.1 el IVA de precios.js debería ser 0.19'\nmensaje_es 'v2.3.1^{commit}' 'fix: corrige la tasa de IVA al 19 %'\n[ \"$(git rev-parse 'v2.3.1^{commit}~1')\" = \"$(git rev-parse 'v2.3.0^{commit}')\" ] || falla 'El arreglo debe ser un solo commit encima de v2.3.0'"
+    },
+    {
+     "name": "main y la etiqueta publicados",
+     "script": "[ \"$(git rev-parse main)\" = \"$(git rev-parse 'v2.3.1^{commit}')\" ] || falla 'main debe avanzar (fast-forward) hasta el commit del arreglo'\n[ \"$(git -C ~/servidor/app.git rev-parse main)\" = \"$(git rev-parse main)\" ] || falla 'Publica main en origin'\n[ \"$(git -C ~/servidor/app.git rev-parse --verify -q refs/tags/v2.3.1)\" = \"$(git rev-parse v2.3.1)\" ] || falla 'Publica la etiqueta v2.3.1 en origin'"
+    },
+    {
+     "name": "Worktree eliminado",
+     "script": "[ \"$(git worktree list --porcelain | grep -c '^worktree ')\" = 1 ] || falla 'Todavía existe el worktree del hotfix (git worktree remove)'\n[ ! -d ~/app-hotfix ] || falla 'La carpeta ~/app-hotfix sigue existiendo'"
+    },
+    {
+     "name": "Tu trabajo en feature/reportes quedó intacto",
+     "script": "en_rama feature/reportes\n[ \"$(git diff --cached --name-only)\" = 'reportes/graficos.js' ] || falla 'reportes/graficos.js debía seguir preparado (y nada más)'\n[ \"$(git diff --name-only)\" = 'index.html' ] || falla 'index.html debía seguir modificado sin preparar'\n[ -z \"$(git stash list)\" ] || falla 'En este reto no hace falta stash: el worktree lo evita'\nmensaje_es feature/reportes 'Crea el módulo de reportes'"
+    }
+   ],
+   "solution": [
+    "git worktree add -b hotfix/2.3.1 ../app-hotfix v2.3.0",
+    "cd ../app-hotfix",
+    "printf 'export const IVA = 0.19;\\nexport const conIva = (neto) => Math.round(neto * (1 + IVA));\\n' > precios.js",
+    "git commit -am \"fix: corrige la tasa de IVA al 19 %\"",
+    "git tag -a v2.3.1 -m \"Versión 2.3.1\"",
+    "git switch main",
+    "git merge --ff-only hotfix/2.3.1",
+    "git push origin main v2.3.1",
+    "cd ../app",
+    "git worktree remove ../app-hotfix",
+    "git worktree list",
+    "git status -s"
+   ],
+   "hints": [
+    "`git worktree add -b <rama-nueva> <carpeta> <punto-de-partida>` crea otra carpeta de trabajo que comparte el mismo repositorio. Aquí: `-b hotfix/2.3.1 ../app-hotfix v2.3.0`.",
+    "En `~/app-hotfix` edita `precios.js` (`code precios.js`), confirma y etiqueta con `git tag -a`. `main` no está en uso en ningún worktree, así que puedes hacer `git switch main` allí mismo y `git merge --ff-only hotfix/2.3.1`.",
+    "Publica ambas cosas de una vez con `git push origin main v2.3.1`, vuelve con `cd ../app` y termina con `git worktree remove ../app-hotfix`."
+   ],
+   "explain": "Un **worktree** es un segundo directorio de trabajo (con su propio HEAD e index) conectado al mismo repositorio: los commits, ramas y etiquetas que creas allí existen de inmediato en `~/app`. Por eso no hace falta stash ni commit a medias: tu index y tus cambios de `feature/reportes` ni se enteran.\n\nEl flujo es el de un hotfix de Git Flow en miniatura: la rama sale de la **etiqueta de producción** (`v2.3.0`), no de `main` ni de tu rama de trabajo; el arreglo es un commit con mensaje de Conventional Commits (`fix:` → versión de parche, `2.3.1`); la etiqueta **anotada** marca el release; y `main` avanza con `--ff-only`, que falla si alguien hubiera metido algo distinto en `main` (así no se crea un merge por accidente). `git push origin main v2.3.1` publica rama y etiqueta en una sola orden (`git push` a secas no envía etiquetas).\n\nDetalles: una misma rama no puede estar en dos worktrees a la vez (`fatal: 'main' is already used by worktree at …`); `git worktree remove` se niega si el worktree tiene cambios sin confirmar, y no borra la rama `hotfix/2.3.1` (bórrala luego con `git branch -d` desde `main` si ya no la necesitas)."
+  },
+  {
+   "id": "s17-e8",
+   "title": "Rescate 8 · Mensajes que el hook no deja pasar",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Integra **s08** (Conventional Commits), **s09** (rebase interactivo con `reword`), **s13** (hooks) y **s07** (push). El equipo instaló un hook `commit-msg` que exige **Conventional Commits** (`tipo: descripción`). Antes de instalarlo hiciste dos commits locales con mensajes pobres: *cambios* y *mas cosas*. El tercero ya cumple la convención. Nada está publicado.",
+    "Objetivo:\n1. Reescribe **solo** esos dos mensajes: el primero debe quedar como `feat: agrega el formulario de contacto` y el segundo como `feat: valida el correo del formulario`.\n2. Conserva el contenido de los tres commits y el mensaje del tercero tal cual.\n3. **No** desactives ni borres el hook (nada de `--no-verify`): tus mensajes nuevos deben pasar por él.\n4. Publica `main`: en el servidor todos los mensajes deben seguir la convención.",
+    "Mira el hook antes de empezar:\n```bash\ncat .git/hooks/commit-msg\ngit log --oneline origin/main..main\n```"
+   ],
+   "setup": "git init -q --bare ~/servidor/web.git\nnuevo_repo web\nfecha '2026-09-20 09:00'\ncommit_archivo index.html '<h1>Estudio de diseño</h1>' 'chore: crea el sitio'\ngit remote add origin ~/servidor/web.git\ngit push -q -u origin main\nfecha '2026-09-21 10:00'\ncommit_archivo contacto.html '<form id=\"contacto\"></form>' 'cambios'\nfecha '2026-09-21 11:00'\ncommit_archivo validar.js 'export const esCorreo = (texto) => texto.includes(\"@\");' 'mas cosas'\nescribir .git/hooks/commit-msg '#!/bin/sh\n# Exige Conventional Commits en la primera línea: tipo(ámbito opcional)!: descripción\nif ! head -n 1 \"$1\" | grep -qE \"^(feat|fix|docs|style|refactor|test|chore)(\\([a-z0-9-]+\\))?!?: .+\"; then\n  echo \"commit-msg: el mensaje no sigue Conventional Commits (ejemplo: feat: agrega contacto)\" >&2\n  exit 1\nfi'\nchmod +x .git/hooks/commit-msg\nfecha '2026-09-21 12:00'\nanexar index.html '<a href=\"contacto.html\">Contacto</a>'\ngit commit -q -am 'feat: enlaza el formulario desde la portada'",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "Mensajes reescritos",
+     "script": "mensaje_es main~2 'feat: agrega el formulario de contacto'\nmensaje_es main~1 'feat: valida el correo del formulario'\nmensaje_es main 'feat: enlaza el formulario desde la portada'\n[ \"$(git rev-list --count main)\" = 4 ] || falla 'main debería tener 4 commits'"
+    },
+    {
+     "name": "El contenido no cambió",
+     "script": "contenido main~2 contacto.html | grep -qF 'contacto' || falla 'El primer commit debe seguir agregando contacto.html'\ncontenido main~1 validar.js | grep -qF 'esCorreo' || falla 'El segundo commit debe seguir agregando validar.js'\ncontenido main index.html | grep -qF 'contacto.html' || falla 'La portada debe seguir enlazando el formulario'"
+    },
+    {
+     "name": "El hook sigue activo",
+     "script": "[ -x .git/hooks/commit-msg ] || falla 'No borres ni desactives el hook commit-msg'"
+    },
+    {
+     "name": "Publicado y todo en regla",
+     "script": "[ \"$(git -C ~/servidor/web.git rev-parse main)\" = \"$(git rev-parse main)\" ] || falla 'Publica main en origin'\ngit -C ~/servidor/web.git log --format=%s main | grep -vqE '^(feat|fix|docs|style|refactor|test|chore)(\\([a-z0-9-]+\\))?!?: .+' && falla 'En el servidor hay mensajes que no siguen Conventional Commits'\nen_rama main\nlimpio\nsin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git log --oneline origin/main..main",
+    {
+     "cmd": "git rebase -i origin/main",
+     "edit": [
+      "reword {{SHA:main~2}} cambios\nreword {{SHA:main~1}} mas cosas\npick {{SHA:main}} feat: enlaza el formulario desde la portada\n",
+      "feat: agrega el formulario de contacto\n",
+      "feat: valida el correo del formulario\n"
+     ]
+    },
+    "git push",
+    "git log --oneline"
+   ],
+   "hints": [
+    "Para cambiar mensajes antiguos (no el último) se usa el rebase interactivo: `git rebase -i origin/main`.",
+    "Marca los dos primeros commits con `reword` y deja `pick` en el tercero. Git abrirá el editor una vez por cada `reword`.",
+    "Escribe `feat: agrega el formulario de contacto` y luego `feat: valida el correo del formulario`. El hook revisa cada mensaje; si alguno falla, el rebase se detiene: corrige con `git commit --amend` y `git rebase --continue`."
+   ],
+   "explain": "`reword` reaplica el commit sin tocar su contenido y abre el editor para el mensaje; como por dentro es un `git commit --amend`, **el hook `commit-msg` se ejecuta** y valida el mensaje nuevo (si lo rechazara, el rebase se detendría en ese punto). Los tres commits obtienen hashes nuevos porque el mensaje forma parte del commit y el tercero cambia de padre; como no estaban publicados, `git push` es un avance normal.\n\nPor qué no `--no-verify`: salta el hook y deja pasar justo lo que el equipo quiere evitar. Y recuerda que los hooks de `.git/hooks` **no** se versionan: para compartirlos se usa una carpeta del proyecto con `core.hooksPath` o frameworks como pre-commit o Husky; y lo que de verdad no se puede saltar es una validación del **servidor** (hook `pre-receive` o reglas de la plataforma, s16). Otra vía habitual para un mensaje antiguo es `git commit --fixup=reword:<hash>` + `git rebase -i --autosquash`, pero con **este** hook no sirve: el commit temporal se titula `amend! cambios` y el hook lo rechaza (muchos equipos permiten en su hook los prefijos `fixup!` y `amend!` por eso)."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "Examen de GitHub Foundations: código, duración y dónde se rinde",
+   "back": "GH-900; 100 minutos, supervisado por Pearson VUE (en línea con OnVUE o en un centro), y se gestiona desde Microsoft Learn."
+  },
+  {
+   "front": "Puntaje para aprobar un examen de GitHub",
+   "back": "700 en una escala de 1 a 1000. Es un puntaje escalado: no equivale a un 70 % de aciertos. No se descuenta por errores."
+  },
+  {
+   "front": "Precio de un examen de GitHub en Chile",
+   "back": "59 USD (99 USD en EE. UU.). El precio depende del país donde rindes; cada reintento se paga."
+  },
+  {
+   "front": "¿Hay que renovar GitHub Foundations?",
+   "back": "No: sigue la política de Microsoft para exámenes de nivel fundamental, que no tienen recertificación. Actions, Administration, Advanced Security y Copilot valen 2 años."
+  },
+  {
+   "front": "Idiomas del examen GH-900",
+   "back": "Inglés, español, portugués (Brasil), coreano y japonés. Si un examen no está en tu idioma (p. ej., GH-100), puedes pedir 30 minutos extra."
+  },
+  {
+   "front": "Dominio con más peso en GH-900",
+   "back": "Git y GitHub: lo básico (25–30 %): control de versiones, Git frente a GitHub, repositorios, commits, ramas, GitHub Flow, Markdown…"
+  },
+  {
+   "front": "Política de reintentos de Microsoft",
+   "back": "24 h después del primer intento fallido; luego 14 días entre intentos, con un máximo de 5 intentos en 12 meses."
+  },
+  {
+   "front": "Método para una pregunta de escenario",
+   "back": "1) Dibuja el gráfico, 2) ubica HEAD, 3) revisa las tres áreas, 4) ejecuta mentalmente el comando y 5) solo entonces mira las opciones."
+  },
+  {
+   "front": "`git reset --soft`, `--mixed` y `--hard`: ¿qué mueve cada uno?",
+   "back": "`--soft`: la rama. `--mixed` (por defecto): rama + index. `--hard`: rama + index + directorio de trabajo."
+  },
+  {
+   "front": "Commit con error ya publicado: ¿reset o revert?",
+   "back": "`git revert <hash>`: crea un commit inverso y no reescribe la historia compartida."
+  },
+  {
+   "front": "Revertir un merge y reintegrar la rama después",
+   "back": "`git revert -m 1 <merge>`. Para volver a integrar la rama: revierte el revert (`Reapply …`) y luego haz el merge de lo nuevo."
+  },
+  {
+   "front": "Commits en la rama equivocada (sin publicar)",
+   "back": "`git branch nueva` (guarda los commits), `git reset --hard origin/main` (o al punto correcto) y sigue trabajando en `nueva`."
+  },
+  {
+   "front": "Recuperar commits tras un `reset --hard`",
+   "back": "`git reflog` y `git reset --hard HEAD@{n}` (u `ORIG_HEAD` si el reset fue lo último que hiciste)."
+  },
+  {
+   "front": "Recuperar una rama borrada con `-D`",
+   "back": "Toma el hash del mensaje `Deleted branch x (was …)` o de `git reflog` y ejecuta `git branch x <hash>`."
+  },
+  {
+   "front": "¿Cuándo rechaza `--force-with-lease`?",
+   "back": "Cuando la rama remota ya no está donde dice tu `origin/rama` (`stale info`). Si haces fetch sin integrar, deja de protegerte: añade `--force-if-includes`."
+  },
+  {
+   "front": "`git fetch` frente a `git pull`",
+   "back": "`fetch` descarga y actualiza `origin/*`; `pull` = `fetch` + integrar (merge, rebase o solo fast-forward según `pull.rebase`/`pull.ff`)."
+  },
+  {
+   "front": "`git pull` con ramas divergentes y sin configuración (Git 2.50)",
+   "back": "Se detiene con `fatal: Need to specify how to reconcile divergent branches.` Configura `pull.rebase` o `pull.ff`, o usa `--rebase`, `--no-rebase` o `--ff-only`."
+  },
+  {
+   "front": "`git stash` y los archivos nuevos",
+   "back": "Sin `-u` no guarda los archivos sin seguimiento: usa `git stash -u` (o `-a` para incluir también los ignorados)."
+  },
+  {
+   "front": "Códigos de salida en `git bisect run`",
+   "back": "0 = bueno; 125 = saltar; 1–127 (excepto 125) = malo; cualquier otro valor aborta la búsqueda."
+  },
+  {
+   "front": "`git log -S` frente a `git log -G`",
+   "back": "`-S texto`: commits donde cambia el número de apariciones del texto. `-G regex`: commits cuyo diff tiene líneas que coinciden."
+  },
+  {
+   "front": "Los cuatro tipos de objetos de Git",
+   "back": "blob (contenido de un archivo), tree (directorio), commit (instantánea + metadatos) y tag (etiqueta anotada)."
+  },
+  {
+   "front": "¿Por qué dos archivos idénticos ocupan un solo blob?",
+   "back": "Porque el blob se identifica por el hash de su contenido; el árbol apunta al mismo blob con dos nombres."
+  },
+  {
+   "front": "Un hook no se ejecuta y Git muestra un `hint`",
+   "back": "Le falta el permiso de ejecución: `chmod +x .git/hooks/<nombre>`. Git avisa: `… hook was ignored because it's not set as executable.`"
+  },
+  {
+   "front": "`git merge -s ours` frente a `-X ours`",
+   "back": "`-s ours` registra la fusión sin traer nada de la otra rama; `-X ours` fusiona todo y solo en los conflictos elige lo propio."
+  },
+  {
+   "front": "Una rama en dos worktrees",
+   "back": "No se puede: `fatal: 'main' is already used by worktree at …`. Crea otra rama con `git worktree add -b`."
+  },
+  {
+   "front": "Clonaste y los submódulos están vacíos",
+   "back": "`git submodule update --init --recursive` (o clona con `--recurse-submodules`)."
+  },
+  {
+   "front": "Secreto publicado: orden correcto",
+   "back": "1) Rotar o revocar la credencial. 2) Purgar la historia (`git filter-repo`). 3) Force push coordinado. 4) Que todos vuelvan a clonar."
+  },
+  {
+   "front": "`actions/checkout` y `git describe`",
+   "back": "Por defecto `fetch-depth: 1` (sin historia ni etiquetas). Usa `fetch-depth: 0` para tener todo."
+  },
+  {
+   "front": "Git frente a GitHub en el examen",
+   "back": "Git: herramienta local y libre (commits, ramas, merge, rebase). GitHub: plataforma (forks, PR, issues, Actions, protección de ramas)."
+  },
+  {
+   "front": "Ritmo en un examen de 100 minutos",
+   "back": "≈ 2 min por pregunta si son 50 y ≈ 1 min 40 s si son 60. Dos pasadas; revisa las marcadas antes de tomar una pausa."
+  },
+  {
+   "front": "Durante un conflicto, `git commit -am`",
+   "back": "¡Confirma el archivo con los marcadores si no los quitaste! Revisa antes con `git diff` y `git status`."
+  },
+  {
+   "front": "`git status -s`: `AM`, ` M`, `M `, `??`, `UU`",
+   "back": "`AM`: nuevo preparado y luego modificado. ` M`: modificado sin preparar. `M `: preparado. `??`: sin seguimiento. `UU`: conflicto (ambos lo modificaron)."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s17-q1",
+   "topic": "s01",
+   "type": "single",
+   "q": "¿Qué hecho de 2005 llevó a Linus Torvalds a crear Git?",
+   "options": [
+    "Subversion dejó de permitir ramas en proyectos de código abierto",
+    "La comunidad del kernel de Linux perdió el uso gratuito de BitKeeper, el sistema de control de versiones que usaba",
+    "CVS no permitía guardar archivos binarios",
+    "GitHub necesitaba un motor propio para alojar repositorios"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En 2005 se rompió la relación entre la comunidad del kernel y la empresa de **BitKeeper**, que retiró su uso gratuito. Linus escribió Git en pocas semanas con objetivos claros: velocidad, diseño simple, buen soporte para desarrollo no lineal (miles de ramas), totalmente distribuido y capaz de manejar proyectos enormes. GitHub nació en 2008: es una plataforma que aloja repositorios de Git, no su origen."
+  },
+  {
+   "id": "s17-q2",
+   "topic": "s01",
+   "type": "single",
+   "q": "En un repositorio ejecutas:\n```bash\ngit config --global user.email ana@personal.cl\ngit config user.email ana@empresa.cl\ngit config user.email\n```\n¿Qué muestra el último comando?",
+   "options": [
+    "`ana@personal.cl`",
+    "Las dos direcciones, una por línea",
+    "`ana@empresa.cl`",
+    "Un error, porque la clave está definida dos veces"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git config` sin nivel escribe en el nivel **local** (`.git/config` del repositorio). Al leer, Git combina system → global → local y gana el **más específico**: el local. Con `git config --show-origin user.email` verías `file:.git/config\tana@empresa.cl`, y con `--show-scope`, `local`."
+  },
+  {
+   "id": "s17-q3",
+   "topic": "s01",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones describen a un sistema de control de versiones **distribuido** como Git? (Selecciona DOS.)",
+   "options": [
+    "Todos los commits deben enviarse a un servidor central en el momento de crearlos",
+    "Cada clon contiene la historia completa del proyecto",
+    "Si se cae el servidor, se pierde la historia",
+    "Puedes hacer commits sin conexión y publicarlos después",
+    "Cada versión se guarda como una lista de diferencias respecto a la anterior"
+   ],
+   "answer": [
+    1,
+    3
+   ],
+   "explain": "En un VCS distribuido cada clon es una copia **completa** del repositorio: casi todas las operaciones son locales (commit, log, diff, ramas) y cualquier clon puede restaurar el servidor. Git además guarda **instantáneas** (árboles completos, con los archivos sin cambios reutilizados), no listas de diferencias; los *deltas* solo aparecen como optimización al empaquetar."
+  },
+  {
+   "id": "s17-q4",
+   "topic": "s01",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Git y GitHub son lo mismo: GitHub es el nombre del programa que instalas.",
+     "answer": false
+    },
+    {
+     "text": "`ls -a` muestra también archivos y carpetas ocultos, como `.git`.",
+     "answer": true
+    },
+    {
+     "text": "`git config --global` guarda la configuración en `~/.gitconfig`, el archivo de tu usuario.",
+     "answer": true
+    },
+    {
+     "text": "Git identifica cada commit con un hash calculado a partir de su contenido, lo que permite detectar corrupción.",
+     "answer": true
+    }
+   ],
+   "explain": "Git es la herramienta (local y libre); GitHub, una plataforma que aloja repositorios y agrega PR, issues, Actions, etc. Los nombres que empiezan con punto están ocultos y `ls -a` los muestra. El nivel global vive en `~/.gitconfig` (el local, en `.git/config`). El hash (SHA-1, o SHA-256 en repos que lo elijan) depende del contenido: si un byte cambia, el hash no coincide."
+  },
+  {
+   "id": "s17-q5",
+   "topic": "s02",
+   "type": "single",
+   "q": "`git status -s` muestra `AM app.js`. ¿Qué significa?",
+   "options": [
+    "app.js tiene un conflicto de merge",
+    "app.js ya está confirmado y no tiene cambios pendientes",
+    "app.js es nuevo y está preparado, y después lo volviste a modificar en el directorio de trabajo",
+    "app.js está modificado en el index y además hay otro archivo sin seguimiento con el mismo nombre"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En el formato corto, la **columna izquierda** es el index y la **derecha**, el directorio de trabajo. `A` = agregado al index (archivo nuevo preparado); `M` a la derecha = modificado después de prepararlo. Si confirmas ahora, entra la versión del index, no la última. Un conflicto se vería como `UU`."
+  },
+  {
+   "id": "s17-q6",
+   "topic": "s02",
+   "type": "single",
+   "q": "Ejecutas:\n```bash\necho uno > app.js\ngit add app.js\necho dos >> app.js\ngit commit -m \"Agrega app.js\"\n```\n¿Qué contiene `app.js` en el commit y qué muestra después `git status -s`?",
+   "options": [
+    "El commit tiene `uno` y `dos`; el estado queda limpio",
+    "El commit tiene solo `uno`; `git status -s` muestra ` M app.js`",
+    "El commit tiene solo `uno`; el estado queda limpio",
+    "Git no confirma nada porque el archivo cambió después de `git add`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git commit` guarda la **instantánea del index**, y el index tenía la versión del momento del `git add` (`uno`). La línea `dos` sigue en el directorio de trabajo como modificación sin preparar: ` M app.js`. Por eso conviene revisar `git status` (o usar `git add -p`) antes de confirmar."
+  },
+  {
+   "id": "s17-q7",
+   "topic": "s02",
+   "type": "single",
+   "q": "Tienes `app.js` (ya rastreado) modificado y un archivo nuevo `nuevo.js` sin seguimiento. Ejecutas `git commit -am \"Actualiza\"`. ¿Qué pasa?",
+   "options": [
+    "Se confirma solo `app.js`; `nuevo.js` sigue sin seguimiento",
+    "Se confirman los dos archivos",
+    "No se confirma nada: `-a` exige un `git add` previo",
+    "Se confirma `nuevo.js` y `app.js` queda modificado"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`-a` prepara automáticamente los archivos **ya rastreados** que fueron modificados o borrados, pero nunca agrega archivos nuevos. `nuevo.js` sigue apareciendo como `?? nuevo.js` hasta que hagas `git add nuevo.js`."
+  },
+  {
+   "id": "s17-q8",
+   "topic": "s02",
+   "type": "single",
+   "q": "En una carpeta nueva ejecutas `git init` y enseguida `git log`. ¿Qué ocurre?",
+   "options": [
+    "Muestra un commit inicial vacío creado por `git init`",
+    "No muestra nada y termina sin error",
+    "Muestra `fatal: not a git repository`",
+    "Muestra `fatal: your current branch 'main' does not have any commits yet`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`git init` crea la carpeta `.git` con HEAD apuntando a `refs/heads/main` (por `init.defaultBranch`), pero esa rama **todavía no existe**: nace con el primer commit. Por eso `git log` avisa que la rama actual no tiene commits."
+  },
+  {
+   "id": "s17-q9",
+   "topic": "s02",
+   "type": "multi",
+   "q": "¿Qué TRES datos guarda un objeto commit? (Selecciona TRES.)",
+   "options": [
+    "Un puntero al árbol, es decir, la instantánea completa del proyecto",
+    "El nombre de la rama en la que se creó",
+    "El hash de su commit padre (o de sus padres, si es una fusión)",
+    "La lista de diferencias respecto al commit anterior",
+    "El autor, el *committer*, sus fechas y el mensaje"
+   ],
+   "answer": [
+    0,
+    2,
+    4
+   ],
+   "explain": "Con `git cat-file -p HEAD` lo ves: `tree <hash>`, `parent <hash>` (ninguno en el primer commit, dos o más en una fusión), `author …`, `committer …` y el mensaje. El commit **no** guarda la rama (las ramas son punteros externos) ni diferencias: Git las calcula comparando árboles."
+  },
+  {
+   "id": "s17-q10",
+   "topic": "s02",
+   "type": "multi",
+   "q": "Estás en la raíz del repositorio. Borraste `viejo.txt` (rastreado), modificaste `app.js` (rastreado) y creaste `nuevo.txt`. ¿Qué DOS comandos dejan preparados **los tres** cambios? (Selecciona DOS.)",
+   "options": [
+    "`git add -A`",
+    "`git add -u`",
+    "`git add .`",
+    "`git commit -a`",
+    "`git add *.txt`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`git add -A` prepara todo (nuevos, modificados y borrados) en todo el árbol, y desde Git 2.0 `git add .` hace lo mismo dentro de la ruta indicada (aquí, la raíz). `git add -u` solo prepara archivos ya rastreados (no `nuevo.txt`); `git commit -a` confirma, no prepara, e ignora los nuevos; y `*.txt` no incluye `app.js`."
+  },
+  {
+   "id": "s17-q11",
+   "topic": "s02",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Git puede rastrear una carpeta vacía si haces `git add carpeta`.",
+     "answer": false
+    },
+    {
+     "text": "Ejecutar `git init` dentro de un repositorio existente borra su historia.",
+     "answer": false
+    },
+    {
+     "text": "El área de preparación (index) es la instantánea que se guardará en el próximo commit.",
+     "answer": true
+    },
+    {
+     "text": "Un buen asunto de commit va en imperativo («Agrega validación del correo») y cabe en unos 50 caracteres.",
+     "answer": true
+    }
+   ],
+   "explain": "Git rastrea **contenido de archivos**, no carpetas: una carpeta vacía no aparece (la costumbre es poner un `.gitkeep`). Repetir `git init` solo responde `Reinitialized existing Git repository` sin tocar la historia. El index es la propuesta del próximo commit. La convención 50/72 (asunto breve en imperativo, línea en blanco y cuerpo a 72 columnas) hace que `git log --oneline` y las herramientas se lean bien."
+  },
+  {
+   "id": "s17-q12",
+   "topic": "s03",
+   "type": "single",
+   "q": "Modificaste `a.txt` y lo preparaste con `git add`. Ahora `git diff` no muestra nada. ¿Qué comando muestra esos cambios preparados?",
+   "options": [
+    "`git diff --name-only`",
+    "`git diff --staged`",
+    "`git show`",
+    "`git log -p`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git diff` a secas compara el directorio de trabajo con el **index**; como todo está preparado, no hay diferencias. `git diff --staged` (sinónimo de `--cached`) compara el index con HEAD, es decir, lo que entraría en el próximo commit. `git show` y `git log -p` muestran commits ya hechos."
+  },
+  {
+   "id": "s17-q13",
+   "topic": "s03",
+   "type": "single",
+   "q": "Con este `.gitignore` en la raíz del repositorio:\n```\n/build\n*.log\n!importante.log\nlogs/\n```\n¿Qué archivo **NO** queda ignorado?",
+   "options": [
+    "`build/a.js`",
+    "`src/debug.log`",
+    "`src/build/b.js`",
+    "`src/logs/y.txt`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La barra inicial en `/build` ancla el patrón a la **raíz**: ignora `build/` pero no `src/build/`. `*.log` vale en cualquier nivel (`src/debug.log`), `!importante.log` vuelve a incluir ese archivo y `logs/` (barra final = solo carpetas) ignora cualquier carpeta `logs` en cualquier nivel. Compruébalo con `git check-ignore -v ruta`, que dice qué línea lo ignora."
+  },
+  {
+   "id": "s17-q14",
+   "topic": "s03",
+   "type": "single",
+   "q": "`.env` ya estaba confirmado y después agregaste `.env` a `.gitignore`. Sigues viendo ` M .env` cada vez que lo cambias. ¿Qué haces para que Git deje de rastrearlo sin borrarlo de tu disco?",
+   "options": [
+    "`git rm .env` y confirmar",
+    "Nada: `.gitignore` se aplica solo en el próximo commit",
+    "`git restore .env`",
+    "`git rm --cached .env` y confirmar el cambio"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`.gitignore` solo afecta a archivos **sin seguimiento**. Para dejar de rastrear uno ya confirmado: `git rm --cached .env` (lo saca del index y el próximo commit lo registra como borrado) y el archivo sigue en tu disco. Ojo: sigue en los commits anteriores; si era un secreto publicado, rótalo (s15). `git rm` sin `--cached` también lo borraría del disco."
+  },
+  {
+   "id": "s17-q15",
+   "topic": "s03",
+   "type": "single",
+   "q": "¿Qué muestra `git log --oneline main..feature`?",
+   "options": [
+    "Los commits alcanzables desde `feature` que no están en `main`",
+    "Los commits de `main` que no están en `feature`",
+    "Todos los commits de ambas ramas",
+    "Solo los commits de fusión entre ambas ramas"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`A..B` significa «alcanzable desde B pero no desde A»: lo que `feature` tiene y `main` no, justo lo que traería un merge. `feature..main` es lo contrario y `main...feature` (tres puntos) muestra lo exclusivo de cada lado desde su ancestro común."
+  },
+  {
+   "id": "s17-q16",
+   "topic": "s03",
+   "type": "single",
+   "q": "Quieres ver, commit a commit, qué archivos cambiaron y cuántas líneas se agregaron o quitaron en cada uno. ¿Qué opción de `git log` usas?",
+   "options": [
+    "`--graph`",
+    "`--name-only`",
+    "`--oneline`",
+    "`--stat`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`git log --stat` agrega a cada commit la lista de archivos con un resumen de `+`/`-` y el total (`2 files changed, 3 insertions(+), 1 deletion(-)`). `--name-only` lista los archivos sin contar líneas, `-p` muestra el diff completo y `--graph` dibuja las ramas."
+  },
+  {
+   "id": "s17-q17",
+   "topic": "s03",
+   "type": "multi",
+   "q": "¿Qué DOS comandos muestran los metadatos **y** los cambios (diff) de un commit concreto? (Selecciona DOS.)",
+   "options": [
+    "`git show a1b2c3d`",
+    "`git diff --staged`",
+    "`git log -p -1 a1b2c3d`",
+    "`git status a1b2c3d`",
+    "`git blame a1b2c3d`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`git show <commit>` imprime autor, fecha, mensaje y el diff respecto a su padre; `git log -p -1 <commit>` hace lo mismo (el `-1` limita a un commit). `git diff --staged` compara index y HEAD, `git status` no acepta un commit y `git blame` trabaja sobre un archivo."
+  },
+  {
+   "id": "s17-q18",
+   "topic": "s03",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git mv viejo.txt nuevo.txt` equivale a renombrar el archivo, hacer `git rm` del viejo y `git add` del nuevo.",
+     "answer": true
+    },
+    {
+     "text": "`git rm archivo` lo borra del disco y prepara su eliminación.",
+     "answer": true
+    },
+    {
+     "text": "`git diff HEAD` compara solo el área de preparación con el último commit.",
+     "answer": false
+    },
+    {
+     "text": "Una línea `!importante.log` en `.gitignore` vuelve a incluir un archivo excluido por una regla anterior.",
+     "answer": true
+    }
+   ],
+   "explain": "Git no guarda los renombrados: los **detecta** por similitud de contenido, así que `git mv` es solo un atajo. `git rm` borra y prepara (`--cached` solo prepara). `git diff HEAD` compara el directorio de trabajo **con todo lo preparado incluido** contra el último commit; lo que describe la afirmación es `git diff --staged`. La negación `!` rescata archivos, aunque no dentro de una carpeta completamente ignorada."
+  },
+  {
+   "id": "s17-q19",
+   "topic": "s04",
+   "type": "single",
+   "q": "¿Qué hace `git reset --soft HEAD~1`?",
+   "options": [
+    "Mueve la rama al commit anterior y vacía el index; los cambios quedan en el directorio de trabajo sin preparar",
+    "Mueve la rama al commit anterior; el index y el directorio de trabajo no cambian, así que los cambios de ese commit quedan preparados",
+    "Mueve la rama y descarta los cambios del commit en el index y en el directorio de trabajo",
+    "Crea un commit nuevo que deshace el anterior"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--soft` solo mueve la rama (y HEAD con ella). Como el index sigue teniendo la instantánea del commit deshecho, `git status -s` muestra esos cambios como **preparados** (`M ` en la columna izquierda): ideal para rehacer el commit o juntarlo con otros. La primera opción describe `--mixed`, la tercera `--hard` y la cuarta `git revert`."
+  },
+  {
+   "id": "s17-q20",
+   "topic": "s04",
+   "type": "single",
+   "q": "Historia `C1 → C2 → C3` en `main`; C2 y C3 solo modificaron `app.js`. Ejecutas `git reset HEAD~2` (sin opciones). ¿Qué ves en `git log --oneline` y en `git status -s`?",
+   "options": [
+    "`git log` muestra C1, C2 y C3: sin `--hard` no cambia nada",
+    "`git log` muestra solo C1 y el directorio de trabajo queda limpio",
+    "`git log` muestra solo C1 y ` M app.js`: los cambios de C2 y C3 quedan en el directorio de trabajo, sin preparar",
+    "`git log` muestra solo C1 y `M  app.js`: los cambios quedan preparados"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El modo por defecto es `--mixed`: mueve la rama a C1 y copia C1 en el index, pero **no toca** el directorio de trabajo, que sigue con la versión de C3. Resultado: ` M app.js` (sin preparar) y Git lo resume con `Unstaged changes after reset: M\tapp.js`. Si C2 o C3 hubieran creado archivos nuevos, aparecerían como `??`."
+  },
+  {
+   "id": "s17-q21",
+   "topic": "s04",
+   "type": "single",
+   "q": "Un commit con un error ya está en `origin/main` y tus compañeros trabajan sobre él. ¿Cómo lo deshaces?",
+   "options": [
+    "`git reset --hard HEAD~1` y `git push --force`",
+    "`git commit --amend` y `git push`",
+    "`git restore --source=HEAD~1 .` y no confirmar nada",
+    "`git revert <hash>` y publicar el nuevo commit"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Con historia **publicada** no se reescribe: `git revert` crea un commit nuevo que invierte los cambios y cualquiera lo integra con un `pull` normal. `reset` + `--force` (o `--amend` + push forzado) cambiaría la historia bajo los pies de tu equipo; la tercera opción ni siquiera deja nada confirmado."
+  },
+  {
+   "id": "s17-q22",
+   "topic": "s04",
+   "type": "single",
+   "q": "Olvidaste agregar `olvidado.txt` al último commit (todavía no lo publicas). ¿Qué secuencia lo corrige **sin** crear un commit extra?",
+   "options": [
+    "`git add olvidado.txt` y `git commit -m \"olvidado\"`",
+    "`git add olvidado.txt` y `git commit --amend --no-edit`",
+    "`git reset --hard HEAD~1` y volver a hacer todo",
+    "`git revert HEAD` y luego `git add olvidado.txt`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--amend` reemplaza el último commit por uno nuevo con el contenido actual del index; `--no-edit` conserva el mensaje. El resultado es un commit con otro hash, por eso **solo** se usa en commits que nadie más tiene. `reset --hard` destruiría el trabajo del commit."
+  },
+  {
+   "id": "s17-q23",
+   "topic": "s04",
+   "type": "single",
+   "q": "Ejecutas `git restore --source=HEAD~2 config.json`. ¿Qué ocurre?",
+   "options": [
+    "La rama retrocede dos commits",
+    "Se crea un commit que restaura el archivo",
+    "El archivo del directorio de trabajo toma la versión de hace dos commits; queda modificado sin preparar y la rama no se mueve",
+    "El archivo queda preparado con la versión antigua"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git restore` nunca mueve ramas: copia contenido. Con `--source` elige de dónde (por defecto, del index) y, si no indicas `--staged`, solo escribe en el **directorio de trabajo**: verás ` M config.json`. Para confirmar la versión antigua, prepárala y haz commit; con `--staged --worktree` restaurarías ambas áreas."
+  },
+  {
+   "id": "s17-q24",
+   "topic": "s04",
+   "type": "multi",
+   "q": "¿Qué TRES comandos pueden destruir trabajo **no confirmado** sin posibilidad de recuperarlo con el reflog? (Selecciona TRES.)",
+   "options": [
+    "`git reset --hard`",
+    "`git reset --soft HEAD~1`",
+    "`git clean -fd`",
+    "`git revert HEAD`",
+    "`git restore archivo`"
+   ],
+   "answer": [
+    0,
+    2,
+    4
+   ],
+   "explain": "El reflog solo registra movimientos de referencias sobre **commits**. `reset --hard` sobrescribe index y directorio de trabajo, `clean -fd` borra archivos sin seguimiento y `restore archivo` descarta modificaciones: si esos cambios nunca se confirmaron (ni se guardaron con stash), no hay copia. `--soft` y `revert` no tocan el directorio de trabajo."
+  },
+  {
+   "id": "s17-q25",
+   "topic": "s04",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git clean -n` borra los archivos sin seguimiento.",
+     "answer": false
+    },
+    {
+     "text": "`git clean -fd` no borra los archivos ignorados; para eso hace falta añadir `-x`.",
+     "answer": true
+    },
+    {
+     "text": "`git revert HEAD` elimina el último commit de la historia.",
+     "answer": false
+    },
+    {
+     "text": "`git commit --amend` no modifica el commit existente: crea uno nuevo que lo reemplaza en la rama.",
+     "answer": true
+    }
+   ],
+   "explain": "`-n` es un simulacro (*dry run*): solo lista `Would remove …`. `-f` borra, `-d` incluye carpetas y `-x` incluye también lo ignorado (por ejemplo, `debug.log` con `*.log` en `.gitignore`). `revert` **agrega** un commit inverso; la historia conserva ambos. Los commits son inmutables: `--amend` crea otro y mueve la rama a él (el viejo queda en el reflog)."
+  },
+  {
+   "id": "s17-q26",
+   "topic": "s04",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git restore --staged app.js` saca `app.js` del área de preparación y conserva sus cambios en el directorio de trabajo.",
+     "answer": true
+    },
+    {
+     "text": "`git checkout -- app.js` es la forma antigua de `git restore app.js`.",
+     "answer": true
+    },
+    {
+     "text": "Si los cambios nunca se confirmaron, un `git reset --hard` se puede deshacer con el reflog.",
+     "answer": false
+    },
+    {
+     "text": "`--mixed` es el modo por defecto de `git reset`.",
+     "answer": true
+    }
+   ],
+   "explain": "`restore --staged` copia HEAD en el index para ese archivo (lo «desprepara») sin tocar el trabajo. Antes de Git 2.23, `git checkout -- archivo` hacía lo que hoy hace `git restore archivo`: conviene reconocerlo. El reflog recupera **commits**, no cambios que nunca se confirmaron. Sin opción, `git reset <commit>` es `--mixed`."
+  },
+  {
+   "id": "s17-q27",
+   "topic": "s05",
+   "type": "single",
+   "q": "Estás en `main`, que tiene dos commits, y ejecutas `git switch -c feature`. ¿Qué salida de `git log --oneline --graph --all` es la correcta?\n\n**A**\n```\n* 72958cc (HEAD -> feature, main) Segundo commit\n* b5a4101 Primer commit\n```\n**B**\n```\n* 72958cc (HEAD -> main, feature) Segundo commit\n* b5a4101 Primer commit\n```\n**C**\n```\n* 9d1e2f0 (HEAD -> feature) Crea la rama feature\n* 72958cc (main) Segundo commit\n* b5a4101 Primer commit\n```\n**D**\n```\n* 72958cc (HEAD -> feature) Segundo commit\n| * 72958cc (main) Segundo commit\n|/\n* b5a4101 Primer commit\n```",
+   "options": [
+    "La salida A",
+    "La salida B",
+    "La salida C",
+    "La salida D"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Crear una rama solo crea un **puntero** al commit actual (no crea commits ni copias), y `switch -c` además mueve HEAD a la rama nueva: `HEAD -> feature`, y `main` sigue en el mismo commit. B tendría HEAD todavía en `main` (eso haría `git branch feature` sin cambiarte). En una terminal, `git log` muestra estas decoraciones por defecto (la terminal de práctica también); en scripts o tuberías hay que pedirlas con `--decorate`."
+  },
+  {
+   "id": "s17-q28",
+   "topic": "s05",
+   "type": "single",
+   "q": "Estás en `main` y ejecutas `git branch nueva` y después `git commit -am \"Tercero\"`. ¿Qué rama avanza?",
+   "options": [
+    "`nueva`, porque es la rama más reciente",
+    "Las dos, porque apuntaban al mismo commit",
+    "Ninguna: quedas en HEAD separado",
+    "`main`, porque `git branch` crea la rama pero no te cambia a ella"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`git branch nueva` crea el puntero y te deja donde estabas. El commit avanza **la rama a la que apunta HEAD** (`main`); `nueva` se queda en el commit anterior. Verificado: `* dc4152b (HEAD -> main) Tercero` y debajo `* 72958cc (nueva, …) Segundo commit`."
+  },
+  {
+   "id": "s17-q29",
+   "topic": "s05",
+   "type": "single",
+   "q": "Hiciste `git switch --detach HEAD~1`, creaste el commit `e1d5333 Experimento` y volviste con `git switch main`. Git avisa: *Warning: you are leaving 1 commit behind, not connected to any of your branches*. ¿Cómo conservas ese commit?",
+   "options": [
+    "`git branch experimento e1d5333`",
+    "`git switch --detach e1d5333` y `git commit --amend`",
+    "`git merge --abort`",
+    "No se puede: los commits hechos en HEAD separado se borran al salir"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El commit sigue existiendo, solo que ninguna rama apunta a él (y el recolector de basura lo borraría con el tiempo). El propio aviso sugiere `git branch <new-branch-name> e1d5333`. Si ya no tienes el hash a mano, búscalo en `git reflog`."
+  },
+  {
+   "id": "s17-q30",
+   "topic": "s05",
+   "type": "single",
+   "q": "`git branch -d tema` responde `error: the branch 'tema' is not fully merged`. ¿Qué significa?",
+   "options": [
+    "Que `tema` tiene cambios sin confirmar",
+    "Que `tema` tiene commits que no están integrados en la rama actual (ni en su upstream); si la borras con `-D` quedarán sin rama que los apunte",
+    "Que `tema` es la rama actual y no se puede borrar",
+    "Que la rama remota `origin/tema` no existe"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-d` es la versión segura: solo borra si la punta de la rama ya está contenida en la rama actual (o en su upstream). Git 2.50 añade el consejo `hint: If you are sure you want to delete it, run 'git branch -D tema'`. Tras un `-D`, los commits aún se recuperan con el reflog mientras no los limpie `gc`."
+  },
+  {
+   "id": "s17-q31",
+   "topic": "s05",
+   "type": "single",
+   "q": "¿Qué comando moderno equivale a `git checkout -b hotfix`?",
+   "options": [
+    "`git branch -m hotfix`",
+    "`git restore -b hotfix`",
+    "`git switch -c hotfix`",
+    "`git switch --detach hotfix`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Desde Git 2.23, `git switch` se encarga de cambiar de rama (`-c` crea y cambia) y `git restore`, de restaurar archivos: separan las dos tareas que mezclaba `git checkout`. `git branch -m` renombra y `--detach` separa HEAD."
+  },
+  {
+   "id": "s17-q32",
+   "topic": "s05",
+   "type": "multi",
+   "q": "Estás en `main` con un cambio sin confirmar en `comun.txt` (archivo igual en ambas ramas) y quieres ir a `otra`, donde `dif.txt` tiene un contenido distinto. ¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git switch otra` funciona y tu cambio en `comun.txt` te acompaña a la nueva rama",
+    "`git switch` siempre descarta los cambios sin confirmar",
+    "Si también hubieras modificado `dif.txt`, Git abortaría el cambio de rama para no sobrescribir tu trabajo",
+    "Git confirma automáticamente los cambios antes de cambiar de rama",
+    "Los cambios sin confirmar se quedan guardados en `main` y reaparecen al volver"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Los cambios sin confirmar no pertenecen a ninguna rama: viven en el directorio de trabajo y el index. Si el cambio de rama no necesita tocar esos archivos, se conservan (`M\tcomun.txt`). Si sí (como `dif.txt`), Git se niega: `error: Your local changes to the following files would be overwritten by checkout`. Salidas: confirmar, `git stash` o `git switch -m`."
+  },
+  {
+   "id": "s17-q33",
+   "topic": "s05",
+   "type": "multi",
+   "q": "¿Qué DOS comandos renombran la rama local `master` a `main`? (Selecciona DOS.)",
+   "options": [
+    "`git branch -m master main`",
+    "`git switch -c main master`",
+    "Estando en `master`, `git branch -m main`",
+    "`git branch -d master main`",
+    "`git mv master main`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`git branch -m <vieja> <nueva>` renombra cualquier rama y `git branch -m <nueva>` renombra la actual (también mueve su reflog y su configuración). `switch -c main master` crea una rama **adicional** y `master` sigue existiendo. `git mv` renombra archivos."
+  },
+  {
+   "id": "s17-q34",
+   "topic": "s05",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Crear una rama copia todos los archivos del proyecto en una carpeta nueva.",
+     "answer": false
+    },
+    {
+     "text": "Normalmente HEAD apunta a una rama, y la rama apunta a un commit.",
+     "answer": true
+    },
+    {
+     "text": "`git switch -` te lleva a la rama en la que estabas antes.",
+     "answer": true
+    },
+    {
+     "text": "`git branch --merged` lista las ramas cuya punta ya está contenida en la rama actual.",
+     "answer": true
+    }
+   ],
+   "explain": "Una rama es un archivo diminuto con un hash (por eso crearla es instantáneo). HEAD es un puntero **simbólico** a la rama (`ref: refs/heads/main`); si apunta directo a un commit, está separado. `switch -` funciona como `cd -`. `--merged` es la forma segura de encontrar ramas que ya se pueden borrar con `-d`; `--no-merged` muestra las pendientes."
+  },
+  {
+   "id": "s17-q35",
+   "topic": "s06",
+   "type": "single",
+   "q": "`main` está en C1 y `feature` tiene C2 y C3 encima de C1 (main no avanzó). Estando en `main` ejecutas `git merge feature`. ¿Qué ocurre?",
+   "options": [
+    "Se crea un commit de fusión con dos padres",
+    "Git pide resolver un conflicto",
+    "Se copian C2 y C3 con hashes nuevos encima de `main`",
+    "Fast-forward: `main` avanza hasta C3 y no se crea commit de fusión"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Si la rama actual es ancestro de la otra, no hay nada que combinar: Git solo **adelanta el puntero** (`Updating f9a9662..c2d9860` / `Fast-forward`). Queda una historia lineal con `main` y `feature` en C3. Para forzar un commit de fusión (y conservar la «forma» de la rama) se usa `--no-ff`."
+  },
+  {
+   "id": "s17-q36",
+   "topic": "s06",
+   "type": "single",
+   "q": "`main` en C1 y `feature` con un commit C2 encima. En `main` ejecutas `git merge --no-ff --no-edit feature`. ¿Qué muestra `git log --oneline --graph --all`?\n\n**A**\n```\n* 72cb30c (HEAD -> main, feature) C2\n* f9a9662 C1\n```\n**B**\n```\n*   4ad5822 (HEAD -> main) Merge branch 'feature'\n|\\  \n| * 72cb30c (feature) C2\n|/  \n* f9a9662 C1\n```\n**C**\n```\n* 4ad5822 (HEAD -> main) Merge branch 'feature'\n* 72cb30c (feature) C2\n* f9a9662 C1\n```\n**D**\n```\n* 9b0c2aa (HEAD -> main) C2\n| * 72cb30c (feature) C2\n|/  \n* f9a9662 C1\n```",
+   "options": [
+    "La salida A",
+    "La salida B",
+    "La salida C",
+    "La salida D"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--no-ff` crea un commit de fusión aunque bastara un fast-forward: `Merge made by the 'ort' strategy.` El gráfico lo muestra con una bifurcación (`|\\`) y una convergencia (`|/`): el merge tiene **dos padres**, C1 y C2. A sería un fast-forward, C dibuja el merge como si tuviera un solo padre y D se parece a un cherry-pick."
+  },
+  {
+   "id": "s17-q37",
+   "topic": "s06",
+   "type": "single",
+   "q": "Durante un `git merge feature` estando en `main`, `saludo.txt` queda así:\n```\n<<<<<<< HEAD\nHola, mundo\n=======\nHola, equipo\n>>>>>>> feature\n```\n¿Qué es `Hola, mundo`?",
+   "options": [
+    "La versión de `feature` (*theirs*)",
+    "La versión del ancestro común",
+    "El resultado que Git propone como resolución",
+    "La versión de `main`, la rama en la que estás (HEAD, *ours*)"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Entre `<<<<<<< HEAD` y `=======` va **tu** lado (la rama actual, *ours*) y entre `=======` y `>>>>>>> feature`, el de la rama que fusionas (*theirs*). La versión del ancestro solo aparece con `merge.conflictStyle` `diff3` o `zdiff3`, en una sección `|||||||`. Para resolver: edita, borra los marcadores, `git add` y `git commit`."
+  },
+  {
+   "id": "s17-q38",
+   "topic": "s06",
+   "type": "single",
+   "q": "¿Qué hace `git merge --squash feature` estando en `main`?",
+   "options": [
+    "Crea un commit de fusión con dos padres y resume los mensajes",
+    "Reescribe `feature` como un único commit",
+    "Prepara en el index el resultado de todos los cambios de `feature`, pero no crea ningún commit: el commit lo haces tú y tendrá un solo padre",
+    "Hace fast-forward y borra `feature`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Git aplica los cambios y avisa `Squash commit -- not updating HEAD`: todo queda preparado y tú escribes el commit. Como ese commit no tiene a `feature` como padre, Git no considera la rama fusionada (`git branch -d feature` dirá `not fully merged`) y un merge posterior de la misma rama puede repetir conflictos."
+  },
+  {
+   "id": "s17-q39",
+   "topic": "s06",
+   "type": "single",
+   "q": "En `main` modificaste `config.js` y en `feature` alguien lo borró. `git merge feature` responde:\n```\nCONFLICT (modify/delete): config.js deleted in feature and modified in HEAD.  Version HEAD of config.js left in tree.\n```\nQuieres aceptar el borrado. ¿Qué haces?",
+   "options": [
+    "`git add config.js` y `git commit`",
+    "`git checkout --ours config.js` y `git commit`",
+    "`git rm config.js` y `git commit`",
+    "`git merge --continue` directamente"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En un conflicto de modificar/borrar, `git status` lo muestra como `deleted by them: config.js`. Para marcar la resolución se usa `git add` (conservar el archivo) o `git rm` (aceptar el borrado), y después `git commit`. `--ours` conservaría tu versión y `--continue` sin resolver falla con `Committing is not possible because you have unmerged files`."
+  },
+  {
+   "id": "s17-q40",
+   "topic": "s06",
+   "type": "multi",
+   "q": "Tras un `git merge` hay un conflicto en `saludo.txt`. ¿Qué DOS acciones son válidas para seguir? (Selecciona DOS.)",
+   "options": [
+    "Editar el archivo, quitar los marcadores, `git add saludo.txt` y `git commit`",
+    "`git commit -m \"merge\"` sin hacer `git add`: Git toma la versión de HEAD",
+    "`git merge --abort` para volver al estado anterior al merge",
+    "`git rebase --continue`",
+    "`git switch otra-rama` para descartar el conflicto"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Un merge con conflictos queda **a medias** (existe `.git/MERGE_HEAD`): o lo terminas (resolver, `git add`, `git commit` o `git merge --continue`) o lo cancelas con `git merge --abort`. Un `git commit` con archivos sin resolver falla (`error: Committing is not possible because you have unmerged files.`), `rebase --continue` es de otra operación y Git no te deja cambiar de rama con archivos sin fusionar."
+  },
+  {
+   "id": "s17-q41",
+   "topic": "s06",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git merge --ff-only feature` falla si las ramas divergieron.",
+     "answer": true
+    },
+    {
+     "text": "Un merge fast-forward crea un commit nuevo con dos padres.",
+     "answer": false
+    },
+    {
+     "text": "`git merge-base main feature` muestra el ancestro común que usa la fusión de tres vías.",
+     "answer": true
+    },
+    {
+     "text": "Con `merge.conflictStyle zdiff3`, los marcadores incluyen también la versión del ancestro común (sección `|||||||`).",
+     "answer": true
+    }
+   ],
+   "explain": "`--ff-only` se niega con `fatal: Not possible to fast-forward, aborting.` si hace falta un merge real (útil para `main` o en `pull.ff = only`). Un fast-forward no crea ningún commit: solo mueve el puntero. La fusión de tres vías compara la base (`git merge-base`), tu lado y el otro. `zdiff3` (Git 2.35+) agrega la base y recorta las líneas comunes: facilita entender qué cambió cada lado."
+  },
+  {
+   "id": "s17-q42",
+   "topic": "s06",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Después de `git merge --squash feature` y su commit, `git branch -d feature` funciona sin avisos porque la rama quedó fusionada.",
+     "answer": false
+    },
+    {
+     "text": "Durante un merge, `git checkout --theirs archivo` toma la versión de la rama que estás fusionando.",
+     "answer": true
+    },
+    {
+     "text": "Durante un conflicto, `git commit -am \"merge\"` confirma el archivo **con** los marcadores si no los quitaste.",
+     "answer": true
+    },
+    {
+     "text": "La estrategia de fusión por defecto en Git 2.50 es `ort`.",
+     "answer": true
+    }
+   ],
+   "explain": "El commit de un squash tiene un solo padre, así que `feature` no queda como ancestro: `-d` responde `the branch 'feature' is not fully merged`. En un merge, *theirs* es la rama entrante. Cuidado con `-a`: prepara los archivos en conflicto tal como están, marcadores incluidos, y el commit se crea sin error; revisa siempre con `git diff` antes. `ort` es la estrategia por defecto desde Git 2.34 (Git 2.50 lo anuncia: `Merge made by the 'ort' strategy.`)."
+  },
+  {
+   "id": "s17-q43",
+   "topic": "s07",
+   "type": "single",
+   "q": "Tu compañera publicó un commit en `main`. Ejecutas `git fetch`. ¿Qué cambia en tu repositorio?",
+   "options": [
+    "Tu `main` avanza y el directorio de trabajo se actualiza",
+    "Se crea un commit de fusión",
+    "Se actualiza `origin/main`; tu `main` y tu directorio de trabajo no cambian",
+    "Nada: `fetch` solo comprueba si hay novedades"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git fetch` descarga los objetos nuevos y actualiza las **ramas remotas de seguimiento** (`origin/main`), que son tu «foto» del servidor. Tu rama local solo cambia cuando integras (`git merge origin/main`, `git rebase origin/main` o `git pull`). `git status` te dirá, por ejemplo, `Your branch is behind 'origin/main' by 1 commit`."
+  },
+  {
+   "id": "s17-q44",
+   "topic": "s07",
+   "type": "single",
+   "q": "Hiciste un commit y `git push` responde:\n```\n ! [rejected]        main -> main (fetch first)\n```\n¿Qué significa y qué haces?",
+   "options": [
+    "Tu llave SSH expiró",
+    "El remoto tiene commits que tú no tienes; integra primero (`git pull`, o `git fetch` + merge/rebase) y vuelve a publicar",
+    "Debes usar `git push --force` porque el servidor está desactualizado",
+    "La rama no existe en el remoto; usa `-u`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El servidor solo acepta avances (*fast-forward*) de una rama. `(fetch first)` indica que el remoto tiene trabajo que tu repo ni siquiera ha descargado; si ya hiciste `fetch` pero no integraste, el motivo sería `(non-fast-forward)`. La solución es integrar y volver a publicar, nunca forzar en una rama compartida."
+  },
+  {
+   "id": "s17-q45",
+   "topic": "s07",
+   "type": "single",
+   "q": "`git branch -vv` muestra:\n```\n* main  49c32f7 [origin/main: ahead 1, behind 1] Yo1\n```\n¿Qué significa?",
+   "options": [
+    "Tienes 1 commit sin preparar y 1 preparado",
+    "`main` está 1 commit por delante de `origin/main` y nada más",
+    "Hay un conflicto pendiente que resolver",
+    "Tienes 1 commit local que el remoto no tiene y el remoto (según tu último fetch) tiene 1 que tú no tienes: las ramas divergieron"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`ahead`/`behind` comparan tu rama con su upstream **según la última información descargada**. `ahead 1, behind 1` significa divergencia: necesitas integrar (merge o rebase) antes de publicar. Si no has hecho `fetch`, el `behind` puede estar desactualizado."
+  },
+  {
+   "id": "s17-q46",
+   "topic": "s07",
+   "type": "single",
+   "q": "Quieres borrar la rama `extra` del servidor `origin`. ¿Qué comando usas?",
+   "options": [
+    "`git branch -d origin/extra`",
+    "`git remote remove extra`",
+    "`git fetch --prune extra`",
+    "`git push origin --delete extra`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Las ramas del servidor se modifican con `push`: `git push origin --delete extra` (antes, `git push origin :extra`). Responde `- [deleted]         extra`. `git branch -d origin/extra` no toca el servidor y `git remote remove` elimina la configuración de un remoto completo. Los demás limpian su `origin/extra` con `git fetch --prune`."
+  },
+  {
+   "id": "s17-q47",
+   "topic": "s07",
+   "type": "single",
+   "q": "¿Qué muestra `git log --oneline @{u}..`?",
+   "options": [
+    "Los commits de tu rama actual que todavía no están en su rama de seguimiento: lo que publicarías con `git push`",
+    "Los commits del remoto que aún no integraste",
+    "Todas las ramas remotas",
+    "El reflog de la rama remota"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`@{u}` (o `@{upstream}`) es la rama de seguimiento de la rama actual, por ejemplo `origin/main`. `@{u}..` = «alcanzable desde HEAD pero no desde el upstream»: tus commits pendientes de publicar. Al revés, `..@{u}` muestra lo que te falta integrar."
+  },
+  {
+   "id": "s17-q48",
+   "topic": "s07",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones sobre `git pull` en Git 2.50 son correctas? (Selecciona DOS.)",
+   "options": [
+    "Equivale a `git fetch` seguido de integrar la rama remota (merge, rebase o solo fast-forward, según `pull.rebase`/`pull.ff` o las opciones)",
+    "Sube tus commits al remoto",
+    "Si las ramas divergieron y no configuraste `pull.rebase` ni `pull.ff`, se detiene con `fatal: Need to specify how to reconcile divergent branches.`",
+    "Nunca modifica tu rama local",
+    "Con `pull.rebase = true` crea siempre un commit de fusión"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`pull` = `fetch` + integración. Si basta un fast-forward, lo hace; si hay divergencia y no dijiste cómo reconciliar, Git moderno se detiene y sugiere `git config pull.rebase false` (merge), `true` (rebase) o `pull.ff only`. Con `pull.rebase = true` tus commits locales se reaplican encima de los remotos: historia lineal, sin commit de fusión."
+  },
+  {
+   "id": "s17-q49",
+   "topic": "s07",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git clone` crea ramas locales para todas las ramas del remoto.",
+     "answer": false
+    },
+    {
+     "text": "`git fetch --prune` elimina las ramas remotas de seguimiento (`origin/x`) que ya no existen en el servidor.",
+     "answer": true
+    },
+    {
+     "text": "`git remote -v` muestra las URL de *fetch* y *push* de cada remoto.",
+     "answer": true
+    },
+    {
+     "text": "Un repositorio *bare* tiene directorio de trabajo, pero no área de preparación.",
+     "answer": false
+    }
+   ],
+   "explain": "Al clonar se crea **solo** la rama por defecto; las demás quedan como `origin/*` y `git switch rama` crea la local con seguimiento automáticamente. `--prune` borra las `origin/*` huérfanas (`- [deleted] (none) -> origin/extra`). Un repo *bare* (`git init --bare`) no tiene directorio de trabajo: es solo el contenido de `.git`, como en un servidor."
+  },
+  {
+   "id": "s17-q50",
+   "topic": "s07",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git push -u origin feature/x` publica la rama y configura `origin/feature/x` como su upstream.",
+     "answer": true
+    },
+    {
+     "text": "Si ya hiciste `git fetch`, un push rechazado por divergencia muestra `(non-fast-forward)` en lugar de `(fetch first)`.",
+     "answer": true
+    },
+    {
+     "text": "`origin` es un nombre reservado que Git no permite cambiar.",
+     "answer": false
+    },
+    {
+     "text": "Con autenticación SSH, subes a GitHub tu llave privada y la pública se queda en tu computador.",
+     "answer": false
+    }
+   ],
+   "explain": "`-u` (`--set-upstream`) deja la relación configurada: Git lo confirma con `branch 'feature/x' set up to track 'origin/feature/x'.` Los dos motivos de rechazo indican si tu repo ya conoce el trabajo remoto. `origin` es solo el nombre por defecto de `git clone` (se cambia con `git remote rename`). En SSH se sube la llave **pública**; la privada nunca sale de tu equipo."
+  },
+  {
+   "id": "s17-q51",
+   "topic": "s08",
+   "type": "single",
+   "q": "`git describe` responde `v1.2.0-3-g2ad329f`. ¿Qué significa?",
+   "options": [
+    "Es la versión 1.2.0 con el parche número 3",
+    "Hay 3 etiquetas entre `v1.2.0` y HEAD",
+    "La etiqueta tiene 3 días de antigüedad",
+    "El commit actual está 3 commits después de la etiqueta anotada `v1.2.0` y su hash abreviado es `2ad329f`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Formato: `<etiqueta>-<commits desde la etiqueta>-g<hash abreviado>` (la `g` viene de *git*). Si HEAD estuviera justo en la etiqueta, mostraría solo `v1.2.0`. Sin opciones, `git describe` solo usa etiquetas **anotadas**; con `--tags` considera también las ligeras."
+  },
+  {
+   "id": "s17-q52",
+   "topic": "s08",
+   "type": "single",
+   "q": "Creaste la etiqueta anotada `v1.0.0` y ejecutaste `git push`. En el servidor no aparece. ¿Por qué y cómo la publicas?",
+   "options": [
+    "Las etiquetas anotadas no se pueden publicar; solo las ligeras",
+    "`git push` no envía etiquetas por defecto; usa `git push origin v1.0.0` (o `--tags` / `--follow-tags`)",
+    "Debes crearla en el servidor con `git tag --remote`",
+    "Hace falta `git fetch --tags` antes de publicarla"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las etiquetas se publican explícitamente: `git push origin v1.0.0` (`* [new tag] v1.0.0 -> v1.0.0`), `--tags` (todas) o `--follow-tags` (las anotadas que apuntan a commits que estás subiendo; se puede activar con `push.followTags`). `git ls-remote --tags origin` te dice qué etiquetas tiene el servidor."
+  },
+  {
+   "id": "s17-q53",
+   "topic": "s08",
+   "type": "single",
+   "q": "Tu proyecto está en la versión `1.4.2`. Llega un commit `feat!: elimina la API v1` (Conventional Commits). ¿Qué versión corresponde según SemVer?",
+   "options": [
+    "`1.5.0`",
+    "`1.4.3`",
+    "`2.0.0`",
+    "`1.5.0-breaking`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El `!` (o un pie `BREAKING CHANGE:`) marca un cambio **incompatible**, que en SemVer sube la versión MAYOR y reinicia las demás: `2.0.0`. Un `feat:` compatible subiría la MENOR (`1.5.0`) y un `fix:`, el PARCHE (`1.4.3`)."
+  },
+  {
+   "id": "s17-q54",
+   "topic": "s08",
+   "type": "single",
+   "q": "Trabajas en tu fork (`origin`) y el repositorio original está configurado como `upstream`. ¿Cómo pones al día tu `main` con el original?",
+   "options": [
+    "`git fetch upstream`, `git switch main`, `git merge upstream/main` (o `git rebase upstream/main`) y `git push origin main`",
+    "`git pull origin main`",
+    "`git push upstream main`",
+    "Clonar el original encima de tu carpeta"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Tu fork no se actualiza solo. Descargas del original (`upstream`), integras en tu `main` local y publicas en **tu** fork (`origin`). `git pull origin main` solo trae lo que ya está en tu fork, y en `upstream` normalmente no tienes permiso de escritura (para eso están los PR). GitHub también ofrece un botón *Sync fork*, que hace lo mismo del lado del servidor."
+  },
+  {
+   "id": "s17-q55",
+   "topic": "s08",
+   "type": "multi",
+   "q": "Partiendo de la versión `1.4.2`, ¿qué DOS saltos de versión son correctos según SemVer? (Selecciona DOS.)",
+   "options": [
+    "Arreglo de un bug compatible → `1.4.3`",
+    "Cambio incompatible en la API → `1.5.0`",
+    "Nueva funcionalidad compatible → `1.5.0`",
+    "Nueva funcionalidad compatible → `2.0.0`",
+    "Arreglo de un bug → `1.5.2`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "SemVer es `MAYOR.MENOR.PARCHE`: parche para arreglos compatibles (`1.4.3`), menor para funcionalidades compatibles (`1.5.0`, reiniciando el parche) y mayor para cambios incompatibles (`2.0.0`). Al subir un número, los de su derecha vuelven a 0."
+  },
+  {
+   "id": "s17-q56",
+   "topic": "s08",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Los *forks* y los *pull requests* son funciones de plataformas como GitHub, no comandos de Git.",
+     "answer": true
+    },
+    {
+     "text": "Una etiqueta anotada es un objeto con autor, fecha y mensaje; una ligera es solo un nombre que apunta a un commit.",
+     "answer": true
+    },
+    {
+     "text": "En GitHub Flow, `main` siempre debe poder desplegarse y el trabajo se hace en ramas cortas que se integran con pull requests.",
+     "answer": true
+    },
+    {
+     "text": "`git describe` sin opciones también considera las etiquetas ligeras.",
+     "answer": false
+    }
+   ],
+   "explain": "Git ofrece los bloques (clonar, ramas, remotos); el fork y el PR son capas de la plataforma. `git cat-file -t v1.2.0` responde `tag` para una anotada y `commit` para una ligera (apunta directo al commit). GitHub Flow: una rama por cambio, PR con revisión y CI, merge a `main` y despliegue. `describe` necesita `--tags` para usar etiquetas ligeras."
+  },
+  {
+   "id": "s17-q57",
+   "topic": "s09",
+   "type": "single",
+   "q": "Historia: `A ← B ← D` en `main` y `A ← B ← C1 ← C2` en `feature`. Estando en `feature` ejecutas `git rebase main`. ¿Qué muestra `git log --oneline --graph --all`?\n\n**A**\n```\n*   ff341a7 (HEAD -> feature) Merge branch 'main' into feature\n|\\  \n| * e2f4438 (main) D\n* | 03b4263 C2\n* | 7c1d2e3 C1\n|/  \n* dd76bbf B\n* 5d981da A\n```\n**B**\n```\n* ff341a7 (HEAD -> feature) C2\n* dd3bd85 C1\n* e2f4438 (main) D\n* dd76bbf B\n* 5d981da A\n```\n**C**\n```\n* e2f4438 (HEAD -> feature, main) D\n* dd76bbf B\n* 5d981da A\n```\n**D**\n```\n* ff341a7 (HEAD -> feature) C2\n* dd3bd85 C1\n| * e2f4438 (main) D\n|/  \n* dd76bbf B\n* 5d981da A\n```",
+   "options": [
+    "La salida A",
+    "La salida B",
+    "La salida C",
+    "La salida D"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El rebase **reaplica** C1 y C2 encima de D como commits nuevos (C1′ y C2′, con otros hashes) y mueve `feature` al último: historia lineal (`Successfully rebased and updated refs/heads/feature.`). `main` no se mueve. A sería el resultado de un merge; D conserva la base antigua. Los commits originales siguen accesibles un tiempo con `ORIG_HEAD` y el reflog."
+  },
+  {
+   "id": "s17-q58",
+   "topic": "s09",
+   "type": "single",
+   "q": "Tienes `main`, `feature-a` (sale de `main`) y `feature-b` (sale de `feature-a`). Quieres llevar **solo** los commits propios de `feature-b` encima de `main`. ¿Qué comando usas?",
+   "options": [
+    "`git rebase main feature-b`",
+    "`git rebase --onto main feature-a feature-b`",
+    "`git rebase --onto feature-a main feature-b`",
+    "`git merge --onto main feature-b`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git rebase --onto <nueva-base> <viejo-límite> <rama>` toma los commits de `<rama>` que no están en `<viejo-límite>` (aquí, los de `feature-b` que no están en `feature-a`) y los reaplica sobre `<nueva-base>`. `git rebase main feature-b` también se llevaría los commits de `feature-a`."
+  },
+  {
+   "id": "s17-q59",
+   "topic": "s09",
+   "type": "single",
+   "q": "Durante un `git rebase main` aparece un conflicto. Ya lo resolviste en el archivo. ¿Qué haces?",
+   "options": [
+    "`git commit -m \"resuelve\"` y `git rebase --skip`",
+    "`git merge --continue`",
+    "`git rebase --abort`: el conflicto queda resuelto igualmente",
+    "`git add archivo` y `git rebase --continue`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "En un rebase, marcas la resolución con `git add` y el propio rebase crea el commit al continuar (`--continue` puede abrir el editor para el mensaje). `--skip` descarta el commit que se estaba aplicando y `--abort` deshace **todo** el rebase y vuelve al estado inicial."
+  },
+  {
+   "id": "s17-q60",
+   "topic": "s09",
+   "type": "single",
+   "q": "Reescribiste tu rama ya publicada. Una compañera publicó un commit en esa misma rama y tú **no** has hecho `git fetch` desde entonces. ¿Qué responde `git push --force-with-lease`?",
+   "options": [
+    "Sobrescribe el commit de tu compañera sin avisar",
+    "Hace un merge automático en el servidor",
+    "Rechaza el push con `(stale info)`, porque el remoto ya no está donde tu `origin/rama` cree",
+    "Publica solo tus commits nuevos y conserva los de ella"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "*Lease* = «solo si el remoto sigue donde lo vi por última vez». Como el servidor cambió desde tu último fetch, la condición falla: `! [rejected] … (stale info)`. Cuidado: si **después** haces `git fetch`, tu `origin/rama` se actualiza y el lease ya no te protege; para eso existe `--force-if-includes`, que además exige que hayas integrado lo remoto."
+  },
+  {
+   "id": "s17-q61",
+   "topic": "s09",
+   "type": "multi",
+   "q": "¿En qué DOS situaciones es razonable reescribir historia (rebase, `--amend`, squash)? (Selecciona DOS.)",
+   "options": [
+    "Commits locales que todavía no has publicado",
+    "`main` compartida, con `git push --force`, para dejarla más limpia",
+    "Tu rama de PR publicada, en la que solo trabajas tú, actualizándola con `--force-with-lease`",
+    "Una etiqueta de versión ya publicada, moviéndola a otro commit",
+    "La rama de un compañero, sin avisarle"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "La **regla de oro**: no reescribas historia que otros ya tienen. Lo local es tuyo; tu rama de PR, en la práctica, también (y `--force-with-lease` evita pisar un commit ajeno si alguien sí la tocó). Reescribir `main`, mover etiquetas publicadas o forzar ramas ajenas rompe los clones de los demás."
+  },
+  {
+   "id": "s17-q62",
+   "topic": "s09",
+   "type": "multi",
+   "q": "Estás en medio de un `git rebase main` sobre `feature`, con un conflicto en `s.txt`. ¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git checkout --ours s.txt` toma la versión de `main`, la base sobre la que reaplicas",
+    "`--ours` siempre es tu rama `feature`, igual que en un merge",
+    "`git checkout --theirs s.txt` toma la versión de tu commit de `feature` que se está reaplicando",
+    "Durante un rebase no se pueden usar `--ours` ni `--theirs`",
+    "HEAD apunta a `feature` durante todo el rebase"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "En un rebase los papeles se **invierten** respecto a un merge: Git se sitúa en la nueva base (HEAD separado sobre `main` y los commits ya reaplicados) y va aplicando tus commits encima. Por eso *ours* es la base (`Hola, mundo` de `main`) y *theirs*, tu commit (`Hola, equipo`). La rama `feature` solo se mueve al terminar."
+  },
+  {
+   "id": "s17-q63",
+   "topic": "s09",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git commit --fixup=<hash>` crea un commit cuyo mensaje empieza con `fixup! `.",
+     "answer": true
+    },
+    {
+     "text": "`git rebase -i --autosquash` coloca los commits `fixup!` junto a su objetivo y los marca como `fixup`.",
+     "answer": true
+    },
+    {
+     "text": "En un rebase interactivo, `fixup` descarta el mensaje del commit fusionado y `squash` abre el editor para combinar los mensajes.",
+     "answer": true
+    },
+    {
+     "text": "`git rebase` conserva los hashes originales de los commits que mueve.",
+     "answer": false
+    }
+   ],
+   "explain": "`--fixup` + `--autosquash` automatizan el típico «arreglo un commit antiguo»: el rebase interactivo ya viene ordenado (se puede activar siempre con `rebase.autoSquash`). `squash` y `fixup` funden con el commit anterior; la diferencia es el mensaje. Cualquier commit reaplicado tiene otro padre y, por tanto, **otro hash**."
+  },
+  {
+   "id": "s17-q64",
+   "topic": "s09",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git pull --rebase` crea un commit de fusión cuando hay commits locales y remotos.",
+     "answer": false
+    },
+    {
+     "text": "Tras un rebase, `ORIG_HEAD` apunta a donde estaba la rama antes de empezar.",
+     "answer": true
+    },
+    {
+     "text": "Si ya hiciste `git fetch` después de que otra persona publicara, `git push --force-with-lease` (sin más opciones) puede sobrescribir su trabajo.",
+     "answer": true
+    },
+    {
+     "text": "`git rebase --update-refs` (desde Git 2.38) actualiza también las ramas apiladas que apuntaban a commits reaplicados.",
+     "answer": true
+    }
+   ],
+   "explain": "`pull --rebase` reaplica tus commits locales encima de los remotos: historia lineal, sin merge. `ORIG_HEAD` permite deshacer con `git reset --hard ORIG_HEAD`. El lease se compara con tu `origin/rama`: un fetch sin integrar lo «pone al día» y el force pasa (verificado: `+ bde5f19...e95b9d8 main -> main (forced update)`); añade `--force-if-includes` para exigir que hayas integrado lo remoto. `--update-refs` evita reubicar a mano cada rama de una pila."
+  },
+  {
+   "id": "s17-q65",
+   "topic": "s10",
+   "type": "single",
+   "q": "Tienes `app.js` modificado y un archivo nuevo `nuevo.js` sin seguimiento. Ejecutas `git stash`. ¿Qué queda en `git status -s`?",
+   "options": [
+    "Nada: todo quedó guardado",
+    "` M app.js` y `?? nuevo.js`: `git stash` sin mensaje no hace nada",
+    "`?? nuevo.js`: el stash guardó `app.js`, pero los archivos sin seguimiento no se guardan sin `-u`",
+    "` M app.js`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git stash` guarda los cambios de archivos **rastreados** (index y directorio de trabajo) y deja el directorio como HEAD. Los archivos sin seguimiento se quedan donde están, salvo con `-u` (`--include-untracked`) o `-a` (que incluye también los ignorados)."
+  },
+  {
+   "id": "s17-q66",
+   "topic": "s10",
+   "type": "single",
+   "q": "`git stash pop` termina con `CONFLICT (content): Merge conflict in app.js`. ¿Qué pasa con la entrada del stash?",
+   "options": [
+    "Se borra igualmente y el conflicto queda en los archivos",
+    "Git revierte todo y no aplica nada",
+    "Se crea un commit con el conflicto",
+    "Se conserva (`The stash entry is kept in case you need it again.`); tras resolver, la borras tú con `git stash drop`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`pop` = `apply` + `drop`, pero el `drop` solo ocurre si la aplicación fue limpia. Con conflicto, Git deja los marcadores, conserva `stash@{0}` y te lo dice. Resuelve, prepara los archivos y elimina la entrada cuando ya no la necesites."
+  },
+  {
+   "id": "s17-q67",
+   "topic": "s10",
+   "type": "single",
+   "q": "Ejecutaste por error `git reset --hard HEAD~3` y «perdiste» 3 commits. ¿Qué comando los recupera?",
+   "options": [
+    "`git revert HEAD~3`",
+    "`git reset --hard HEAD@{1}` (u `ORIG_HEAD`)",
+    "`git restore .`",
+    "`git stash pop`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los commits siguen en la base de objetos; solo se movió la rama. El reflog registra `HEAD@{0}: reset: moving to HEAD~3` y en `HEAD@{1}` la posición anterior; `reset` también deja `ORIG_HEAD` ahí. Ojo: lo que **no** estaba confirmado se perdió de verdad."
+  },
+  {
+   "id": "s17-q68",
+   "topic": "s10",
+   "type": "single",
+   "q": "Borraste con `git branch -D tema` una rama con commits sin fusionar y Git mostró `Deleted branch tema (was f4f65de).` ¿Cómo la recuperas?",
+   "options": [
+    "`git branch tema f4f65de` (el hash también aparece en `git reflog`)",
+    "`git branch --undelete tema`",
+    "`git fetch tema`",
+    "No se puede: `-D` borra también los commits"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Borrar una rama solo elimina el puntero (y su propio reflog). El commit sigue ahí: el mensaje del borrado da su hash y el reflog de HEAD guarda por dónde pasaste (`commit: T1`, `checkout: moving from tema to main`). Con `git branch tema <hash>` la rama vuelve a existir."
+  },
+  {
+   "id": "s17-q69",
+   "topic": "s10",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones sobre `git cherry-pick` son correctas? (Selecciona DOS.)",
+   "options": [
+    "Crea un commit nuevo (con otro hash) que aplica los cambios del commit elegido",
+    "Mueve el commit original y lo borra de su rama",
+    "Con `-x` añade al mensaje la línea `(cherry picked from commit …)`",
+    "Solo funciona entre repositorios distintos",
+    "`--no-commit` crea el commit pero sin mensaje"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Cherry-pick **copia** el cambio introducido por un commit a la rama actual; el original sigue donde estaba. `-x` deja rastro de su origen (muy útil al llevar arreglos a ramas de release) y `--no-commit` aplica los cambios al index y al directorio de trabajo sin confirmar, para juntar varios o retocarlos."
+  },
+  {
+   "id": "s17-q70",
+   "topic": "s10",
+   "type": "multi",
+   "q": "¿Qué DOS comandos guardan tu trabajo a medias **incluidos** los archivos sin seguimiento? (Selecciona DOS.)",
+   "options": [
+    "`git stash`",
+    "`git stash -u`",
+    "`git stash --staged`",
+    "`git stash push -u -m \"wip login\"`",
+    "`git stash list`"
+   ],
+   "answer": [
+    1,
+    3
+   ],
+   "explain": "`-u` (`--include-untracked`) incluye los archivos nuevos; `git stash push -u -m …` hace lo mismo con un mensaje descriptivo (muy recomendable si acumulas varios). `--staged` guarda solo lo preparado y `list` solo muestra las entradas."
+  },
+  {
+   "id": "s17-q71",
+   "topic": "s10",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "El reflog es local: no se publica con `git push` ni viene con `git clone`.",
+     "answer": true
+    },
+    {
+     "text": "`git stash branch nueva` crea una rama desde el commit en que se hizo el stash, aplica el stash y, si todo va bien, lo borra.",
+     "answer": true
+    },
+    {
+     "text": "Tras `git stash drop`, el commit del stash sigue en el repositorio hasta que el recolector de basura lo elimine, y puedes recuperarlo con el hash que muestra el mensaje.",
+     "answer": true
+    },
+    {
+     "text": "`ORIG_HEAD` solo existe después de un `git commit`.",
+     "answer": false
+    }
+   ],
+   "explain": "Cada repositorio tiene su propio reflog (por defecto, las entradas alcanzables duran 90 días y las inalcanzables, 30). `stash branch` evita conflictos al aplicar un stash viejo. `drop` imprime `Dropped refs/stash@{0} (<hash>)`: con `git stash apply <hash>` lo recuperas mientras no pase `gc`. `ORIG_HEAD` lo dejan las operaciones que mueven HEAD de forma drástica: `reset`, `merge` y `rebase`."
+  },
+  {
+   "id": "s17-q72",
+   "topic": "s11",
+   "type": "single",
+   "q": "En `git bisect run ./test.sh`, ¿cómo interpreta Git el código de salida del script?",
+   "options": [
+    "0 = commit bueno; 125 = no se puede probar (se salta); de 1 a 127 (excepto 125) = malo; otros valores abortan la búsqueda",
+    "0 = malo; 1 = bueno",
+    "Cualquier salida por pantalla marca el commit como malo",
+    "Solo 0 y 1 son válidos; los demás se ignoran"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Es la convención documentada en `git bisect`: así cualquier prueba (un script, `make test`, `npm test`) sirve tal cual. El 125 sirve para commits que no compilan o no se pueden evaluar. Al terminar, Git imprime `<hash> is the first bad commit` y queda en HEAD separado hasta `git bisect reset`."
+  },
+  {
+   "id": "s17-q73",
+   "topic": "s11",
+   "type": "single",
+   "q": "Una función `calcularIVA` se agregó en un commit, en otro se cambió su tasa y en un tercero se eliminó. ¿Qué commits muestra `git log -S calcularIVA --oneline`?",
+   "options": [
+    "Los tres",
+    "Solo el último",
+    "Solo los que la agregaron y la eliminaron, porque ahí cambió el número de apariciones del texto",
+    "Los commits cuyo mensaje contiene `calcularIVA`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El *pickaxe* `-S` busca commits donde **cambia la cantidad** de apariciones de la cadena: agregar y quitar. Cambiar la tasa dentro de la misma línea no altera el conteo. `-G calcularIVA` (expresión regular sobre las líneas del diff) sí mostraría los tres. Para buscar en los mensajes se usa `--grep`."
+  },
+  {
+   "id": "s17-q74",
+   "topic": "s11",
+   "type": "single",
+   "q": "Quieres saber quién cambió por última vez las líneas 10 a 20 de `app.js`, ignorando los cambios de espacios en blanco. ¿Qué usas?",
+   "options": [
+    "`git show -L 10,20 app.js`",
+    "`git blame -w -L 10,20 app.js`",
+    "`git diff -w 10..20 app.js`",
+    "`git grep -n app.js 10 20`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git blame` anota cada línea con el último commit que la tocó; `-L` limita el rango y `-w` ignora cambios de espacios (así una reindentación no «roba» la autoría). Para ignorar commits de formato completos existe `--ignore-rev` o `blame.ignoreRevsFile`. Si quieres la **historia** de ese rango, es `git log -L 10,20:app.js`."
+  },
+  {
+   "id": "s17-q75",
+   "topic": "s11",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git shortlog -sn` cuenta los commits por autor, ordenados de mayor a menor",
+    "`git grep` busca en los mensajes de los commits",
+    "`git log --first-parent main` recorre solo la línea principal, sin entrar en los commits de las ramas fusionadas",
+    "`git log -G` busca solo en los mensajes",
+    "`git bisect` necesita que el repositorio esté publicado"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`shortlog -s` resume (solo conteos), `-n` ordena por número. `--first-parent` sigue el primer padre de cada merge: ideal para ver «qué se integró en `main`». `git grep` busca en el **contenido** de los archivos (del directorio de trabajo o de un commit), `-G` busca en los diffs y `bisect` es totalmente local."
+  },
+  {
+   "id": "s17-q76",
+   "topic": "s11",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Durante `git bisect`, HEAD queda separado en el commit que toca probar.",
+     "answer": true
+    },
+    {
+     "text": "Al terminar hay que ejecutar `git bisect reset` para volver a la rama original.",
+     "answer": true
+    },
+    {
+     "text": "`git log -L :calcularIVA:iva.js` muestra la evolución de esa función a lo largo de la historia.",
+     "answer": true
+    },
+    {
+     "text": "`git blame` muestra quién escribió cada línea por primera vez.",
+     "answer": false
+    }
+   ],
+   "explain": "Bisect va haciendo checkout de commits intermedios (HEAD separado) y guarda su estado en `.git/BISECT_LOG` y `refs/bisect/*`; `reset` limpia todo y te devuelve a donde estabas. `log -L :función:archivo` usa la detección de funciones de Git para seguir ese bloque. `blame` muestra el **último** cambio de cada línea, no el primero."
+  },
+  {
+   "id": "s17-q77",
+   "topic": "s12",
+   "type": "single",
+   "q": "En un commit hay dos archivos, `a.txt` y `b.txt`, con exactamente el mismo contenido. ¿Cuántos blobs usa Git para ellos?",
+   "options": [
+    "Dos, uno por archivo",
+    "Ninguno: los archivos iguales se guardan como diferencias",
+    "Uno por cada commit que los incluya",
+    "Uno: el blob se identifica por el hash de su contenido y el árbol apunta a él con los dos nombres"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "El almacenamiento de Git es **direccionable por contenido**: mismo contenido → mismo hash → un solo objeto. `git ls-tree HEAD` muestra ambas entradas con el mismo hash (`5c1b149…`). Por eso copiar o renombrar archivos no duplica datos, y un commit puede ser una instantánea completa sin ocupar el doble."
+  },
+  {
+   "id": "s17-q78",
+   "topic": "s12",
+   "type": "single",
+   "q": "¿Qué muestra `git cat-file -t 'HEAD^{tree}'`?",
+   "options": [
+    "`commit`",
+    "`tree`",
+    "`blob`",
+    "El contenido del árbol"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-t` imprime el **tipo** del objeto. `HEAD^{tree}` «pela» el commit hasta su árbol raíz, así que responde `tree`. Para ver el contenido se usa `-p` (o `git ls-tree`). Los cuatro tipos son `blob`, `tree`, `commit` y `tag`."
+  },
+  {
+   "id": "s17-q79",
+   "topic": "s12",
+   "type": "single",
+   "q": "¿Qué diferencia hay entre `git hash-object archivo` y `git hash-object -w archivo`?",
+   "options": [
+    "Sin `-w` solo calcula e imprime el hash; con `-w` además guarda el blob en la base de objetos",
+    "Sin `-w` guarda el blob comprimido; con `-w`, sin comprimir",
+    "`-w` crea también el commit",
+    "Ninguna"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Sin `-w`, el hash no queda respaldado por ningún objeto: `git cat-file -t <hash>` fallaría. Con `-w` (*write*) se crea el objeto suelto en `.git/objects/xx/…`. Es el primer paso para construir un commit a mano: `hash-object -w` → `update-index` → `write-tree` → `commit-tree` → `update-ref`."
+  },
+  {
+   "id": "s17-q80",
+   "topic": "s12",
+   "type": "single",
+   "q": "¿Qué comando de *plumbing* crea un objeto commit a partir de un árbol (y de uno o más padres) e imprime su hash?",
+   "options": [
+    "`git write-tree`",
+    "`git update-ref`",
+    "`git mktag`",
+    "`git commit-tree`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "`git commit-tree <árbol> -p <padre>` (con el mensaje por `-m` o por la entrada estándar) crea el commit, pero **no** mueve ninguna rama: para eso está `git update-ref refs/heads/rama <hash>`. `write-tree` crea el árbol a partir del index y `mktag` crea objetos etiqueta."
+  },
+  {
+   "id": "s17-q81",
+   "topic": "s12",
+   "type": "multi",
+   "q": "¿Qué TRES líneas aparecen en la salida de `git cat-file -p HEAD` para un commit que **no** es el primero? (Selecciona TRES.)",
+   "options": [
+    "`tree <hash>`",
+    "`parent <hash>`",
+    "`branch main`",
+    "`author Nombre <correo> <marca de tiempo> <zona horaria>`",
+    "`diff --git a/… b/…`"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "Un commit es texto: `tree`, una línea `parent` por cada padre, `author`, `committer`, una línea en blanco y el mensaje (verificado: `author Alumno <alumno@cuaderno.local> 1788267600 -0300`). No contiene la rama ni el diff: la rama es una referencia externa y el diff se calcula comparando árboles."
+  },
+  {
+   "id": "s17-q82",
+   "topic": "s12",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "En un repositorio normal, `.git/HEAD` contiene `ref: refs/heads/main` cuando estás en `main`.",
+     "answer": true
+    },
+    {
+     "text": "Renombrar un archivo sin cambiar su contenido crea un blob nuevo.",
+     "answer": false
+    },
+    {
+     "text": "Una rama es, en esencia, un archivo (o una línea de `packed-refs`) con el hash de un commit.",
+     "answer": true
+    },
+    {
+     "text": "`git gc` empaqueta las referencias sueltas en `.git/packed-refs`, además de comprimir objetos.",
+     "answer": true
+    }
+   ],
+   "explain": "HEAD es una referencia **simbólica**; separado, contendría directamente un hash. El nombre del archivo vive en el **árbol**, no en el blob: un renombrado reutiliza el mismo blob. Las referencias pueden estar sueltas (`.git/refs/heads/main`) o agrupadas en `packed-refs`, que es lo que hace `git gc` (ejecuta `git pack-refs --all`) junto con empaquetar objetos en packfiles con deltas."
+  },
+  {
+   "id": "s17-q83",
+   "topic": "s13",
+   "type": "single",
+   "q": "Tu `~/.gitconfig` tiene `[includeIf \"gitdir:~/trabajo/\"]` con `path = ~/.gitconfig-trabajo`, y ese archivo define `user.email = yo@empresa.cl`. ¿Qué correo usa un repositorio ubicado en `~/trabajo/api`?",
+   "options": [
+    "El correo global, porque `includeIf` solo funciona dentro de `.git/config`",
+    "`yo@empresa.cl`, porque el *include* condicional se aplica a los repositorios bajo `~/trabajo/`",
+    "Ninguno: Git exige definir `user.email` en el nivel local",
+    "Depende de la rama actual"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`includeIf \"gitdir:…\"` incluye otro archivo de configuración solo si el `.git` del repositorio está bajo esa ruta (la barra final significa «y todo lo que haya dentro»). Es la forma estándar de separar identidad personal y laboral. `git config --show-origin user.email` te muestra de qué archivo sale el valor."
+  },
+  {
+   "id": "s17-q84",
+   "topic": "s13",
+   "type": "single",
+   "q": "Creaste `.git/hooks/pre-commit`, pero Git no lo ejecuta y muestra `hint: The '.git/hooks/pre-commit' hook was ignored because it's not set as executable.` ¿Qué falta?",
+   "options": [
+    "Agregarlo con `git add` y confirmarlo",
+    "Renombrarlo a `pre-commit.sh`",
+    "Darle permiso de ejecución: `chmod +x .git/hooks/pre-commit`",
+    "Activarlo con `git config hooks.enabled true`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un hook es un programa que Git ejecuta en un momento concreto: debe llamarse exactamente como el evento (sin extensión) y ser **ejecutable**. Si termina con código distinto de 0, `pre-commit` y `commit-msg` cancelan el commit. Los archivos `.sample` de `.git/hooks` son ejemplos desactivados."
+  },
+  {
+   "id": "s17-q85",
+   "topic": "s13",
+   "type": "single",
+   "q": "¿Qué hace `git config --global alias.hola '!echo hola desde shell'`?",
+   "options": [
+    "Crea el alias `git hola`, que ejecuta un comando de la shell porque empieza con `!`",
+    "Crea un alias que ejecuta `git echo`",
+    "Da error: los alias solo pueden llamar subcomandos de Git",
+    "Crea una variable de entorno llamada `hola`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Un alias normal antepone `git` (`alias.lg = log --oneline --graph --all` → `git lg`). Con `!` al principio, el resto se ejecuta como **comando de shell** desde la raíz del repositorio, lo que permite combinar varios comandos o usar otras herramientas."
+  },
+  {
+   "id": "s17-q86",
+   "topic": "s13",
+   "type": "multi",
+   "q": "¿Qué DOS líneas de `.gitattributes` son correctas para lo que dice su descripción? (Selecciona DOS.)",
+   "options": [
+    "`*.sh text eol=lf` — los scripts se normalizan y se escriben siempre con fin de línea LF",
+    "`*.log ignore` — ignora los archivos .log",
+    "`*.png binary` — trata los PNG como binarios: sin diffs de texto ni conversión de fin de línea",
+    "`*.js merge=theirs` — viene activado de serie y siempre acepta la versión entrante",
+    "`* eol=auto` — detecta el sistema operativo de cada persona"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`text eol=lf` fuerza LF en el directorio de trabajo (clave para scripts que se ejecutan en Linux o macOS). `binary` es una macro de `-diff -merge -text`. Ignorar archivos es tarea de `.gitignore`; no existe un driver `theirs` incorporado (Git trae `text`, `binary` y `union`; los demás se definen con `merge.<nombre>.driver`), y `eol` solo acepta `lf` o `crlf`."
+  },
+  {
+   "id": "s17-q87",
+   "topic": "s13",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Los hooks de `.git/hooks` se versionan y llegan a tus compañeros al clonar.",
+     "answer": false
+    },
+    {
+     "text": "`core.hooksPath` permite usar una carpeta de hooks versionada dentro del proyecto.",
+     "answer": true
+    },
+    {
+     "text": "`git commit --no-verify` omite los hooks `pre-commit` y `commit-msg`.",
+     "answer": true
+    },
+    {
+     "text": "El hook `commit-msg` recibe como primer argumento la ruta del archivo con el mensaje.",
+     "answer": true
+    }
+   ],
+   "explain": "`.git/` nunca se versiona, así que los hooks locales no se comparten: se usa `core.hooksPath` (por ejemplo, `.githooks/`) o frameworks como pre-commit o Husky. `--no-verify` salta esos dos hooks, por eso las reglas que no se pueden saltar viven en el servidor (`pre-receive`) o en la plataforma. `commit-msg` recibe `.git/COMMIT_EDITMSG` en `$1` y puede validar o reescribir el mensaje."
+  },
+  {
+   "id": "s17-q88",
+   "topic": "s14",
+   "type": "single",
+   "q": "Tu carpeta principal está en `main` y ejecutas `git worktree add ../app-hotfix main`. ¿Qué responde Git 2.50?",
+   "options": [
+    "Crea el worktree y comparte la rama `main` entre ambas carpetas",
+    "Clona el repositorio completo en `../app-hotfix`",
+    "`fatal: 'main' is already used by worktree at '…'`: una rama no puede estar en dos worktrees a la vez; crea otra con `-b`",
+    "Deja tu carpeta principal en HEAD separado"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Todos los worktrees comparten el mismo repositorio (objetos y ramas), pero cada uno tiene su HEAD e index. Si dos pudieran tener la misma rama, un commit en uno dejaría desfasado al otro; por eso Git lo impide. Solución típica: `git worktree add -b hotfix/1 ../app-hotfix main` (o `--detach`)."
+  },
+  {
+   "id": "s17-q89",
+   "topic": "s14",
+   "type": "single",
+   "q": "Clonaste un proyecto con submódulos y la carpeta `vendor/lib` está vacía. ¿Qué ejecutas?",
+   "options": [
+    "`git pull --all`",
+    "`git fetch --submodules`",
+    "`git clone vendor/lib`",
+    "`git submodule update --init --recursive`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "Un clon normal trae el `.gitmodules` y la entrada del submódulo, pero no su contenido. `update --init --recursive` registra y descarga cada submódulo (y los anidados) en el commit exacto que fijó el proyecto: `Submodule path 'vendor/lib': checked out '2b68665…'`. Para la próxima vez: `git clone --recurse-submodules`."
+  },
+  {
+   "id": "s17-q90",
+   "topic": "s14",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git clone --depth 1` trae solo el último commit, y `git fetch --unshallow` completa la historia después",
+    "Un submódulo sigue automáticamente la última versión de su rama",
+    "El repositorio padre guarda para cada submódulo un commit concreto (una entrada *gitlink*, modo 160000), no una rama",
+    "`--filter=blob:none` descarga todos los blobs, pero ningún commit",
+    "`git worktree add` crea una copia completa e independiente de `.git`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Un clon superficial (`git rev-parse --is-shallow-repository` → `true`) ahorra tiempo en CI y se completa con `--unshallow`. El padre registra el submódulo como `160000 commit <hash>\tvendor/lib`: para actualizarlo hay que mover el submódulo y confirmar el nuevo hash. El clon parcial `blob:none` hace lo contrario de la opción 4 (commits y árboles sí; blobs bajo demanda) y los worktrees **comparten** el repositorio."
+  },
+  {
+   "id": "s17-q91",
+   "topic": "s14",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "`git sparse-checkout` en modo *cone* deja en tu directorio de trabajo solo las carpetas que elijas.",
+     "answer": true
+    },
+    {
+     "text": "Git LFS guarda en el repositorio un pequeño archivo puntero y el contenido grande en un servidor aparte.",
+     "answer": true
+    },
+    {
+     "text": "Con `git clone --filter=blob:none`, los blobs que faltan se descargan bajo demanda cuando los necesitas.",
+     "answer": true
+    },
+    {
+     "text": "`git worktree remove` borra también la rama que tenía ese worktree.",
+     "answer": false
+    }
+   ],
+   "explain": "*Sparse-checkout* limita lo que se materializa (la historia sigue completa); combinado con un clon parcial es la base de los monorepos grandes. LFS reemplaza archivos pesados por punteros y los sirve desde su propio almacenamiento. `worktree remove` elimina la carpeta y su registro, pero la rama sigue existiendo (verificado: `hotfix/1` seguía en `git branch`)."
+  },
+  {
+   "id": "s17-q92",
+   "topic": "s15",
+   "type": "single",
+   "q": "¿Qué diferencia hay entre `git merge -s ours feature` y `git merge -X ours feature`?",
+   "options": [
+    "`-s ours` registra la fusión pero descarta **todo** lo de `feature`; `-X ours` fusiona normalmente y solo en los trozos en conflicto elige la versión propia",
+    "Son equivalentes",
+    "`-X ours` descarta todo; `-s ours` solo resuelve conflictos",
+    "`-s ours` no crea commit de fusión"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`-s` elige la **estrategia**: `ours` crea un commit de fusión cuyo árbol es idéntico al de tu rama (útil para marcar una rama como integrada sin traer nada). `-X` pasa una **opción** a la estrategia `ort`: fusiona todo y, solo donde hay conflicto, gana tu lado. Verificado: con `-X ours` entró `nuevo.txt` de `feature`; con `-s ours`, no."
+  },
+  {
+   "id": "s17-q93",
+   "topic": "s15",
+   "type": "single",
+   "q": "Publicaste por error una clave de API en GitHub. ¿Cuál es el **primer** paso?",
+   "options": [
+    "Ejecutar `git filter-repo` y hacer force push",
+    "Hacer `git revert` del commit",
+    "Revocar o rotar la clave en el proveedor: da por hecho que ya está comprometida",
+    "Borrar el repositorio y crearlo de nuevo"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En cuanto un secreto llega a un remoto (y más si es público) puede haber sido copiado por bots en minutos. Reescribir la historia no «des-publica» nada: forks, clones y cachés pueden tenerlo. Por eso primero se **rota**; después se limpia la historia (`git filter-repo --path .env --invert-paths` o `--replace-text`), se fuerza el push de forma coordinada y todos vuelven a clonar."
+  },
+  {
+   "id": "s17-q94",
+   "topic": "s15",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git bundle create repo.bundle --all` empaqueta el repositorio en un archivo desde el que se puede clonar sin red",
+    "`git notes add` cambia el hash del commit anotado",
+    "Con `rerere.enabled = true`, Git recuerda cómo resolviste un conflicto y reutiliza esa resolución cuando reaparece",
+    "`git archive` incluye la carpeta `.git` en el archivo generado",
+    "La estrategia `octopus` resuelve los conflictos eligiendo automáticamente la primera rama"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Un bundle es un paquete de objetos y referencias (`git clone repo.bundle` funciona). *rerere* (*reuse recorded resolution*) guarda la resolución (`Recorded resolution for 's'.`) y la reaplica (`Resolved 's' using previous resolution.`). Las notas viven en `refs/notes/commits` sin tocar el commit; `git archive` exporta solo los archivos de un árbol; y octopus se **niega** si hay conflictos."
+  },
+  {
+   "id": "s17-q95",
+   "topic": "s15",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Si fusionas varias ramas a la vez (octopus) y hay un conflicto que requiere resolución manual, Git se niega a hacer la fusión.",
+     "answer": true
+    },
+    {
+     "text": "`git filter-branch` es la herramienta recomendada hoy para reescribir toda la historia.",
+     "answer": false
+    },
+    {
+     "text": "Después de purgar un secreto y forzar el push, los clones de tus compañeros siguen conteniéndolo hasta que los rehagan o limpien.",
+     "answer": true
+    },
+    {
+     "text": "`git fsck` verifica la conectividad y la validez de los objetos del repositorio.",
+     "answer": true
+    }
+   ],
+   "explain": "Octopus está pensado para integrar ramas que no chocan: con conflictos responde `Merge with strategy octopus failed.` La propia documentación de `git filter-branch` desaconseja usarlo (lento y con trampas) y recomienda `git filter-repo`. Reescribir el servidor no toca los clones existentes. `fsck` revisa hashes, enlaces y objetos colgantes (`--unreachable`, `--lost-found`)."
+  },
+  {
+   "id": "s17-q96",
+   "topic": "s16",
+   "type": "single",
+   "q": "Intentas `git revert HEAD` sobre un commit de fusión y Git responde:\n```\nerror: commit 18aa5c6… is a merge but no -m option was given.\n```\n¿Qué debes usar?",
+   "options": [
+    "`git revert --merge HEAD`",
+    "`git revert -m 1 HEAD`: el 1 indica que se conserva la línea del primer padre (la rama en la que se hizo el merge)",
+    "`git reset --hard HEAD~1`, aunque esté publicado",
+    "`git revert -m 2 HEAD`, porque el 2 es la rama principal"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un merge tiene dos padres y «deshacerlo» depende de respecto a cuál. `-m 1` (*mainline*) toma el primer padre (la rama que recibió el merge, normalmente `main`) y crea un commit que elimina lo que aportó la otra rama. En historia publicada es la opción correcta; `reset` + force no."
+  },
+  {
+   "id": "s17-q97",
+   "topic": "s16",
+   "type": "single",
+   "q": "Revertiste en `main` el merge de `feature/descuentos` (con `-m 1`). Después la rama recibe un arreglo y haces `git merge feature/descuentos`. ¿Qué entra en `main`?",
+   "options": [
+    "Toda la funcionalidad más el arreglo",
+    "Nada: Git rechaza el merge",
+    "Un conflicto obligatorio en todos los archivos",
+    "Solo el arreglo: los commits originales ya son ancestros de `main`, así que no se vuelven a aplicar; hay que revertir el revert"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "El revert deshizo los **cambios**, pero la **historia** sigue diciendo que esos commits ya se integraron. El nuevo merge usa como base la punta vieja de la rama y trae solo lo nuevo. Receta: `git revert <hash-del-revert>` (en Git 2.50 se titula `Reapply \"Merge branch …\"`) y luego el merge. Es el rescate s17-e4."
+  },
+  {
+   "id": "s17-q98",
+   "topic": "s16",
+   "type": "single",
+   "q": "En un script necesitas el nombre de la rama actual y detectar si HEAD está separado. ¿Qué comando es el más adecuado?",
+   "options": [
+    "`git status` y buscar la frase *On branch* en la salida",
+    "`git branch --show-current`: imprime el nombre de la rama, o nada si HEAD está separado",
+    "`git log -1 --decorate` y leer lo que va entre paréntesis",
+    "`cat .git/HEAD`, que siempre contiene el nombre de la rama"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En scripts se usan comandos con salida estable, no la salida «bonita» de la porcelana (que cambia con la versión, el idioma o la configuración). `git branch --show-current` (Git 2.22+) o `git symbolic-ref --short -q HEAD` (falla si HEAD está separado) son adecuados. Ojo: `git rev-parse --abbrev-ref HEAD` imprime `HEAD` cuando está separado, y `.git/HEAD` contiene un hash en ese caso."
+  },
+  {
+   "id": "s17-q99",
+   "topic": "s16",
+   "type": "multi",
+   "q": "Un flujo de GitHub Actions ejecuta `git describe --tags` y falla con `fatal: No names found, cannot describe anything.`, aunque el repositorio tiene etiquetas. ¿Qué DOS afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "`actions/checkout` descarga por defecto solo el último commit (`fetch-depth: 1`), sin la historia ni las etiquetas",
+    "GitHub no admite etiquetas anotadas en Actions",
+    "Con `fetch-depth: 0` se descarga toda la historia de todas las ramas y etiquetas",
+    "Basta con reintentar el flujo sin cambiar nada",
+    "`git describe` necesita conexión con GitHub para consultar las etiquetas"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "El checkout superficial acelera la CI, pero deja fuera lo que necesitan `git describe`, los changelogs o `git log` entre versiones. `fetch-depth: 0` trae todo (alternativa: `fetch-tags: true` con más profundidad). `git describe` es local: falla porque en ese clon no hay etiquetas."
+  },
+  {
+   "id": "s17-q100",
+   "topic": "s16",
+   "type": "yesno",
+   "q": "Indica Sí o No para cada afirmación.",
+   "statements": [
+    {
+     "text": "Un hook `pre-receive` en el servidor puede rechazar el push completo si termina con un código distinto de 0.",
+     "answer": true
+    },
+    {
+     "text": "`pre-receive` recibe por la entrada estándar una línea `<viejo> <nuevo> <ref>` por cada referencia que se quiere actualizar.",
+     "answer": true
+    },
+    {
+     "text": "`git status --porcelain` está pensado para scripts: su formato es estable entre versiones.",
+     "answer": true
+    },
+    {
+     "text": "`git rev-parse --abbrev-ref HEAD` imprime una cadena vacía cuando HEAD está separado.",
+     "answer": false
+    }
+   ],
+   "explain": "`pre-receive` se ejecuta una vez por push, antes de actualizar nada: si falla, todo se rechaza (`! [remote rejected] main -> main (pre-receive hook declined)`) y lo que imprime llega al cliente como `remote: …`; `update` decide rama por rama. `--porcelain` (y `--porcelain=v2`) garantiza un formato estable. `rev-parse --abbrev-ref HEAD` imprime literalmente `HEAD` si está separado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "GitHub Learn — Certificaciones de GitHub",
+   "url": "https://learn.github.com/certifications"
+  },
+  {
+   "title": "GitHub Docs — About GitHub Certifications",
+   "url": "https://docs.github.com/en/get-started/showcase-your-expertise-with-github-certifications/about-github-certifications"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Foundations",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/github-foundations/"
+  },
+  {
+   "title": "Microsoft Learn — Study guide for Exam GH-900: GitHub Foundations",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/gh-900"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Actions",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/github-actions/"
+  },
+  {
+   "title": "Microsoft Learn — Study guide for Exam GH-200: GitHub Actions",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/gh-200"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Administration",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/github-administration/"
+  },
+  {
+   "title": "Microsoft Learn — Study guide for Exam GH-100: GitHub Enterprise Administrator",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/gh-100"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Advanced Security",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/github-advanced-security/"
+  },
+  {
+   "title": "Microsoft Learn — Study guide for Exam GH-500: GitHub Advanced Security",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/gh-500"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Copilot",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/github-copilot/"
+  },
+  {
+   "title": "Microsoft Learn — Study guide for Exam GH-300: GitHub Copilot",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/gh-300"
+  },
+  {
+   "title": "Microsoft Learn — GitHub Certified: Agentic AI Developer (GH-600, beta)",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/agentic-ai-developer/"
+  },
+  {
+   "title": "Microsoft Learn — Tabla de precios de exámenes por país (JSON oficial)",
+   "url": "https://learn.microsoft.com/en-us/credentials/exam-pricing.json"
+  },
+  {
+   "title": "Microsoft Learn — Exam scoring and score reports",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/exam-scoring-reports"
+  },
+  {
+   "title": "Microsoft Learn — Exam duration and exam experience",
+   "url": "https://learn.microsoft.com/en-us/credentials/support/exam-duration-exam-experience"
+  },
+  {
+   "title": "Microsoft Learn — Exam retake policies",
+   "url": "https://learn.microsoft.com/en-us/credentials/support/retake-policy"
+  },
+  {
+   "title": "Microsoft Learn — Reschedule and cancellation policies",
+   "url": "https://learn.microsoft.com/en-us/credentials/support/reschedule-and-cancellation-policy"
+  },
+  {
+   "title": "Microsoft Learn — About online exams with Pearson VUE",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/online-exams"
+  },
+  {
+   "title": "GitHub Community — GitHub Certifications Are Moving to Pearson VUE",
+   "url": "https://github.com/orgs/community/discussions/164070"
+  },
+  {
+   "title": "GitHub Community — GitHub Certification Exams Integrating with Microsoft Learn",
+   "url": "https://github.com/orgs/community/discussions/165477"
+  },
+  {
+   "title": "GitHub Education — GitHub Foundations Certification para estudiantes",
+   "url": "https://education.github.com/experiences/foundations_certificate"
+  },
+  {
+   "title": "Pro Git 2.ª ed. (español)",
+   "url": "https://git-scm.com/book/es/v2"
+  },
+  {
+   "title": "Git — git-reset",
+   "url": "https://git-scm.com/docs/git-reset"
+  },
+  {
+   "title": "Git — git-revert",
+   "url": "https://git-scm.com/docs/git-revert"
+  },
+  {
+   "title": "Git — git-rebase",
+   "url": "https://git-scm.com/docs/git-rebase"
+  },
+  {
+   "title": "Git — git-reflog",
+   "url": "https://git-scm.com/docs/git-reflog"
+  },
+  {
+   "title": "Git — git-bisect",
+   "url": "https://git-scm.com/docs/git-bisect"
+  },
+  {
+   "title": "Git — git-worktree",
+   "url": "https://git-scm.com/docs/git-worktree"
+  },
+  {
+   "title": "Git — git-push (--force-with-lease, --force-if-includes)",
+   "url": "https://git-scm.com/docs/git-push"
+  },
+  {
+   "title": "Git — git-pull",
+   "url": "https://git-scm.com/docs/git-pull"
+  },
+  {
+   "title": "Git — git-stash",
+   "url": "https://git-scm.com/docs/git-stash"
+  },
+  {
+   "title": "Git — githooks",
+   "url": "https://git-scm.com/docs/githooks"
+  },
+  {
+   "title": "Git — gitrevisions (rangos, @{u}, HEAD@{n})",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "Git — gitattributes",
+   "url": "https://git-scm.com/docs/gitattributes"
+  },
+  {
+   "title": "Git — git-merge (estrategias ort y octopus, -s ours, -X ours)",
+   "url": "https://git-scm.com/docs/git-merge"
+  },
+  {
+   "title": "Git — git-filter-branch (advertencias y recomendación de filter-repo)",
+   "url": "https://git-scm.com/docs/git-filter-branch"
+  },
+  {
+   "title": "Git — Documentation/howto/revert-a-faulty-merge",
+   "url": "https://github.com/git/git/blob/master/Documentation/howto/revert-a-faulty-merge.adoc"
+  },
+  {
+   "title": "actions/checkout — opción fetch-depth",
+   "url": "https://github.com/actions/checkout"
+  },
+  {
+   "title": "Conventional Commits 1.0.0 (español)",
+   "url": "https://www.conventionalcommits.org/es/v1.0.0/"
+  },
+  {
+   "title": "Versionado Semántico 2.0.0 (español)",
+   "url": "https://semver.org/lang/es/"
+  }
+ ]
+}

@@ -1,0 +1,67 @@
+# Inglés Básico (método Augusto Ghio) — plan del curso
+
+**Alumno:** chileno, hispanohablante, empieza el inglés desde cero (o casi). Estudia solo en su plataforma privada. Quiere un curso «nivel dios»: completo, con diagramas, muchísimos ejemplos con audio y prácticas que se hacen y se corrigen dentro de la plataforma.
+
+**Libro base:** Augusto Ghio D., *Inglés Básico* (Editorial Iztaccíhuatl, México). Método *Basic English* de C. K. Ogden: 850 palabras y 16 verbos («operadores») con los que se dice casi todo. 11 lecciones, cada una con vocabulario con pronunciación figurada, reglas, ejercicios, un examen con su «comprobación» (las respuestas) y «ejercicios de perfeccionamiento» (frases inglés–español). Apéndice: 850 frases de ejemplo. El PDF está en `public/libros/ingles-basico.pdf` (se enlaza desde las fuentes como `/libros/ingles-basico.pdf#page=N`, con N = página del PDF, la misma que las marcas `[fin de la pág. N del libro]` del texto).
+
+**Texto del libro por lección** (léelo ENTERO antes de escribir tu sección):
+`/private/tmp/claude-501/-Users-jltorocode-Documents-code-IA/8f65431a-e446-4af9-b575-2be6c0b7afa8/scratchpad/ingles/libro/leccion-NN.txt` (también `leccion-00-introduccion.txt` y `leccion-12-apendice.txt`). El PDF original: `/Users/jltorocode/Desktop/1_Augusto_Ghio_Ingles_basico.pdf` (léelo con la herramienta Read, por páginas, si el texto extraído se ve raro en alguna tabla).
+
+**Principio clave:** una sección del curso = una lección del libro, **completa**. Todo lo que trae la lección (palabras, reglas, frases, ejercicios, examen) está en la sección, corregido y mejorado: explicado paso a paso, con diagramas, patrones de colores, audio en cada palabra y frase, diálogos, y práctica abundante. El alumno no debería necesitar abrir el libro.
+
+**Tono:** cercano, claro y motivador, como un buen profesor particular. Explica el *porqué* (comparando con el español), avisa de los errores típicos del hispanohablante (*I have 20 years* → *I am 20 years old*; pronunciar la *e* delante de *s*: «eschool»; olvidar la *-s* de la tercera persona; poner el adjetivo detrás), da trucos para recordar. Nada de relleno.
+
+**Inglés de referencia:** americano (audio e IPA). Cuando el británico difiera en algo importante, menciónalo.
+
+## Niveles (campo `domain`)
+- `nivel1` — **Nivel 1 · Primeras frases** (s01–s03)
+- `nivel2` — **Nivel 2 · Pasado y construcción** (s04–s07)
+- `nivel3` — **Nivel 3 · Negar, preguntar y ampliar** (s08–s10)
+- `nivel4` — **Nivel 4 · Pronunciación y las 850 palabras** (s11)
+- `extra` — **Examen final** (s12)
+
+## Secciones y alcance
+
+### s01 · Primeras palabras: is, are y la terminación -ing (`nivel1`) — libro lección 1, págs. 11–18
+Cómo funciona el método (850 palabras + 16 verbos; estudiar en voz alta; la «libreta» del libro = aquí, las tarjetas y el repaso espaciado). Palabras iguales en inglés y español (cognados: *animal, hotel, idea*…) y cómo cambia su pronunciación. La terminación *-ing* (acción en curso: *working, smiling*). *Is* y *are* (es/está, son/están) — primer contacto con *to be* y con los pronombres *he, they, you*. El adjetivo va **delante** del sustantivo (*a new house*). Todas las listas de «nuevas palabras». Primeros sonidos que no existen en español (la *h* aspirada de *hat*, la *th* de *the/this*, la *sh*, la *w*, la *s* inicial sin «e»). Examen de la primera lección (a, b, c) y ejercicios de perfeccionamiento completos. Ojo con las erratas del libro (*Darking*, *To-day*, *Ligth*).
+
+### s02 · Pronombres, los 16 verbos, presente y futuro (`nivel1`) — lección 2, págs. 19–34
+Meses y días (con mayúscula en inglés). Pronombres personales (*I, you, he, she, it, we, they*; *it* para cosas y animales; *you* = tú/usted/ustedes). Los 16 verbos básicos (*come, get, give, go, keep, let, make, put, seem, take, be, do, have, say, see, send*) + *will* y *may*. Presente simple completo (la **-s** de *he/she/it*: *he puts, she takes*; pronunciación /s/ /z/ /ɪz/). Gerundio (*-ing*) y presente continuo. Futuro con *will* (*I will go*). Artículo indeterminado *a*/*an* (según el **sonido**: *an hour*, *a university*). Palabras internacionales. Palabras de la lección, examen y perfeccionamiento. Diagramas: árbol «¿a o an?», línea de tiempo presente/futuro, mapa de los 16 verbos.
+
+### s03 · The, would, may, might, plurales y números (`nivel1`) — lección 3, págs. 35–46
+*The* (y su pronunciación /ðə/ vs /ði/ delante de vocal), palabras muy parecidas al español, *would* (condicional: *I would go*), *may* y *might* (posibilidad/permiso; diferencia de grado), plural de los sustantivos (-s, -es; pronunciación), invariabilidad de los adjetivos (nunca *olds*), palabras terminadas en *-tion* (= -ción), números cardinales (0–1.000.000; *teen* vs *ty*: *thirteen*/*thirty*), la terminación *-ly* (= -mente), palabras compuestas. Examen y perfeccionamiento.
+
+### s04 · El pasado, do/make y to have (`nivel2`) — lección 4, págs. 47–61
+Números ordinales (*first, second, third*… fechas). El tiempo pasado de los verbos básicos (irregulares: *came, went, gave, got, kept, let, made, put, seemed, took, did, said, saw, sent*) — tabla completa. *Do* vs *make* (regla y listas de expresiones fijas: *make a mistake*, *do your work*). Plural de los sustantivos terminados en *-y*. La terminación *-ed* (pasado regular y participio; las tres pronunciaciones /t/ /d/ /ɪd/). El verbo *to have* (presente y pasado; *have* vs *has*; *had*). Examen y perfeccionamiento. Diagramas: árbol «¿do o make?», línea de tiempo pasado–presente–futuro con los 3 tiempos ya vistos.
+
+### s05 · To be, plurales irregulares y el presente continuo (`nivel2`) — lección 5, págs. 62–74
+Siete plurales irregulares (*man/men, woman/women, child/children, foot/feet, tooth/teeth, mouse/mice, goose/geese*… según el libro) y otros plurales irregulares. El verbo *to be* completo: presente (*am, is, are*), pasado (*was, were*), futuro (*will be*), *would be*, *may be*/*might be*, *if I were*. La terminación *-er*/*-or* (el que hace: *worker, actor*). El «presente compuesto» del libro = **presente continuo** (*to be* + *-ing*: *I am going*), y el pasado continuo (*I was shutting*): cuándo se usa y en qué se diferencia del presente simple (el libro exagera al decir que es «prácticamente lo mismo» y que se prefiere: corrígelo). El *present perfect* (*have* + participio) NO es de esta lección: llega con el participio en s10 (y aparece en preguntas en s09). Examen y perfeccionamiento. Diagramas: mapa completo de *to be*, línea de tiempo simple vs continuo.
+
+### s06 · Imperativo, horas y demostrativos (`nivel2`) — lección 6, págs. 75–87
+Modo imperativo (*Come here. Give me the book. Let us go* / *Let's go*). Expresiones impersonales (*it is cold, it is late*: el sujeto *it* obligatorio). Actos realizados con el cuerpo (vocabulario del libro). Hablando de las horas (*What time is it? It is half past two, a quarter to six, o'clock, a.m./p.m.*; reloj con ejemplos). *This, these, that, those* (distancia × número). *That* = que (conjunción). El prefijo *un-* (*unkind, unhappy*). Opuestos. Palabras compuestas irregulares. Examen y perfeccionamiento. Diagramas: cuadro «cerca/lejos × singular/plural», reloj de horas como flowchart o tabla.
+
+### s07 · Pronombres, posesivos y some/any (`nivel2`) — lección 7, págs. 88–101
+Los pronombres ingleses completos: sujeto (*I*) y objeto (*me, him, her, us, them*). En inglés el sujeto **no se omite** (*It is raining*, nunca *Is raining*). *Here* y *there*. Expresiones usuales. Opuestos. Palabras con lazos de unión. *Some* y *any* (y cómo se usan hoy). Expansiones (las «palabras con -er, -ing, -ed, un-» que agrandan el vocabulario). Adjetivos y pronombres posesivos (*my/mine, your/yours…*). La idea de posesión (*'s* y *of*: *my brother's house*, *the top of the mountain*). Pronombres reflexivos (*myself…*). Examen y perfeccionamiento. Diagramas: tabla-mapa de todos los pronombres, árbol «¿'s o of?», «¿some o any?».
+
+### s08 · Comparativos y la negación (`nivel3`) — lección 8, págs. 102–113
+Hablando del tiempo atmosférico (*It is raining, the weather is fine*…). Comparativos y superlativos (*-er/-est, more/most*, *as … as*), comparativos irregulares (*good/better/best, bad/worse/worst, much/more/most, little/less/least*). Opuestos. La negación: presente con *do not/does not*, pasado con *did not*, *to have* y *to be* en presente y pasado, futuro con *will not*. Contracciones inglesas (*don't, doesn't, didn't, isn't, aren't, wasn't, weren't, won't, can't…*) — aquí se enseñan a fondo y se practican con `strict`. Examen y perfeccionamiento. Diagramas: flowchart «cómo negar cualquier frase» (¿tiene *to be* o auxiliar? → *not* detrás; si no → *do/does/did not* + verbo base).
+
+### s09 · Preguntas: cómo interrogar en inglés (`nivel3`) — lección 9, págs. 114–125
+La interrogación: presente con *do/does*, pasado con *did*, con *will, would, may, might*, con *to be* y *to have*, presente compuesto interrogativo (*Have you seen…?*). Palabras interrogativas (*who, whom, which, where, when, what, why, how*, más *how much/how many*). *There is / there are / there will be*. *Yes* e *if*; respuestas cortas (*Yes, I do. No, he isn't.*). Opuestos, nuevas palabras. Entonación (sube en preguntas de sí/no, baja en las de *wh-*). Examen y perfeccionamiento. Diagramas: flowchart «cómo formar cualquier pregunta» (inversión con auxiliar / *do-support*), mapa de las palabras *wh-*.
+
+### s10 · Más verbos: combinaciones, preposiciones y participio (`nivel3`) — lección 10, págs. 126–142
+Cómo hacer más verbos en *Basic English* (operador + nombre: *give a push* = empujar, *have a talk* = conversar, *make an attempt*…). Combinaciones verbales con *give, have, make, get, keep* (listas completas del libro) y su verbo equivalente en el inglés de todos los días. Preposiciones (*in, on, at, to, from, with, by, for, of, about, across, after, against, among, before, between, down, over, through, under, up*… con dibujos en diagramas y los usos de tiempo *in/on/at*). Verbos combinados con preposiciones (= *phrasal verbs*: *get up, put on, take off, go out, keep on, give up*…). El participio pasado y el sistema verbal inglés completo (tabla de todos los tiempos vistos en el curso con *have/be/will/would/may/might*). Examen (autoexamen) y perfeccionamiento. Diagramas: preposiciones de lugar (flowchart/mindmap), línea de tiempo de todo el sistema verbal.
+
+### s11 · Pronunciación y las 850 palabras (`nivel4`) — lección 11, págs. 143–164
+Palabras de difícil pronunciación, el sonido DZ del libro (la *th* sonora /ð/ de *this, mother*, y la sorda /θ/ de *think*), el sonido «@» del libro (/dʒ/ de *orange, page*), palabras con dos pronunciaciones (*record, present, object*…: sustantivo vs verbo), el alfabeto inglés (deletrear nombres; *spell*), los sonidos del inglés básico (vocales largas y cortas: *ship/sheep*, *full/fool*; schwa /ə/; consonantes; tabla IPA con ejemplos), palabras y terminaciones entre paréntesis del vocabulario (*-er, -ing, -ed, un-*: cómo leerlas). Y **el vocabulario completo de las 850 palabras** de Ogden, organizado en sus grupos oficiales (100 operaciones, 400 cosas generales, 200 cosas que se pueden dibujar, 100 cualidades generales y 50 opuestas), en bloques `words` con traducción (del libro, corregida), `fig` del libro e IPA. Toma la lista canónica de http://ogden.basic-english.org/words.html (o la de Wikipedia «Basic English») y alinéala con el vocabulario del libro. Examen de la undécima lección. Ejercicios: muchos de pronunciación (`speak`) y de pares mínimos (`choice` con `say`: *ship* o *sheep*), deletreo, dictados.
+
+### s12 · Examen final y cómo seguir (`extra`) — apéndice, págs. 164–182
+Lecciones: (1) el mapa de todo lo aprendido (mindmap + patrones de todos los tiempos, negación y pregunta en una sola tabla); (2)–(4) **las 850 frases del apéndice**, TODAS, corregidas (el libro tiene errores: *very longs*, *goods books*, *There are star*, *made on silk*…), en bloques `phrases` agrupados por letra; (5) de *Basic English* al inglés real: niveles del Marco Común Europeo (A1–C2) y dónde queda este curso (≈ A2), exámenes (Cambridge A2 Key, B1 Preliminary, TOEFL, IELTS), cómo seguir estudiando (verbos que el *Basic English* evita: *want, need, like, can, must, should*…), hábitos diarios. Ejercicios: 8–10 desafíos mezclando todo (dictados largos, traducciones, «corrige el error del libro», conversación). Quiz: **≥ 100 preguntas** con `topic` = sección (s01…s11), proporcionales a su peso, con muchas de comprensión auditiva (`say`).
+
+## Cantidades mínimas por sección (s01–s11)
+- 5–8 lecciones (la lección del libro partida en temas), cada una con `goals` y `takeaways`, ≥ 5 bloques y variedad: `words`, `phrases`, `pattern`, `dialog`, `diagram`, `table`, `callout`.
+- **Todo** el vocabulario de la lección del libro en bloques `words` (con `fig` del libro e IPA) y **todas** sus frases (ejemplos, ejercicios y perfeccionamiento) en bloques `phrases`, corregidas.
+- ≥ 4 diagramas Mermaid, ≥ 3 patrones (`pattern`), ≥ 1 diálogo nuevo y natural que use lo de la sección.
+- 12–16 ejercicios (ver ESQUEMA: vocabulario, gramática, traducción, dictado, pronunciación, conversación, examen del libro, desafío), con 8–15 ítems cada uno y `note` explicativas.
+- ≥ 40 tarjetas (con `say`) y ≥ 35 preguntas de test (≥ 5 con `say`).
+- `sources`: la lección del libro con su página + 2–4 páginas de referencia consultadas (Cambridge Dictionary Grammar, British Council LearnEnglish, Oxford Learner's Dictionaries, Merriam-Webster).

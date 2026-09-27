@@ -1,0 +1,2034 @@
+{
+ "id": "s06",
+ "order": 6,
+ "title": "Análisis de texto y lenguaje natural",
+ "domain": "implement",
+ "summary": "Aprendes las técnicas de procesamiento de lenguaje natural (NLP), desde la tokenización y TF-IDF hasta los embeddings y los modelos de lenguaje, y cómo se aplican en Microsoft Foundry con dos enfoques: los analizadores especializados de Azure Language in Foundry Tools y los modelos generativos guiados por prompts. El examen AI-901 pregunta qué capacidad resuelve cada escenario (sentimiento, frases clave, entidades, PII, resumen, traducción) y te pide reconocer el código de una aplicación ligera con `TextAnalyticsClient` y con la Responses API.",
+ "objectives": [
+  "Describir técnicas comunes de análisis de texto, incluidas la extracción de palabras clave, la detección de entidades, el análisis de sentimiento y el resumen (Describe common text analysis techniques, including keyword extraction, entity detection, sentiment analysis, and summarization)",
+  "Construir una aplicación ligera que incluya análisis de texto (Build a lightweight application that includes text analysis)",
+  "Identificar escenarios de cargas de trabajo de IA comunes: análisis de texto (Identify scenarios for common AI workloads, including ... text analysis)"
+ ],
+ "goal": "Asociar cada escenario a su capacidad de análisis de texto (sentimiento, frases clave, NER, PII, resumen), elegir entre Azure Language y un modelo generativo e interpretar su código Python, con al menos un 80 % en el test.",
+ "lessons": [
+  {
+   "id": "s06-l1",
+   "title": "Fundamentos de NLP y técnicas clásicas de procesamiento de texto",
+   "minutes": 18,
+   "goals": [
+    "Identificar cada paso del pipeline clásico de NLP (normalización, tokenización, stop words, stemming o lematización, n-gramas y vectorización) a partir de un ejemplo.",
+    "Distinguir stemming de lematización y reconocer cuál de las dos describe un enunciado de examen.",
+    "Construir vectores de bolsa de palabras y calcular TF-IDF en un corpus pequeño para explicar qué término caracteriza mejor a un documento."
+   ],
+   "takeaways": [
+    "El análisis de texto (*text analysis*) convierte texto no estructurado (reseñas, correos, tickets) en **datos estructurados** que una aplicación puede usar.",
+    "**Stemming** recorta sufijos con reglas y la raíz puede no ser una palabra real; **lematización** (*lemmatization*) devuelve la forma de diccionario (*corriendo* → *correr*).",
+    "Pistas de examen: «Hello, WORLD!» → «hello world» = **normalización**; quitar *the/a/is* = **stop words**; tratar «credit card» como unidad = **n-gramas**; palabras más repetidas = **análisis de frecuencia**.",
+    "**TF-IDF** da peso alto a un término frecuente en el documento y raro en el corpus; si aparece en todos los documentos, su IDF (y su peso) es **0**. Es la intuición detrás de la extracción clásica de palabras clave."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El **procesamiento de lenguaje natural** (*Natural Language Processing*, NLP) es la rama de la IA que permite a un sistema **entender, interpretar, analizar y generar** lenguaje humano escrito. En el temario AI-901 aparece como la carga de trabajo de **análisis de texto** (*text analysis*): convertir texto no estructurado (reseñas, correos, tickets, contratos, noticias) en datos estructurados que una aplicación puede usar."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Fuente de texto",
+      "Qué quieres obtener",
+      "Técnica típica"
+     ],
+     "rows": [
+      [
+       "Reseñas de clientes",
+       "Si opinan bien o mal y de qué hablan",
+       "Análisis de sentimiento + extracción de frases clave"
+      ],
+      [
+       "Correos entrantes",
+       "A qué departamento enviar cada correo",
+       "Clasificación de texto"
+      ],
+      [
+       "Noticias o informes",
+       "Personas, organizaciones, lugares, fechas",
+       "Reconocimiento de entidades (NER)"
+      ],
+      [
+       "Tickets de soporte o formularios",
+       "Ocultar teléfonos, emails, DNI",
+       "Detección y redacción de PII"
+      ],
+      [
+       "Informes largos",
+       "Una versión corta",
+       "Resumen (summarization)"
+      ],
+      [
+       "Mensajes en varios idiomas",
+       "Saber el idioma y traducirlo",
+       "Detección de idioma + traducción"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "El pipeline clásico de preprocesamiento"
+    },
+    {
+     "type": "p",
+     "text": "Antes de los modelos de lenguaje grandes, casi todo sistema de NLP aplicaba una cadena de pasos para transformar el texto en números que un algoritmo estadístico pudiera procesar. Aunque hoy Azure Language y los modelos GPT hacen esto internamente, el examen espera que reconozcas cada técnica por su nombre y por el escenario que resuelve."
+    },
+    {
+     "type": "diagram",
+     "title": "Pipeline clásico de NLP",
+     "mermaid": "flowchart LR\n  A[\"Texto bruto\"] --> B[\"Normalización (minúsculas, sin puntuación)\"]\n  B --> C[\"Tokenización (palabras o subpalabras)\"]\n  C --> D[\"Eliminación de stop words\"]\n  D --> E[\"Stemming o lematización\"]\n  E --> F[\"n-gramas\"]\n  F --> G[\"Vectorización (bolsa de palabras, TF-IDF)\"]\n  G --> H[\"Modelo (clasificador, análisis de frecuencia)\"]",
+     "caption": "Cada paso reduce el ruido y convierte el texto en vectores numéricos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Técnica",
+      "Qué hace",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "Tokenización (*tokenization*)",
+       "Divide el texto en unidades (tokens): palabras, signos o fragmentos de palabra",
+       "\"Me encanta el móvil\" → [\"Me\", \"encanta\", \"el\", \"móvil\"]"
+      ],
+      [
+       "Normalización (*text normalization*)",
+       "Estandariza: minúsculas, quita puntuación, a veces acentos",
+       "\"Hello, WORLD!\" → \"hello world\""
+      ],
+      [
+       "Eliminación de palabras vacías (*stop word removal*)",
+       "Quita palabras muy frecuentes y con poco significado",
+       "\"The cat sat on a mat\" → \"cat sat mat\""
+      ],
+      [
+       "Stemming (*derivación*)",
+       "Recorta sufijos con reglas para llegar a una raíz (que puede no ser una palabra real)",
+       "\"connect, connected, connecting\" → \"connect\""
+      ],
+      [
+       "Lematización (*lemmatization*)",
+       "Reduce a la forma de diccionario (lema) usando vocabulario y gramática",
+       "\"corrió, corriendo, correrá\" → \"correr\""
+      ],
+      [
+       "n-gramas (*n-grams*)",
+       "Secuencias de n tokens consecutivos analizadas juntas",
+       "Bigrama: \"machine learning\" · Trigrama: \"natural language processing\""
+      ],
+      [
+       "Análisis de frecuencia (*frequency analysis*)",
+       "Cuenta qué palabras o frases aparecen más",
+       "Las 10 palabras más repetidas en 5.000 reseñas"
+      ],
+      [
+       "Bolsa de palabras (*bag of words*)",
+       "Representa un documento como un vector de conteos, sin orden",
+       "[batería:1, pantalla:0, dura:1]"
+      ],
+      [
+       "TF-IDF",
+       "Pondera cada término: frecuente en el documento pero raro en la colección = importante",
+       "\"la\" pesa 0, \"batería\" pesa más"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Stemming ≠ lematización.** El stemming aplica reglas de recorte y puede producir raíces que no existen (\"univers\" para *universidad* y *universo*, mezclando significados distintos). La lematización usa un diccionario y devuelve una palabra real (\"fue\" → \"ser\" o \"ir\" según el contexto). Si la pregunta habla de \"forma base de diccionario\", es lematización; si habla de \"recortar sufijos\" o \"tratar power/powered/powerful como la misma raíz\", es stemming."
+    },
+    {
+     "type": "h",
+     "text": "Ejemplo trabajado 1: de la frase al vector"
+    },
+    {
+     "type": "p",
+     "text": "Texto original: *\"The customers were happily using their new phones!\"*"
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "**Normalización**: \"the customers were happily using their new phones\" (minúsculas, sin \"!\").",
+      "**Tokenización**: [the, customers, were, happily, using, their, new, phones].",
+      "**Stop words**: [customers, happily, using, new, phones].",
+      "**Stemming**: [custom, happili, use, new, phone] (un stemmer agresivo produce raíces raras). **Lematización**: [customer, happily, use, new, phone].",
+      "**Bigramas**: (customer, happily), (happily, use), (use, new), (new, phone). El bigrama \"new phone\" captura un concepto que dos palabras sueltas pierden.",
+      "**Análisis de frecuencia**: al repetir esto sobre miles de reseñas, \"new phone\" aparece 312 veces → tema frecuente."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Ejemplo trabajado 2: bolsa de palabras y TF-IDF"
+    },
+    {
+     "type": "p",
+     "text": "Colección de 3 documentos (ya normalizados): **D1** = \"la batería dura\", **D2** = \"la pantalla brilla\", **D3** = \"la batería falla\". Vocabulario ordenado: [batería, brilla, dura, falla, la, pantalla]."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Documento",
+      "Vector bolsa de palabras (conteos)"
+     ],
+     "rows": [
+      [
+       "D1",
+       "[1, 0, 1, 0, 1, 0]"
+      ],
+      [
+       "D2",
+       "[0, 1, 0, 0, 1, 1]"
+      ],
+      [
+       "D3",
+       "[1, 0, 0, 1, 1, 0]"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "**TF** (*term frequency*) = apariciones del término / nº de términos del documento. **IDF** (*inverse document frequency*) = log10(N / nº de documentos que contienen el término), con N = 3. **TF-IDF** = TF × IDF."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Término en D1",
+      "TF",
+      "Docs que lo contienen",
+      "IDF",
+      "TF-IDF"
+     ],
+     "rows": [
+      [
+       "la",
+       "1/3 = 0,333",
+       "3",
+       "log10(3/3) = 0",
+       "0"
+      ],
+      [
+       "batería",
+       "1/3 = 0,333",
+       "2",
+       "log10(3/2) ≈ 0,176",
+       "≈ 0,059"
+      ],
+      [
+       "dura",
+       "1/3 = 0,333",
+       "1",
+       "log10(3/1) ≈ 0,477",
+       "≈ 0,159"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Conclusión: \"la\" aparece en todos los documentos, así que su peso es 0 (no distingue nada). \"dura\" solo aparece en D1 y es el término que mejor caracteriza a D1. Esta es la intuición detrás de la **extracción de palabras clave** clásica."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas de escenario → técnica: convertir \"Hello, WORLD!\" en \"hello world\" = **normalización**; quitar \"the\", \"a\", \"is\" = **eliminación de stop words**; tratar \"connect/connected/connecting\" como relacionadas = **stemming**; analizar \"credit card\" como unidad = **n-gramas**; encontrar las palabras más repetidas en miles de reseñas = **análisis de frecuencia**; identificar productos y contar cuáles se mencionan más = **reconocimiento de entidades + análisis de frecuencia**."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla nemotécnica del pipeline: **N-T-S-S-N-V** → Normalizo, Tokenizo, Stop words fuera, Stemming/lematizo, N-gramas, Vectorizo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Corpus",
+       "en": "Corpus",
+       "def": "Colección de documentos de texto que se analiza o con la que se entrena un modelo."
+      },
+      {
+       "term": "Token",
+       "en": "Token",
+       "def": "Unidad mínima en que se divide el texto: una palabra, un signo o un fragmento de palabra (en los LLM, subpalabras)."
+      },
+      {
+       "term": "Stop words",
+       "en": "Stop words",
+       "def": "Palabras muy frecuentes y poco informativas (el, la, de, the, a) que se suelen eliminar en NLP clásico."
+      },
+      {
+       "term": "TF-IDF",
+       "en": "Term Frequency – Inverse Document Frequency",
+       "def": "Peso de un término: alto si es frecuente en el documento y raro en el resto del corpus."
+      },
+      {
+       "term": "Bolsa de palabras",
+       "en": "Bag of words",
+       "def": "Representación de un documento como vector de conteos de palabras, ignorando el orden."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l2",
+   "title": "Técnicas modernas: embeddings, modelos de lenguaje y los dos enfoques de Foundry",
+   "minutes": 14,
+   "goals": [
+    "Explicar qué dos límites de la bolsa de palabras y TF-IDF (orden y significado) resuelven los embeddings y los modelos basados en Transformer.",
+    "Describir qué es un embedding y cómo la similitud del coseno mide la cercanía semántica entre textos.",
+    "Distinguir los dos enfoques de análisis de texto en Foundry (modelo generativo con prompt y Azure Language in Foundry Tools) por su salida, su flexibilidad y su caso de uso."
+   ],
+   "takeaways": [
+    "La bolsa de palabras y TF-IDF **ignoran el orden** y el **significado** («coche» y «automóvil» no se relacionan); los **embeddings** sí capturan el significado.",
+    "Un **embedding** es un vector denso que representa el significado de un texto; los textos parecidos quedan cerca según la **similitud del coseno** (*cosine similarity*).",
+    "La **atención** (*attention*) del Transformer hace que el contexto cambie el significado de cada token; por eso un mismo **LLM** resuelve muchas tareas solo cambiando el prompt.",
+    "Modelo generativo = flexible, texto libre que puede variar entre llamadas; **Azure Language** = resultados **estructurados y deterministas**, con puntuaciones de confianza, para tareas concretas.",
+    "Un LLM **no** devuelve puntuaciones de confianza calibradas: si le pides una en el prompt, inventa un número plausible."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La bolsa de palabras y TF-IDF tienen dos límites graves: **ignoran el orden** (\"el perro mordió al hombre\" y \"el hombre mordió al perro\" dan el mismo vector) e **ignoran el significado** (\"coche\" y \"automóvil\" son columnas distintas sin relación). Las técnicas modernas resuelven ambos problemas."
+    },
+    {
+     "type": "diagram",
+     "title": "Evolución del NLP",
+     "mermaid": "timeline\n  title Del conteo de palabras a los LLM\n  Enfoque estadístico : Bolsa de palabras : TF-IDF : n-gramas\n  Embeddings de palabras : Vectores densos que capturan significado : palabras similares quedan cerca\n  Transformers : Mecanismo de atención : el contexto cambia el significado de cada token\n  Modelos de lenguaje grandes : GPT y similares : una sola API resuelve muchas tareas con prompts",
+     "caption": "Cada etapa conserva más contexto y significado que la anterior."
+    },
+    {
+     "type": "h",
+     "text": "Embeddings: el significado como vector"
+    },
+    {
+     "type": "p",
+     "text": "Un **embedding** es un vector de números (cientos o miles de dimensiones) que representa el **significado** de un token, frase o documento. Textos con significado parecido obtienen vectores cercanos, y la cercanía se mide con la **similitud del coseno**. Así, \"coche\" y \"automóvil\" quedan juntos, y \"banco\" (asiento) y \"banco\" (entidad financiera) pueden recibir vectores distintos según el contexto cuando el modelo es contextual (Transformer)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Representación",
+      "Captura orden",
+      "Captura significado",
+      "Uso típico hoy"
+     ],
+     "rows": [
+      [
+       "Bolsa de palabras / TF-IDF",
+       "No",
+       "No (solo coincidencia exacta)",
+       "Búsqueda por palabras clave, baselines rápidos"
+      ],
+      [
+       "Embeddings de palabras estáticos",
+       "No",
+       "Sí, pero un vector por palabra",
+       "Histórico, base de ideas modernas"
+      ],
+      [
+       "Embeddings contextuales (Transformer)",
+       "Sí",
+       "Sí, dependiente del contexto",
+       "Búsqueda semántica, RAG, clasificación"
+      ],
+      [
+       "Modelo de lenguaje generativo (LLM)",
+       "Sí",
+       "Sí",
+       "Analizar, resumir, traducir, clasificar con prompts"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Modelos de lenguaje"
+    },
+    {
+     "type": "p",
+     "text": "Un **modelo de lenguaje** predice el siguiente token dada una secuencia. Los **modelos de lenguaje grandes** (LLM) como los GPT que despliegas en Foundry se entrenan con enormes volúmenes de texto y, gracias a la arquitectura Transformer y la **atención** (*attention*), entienden el contexto. Por eso un único modelo de propósito general puede, solo con instrucciones en lenguaje natural, extraer frases clave, detectar entidades, analizar sentimiento, resumir, traducir o clasificar."
+    },
+    {
+     "type": "h",
+     "text": "Dos enfoques de análisis de texto en Microsoft Foundry"
+    },
+    {
+     "type": "p",
+     "text": "Microsoft Learn (módulo *Get started with text analysis in Azure*) plantea exactamente dos caminos, y el examen los contrapone a menudo:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "Modelo de IA de propósito general",
+      "Azure Language in Foundry Tools"
+     ],
+     "rows": [
+      [
+       "Qué es",
+       "Un LLM (p. ej. gpt-5-mini, gpt-4.1-mini) desplegado en tu proyecto de Foundry",
+       "Servicio de NLP con analizadores específicos por tarea"
+      ],
+      [
+       "Cómo se le pide",
+       "Prompt en lenguaje natural (Responses API)",
+       "Llamada a un método concreto (`detect_language`, `recognize_pii_entities`...)"
+      ],
+      [
+       "Salida",
+       "Texto libre (o JSON si usas structured outputs); puede variar entre llamadas",
+       "Estructurada y **determinista**: códigos ISO, categorías, puntuaciones de confianza, offsets"
+      ],
+      [
+       "Flexibilidad",
+       "Muy alta: tareas nuevas cambiando el prompt, preguntas de seguimiento",
+       "Limitada a las capacidades definidas (y a modelos personalizados entrenados)"
+      ],
+      [
+       "Dónde probarlo",
+       "Chat playground del proyecto",
+       "Página de AI services / Services del portal (new) de Foundry"
+      ],
+      [
+       "Ideal para",
+       "Exploración, resúmenes redactados, análisis con matices, tareas ad hoc",
+       "Pipelines automatizados que necesitan resultados consistentes, PII, detección de idioma"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Frase clave de Microsoft Learn: los modelos generales \"handle a broad range of tasks through natural language prompts\", mientras que las herramientas especializadas \"return structured, deterministic results for specific tasks\". Si el enunciado pide **resultados consistentes, estructurados, con puntuación de confianza** para un **pipeline automatizado**, la respuesta es Azure Language. Si pide **flexibilidad** o una tarea no predefinida, es un modelo generativo."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un LLM **no devuelve de forma nativa** puntuaciones de confianza calibradas como las de Azure Language. Si le pides \"dame una confianza de 0 a 1\", inventará un número plausible, no una probabilidad calibrada del modelo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Embedding",
+       "en": "Embedding",
+       "def": "Vector numérico denso que representa el significado de un texto; textos similares tienen vectores cercanos."
+      },
+      {
+       "term": "Similitud del coseno",
+       "en": "Cosine similarity",
+       "def": "Medida del ángulo entre dos vectores; cuanto más cerca de 1, más parecido semántico."
+      },
+      {
+       "term": "Modelo de lenguaje grande",
+       "en": "Large language model (LLM)",
+       "def": "Modelo generativo basado en Transformer entrenado con grandes volúmenes de texto que sigue instrucciones en lenguaje natural."
+      },
+      {
+       "term": "Atención",
+       "en": "Attention",
+       "def": "Mecanismo del Transformer que pondera qué otros tokens son relevantes para interpretar cada token."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l3",
+   "title": "Capacidades de Azure Language in Foundry Tools (entrada → salida)",
+   "minutes": 24,
+   "goals": [
+    "Identificar qué devuelve cada capacidad preconfigurada de Azure Language: detección de idioma, sentimiento y minería de opiniones, frases clave, NER, entity linking, PII y resumen.",
+    "Interpretar un resultado de análisis de sentimiento, incluida la etiqueta mixed del documento y los pares target/assessment de la minería de opiniones.",
+    "Distinguir NER de PII detection, el resumen extractivo del abstractivo y Azure Language de Azure Translator."
+   ],
+   "takeaways": [
+    "**Language detection** devuelve el nombre del idioma, el código **ISO 639-1** y una confianza (0–1); **key phrase extraction** devuelve solo una **lista** de frases, sin puntuación.",
+    "**Sentiment analysis**: positive, neutral o negative por oración y por documento; **mixed solo existe a nivel de documento**. **Opinion mining** añade pares **target** (aspecto) + **assessment** (opinión).",
+    "**NER** categoriza entidades (Person, Location, Organization, DateTime…) para analizarlas; **PII detection** devuelve las entidades y el `redacted_text` para **ocultarlas**; **entity linking** desambigua y enlaza a **Wikipedia**.",
+    "Resumen **extractivo** = oraciones originales con su *rank score*; **abstractivo** = frases nuevas. La traducción de texto es otro servicio: **Azure Translator**.",
+    "Estado en 2026: idioma, NER, PII y Text analytics for health son **core**; sentimiento, frases clave, resumen y entity linking son **legacy**, pero siguen funcionando y entran en el examen."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "**Azure Language in Foundry Tools** (antes *Azure AI Language* / *Text Analytics*) es el servicio de Azure con funciones de NLP preconfiguradas y personalizables. Se usa desde el portal de Microsoft Foundry, la API REST, las bibliotecas cliente (en Python, `azure-ai-textanalytics`) y, para agentes, el **Azure Language MCP server**. Con un **Foundry resource** ya tienes acceso: no necesitas crear un recurso de Language aparte."
+    },
+    {
+     "type": "diagram",
+     "title": "Mapa de capacidades de Azure Language",
+     "mermaid": "flowchart TB\n  L[\"Azure Language in Foundry Tools\"]\n  L --> C[\"Core (recomendadas para desarrollo nuevo)\"]\n  L --> G[\"Legacy (soportadas, con retirada anunciada)\"]\n  C --> C1[\"Language detection\"]\n  C --> C2[\"PII detection (texto, conversación, documento)\"]\n  C --> C3[\"NER prebuilt y Custom NER\"]\n  C --> C4[\"Text analytics for health\"]\n  G --> G1[\"Sentiment analysis y opinion mining\"]\n  G --> G2[\"Key phrase extraction\"]\n  G --> G3[\"Entity linking\"]\n  G --> G4[\"Summarization\"]\n  G --> G5[\"CLU, Custom text classification, Question answering, Orchestration workflow\"]",
+     "caption": "Clasificación publicada en la documentación de Azure Language (julio de 2026)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Estado en 2026.** La documentación oficial divide ahora las funciones en **core** (en evolución: PII, detección de idioma, NER, Text analytics for health) y **legacy**. Sentiment analysis/opinion mining, key phrase extraction, summarization, CLU, custom text classification, custom question answering y orchestration workflow **se retiran el 31 de marzo de 2029**; **entity linking**, el **1 de septiembre de 2028**. Microsoft recomienda que los proyectos nuevos usen modelos de Foundry para esas tareas. Hoy **siguen funcionando** y el examen (temario del 15 de abril de 2026) sigue pidiendo conocerlas: \"keyword extraction, entity detection, sentiment analysis, and summarization\"."
+    },
+    {
+     "type": "h",
+     "text": "1. Detección de idioma (Language detection)"
+    },
+    {
+     "type": "p",
+     "text": "Identifica el idioma principal de cada documento (más de 100 idiomas) y devuelve su **nombre**, el **código ISO 639-1** y una **puntuación de confianza** entre 0 y 1. Para textos ambiguos (\"communication\" existe en inglés y francés) puedes pasar un código de país/región ISO 3166-1 (`country_hint`) como pista. Suele ser el **primer paso** de un flujo multilingüe para enrutar cada texto al proceso adecuado."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada\n{ \"id\": \"1\", \"text\": \"¡Hola! Me llamo Josefina y vivo en Madrid, España.\" }\n// Salida simplificada\n{ \"id\": \"1\",\n  \"detectedLanguage\": { \"name\": \"Spanish\", \"iso6391Name\": \"es\", \"confidenceScore\": 1.0 } }"
+    },
+    {
+     "type": "h",
+     "text": "2. Análisis de sentimiento y minería de opiniones"
+    },
+    {
+     "type": "p",
+     "text": "Asigna una etiqueta **positive**, **neutral** o **negative** a cada **oración** y al **documento** completo, con una puntuación de confianza (0–1) para cada una de las tres clases; las tres suman 1. A nivel de documento existe además la etiqueta **mixed**. La **minería de opiniones** (*opinion mining*, también llamada análisis de sentimiento basado en aspectos) se activa con `show_opinion_mining=True` en el SDK (`opinionMining=true` en REST) y devuelve pares **target** (sustantivo o verbo: el aspecto) + **assessment** (adjetivo: la opinión)."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo se decide la etiqueta del documento",
+     "mermaid": "flowchart TD\n  S[\"Etiquetas de todas las oraciones\"] --> Q1{\"¿Hay alguna positiva y alguna negativa?\"}\n  Q1 -- \"Sí\" --> M[\"Documento: mixed\"]\n  Q1 -- \"No\" --> Q2{\"¿Hay al menos una positiva?\"}\n  Q2 -- \"Sí (resto neutral)\" --> P[\"Documento: positive\"]\n  Q2 -- \"No\" --> Q3{\"¿Hay al menos una negativa?\"}\n  Q3 -- \"Sí (resto neutral)\" --> N[\"Documento: negative\"]\n  Q3 -- \"No, todas neutral\" --> U[\"Documento: neutral\"]",
+     "caption": "Regla documentada en 'How to perform sentiment analysis and opinion mining'."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada (language = \"es\")\n\"La habitación era preciosa. El personal fue muy antipático.\"\n// Salida simplificada (valores ilustrativos)\n{\n  \"sentiment\": \"mixed\",\n  \"confidenceScores\": { \"positive\": 0.49, \"neutral\": 0.02, \"negative\": 0.49 },\n  \"sentences\": [\n    { \"text\": \"La habitación era preciosa.\", \"sentiment\": \"positive\",\n      \"confidenceScores\": { \"positive\": 0.98, \"neutral\": 0.01, \"negative\": 0.01 },\n      \"opinions\": [ { \"target\": \"habitación\", \"assessments\": [\"preciosa\"] } ] },\n    { \"text\": \"El personal fue muy antipático.\", \"sentiment\": \"negative\",\n      \"confidenceScores\": { \"positive\": 0.01, \"neutral\": 0.02, \"negative\": 0.97 },\n      \"opinions\": [ { \"target\": \"personal\", \"assessments\": [\"antipático\"] } ] }\n  ]\n}"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda: **mixed solo existe a nivel de documento**; las oraciones solo pueden ser positive, neutral o negative. La etiqueta devuelta es la de **mayor puntuación de confianza**. Si el escenario pide saber **qué aspecto** (comida, personal, habitación) genera quejas, la respuesta es **opinion mining**, no el sentimiento general."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si no indicas el idioma, el análisis de sentimiento **asume inglés**. Con reseñas en español pasa `language=\"es\"` o detecta antes el idioma. Además, sentimiento funciona mejor con textos **cortos**, al revés que la extracción de frases clave, que rinde mejor con bloques más largos."
+    },
+    {
+     "type": "h",
+     "text": "3. Extracción de frases clave (Key phrase extraction)"
+    },
+    {
+     "type": "p",
+     "text": "Devuelve una **lista** con los conceptos principales del texto. Es la versión de servicio de la \"extracción de palabras clave\" del temario. Útil para indexar, etiquetar y detectar temas frecuentes. No devuelve puntuación por frase."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada\n\"The food was delicious and the staff were wonderful.\"\n// Salida\n{ \"keyPhrases\": [\"food\", \"wonderful staff\"] }"
+    },
+    {
+     "type": "h",
+     "text": "4. Reconocimiento de entidades con nombre (NER)"
+    },
+    {
+     "type": "p",
+     "text": "Identifica y **categoriza** entidades: Person, Location, Organization, DateTime, Quantity, Email, URL, etc., con **subcategoría** cuando aplica (DateTime → Date, Time, Duration; Quantity → Percentage, Number, Dimension). Cada entidad incluye texto, categoría, confianza, `offset` y `length`. **Custom NER** permite entrenar categorías propias (p. ej. \"número de póliza\")."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada\n\"On May 2nd, 2017, John Smith visited New York to attend a conference hosted by Microsoft.\"\n// Salida simplificada\n{ \"entities\": [\n  { \"text\": \"May 2nd, 2017\", \"category\": \"DateTime\", \"subcategory\": \"Date\", \"confidenceScore\": 0.99 },\n  { \"text\": \"John Smith\",    \"category\": \"Person\",                          \"confidenceScore\": 0.99 },\n  { \"text\": \"New York\",      \"category\": \"Location\",                        \"confidenceScore\": 0.98 },\n  { \"text\": \"Microsoft\",     \"category\": \"Organization\",                    \"confidenceScore\": 0.97 }\n] }"
+    },
+    {
+     "type": "h",
+     "text": "5. Vinculación de entidades (Entity linking)"
+    },
+    {
+     "type": "p",
+     "text": "Además de encontrar la entidad, la **desambigua** y devuelve un enlace a una base de conocimiento (**Wikipedia**). Ejemplo: decide si \"Mars\" es el planeta o el dios romano. Es la capacidad legacy con retirada más temprana (1 de septiembre de 2028); la alternativa recomendada es NER o un modelo de Foundry."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada\n\"We went to Seattle last week.\"\n// Salida simplificada\n{ \"entities\": [ { \"name\": \"Seattle\", \"dataSource\": \"Wikipedia\",\n  \"url\": \"https://en.wikipedia.org/wiki/Seattle\", \"matches\": [ { \"text\": \"Seattle\", \"confidenceScore\": 0.21 } ] } ] }"
+    },
+    {
+     "type": "h",
+     "text": "6. Detección de información personal (PII detection)"
+    },
+    {
+     "type": "p",
+     "text": "Detecta datos que identifican a una persona (nombres, teléfonos, emails, direcciones, números de documento o tarjeta, e información sanitaria PHI) y devuelve **las entidades con categoría y confianza** y el **texto redactado** (`redacted_text`), donde cada carácter sensible se sustituye por `*` por defecto. Hay tres variantes: **Text PII** (cadenas, síncrono), **Conversation PII** (transcripciones y chats, asíncrono) y **Document-based PII** (`.pdf`, `.docx`, `.txt`, asíncrono)."
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Entrada\n\"Maria Garcia called from 020 7946 0958 and asked to send documents to 42 Market Road, London, UK, SW1A 1AA.\"\n// Salida simplificada\n{ \"redactedText\": \"************ called from ************* and asked to send documents to ************************************.\",\n  \"entities\": [\n    { \"text\": \"Maria Garcia\", \"category\": \"Person\", \"confidenceScore\": 0.99 },\n    { \"text\": \"020 7946 0958\", \"category\": \"PhoneNumber\", \"confidenceScore\": 0.8 },\n    { \"text\": \"42 Market Road, London, UK, SW1A 1AA\", \"category\": \"Address\", \"confidenceScore\": 0.95 }\n  ] }"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "**NER vs PII**: NER responde \"¿qué personas, lugares, organizaciones y fechas aparecen?\" (análisis); PII responde \"¿qué datos personales debo **ocultar** o proteger?\" (privacidad y cumplimiento). Si el enunciado dice *redactar*, *enmascarar*, *anonimizar* o *cumplir GDPR*, es **PII detection**."
+    },
+    {
+     "type": "h",
+     "text": "7. Resumen (Summarization)"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Extractivo** (*extractive*): selecciona las oraciones más relevantes **tal cual** del original, con un **rank score** y su posición.",
+      "**Abstractivo** (*abstractive*): **genera** frases nuevas, concisas, que no están literalmente en el texto.",
+      "**Conversation summarization**: recap, issue/resolution (centros de llamadas), títulos de capítulo y narrativa de conversaciones.",
+      "**Document summarization**: sobre documentos nativos `.txt`, `.pdf`, `.docx`."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "json",
+     "code": "// Extractivo: devuelve oraciones originales con su puntuación\n{ \"sentences\": [ { \"text\": \"We believe XYZ-code enables us to fulfill our long-term vision...\", \"rankScore\": 1.0, \"offset\": 812, \"length\": 110 } ] }\n// Abstractivo: devuelve texto nuevo\n{ \"summaries\": [ { \"text\": \"Microsoft is taking a more holistic, human-centric approach to learning and understanding...\" } ] }"
+    },
+    {
+     "type": "h",
+     "text": "8. Capacidades personalizables (conocer para escenarios)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Capacidad",
+      "Qué hace",
+      "Necesita entrenar/configurar",
+      "Estado 2026"
+     ],
+     "rows": [
+      [
+       "Custom NER",
+       "Extrae categorías de entidad propias de tu dominio",
+       "Sí, datos etiquetados",
+       "Core"
+      ],
+      [
+       "Custom text classification",
+       "Clasifica documentos en clases propias; **single label** (una clase) o **multi label** (varias)",
+       "Sí, datos etiquetados",
+       "Legacy, retira 31-mar-2029"
+      ],
+      [
+       "Conversational language understanding (CLU)",
+       "Predice la **intención** (*intent*) de un enunciado (*utterance*) y extrae **entidades** (sucesor de LUIS)",
+       "Sí (o modo rápido con LLM)",
+       "Legacy, retira 31-mar-2029"
+      ],
+      [
+       "Custom question answering (CQA)",
+       "Base de conocimiento de pares pregunta-respuesta a partir de FAQs y manuales",
+       "Sí, importar contenido",
+       "Legacy, retira 31-mar-2029"
+      ],
+      [
+       "Orchestration workflow",
+       "Enruta entre proyectos de CLU y de question answering",
+       "Sí",
+       "Legacy, retira 31-mar-2029"
+      ],
+      [
+       "Text analytics for health",
+       "Extrae entidades médicas (fármacos, dosis, diagnósticos) y sus relaciones",
+       "No (preconfigurado)",
+       "Core"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "9. Traducción de texto: Azure Translator in Foundry Tools"
+    },
+    {
+     "type": "p",
+     "text": "La traducción no es parte de Azure Language sino de un servicio hermano, **Azure Translator in Foundry Tools**, un servicio de **traducción automática neuronal** (*neural machine translation*)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Función",
+      "Para qué"
+     ],
+     "rows": [
+      [
+       "Text translation (v3, GA)",
+       "Traducir texto en tiempo real entre idiomas soportados; también transliterar (cambiar de alfabeto). Admite diccionario dinámico y marcar texto que no debe traducirse"
+      ],
+      [
+       "Text translation 2026-06-06 (GA)",
+       "Nueva versión de la API: permite elegir **modelos LLM** para traducir, traducción personalizada adaptativa y más parámetros (tono, género)"
+      ],
+      [
+       "Document translation (asíncrona)",
+       "Traducir **lotes** de archivos conservando formato; requiere Azure Blob Storage"
+      ],
+      [
+       "Document translation (síncrona)",
+       "Traducir **un solo archivo** sin Blob Storage"
+      ],
+      [
+       "Custom Translator / Adaptive custom translation",
+       "Adaptar la traducción a terminología de un sector o empresa"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Traducción de **texto escrito** → Azure Translator. Traducción de **voz** en tiempo real → Azure Speech (*speech translation*, sección de voz). Un modelo GPT también puede traducir con un prompt, pero Translator ofrece traducción consistente, a gran escala, con documentos que conservan su formato y personalización de terminología."
+    },
+    {
+     "type": "h",
+     "text": "Límites prácticos que conviene conocer"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Límite (funciones preconfiguradas)",
+      "Valor"
+     ],
+     "rows": [
+      [
+       "Caracteres por documento (síncrono)",
+       "5.120"
+      ],
+      [
+       "Documentos por petición: detección de idioma",
+       "1.000"
+      ],
+      [
+       "Documentos por petición: sentimiento, opinion mining, frases clave",
+       "10"
+      ],
+      [
+       "Documentos por petición: NER, PII, entity linking",
+       "5"
+      ],
+      [
+       "Tamaño máximo de la petición",
+       "1 MB"
+      ],
+      [
+       "Facturación",
+       "Por registros de texto: 1 registro = 1.000 caracteres"
+      ]
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Puntuación de confianza",
+       "en": "Confidence score",
+       "def": "Valor entre 0 y 1 que indica cuán seguro está el modelo de una predicción."
+      },
+      {
+       "term": "Minería de opiniones",
+       "en": "Opinion mining / aspect-based sentiment analysis",
+       "def": "Vincula el sentimiento a aspectos concretos del texto: target (aspecto) + assessment (opinión)."
+      },
+      {
+       "term": "Redacción de PII",
+       "en": "PII redaction",
+       "def": "Sustitución de los datos personales detectados por caracteres de máscara en el texto devuelto."
+      },
+      {
+       "term": "Intención",
+       "en": "Intent",
+       "def": "Objetivo que expresa un usuario en un enunciado (p. ej. ReservarVuelo); lo predice CLU."
+      },
+      {
+       "term": "Resumen extractivo",
+       "en": "Extractive summarization",
+       "def": "Resumen formado por oraciones copiadas del original, ordenadas por relevancia."
+      },
+      {
+       "term": "Resumen abstractivo",
+       "en": "Abstractive summarization",
+       "def": "Resumen con frases nuevas generadas, no copiadas literalmente."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l4",
+   "title": "Servicio especializado o modelo generativo: cómo decidir",
+   "minutes": 14,
+   "goals": [
+    "Elegir entre Azure Language y un modelo generativo con prompt según la consistencia, el formato de salida, el coste, la privacidad y la flexibilidad que pida el escenario.",
+    "Redactar un prompt de análisis de texto que fije la tarea, las etiquetas permitidas, el formato de salida y qué hacer si no hay datos.",
+    "Explicar cuándo conectar un agente a Azure Language mediante el Azure Language MCP server en lugar de confiar solo en el LLM."
+   ],
+   "takeaways": [
+    "Para **detectar y redactar PII** con fines de cumplimiento, usa **Azure Language**: un LLM puede omitir datos o inventar máscaras.",
+    "Coste: Azure Language cobra por **registro de texto** (1.000 caracteres); un modelo generativo, por **tokens** de entrada y salida.",
+    "Elige un **modelo generativo** para tareas abiertas, con matices (ironía, explicar el porqué) o combinadas en un mismo prompt (traducir y resumir).",
+    "Para que un LLM se comporte «casi como un servicio»: instrucciones claras + **structured outputs** (esquema JSON) + temperatura baja, y valida siempre la salida.",
+    "Si un **agente** necesita análisis de texto **predecible** (p. ej., redactar PII antes de responder), conéctalo a Azure Language mediante el **Azure Language MCP server**."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Ambos enfoques pueden resolver casi las mismas tareas. La pregunta del examen (y de la vida real) es **cuál conviene** en cada situación. La respuesta depende de consistencia, formato de salida, coste, privacidad y flexibilidad."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Criterio",
+      "Azure Language (servicio especializado)",
+      "Modelo generativo con prompt (GPT vía Responses API)"
+     ],
+     "rows": [
+      [
+       "Consistencia",
+       "Determinista: misma entrada → misma salida",
+       "Probabilística: la redacción y el formato pueden variar entre llamadas"
+      ],
+      [
+       "Salida estructurada",
+       "Siempre: objetos con categorías, códigos ISO, offsets",
+       "Texto libre por defecto; JSON fiable si usas **structured outputs** (esquema JSON)"
+      ],
+      [
+       "Puntuaciones de confianza",
+       "Sí, calibradas por el modelo (0–1)",
+       "No nativas; un número pedido en el prompt no es una probabilidad real"
+      ],
+      [
+       "Coste",
+       "Precio por registro de texto (1.000 caracteres); predecible",
+       "Precio por tokens de entrada y salida; crece con prompts largos y respuestas verbosas"
+      ],
+      [
+       "Latencia y volumen",
+       "Optimizado para lotes grandes y tareas concretas",
+       "Mayor latencia por generación; límites de tokens por minuto"
+      ],
+      [
+       "Flexibilidad",
+       "Solo las tareas definidas (o modelos custom entrenados)",
+       "Cualquier tarea descrita en lenguaje natural, combinable en un mismo prompt"
+      ],
+      [
+       "Matices y explicación",
+       "Etiquetas y puntuaciones, sin explicación",
+       "Puede explicar el porqué, detectar ironía o comparar reseñas"
+      ],
+      [
+       "Idiomas",
+       "Listas de idiomas soportados por función; hay que indicar el idioma en algunas",
+       "Amplio soporte multilingüe en un único modelo"
+      ],
+      [
+       "PII y cumplimiento",
+       "Función dedicada con categorías, redacción y variantes para documentos y conversaciones",
+       "Puede omitir datos o inventar máscaras; no sustituye a un control de privacidad"
+      ],
+      [
+       "Personalización",
+       "Custom NER, custom classification (etiquetado + entrenamiento)",
+       "Instrucciones, ejemplos en el prompt (few-shot) o fine-tuning"
+      ],
+      [
+       "Estado en 2026",
+       "Core en evolución (PII, idioma, NER); legacy con retirada en 2028–2029",
+       "Ruta recomendada por Microsoft para sentimiento, frases clave, resumen y clasificación nuevos"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de decisión: ¿servicio o LLM?",
+     "mermaid": "flowchart TD\n  A[\"Tarea de análisis de texto\"] --> B{\"¿Hay que detectar o redactar datos personales?\"}\n  B -- \"Sí\" --> PII[\"Azure Language: PII detection\"]\n  B -- \"No\" --> C{\"¿Necesitas salida idéntica y puntuaciones de confianza en un pipeline automático?\"}\n  C -- \"Sí\" --> D{\"¿La tarea es idioma, NER o salud?\"}\n  D -- \"Sí\" --> CORE[\"Azure Language core\"]\n  D -- \"No\" --> LEG[\"Azure Language legacy hoy, o LLM con structured outputs para proyectos nuevos\"]\n  C -- \"No\" --> E{\"¿Tarea abierta, con matices o combinada (traducir y resumir)?\"}\n  E -- \"Sí\" --> LLM[\"Modelo generativo con prompt (Responses API)\"]\n  E -- \"No\" --> F{\"¿Traducción de texto o documentos a gran escala?\"}\n  F -- \"Sí\" --> TR[\"Azure Translator\"]\n  F -- \"No\" --> LLM",
+     "caption": "Guía orientativa basada en Microsoft Learn y en los avisos de retirada de 2026."
+    },
+    {
+     "type": "h",
+     "text": "Cómo pedir análisis de texto a un modelo generativo"
+    },
+    {
+     "type": "p",
+     "text": "Un buen prompt de análisis especifica **la tarea**, **las etiquetas permitidas**, **el formato de salida** y **qué hacer si no hay datos**. Cuanto más específico, más estructurada y estable será la respuesta."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tarea",
+      "Ejemplo de prompt (instrucciones)"
+     ],
+     "rows": [
+      [
+       "Sentimiento",
+       "\"Clasifica el sentimiento de la reseña como Positive, Negative, Neutral o Mixed. Responde solo con la etiqueta.\""
+      ],
+      [
+       "Frases clave",
+       "\"Extrae como máximo 5 frases clave de este texto y devuélvelas como lista JSON de cadenas.\""
+      ],
+      [
+       "Entidades",
+       "\"Identifica personas, organizaciones, lugares y fechas. Devuelve JSON con los campos text y category.\""
+      ],
+      [
+       "Resumen",
+       "\"Resume el texto en 3 viñetas de menos de 20 palabras cada una.\""
+      ],
+      [
+       "Traducción",
+       "\"Traduce al inglés manteniendo el tono formal. No traduzcas nombres de producto.\""
+      ],
+      [
+       "Clasificación",
+       "\"Asigna exactamente una categoría: Facturación, Envío, Producto o Otro.\""
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para que un LLM se comporte \"casi como un servicio\", combina tres cosas: **instrucciones de sistema** claras, **structured outputs** (un esquema JSON que el modelo debe cumplir) y una **temperatura baja** si el modelo lo permite. Aun así, valida siempre la salida."
+    },
+    {
+     "type": "h",
+     "text": "Lo mejor de ambos: agentes con el Azure Language MCP server"
+    },
+    {
+     "type": "p",
+     "text": "El **Model Context Protocol** (MCP) es un estándar abierto para que los agentes descubran e invoquen herramientas. El **Azure Language MCP server** expone las capacidades de Azure Language (NER, sentimiento, detección de idioma, PII...) como herramientas. En el portal de Foundry puedes guardar un modelo como agente y añadir la herramienta *Azure Language in Foundry Tools* indicando el nombre de tu Foundry resource. Así el agente combina el razonamiento del LLM con la precisión determinista del servicio (p. ej. enrutar tickets por idioma o redactar PII antes de responder)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si una pregunta describe un **agente** que necesita análisis de texto **consistente y predecible** (por ejemplo, redactar PII), la solución es conectar el agente a **Azure Language** mediante el **MCP server** (herramienta), no confiar solo en el LLM."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa frecuente: pensar que el LLM \"siempre es mejor porque es más moderno\". Para detectar y redactar PII con fines de cumplimiento, o para obtener un código ISO y una confianza en miles de documentos, el servicio especializado es la opción correcta."
+    }
+   ]
+  },
+  {
+   "id": "s06-l5",
+   "title": "Construir una aplicación ligera de análisis de texto en Python",
+   "minutes": 22,
+   "goals": [
+    "Escribir una aplicación con `azure-ai-textanalytics` (`TextAnalyticsClient` + `AzureKeyCredential`) que detecte idioma, sentimiento, frases clave, entidades y PII.",
+    "Relacionar cada método del SDK con su resultado y distinguir los métodos síncronos de las operaciones de larga duración `begin_*`, que devuelven un poller.",
+    "Reconocer una aplicación de análisis de texto hecha con la Responses API (`OpenAI`, `responses.create`, `responses.parse`) o con Azure Translator (`TextTranslationClient`)."
+   ],
+   "takeaways": [
+    "Azure Language en Python: paquete **`azure-ai-textanalytics`**, clase **`TextAnalyticsClient`** y credencial **`AzureKeyCredential`** con el endpoint `https://<recurso>.cognitiveservices.azure.com/`.",
+    "Los métodos reciben siempre una **lista** de documentos y devuelven los resultados en el mismo orden: usa `[0]`, filtra con `is_error` y pasa `language` si el texto no está en inglés, que es el idioma por defecto.",
+    "`recognize_pii_entities()` → `redacted_text` + entidades (máximo **5 documentos** por petición); `analyze_sentiment(..., show_opinion_mining=True)` activa la minería de opiniones.",
+    "`begin_extract_summary` y `begin_abstract_summary` son operaciones de larga duración: devuelven un **poller** y hay que llamar a `.result()`.",
+    "En la **Responses API**, `model` recibe el **nombre del despliegue**; `responses.create` → `output_text` y `responses.parse(text_format=...)` → `output_parsed` (structured outputs)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El objetivo \"Build a lightweight application that includes text analysis\" se evalúa leyendo código: qué paquete se instala, qué clase se crea, qué credenciales se usan y qué método resuelve cada tarea. Verás las dos variantes que enseña Microsoft Learn: el **Azure Language SDK** y la **Responses API** de OpenAI contra un modelo desplegado en Foundry."
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo de una app de análisis de reseñas",
+     "mermaid": "sequenceDiagram\n  participant App as App Python\n  participant Env as Archivo .env\n  participant Lang as Azure Language\n  participant GPT as Modelo GPT en Foundry\n  App->>Env: load_dotenv lee endpoint y clave\n  App->>Lang: detect_language con la lista de reseñas\n  Lang-->>App: idioma ISO y confianza\n  App->>Lang: analyze_sentiment con idioma y opinion mining\n  Lang-->>App: etiquetas por documento y oración\n  App->>Lang: recognize_pii_entities\n  Lang-->>App: texto redactado y entidades\n  App->>GPT: responses.create con instrucciones y texto redactado\n  GPT-->>App: resumen redactado en lenguaje natural",
+     "caption": "Patrón habitual: primero el servicio determinista, luego el LLM para redactar o resumir sobre texto ya sin PII."
+    },
+    {
+     "type": "h",
+     "text": "Opción A: Azure Language SDK (`azure-ai-textanalytics`)"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Instalación: `pip install azure-ai-textanalytics python-dotenv`.",
+      "Cliente: `TextAnalyticsClient(endpoint, AzureKeyCredential(key))` (o `DefaultAzureCredential` de `azure-identity`).",
+      "Endpoint: `https://<tu-recurso>.cognitiveservices.azure.com/` de tu Foundry resource.",
+      "Entrada: siempre una **lista** de documentos (cadenas o diccionarios con `id`, `language`, `text`).",
+      "Salida: lista **en el mismo orden** con resultados o errores; filtra con `doc.is_error`.",
+      "Métodos síncronos: `detect_language`, `analyze_sentiment`, `extract_key_phrases`, `recognize_entities`, `recognize_linked_entities`, `recognize_pii_entities`.",
+      "Métodos de larga duración (devuelven un *poller*, llama a `.result()`): `begin_extract_summary`, `begin_abstract_summary`, `begin_analyze_actions`, `begin_analyze_healthcare_entities`, `begin_recognize_custom_entities`, `begin_single_label_classify`, `begin_multi_label_classify`."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# .env\nAZURE_LANGUAGE_ENDPOINT=https://<tu-recurso>.cognitiveservices.azure.com/\nAZURE_LANGUAGE_KEY=<clave-de-tu-foundry-resource>",
+     "caption": "Nunca subas el archivo .env a un repositorio."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# pip install azure-ai-textanalytics python-dotenv\nimport os\nfrom dotenv import load_dotenv\nfrom azure.core.credentials import AzureKeyCredential\nfrom azure.ai.textanalytics import TextAnalyticsClient\n\nload_dotenv()\nclient = TextAnalyticsClient(\n    endpoint=os.getenv(\"AZURE_LANGUAGE_ENDPOINT\"),\n    credential=AzureKeyCredential(os.getenv(\"AZURE_LANGUAGE_KEY\")),\n)\n\ntexto = (\"Compré el portátil en la tienda de Contoso en Sevilla el 3 de marzo. \"\n         \"La pantalla es espectacular, pero la batería dura muy poco. \"\n         \"Llamadme al 612 345 678 o escribid a lucia.perez@example.com.\")\n\n# 1) Idioma\nidioma = client.detect_language([texto])[0]\nprint(\"Idioma:\", idioma.primary_language.name,\n      idioma.primary_language.iso6391_name,\n      idioma.primary_language.confidence_score)\nlang = idioma.primary_language.iso6391_name  # \"es\"\n\n# 2) Sentimiento por documento y oración + minería de opiniones\nsent = client.analyze_sentiment([texto], language=lang, show_opinion_mining=True)[0]\nprint(\"Documento:\", sent.sentiment, sent.confidence_scores)\nfor s in sent.sentences:\n    print(\"  Oración:\", s.text, \"->\", s.sentiment)\n    for op in s.mined_opinions:\n        print(\"    Aspecto:\", op.target.text, op.target.sentiment,\n              [a.text for a in op.assessments])\n\n# 3) Frases clave\nkp = client.extract_key_phrases([texto], language=lang)[0]\nprint(\"Frases clave:\", kp.key_phrases)\n\n# 4) Entidades con nombre\nents = client.recognize_entities([texto], language=lang)[0]\nfor e in ents.entities:\n    print(f\"Entidad: {e.text} | {e.category}/{e.subcategory} | {e.confidence_score:.2f}\")\n\n# 5) PII: entidades y texto redactado\npii = client.recognize_pii_entities([texto], language=lang)[0]\nprint(\"Redactado:\", pii.redacted_text)\nfor e in pii.entities:\n    print(f\"PII: {e.text} | {e.category} | {e.confidence_score:.2f}\")",
+     "caption": "Cada método recibe una lista; [0] toma el resultado del primer documento."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Resumen extractivo y abstractivo: operaciones de larga duración (poller)\npoller = client.begin_extract_summary([texto_largo])\nfor r in poller.result():\n    if r.kind == \"ExtractiveSummarization\":\n        print(\" \".join(s.text for s in r.sentences))\n    elif r.is_error:\n        print(\"Error:\", r.error.code, r.error.message)\n\npoller = client.begin_abstract_summary([texto_largo])\nfor r in poller.result():\n    if r.kind == \"AbstractiveSummarization\":\n        for s in r.summaries:\n            print(s.text)",
+     "caption": "Patrón begin_... + .result(): típico de los métodos asíncronos del SDK."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Asociaciones que caen en el examen: `detect_language()` → idioma + ISO 639-1 + confianza; `analyze_sentiment()` → positive/neutral/negative/mixed; `extract_key_phrases()` → lista de frases; `recognize_entities()` → categorías de entidad; `recognize_pii_entities()` → `redacted_text` + entidades; `recognize_linked_entities()` → enlaces a Wikipedia. Paquete: **azure-ai-textanalytics**; clase: **TextAnalyticsClient**; credencial: **AzureKeyCredential** + endpoint."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Errores típicos: pasar una cadena en lugar de una lista; olvidar `[0]`; no filtrar `is_error`; olvidar `language` en textos no ingleses; enviar 20 reseñas de golpe a `recognize_pii_entities` (máximo 5 documentos por petición: agrúpalas en lotes); y usar el endpoint `openai.azure.com` con el SDK de Language (este usa `cognitiveservices.azure.com`)."
+    },
+    {
+     "type": "h",
+     "text": "Opción B: modelo generativo con la Responses API (`openai`)"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# .env\nAZURE_OPENAI_ENDPOINT=https://<tu-recurso>.openai.azure.com/openai/v1/\nMODEL_DEPLOYMENT_NAME=gpt-5-mini\nAPI_KEY=<clave-de-tu-foundry-resource>"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# pip install openai python-dotenv pydantic\nimport os\nfrom dotenv import load_dotenv\nfrom openai import OpenAI\nfrom pydantic import BaseModel\n\nload_dotenv()\nclient = OpenAI(base_url=os.getenv(\"AZURE_OPENAI_ENDPOINT\"), api_key=os.getenv(\"API_KEY\"))\ndeployment = os.getenv(\"MODEL_DEPLOYMENT_NAME\")  # nombre del DESPLIEGUE, no del modelo base\n\ntexto = \"La pantalla es espectacular, pero la batería dura muy poco.\"\n\n# a) Texto libre: cambia la instrucción para cambiar la tarea\ntareas = {\n    \"sentimiento\": \"Clasifica el sentimiento como Positive, Negative, Neutral o Mixed. Responde solo la etiqueta.\",\n    \"frases_clave\": \"Extrae las frases clave como lista separada por comas.\",\n    \"entidades\": \"Identifica personas, organizaciones, lugares y fechas.\",\n    \"resumen\": \"Resume el texto en una frase.\",\n    \"traduccion\": \"Traduce el texto al inglés.\",\n}\nfor nombre, instruccion in tareas.items():\n    r = client.responses.create(model=deployment, instructions=instruccion, input=texto)\n    print(nombre, \"->\", r.output_text)\n\n# b) Salida estructurada: el modelo debe cumplir el esquema\nclass Analisis(BaseModel):\n    sentimiento: str\n    frases_clave: list[str]\n    aspectos_negativos: list[str]\n    resumen: str\n\nr = client.responses.parse(\n    model=deployment,\n    instructions=\"Analiza la reseña. sentimiento debe ser Positive, Negative, Neutral o Mixed.\",\n    input=texto,\n    text_format=Analisis,\n)\nprint(r.output_parsed)",
+     "caption": "responses.create devuelve output_text; responses.parse con text_format (Pydantic) devuelve output_parsed."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Identifica el enfoque por el código: `from openai import OpenAI` + `client.responses.create(model=..., input=...)` = **modelo generativo**; `from azure.ai.textanalytics import TextAnalyticsClient` = **Azure Language**. El parámetro `model` de la Responses API recibe el **nombre del despliegue**."
+    },
+    {
+     "type": "h",
+     "text": "Opción C: traducción con Azure Translator (`azure-ai-translation-text`)"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# pip install azure-ai-translation-text\nimport os\nfrom azure.core.credentials import AzureKeyCredential\nfrom azure.ai.translation.text import TextTranslationClient\n\nclient = TextTranslationClient(\n    credential=AzureKeyCredential(os.getenv(\"TRANSLATOR_KEY\")),\n    region=os.getenv(\"TRANSLATOR_REGION\"),\n)\nresp = client.translate(body=[\"La batería dura muy poco.\"], to_language=[\"en\", \"fr\"])\nfor t in resp[0].translations:\n    print(t.to, \"->\", t.text)\nprint(\"Idioma detectado:\", resp[0].detected_language.language)",
+     "caption": "Una sola llamada puede traducir a varios idiomas destino y detectar el de origen."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "TextAnalyticsClient",
+       "en": "TextAnalyticsClient",
+       "def": "Clase del paquete azure-ai-textanalytics que expone los métodos de Azure Language."
+      },
+      {
+       "term": "AzureKeyCredential",
+       "en": "AzureKeyCredential",
+       "def": "Credencial de azure.core que envuelve la clave de API del recurso."
+      },
+      {
+       "term": "Poller",
+       "en": "Poller (long-running operation)",
+       "def": "Objeto devuelto por los métodos begin_...; su .result() espera y devuelve los resultados."
+      },
+      {
+       "term": "Responses API",
+       "en": "Responses API",
+       "def": "API unificada de OpenAI/Azure OpenAI para interactuar con modelos generativos; se usa con client.responses.create."
+      },
+      {
+       "term": "Structured outputs",
+       "en": "Structured outputs",
+       "def": "Función que obliga al modelo a responder cumpliendo un esquema JSON (text.format / text_format)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l6",
+   "title": "Escenarios de examen: del enunciado a la capacidad",
+   "minutes": 12,
+   "goals": [
+    "Identificar la capacidad correcta a partir de las palabras gatillo de un enunciado (opinión, temas, entidades, datos sensibles, idioma, intención, FAQ o traducción).",
+    "Distinguir capacidades parecidas en un escenario: sentimiento frente a opinion mining, NER frente a entity linking, clasificación single label frente a multi label y CLU frente a question answering.",
+    "Descartar opciones de otras áreas del temario: Content Understanding para formularios y facturas escaneados, y Azure Speech para voz."
+   ],
+   "takeaways": [
+    "Palabras gatillo: *opinión/satisfacción* → **sentiment**; *temas/conceptos principales* → **key phrases**; *personas/lugares/fechas* → **NER**; *redactar/enmascarar* → **PII**; *¿en qué idioma está?* → **language detection**.",
+    "*Intención del usuario* («pon la alarma a las 7» → SetAlarm) → **CLU**; *responder FAQ a partir de un manual* → **custom question answering**; *fármacos y diagnósticos en notas clínicas* → **Text analytics for health**.",
+    "Entidades propias de tu negocio (número de expediente) → **Custom NER**; categorías propias entrenadas con ejemplos → **custom text classification** (**multi label** si un documento puede tener varias).",
+    "Traducir texto escrito → **Azure Translator** (miles de manuales Word conservando el formato → **document translation** asíncrona); traducir voz → **Azure Speech**.",
+    "Campos de un formulario o factura escaneada → **Content Understanding**, no análisis de texto. Si dudas entre dos opciones, **consistencia** apunta al servicio especializado y **flexibilidad**, al modelo generativo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En AI-901 la mayoría de preguntas de esta área son de **escenario**: una necesidad de negocio y cuatro capacidades posibles. Entrena la asociación con esta tabla."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escenario",
+      "Capacidad / servicio"
+     ],
+     "rows": [
+      [
+       "Determinar si miles de reseñas son positivas, negativas o neutrales",
+       "Sentiment analysis"
+      ],
+      [
+       "Saber que los clientes se quejan concretamente del \"tiempo de espera\" y elogian la \"comida\"",
+       "Opinion mining (sentimiento basado en aspectos)"
+      ],
+      [
+       "Obtener los temas más importantes de reseñas o encuestas",
+       "Key phrase extraction"
+      ],
+      [
+       "Listar personas, organizaciones, lugares y fechas de artículos de prensa",
+       "Named entity recognition (NER)"
+      ],
+      [
+       "Distinguir si \"Paris\" es la ciudad o una persona y enlazar a Wikipedia",
+       "Entity linking"
+      ],
+      [
+       "Ocultar nombres, teléfonos y emails de transcripciones antes de guardarlas",
+       "PII detection (Text o Conversation PII)"
+      ],
+      [
+       "Redactar PII en contratos PDF conservando el formato",
+       "Document-based PII"
+      ],
+      [
+       "Enrutar mensajes de soporte según el idioma en que están escritos",
+       "Language detection"
+      ],
+      [
+       "Crear un resumen breve de un informe largo",
+       "Summarization (o LLM con prompt)"
+      ],
+      [
+       "Resumen formado solo por oraciones literales del texto",
+       "Extractive summarization"
+      ],
+      [
+       "Resumir llamadas de soporte en problema y solución",
+       "Conversation summarization (issue/resolution)"
+      ],
+      [
+       "Clasificar correos en Facturación, Envíos o Devoluciones con categorías propias",
+       "Custom text classification (o LLM con prompt)"
+      ],
+      [
+       "Un documento puede pertenecer a varias categorías a la vez",
+       "Multi label classification"
+      ],
+      [
+       "Entender \"pon la alarma a las 7\" como intención SetAlarm con entidad hora",
+       "Conversational language understanding (CLU)"
+      ],
+      [
+       "Bot que responde preguntas frecuentes a partir de un manual",
+       "Custom question answering (o agente con conocimiento)"
+      ],
+      [
+       "Extraer fármacos, dosis y diagnósticos de notas clínicas",
+       "Text analytics for health"
+      ],
+      [
+       "Extraer \"número de expediente\" propio de tu empresa",
+       "Custom NER"
+      ],
+      [
+       "Traducir descripciones de producto a 10 idiomas",
+       "Azure Translator (text translation)"
+      ],
+      [
+       "Traducir 5.000 manuales Word manteniendo el formato",
+       "Azure Translator (document translation asíncrona)"
+      ],
+      [
+       "Explicar con matices por qué un cliente está molesto y redactar una respuesta",
+       "Modelo generativo con prompt"
+      ],
+      [
+       "Un agente debe redactar PII de forma predecible antes de responder",
+       "Agente + Azure Language MCP server"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Palabras gatillo: *opinión/actitud/satisfacción* → sentimiento; *temas/conceptos principales/palabras clave* → key phrases; *personas/lugares/organizaciones/fechas* → NER; *Wikipedia/desambiguar* → entity linking; *datos sensibles/redactar/enmascarar* → PII; *idioma en que está escrito* → language detection; *versión corta* → summarization; *intención del usuario* → CLU; *FAQ* → question answering; *otro idioma* → Translator."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No confundas **análisis de texto** con **extracción de información de documentos** (Azure Content Understanding, otra sección): si la entrada es un **formulario o factura escaneada** y quieres campos (total, fecha), es Content Understanding; si es **texto libre** y quieres sentimiento, entidades o frases clave, es análisis de texto."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si dos opciones parecen válidas, busca la pista de **consistencia** (servicio especializado) frente a **flexibilidad** (modelo generativo), y la de **texto** (Language/Translator) frente a **voz** (Speech)."
+    }
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "¿Qué hace la normalización de texto?",
+   "back": "Estandariza el texto (minúsculas, sin puntuación) antes de analizarlo: \"Hello, WORLD!\" → \"hello world\"."
+  },
+  {
+   "front": "Stemming vs lematización",
+   "back": "Stemming recorta sufijos con reglas (raíz que puede no ser palabra real); lematización devuelve la forma de diccionario usando gramática (corriendo → correr)."
+  },
+  {
+   "front": "¿Qué es un n-grama? Pon un bigrama y un trigrama.",
+   "back": "Secuencia de n tokens consecutivos. Bigrama: \"machine learning\"; trigrama: \"natural language processing\"."
+  },
+  {
+   "front": "¿Por qué TF-IDF da peso 0 a \"la\" en una colección donde aparece en todos los documentos?",
+   "back": "Porque IDF = log(N/df) = log(1) = 0: un término presente en todos los documentos no distingue a ninguno."
+  },
+  {
+   "front": "¿Qué aporta un embedding frente a la bolsa de palabras?",
+   "back": "Representa el significado como vector denso: textos similares quedan cerca (similitud del coseno), aunque usen palabras distintas."
+  },
+  {
+   "front": "Etiquetas de sentimiento de Azure Language",
+   "back": "Oración: positive, neutral, negative. Documento: además mixed (hay oraciones positivas y negativas)."
+  },
+  {
+   "front": "¿Qué devuelve opinion mining?",
+   "back": "Pares target (aspecto, sustantivo o verbo) + assessment (opinión, adjetivo) con su sentimiento. Se activa con show_opinion_mining=True."
+  },
+  {
+   "front": "¿Qué devuelve detect_language()?",
+   "back": "Nombre del idioma, código ISO 639-1 (iso6391_name) y confidence_score entre 0 y 1."
+  },
+  {
+   "front": "¿Qué devuelve recognize_pii_entities()?",
+   "back": "redacted_text (texto con los datos sensibles enmascarados) y la lista de entidades con categoría y confianza."
+  },
+  {
+   "front": "Resumen extractivo vs abstractivo",
+   "back": "Extractivo: copia las oraciones más relevantes con rank score. Abstractivo: genera frases nuevas que no están literalmente en el texto."
+  },
+  {
+   "front": "¿Qué hace entity linking y cuándo se retira?",
+   "back": "Desambigua entidades y devuelve enlaces a Wikipedia. Retira el 1 de septiembre de 2028 (alternativa: NER o modelos de Foundry)."
+  },
+  {
+   "front": "Funciones core de Azure Language (2026)",
+   "back": "PII detection, language detection, NER (prebuilt y custom) y Text analytics for health."
+  },
+  {
+   "front": "¿Qué funciones legacy se retiran el 31 de marzo de 2029?",
+   "back": "Sentiment/opinion mining, key phrase extraction, summarization, CLU, custom text classification, custom question answering y orchestration workflow."
+  },
+  {
+   "front": "Paquete, clase y credencial del SDK de Language en Python",
+   "back": "azure-ai-textanalytics · TextAnalyticsClient · AzureKeyCredential(key) + endpoint cognitiveservices.azure.com."
+  },
+  {
+   "front": "¿Cómo se ejecuta un resumen con el SDK de Language?",
+   "back": "begin_extract_summary() o begin_abstract_summary() devuelven un poller; se llama a .result() para obtener los resultados."
+  },
+  {
+   "front": "Llamada mínima a un modelo GPT con la Responses API",
+   "back": "client = OpenAI(base_url=endpoint /openai/v1/, api_key=key); r = client.responses.create(model=deployment, input=prompt); r.output_text."
+  },
+  {
+   "front": "¿Cómo obtener JSON garantizado de un LLM en la Responses API?",
+   "back": "Structured outputs: client.responses.parse(..., text_format=ModeloPydantic) → output_parsed (o text.format con json_schema en REST)."
+  },
+  {
+   "front": "¿Cuándo elegir Azure Language frente a un LLM?",
+   "back": "Cuando necesitas resultados deterministas, estructurados, con confianza, en un pipeline automatizado, o redactar PII con fines de cumplimiento."
+  },
+  {
+   "front": "¿Qué servicio traduce texto y documentos?",
+   "back": "Azure Translator in Foundry Tools (texto en tiempo real, documentos síncronos o por lotes, traducción personalizada)."
+  },
+  {
+   "front": "¿Qué es el Azure Language MCP server?",
+   "back": "Servidor MCP que expone las capacidades de Azure Language como herramientas para que un agente de Foundry las invoque de forma consistente."
+  },
+  {
+   "front": "CLU: ¿qué predice?",
+   "back": "La intención (intent) de un enunciado (utterance) y las entidades relevantes; es el sucesor de LUIS."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s06-lab1",
+   "title": "Explorar el análisis de texto en el portal de Microsoft Foundry",
+   "goal": "Probar un modelo generativo (resumen, frases clave, sentimiento) en el chat playground y comparar con los analizadores de Azure Language (Language detection y Text PII Redaction) del portal nuevo de Foundry.",
+   "minutes": 30,
+   "cost": "Céntimos (pocas llamadas a un modelo mini y a Language); requiere suscripción de Azure",
+   "prereqs": [
+    "Suscripción de Azure con permiso para crear recursos",
+    "Navegador",
+    "Cuota disponible para gpt-5-mini (o gpt-5-nano / gpt-4.1-mini)"
+   ],
+   "steps": [
+    {
+     "title": "Abrir Foundry y activar el portal nuevo",
+     "detail": "Ve a https://ai.azure.com, inicia sesión y activa el interruptor **New Foundry** de la barra superior si aparece. Este laboratorio sigue la interfaz nueva; en la clásica los menús cambian."
+    },
+    {
+     "title": "Crear el proyecto",
+     "detail": "Crea un proyecto nuevo. En **Advanced options** elige: Foundry resource (nombre único), Subscription, Resource group (crea uno nuevo, p. ej. rg-ai901-texto, para borrarlo al final) y Region (una de las recomendadas). Pulsa **Create** y espera unos minutos."
+    },
+    {
+     "title": "Desplegar un modelo generativo",
+     "detail": "En **Discover** → pestaña **Models**, busca `gpt-5-mini` y pulsa **Deploy** con la configuración por defecto. Al terminar se abre el **chat playground**."
+    },
+    {
+     "title": "Resumen con el modelo",
+     "detail": "En **Instructions** escribe: \"You are an AI assistant that analyzes and summarizes text.\" En el chat pega la reseña de abajo precedida de \"Resume esta reseña en un párrafo corto:\" (usa Ctrl+Enter para saltos de línea).",
+     "code": "Resume esta reseña en un párrafo corto:\n\nCené el sábado en un bistró de Valencia. El arroz meloso estaba perfecto y muy sabroso. Nuestro camarero, Pedro, fue amable y rápido, y nos recomendó una tarta de queso excelente. Lo único malo: tardaron 40 minutos en traer los entrantes y el local era bastante ruidoso. Aun así, volvería para una cena informal.",
+     "lang": "bash"
+    },
+    {
+     "title": "Frases clave, entidades y sentimiento por oración",
+     "detail": "En la misma conversación pide, uno por uno: (1) \"Extrae las frases clave como lista\"; (2) \"Identifica personas, lugares y fechas en formato tabla\"; (3) \"Analiza el sentimiento oración por oración y da un sentimiento global\". Observa que puedes hacer preguntas de seguimiento y que el formato cambia según cómo lo pidas."
+    },
+    {
+     "title": "Repetir para comprobar la variabilidad",
+     "detail": "Pulsa para empezar un chat nuevo y repite exactamente el prompt de frases clave. Anota si la lista cambia de orden, de redacción o de número de elementos."
+    },
+    {
+     "title": "Abrir los analizadores de Azure Language",
+     "detail": "Selecciona **Build** en el menú superior, despliega el menú lateral y abre la página **Services** (en algunas versiones: **Models** → pestaña **AI services**). Elige **Azure Language - Language detection**."
+    },
+    {
+     "title": "Language detection",
+     "detail": "Selecciona un documento de ejemplo en **Input text** o pulsa **Edit** y pega este texto. Pulsa **Detect** y anota el idioma, el código ISO y la confianza.",
+     "code": "CPC 464\nSerien-Nr.: 464-87-041256\n220-240 V ~ 50 Hz\nHergestellt in Korea\nBundesrepublik Deutschland",
+     "lang": "bash"
+    },
+    {
+     "title": "Text PII Redaction",
+     "detail": "En el desplegable **Type** cambia a **Text PII Redaction** (o vuelve a Services y elige **Azure Language - Text PII Redaction**). Pega el texto de abajo y pulsa **Detect**. Revisa las categorías detectadas y el texto redactado.",
+     "code": "Tailspin Toys Ltd - Factura - 14 de septiembre de 2026\nCliente: Margaret Ellis\n128 High Street, Reading, Berkshire RG1 2AB\nTeléfono: 021 685 4215 - Email: margaret.ellis@example.com\nArtículo: ZX Spectrum 48K - Precio: 79,00 GBP",
+     "lang": "bash"
+    },
+    {
+     "title": "Ver el código generado",
+     "detail": "Abre la pestaña **Code** del panel derecho. Verás un ejemplo en Python con `TextAnalyticsClient` y `recognize_pii_entities`: es la base del laboratorio 2. Copia el endpoint que aparece (termina en cognitiveservices.azure.com)."
+    }
+   ],
+   "verify": [
+    "El modelo generó un resumen y listas de frases clave/entidades, y su formato cambió al repetir el prompt.",
+    "Language detection devolvió German (de) con una confianza alta.",
+    "Text PII Redaction detectó al menos Person, Address, PhoneNumber y Email, y mostró el texto con los datos enmascarados.",
+    "Localizaste el endpoint del recurso para usarlo desde código."
+   ],
+   "cleanup": "Si vas a hacer los laboratorios 2 y 3, conserva el proyecto. Al terminar: portal de Azure (https://portal.azure.com) → Resource groups → rg-ai901-texto → **Delete resource group** → escribe el nombre y confirma.",
+   "challenge": "Guarda el modelo como agente, añade la herramienta **Azure Language in Foundry Tools** (MCP) con el nombre de tu Foundry resource y pide al agente: \"Detecta el idioma y redacta la PII de este texto\". Compara su respuesta con la del analizador."
+  },
+  {
+   "id": "s06-lab2",
+   "title": "App Python que analiza reseñas de clientes con Azure Language",
+   "goal": "Construir un script que, sobre un dataset de 8 reseñas multilingües, detecta idioma, analiza sentimiento con minería de opiniones, extrae frases clave y entidades, redacta PII y genera un informe resumen en JSON.",
+   "minutes": 45,
+   "cost": "Céntimos (unas decenas de registros de texto)",
+   "prereqs": [
+    "Proyecto y Foundry resource del laboratorio 1 (o un recurso de Language)",
+    "Python 3.10+",
+    "Visual Studio Code o cualquier terminal"
+   ],
+   "steps": [
+    {
+     "title": "Obtener endpoint y clave",
+     "detail": "En la página de inicio del proyecto de Foundry (o en el portal de Azure → tu Foundry resource → **Keys and Endpoint**) copia una clave y el endpoint de Azure AI services, con formato `https://<recurso>.cognitiveservices.azure.com/`."
+    },
+    {
+     "title": "Preparar el entorno",
+     "detail": "Crea una carpeta, un entorno virtual e instala los paquetes.",
+     "code": "mkdir resenas && cd resenas\npython -m venv .venv\nsource .venv/bin/activate   # Windows: .venv\\Scripts\\activate\npip install azure-ai-textanalytics python-dotenv",
+     "lang": "bash"
+    },
+    {
+     "title": "Crear el archivo .env",
+     "detail": "Guarda tus valores (no lo subas a Git).",
+     "code": "AZURE_LANGUAGE_ENDPOINT=https://<recurso>.cognitiveservices.azure.com/\nAZURE_LANGUAGE_KEY=<tu-clave>",
+     "lang": "bash"
+    },
+    {
+     "title": "Crear el dataset reviews.json",
+     "detail": "Guarda este dataset de ejemplo: 8 reseñas en español, inglés y francés, con opiniones positivas, negativas y mixtas, y algunos datos personales para probar la redacción.",
+     "code": "[\n  {\"id\": \"1\", \"text\": \"El hotel en Granada es precioso y el desayuno buenísimo. Volveremos seguro.\"},\n  {\"id\": \"2\", \"text\": \"La habitación estaba sucia y el aire acondicionado no funcionaba. Muy decepcionante.\"},\n  {\"id\": \"3\", \"text\": \"The staff were friendly, but the wifi was terribly slow and the room was noisy.\"},\n  {\"id\": \"4\", \"text\": \"Soy Ana Torres, llamadme al 612 345 678: me cobraron dos veces la reserva del 12 de mayo.\"},\n  {\"id\": \"5\", \"text\": \"Le personnel était très accueillant et la vue sur la mer magnifique.\"},\n  {\"id\": \"6\", \"text\": \"Check-in at 3 PM. Room 204. Nothing special to report.\"},\n  {\"id\": \"7\", \"text\": \"La piscina genial, pero el restaurante carísimo y la comida fría. Escribid a jorge.ruiz@example.com si queréis detalles.\"},\n  {\"id\": \"8\", \"text\": \"Contoso Hotels in Seattle exceeded our expectations. Great location near Pike Place Market!\"}\n]",
+     "lang": "json"
+    },
+    {
+     "title": "Escribir analyze_reviews.py",
+     "detail": "El script agrupa las reseñas en lotes de 5 (límite de NER y PII por petición), usa el idioma detectado en cada documento y agrega resultados.",
+     "code": "import os, json\nfrom collections import Counter\nfrom dotenv import load_dotenv\nfrom azure.core.credentials import AzureKeyCredential\nfrom azure.ai.textanalytics import TextAnalyticsClient\n\nload_dotenv()\nclient = TextAnalyticsClient(os.getenv(\"AZURE_LANGUAGE_ENDPOINT\"),\n                             AzureKeyCredential(os.getenv(\"AZURE_LANGUAGE_KEY\")))\n\nreviews = json.load(open(\"reviews.json\", encoding=\"utf-8\"))\n\ndef lotes(items, n=5):\n    for i in range(0, len(items), n):\n        yield items[i:i + n]\n\n# 1) Idioma (hasta 1000 docs por petición)\nfor r, d in zip(reviews, client.detect_language([r[\"text\"] for r in reviews])):\n    r[\"language\"] = d.primary_language.iso6391_name if not d.is_error else \"en\"\n    r[\"language_confidence\"] = None if d.is_error else d.primary_language.confidence_score\n\nsentimientos, frases, quejas = Counter(), Counter(), Counter()\nfor lote in lotes(reviews):\n    docs = [{\"id\": r[\"id\"], \"language\": r[\"language\"], \"text\": r[\"text\"]} for r in lote]\n    sent = client.analyze_sentiment(docs, show_opinion_mining=True)\n    kp = client.extract_key_phrases(docs)\n    ner = client.recognize_entities(docs)\n    pii = client.recognize_pii_entities(docs)\n    for r, s, k, e, p in zip(lote, sent, kp, ner, pii):\n        if s.is_error:\n            r[\"error\"] = s.error.message\n            continue\n        r[\"sentiment\"] = s.sentiment\n        r[\"scores\"] = {\"positive\": s.confidence_scores.positive,\n                       \"neutral\": s.confidence_scores.neutral,\n                       \"negative\": s.confidence_scores.negative}\n        r[\"sentences\"] = [{\"text\": x.text, \"sentiment\": x.sentiment} for x in s.sentences]\n        for x in s.sentences:\n            for op in x.mined_opinions:\n                if op.target.sentiment == \"negative\":\n                    quejas[op.target.text.lower()] += 1\n        r[\"key_phrases\"] = [] if k.is_error else k.key_phrases\n        r[\"entities\"] = [] if e.is_error else [{\"text\": x.text, \"category\": x.category} for x in e.entities]\n        r[\"redacted_text\"] = None if p.is_error else p.redacted_text\n        r[\"pii\"] = [] if p.is_error else [x.category for x in p.entities]\n        sentimientos[s.sentiment] += 1\n        frases.update(f.lower() for f in r[\"key_phrases\"])\n\ninforme = {\"total\": len(reviews), \"sentimientos\": sentimientos,\n           \"top_frases\": frases.most_common(5), \"aspectos_con_quejas\": quejas.most_common(),\n           \"reviews\": reviews}\njson.dump(informe, open(\"report.json\", \"w\", encoding=\"utf-8\"), ensure_ascii=False, indent=2)\nprint(json.dumps({k: informe[k] for k in [\"total\", \"sentimientos\", \"top_frases\", \"aspectos_con_quejas\"]}, ensure_ascii=False, indent=2))",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar",
+     "detail": "Lanza el script y abre report.json.",
+     "code": "python analyze_reviews.py",
+     "lang": "bash"
+    },
+    {
+     "title": "Interpretar resultados",
+     "detail": "Revisa: idioma de las reseñas 3, 5, 6 y 8; que la 3 y la 7 salgan **mixed**; que la 6 salga **neutral**; los aspectos con quejas (wifi, room, comida, restaurante...); las entidades (Granada, Seattle, Pike Place Market, Contoso Hotels) y el texto redactado de las reseñas 4 y 7."
+    },
+    {
+     "title": "Añadir un resumen extractivo (opcional)",
+     "detail": "Concatena todas las reseñas y pide un resumen extractivo de 3 oraciones con el método de larga duración.",
+     "code": "todo = \" \".join(r[\"text\"] for r in reviews)\npoller = client.begin_extract_summary([todo], max_sentence_count=3)\nfor res in poller.result():\n    if res.kind == \"ExtractiveSummarization\":\n        for s in res.sentences:\n            print(round(s.rank_score, 2), s.text)",
+     "lang": "python"
+    }
+   ],
+   "verify": [
+    "La consola muestra el recuento por sentimiento (positive, negative, mixed, neutral) que suma 8.",
+    "report.json contiene idioma ISO y confianza para cada reseña (es, en, fr).",
+    "Las reseñas 4 y 7 tienen redacted_text con asteriscos en el nombre, el teléfono y el email.",
+    "aspectos_con_quejas lista objetivos negativos extraídos por opinion mining.",
+    "Si ejecutas el script dos veces, los resultados son idénticos (salida determinista)."
+   ],
+   "cleanup": "Borra el archivo .env si ya no lo necesitas. Si no harás el laboratorio 3, elimina el resource group desde el portal de Azure.",
+   "challenge": "Sustituye las cuatro llamadas por una sola con `begin_analyze_actions` (RecognizeEntitiesAction, RecognizePiiEntitiesAction, ExtractKeyPhrasesAction, AnalyzeSentimentAction) y compara el tiempo total y el código."
+  },
+  {
+   "id": "s06-lab3",
+   "title": "La misma tarea con un modelo GPT y comparación de enfoques",
+   "goal": "Analizar el mismo dataset de reseñas con un modelo GPT desplegado en Foundry usando la Responses API con salida estructurada, y comparar consistencia, coste, idiomas y tratamiento de PII frente a Azure Language.",
+   "minutes": 40,
+   "cost": "Céntimos (tokens de un modelo mini)",
+   "prereqs": [
+    "Laboratorio 2 completado (reviews.json y report.json)",
+    "Despliegue gpt-5-mini del laboratorio 1",
+    "Python 3.10+"
+   ],
+   "steps": [
+    {
+     "title": "Instalar dependencias",
+     "detail": "En la misma carpeta y entorno virtual.",
+     "code": "pip install openai pydantic python-dotenv",
+     "lang": "bash"
+    },
+    {
+     "title": "Añadir variables al .env",
+     "detail": "El endpoint de Azure OpenAI del Foundry resource termina en /openai/v1/. MODEL_DEPLOYMENT_NAME es el nombre que diste al despliegue.",
+     "code": "AZURE_OPENAI_ENDPOINT=https://<recurso>.openai.azure.com/openai/v1/\nMODEL_DEPLOYMENT_NAME=gpt-5-mini\nAPI_KEY=<tu-clave>",
+     "lang": "bash"
+    },
+    {
+     "title": "Escribir analyze_reviews_gpt.py",
+     "detail": "Define un esquema con Pydantic y usa responses.parse para obtener JSON válido; guarda también el consumo de tokens.",
+     "code": "import os, json, time\nfrom typing import Literal\nfrom dotenv import load_dotenv\nfrom openai import OpenAI\nfrom pydantic import BaseModel\n\nload_dotenv()\nclient = OpenAI(base_url=os.getenv(\"AZURE_OPENAI_ENDPOINT\"), api_key=os.getenv(\"API_KEY\"))\ndeployment = os.getenv(\"MODEL_DEPLOYMENT_NAME\")\n\nclass Entidad(BaseModel):\n    text: str\n    category: str\n\nclass Analisis(BaseModel):\n    language: str\n    sentiment: Literal[\"positive\", \"neutral\", \"negative\", \"mixed\"]\n    key_phrases: list[str]\n    entities: list[Entidad]\n    negative_aspects: list[str]\n    redacted_text: str\n\nINSTR = (\"Eres un analizador de reseñas. Devuelve: language (código ISO 639-1), \"\n         \"sentiment (positive, neutral, negative o mixed), key_phrases, entities \"\n         \"(Person, Location, Organization, DateTime), negative_aspects y redacted_text \"\n         \"sustituyendo nombres, teléfonos y emails por [REDACTED].\")\n\nreviews = json.load(open(\"reviews.json\", encoding=\"utf-8\"))\nsalida, tokens, t0 = [], 0, time.time()\nfor r in reviews:\n    resp = client.responses.parse(model=deployment, instructions=INSTR,\n                                  input=r[\"text\"], text_format=Analisis)\n    tokens += resp.usage.total_tokens\n    salida.append({\"id\": r[\"id\"], **resp.output_parsed.model_dump()})\n\njson.dump(salida, open(\"report_gpt.json\", \"w\", encoding=\"utf-8\"), ensure_ascii=False, indent=2)\nprint(f\"Tokens totales: {tokens} - Tiempo: {time.time() - t0:.1f} s\")",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar dos veces",
+     "detail": "Ejecuta el script, renombra la salida y vuelve a ejecutarlo para medir la variabilidad.",
+     "code": "python analyze_reviews_gpt.py && mv report_gpt.json report_gpt_1.json\npython analyze_reviews_gpt.py && mv report_gpt.json report_gpt_2.json",
+     "lang": "bash"
+    },
+    {
+     "title": "Comparar con Azure Language",
+     "detail": "Escribe un pequeño script que compare, para cada id, el sentimiento de report.json con report_gpt_1.json y report_gpt_2.json, y que cuente cuántas frases clave coinciden entre las dos ejecuciones de GPT.",
+     "code": "import json\nlang = {r[\"id\"]: r for r in json.load(open(\"report.json\"))[\"reviews\"]}\ng1 = {r[\"id\"]: r for r in json.load(open(\"report_gpt_1.json\"))}\ng2 = {r[\"id\"]: r for r in json.load(open(\"report_gpt_2.json\"))}\nfor i in lang:\n    same = set(map(str.lower, g1[i][\"key_phrases\"])) & set(map(str.lower, g2[i][\"key_phrases\"]))\n    print(i, \"Language:\", lang[i].get(\"sentiment\"), \"| GPT1:\", g1[i][\"sentiment\"],\n          \"| GPT2:\", g2[i][\"sentiment\"], \"| frases comunes GPT1/GPT2:\", len(same))",
+     "lang": "python"
+    },
+    {
+     "title": "Rellenar la tabla de conclusiones",
+     "detail": "Anota en una tabla: (1) ¿coinciden los sentimientos entre enfoques y entre ejecuciones?; (2) ¿GPT devuelve puntuaciones de confianza?; (3) coste: registros de texto de Language (1 registro = 1.000 caracteres por función) frente a tokens de GPT; (4) ¿qué enfoque explica mejor los matices?; (5) ¿la redacción de PII del LLM es completa y usa categorías estándar?"
+    }
+   ],
+   "verify": [
+    "report_gpt_1.json y report_gpt_2.json son JSON válidos que cumplen el esquema (gracias a structured outputs).",
+    "Hay al menos una diferencia de redacción u orden en key_phrases entre las dos ejecuciones de GPT.",
+    "GPT no aporta puntuaciones de confianza calibradas, mientras que Azure Language sí.",
+    "Tienes una tabla comparativa con consistencia, coste, idiomas y PII."
+   ],
+   "cleanup": "Portal de Azure → Resource groups → rg-ai901-texto → **Delete resource group**. Así se eliminan el Foundry resource, el despliegue del modelo y el proyecto.",
+   "challenge": "Crea un flujo híbrido: primero `recognize_pii_entities` para redactar, y después envía solo el `redacted_text` al modelo GPT para que redacte una respuesta amable al cliente. Explica por qué este orden es mejor para la privacidad."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s06-q1",
+   "type": "single",
+   "q": "Una empresa quiere procesar miles de reseñas y saber si cada una es positiva, negativa o neutral. ¿Qué capacidad debe usar?",
+   "options": [
+    "Key phrase extraction",
+    "Sentiment analysis",
+    "Named entity recognition",
+    "Language detection"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El análisis de sentimiento asigna positive, neutral o negative (y mixed a nivel de documento). Key phrase extraction devuelve temas, no opiniones; NER devuelve entidades como personas o lugares; language detection solo identifica el idioma."
+  },
+  {
+   "id": "s06-q2",
+   "type": "single",
+   "q": "Antes de analizar un texto conviertes \"Hello, WORLD!\" en \"hello world\". ¿Qué técnica aplicas?",
+   "options": [
+    "Stemming",
+    "Tokenización",
+    "Normalización de texto",
+    "Análisis de frecuencia"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La normalización estandariza el texto (minúsculas, sin puntuación). El stemming reduce palabras a su raíz, la tokenización divide en tokens y el análisis de frecuencia cuenta apariciones."
+  },
+  {
+   "id": "s06-q3",
+   "type": "single",
+   "q": "Quieres que \"connect\", \"connected\" y \"connecting\" se traten como la misma forma recortando sus sufijos. ¿Qué técnica usas?",
+   "options": [
+    "n-gramas",
+    "Stemming",
+    "Eliminación de stop words",
+    "TF-IDF"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El stemming recorta sufijos para reducir palabras a una raíz común. Los n-gramas agrupan palabras consecutivas, la eliminación de stop words quita palabras vacías y TF-IDF pondera términos."
+  },
+  {
+   "id": "s06-q4",
+   "type": "single",
+   "q": "Un analista quiere estudiar expresiones como \"credit card\" o \"machine learning\" como una unidad en lugar de palabras sueltas. ¿Qué técnica usa?",
+   "options": [
+    "Lematización",
+    "n-gramas",
+    "Normalización",
+    "Detección de idioma"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un n-grama (aquí un bigrama) es una secuencia de palabras consecutivas analizada como unidad. La lematización reduce a la forma de diccionario, la normalización estandariza y la detección de idioma identifica la lengua."
+  },
+  {
+   "id": "s06-q5",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre TF-IDF, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Un término que aparece en todos los documentos del corpus obtiene un IDF de 0.",
+     "answer": true
+    },
+    {
+     "text": "TF-IDF tiene en cuenta el orden de las palabras en la frase.",
+     "answer": false
+    },
+    {
+     "text": "Un término frecuente en un documento pero raro en el resto recibe un peso alto.",
+     "answer": true
+    }
+   ],
+   "explain": "IDF = log(N/df); si df = N, log(1) = 0. TF-IDF, como la bolsa de palabras, ignora el orden. El peso es alto cuando TF es alta e IDF también (término raro en la colección)."
+  },
+  {
+   "id": "s06-q6",
+   "type": "single",
+   "q": "¿Qué ventaja principal aportan los embeddings frente a la bolsa de palabras?",
+   "options": [
+    "Ocupan menos espacio en disco que el texto original",
+    "Representan el significado, de modo que textos similares quedan cerca aunque usen palabras distintas",
+    "Garantizan que el modelo nunca se equivoque",
+    "Eliminan la necesidad de tokenizar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los embeddings son vectores densos que capturan significado semántico y permiten medir similitud (coseno). No garantizan precisión perfecta, no eliminan la tokenización y su ventaja no es el tamaño en disco."
+  },
+  {
+   "id": "s06-q7",
+   "type": "single",
+   "q": "Una reseña contiene una oración claramente positiva y otra claramente negativa. ¿Qué etiqueta de documento devuelve el análisis de sentimiento de Azure Language?",
+   "options": [
+    "neutral",
+    "positive",
+    "mixed",
+    "negative"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Si hay al menos una oración positiva y al menos una negativa, el documento es mixed. Neutral se da cuando todas son neutrales; positive o negative cuando solo hay de un signo más neutrales."
+  },
+  {
+   "id": "s06-q8",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre el análisis de sentimiento de Azure Language, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Las oraciones individuales pueden recibir la etiqueta mixed.",
+     "answer": false
+    },
+    {
+     "text": "Las puntuaciones de positive, neutral y negative de un documento suman 1.",
+     "answer": true
+    },
+    {
+     "text": "La minería de opiniones vincula sentimientos a aspectos concretos como \"comida\" o \"personal\".",
+     "answer": true
+    },
+    {
+     "text": "Si no se especifica el idioma, el servicio asume inglés.",
+     "answer": true
+    }
+   ],
+   "explain": "Mixed solo existe a nivel de documento. Las tres puntuaciones de cada documento u oración suman 1. Opinion mining devuelve target + assessment por aspecto. Sin idioma indicado, sentimiento usa inglés por defecto."
+  },
+  {
+   "id": "s06-q9",
+   "type": "single",
+   "q": "Un hotel quiere saber qué aspectos concretos (limpieza, wifi, desayuno) reciben opiniones negativas en sus reseñas. ¿Qué debe usar?",
+   "options": [
+    "Language detection",
+    "Sentiment analysis con opinion mining",
+    "Entity linking",
+    "Extractive summarization"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Opinion mining (sentimiento basado en aspectos) devuelve cada target con su assessment y sentimiento. Language detection solo da el idioma, entity linking enlaza a Wikipedia y el resumen extractivo copia oraciones relevantes sin analizar aspectos."
+  },
+  {
+   "id": "s06-q10",
+   "type": "single",
+   "q": "Necesitas identificar los temas y conceptos principales de miles de respuestas de encuesta para etiquetarlas. ¿Qué capacidad eliges?",
+   "options": [
+    "Key phrase extraction",
+    "PII detection",
+    "Conversational language understanding",
+    "Translator"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Key phrase extraction devuelve la lista de conceptos principales del texto. PII detecta datos personales, CLU predice intenciones de enunciados y Translator traduce."
+  },
+  {
+   "id": "s06-q11",
+   "type": "single",
+   "q": "Un medio de comunicación quiere extraer de sus artículos las personas, organizaciones, lugares y fechas mencionados. ¿Qué capacidad usa?",
+   "options": [
+    "Named entity recognition (NER)",
+    "Sentiment analysis",
+    "Key phrase extraction",
+    "Custom question answering"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "NER identifica y categoriza entidades (Person, Organization, Location, DateTime...). El sentimiento mide opinión, las frases clave devuelven temas sin categorizar y question answering responde preguntas de una base de conocimiento."
+  },
+  {
+   "id": "s06-q12",
+   "type": "single",
+   "q": "Un call center debe eliminar nombres, teléfonos y emails de las transcripciones antes de almacenarlas por motivos de cumplimiento. ¿Qué solución es la más adecuada?",
+   "options": [
+    "Un modelo GPT con el prompt \"quita los datos personales\"",
+    "PII detection de Azure Language",
+    "Key phrase extraction",
+    "Entity linking"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "PII detection está diseñado para identificar y redactar datos personales de forma consistente (con variantes para texto, conversación y documentos). Un LLM puede omitir datos y no es un control de privacidad fiable; las frases clave y entity linking no redactan nada."
+  },
+  {
+   "id": "s06-q13",
+   "type": "single",
+   "q": "Una app recibe mensajes de soporte en decenas de idiomas y debe enviarlos a la cola del equipo correspondiente según la lengua. ¿Qué capacidad debe ejecutar primero?",
+   "options": [
+    "Summarization",
+    "Language detection",
+    "NER",
+    "Opinion mining"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Language detection devuelve el idioma (ISO 639-1) y su confianza, y es el primer paso típico para enrutar en flujos multilingües. Las demás no identifican el idioma."
+  },
+  {
+   "id": "s06-q14",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones describen correctamente el resumen de Azure Language? (Selecciona DOS.)",
+   "options": [
+    "El resumen extractivo genera frases nuevas que no están en el texto",
+    "El resumen extractivo selecciona oraciones originales y les asigna un rank score",
+    "El resumen abstractivo genera frases nuevas y concisas",
+    "El resumen abstractivo solo funciona con archivos de audio",
+    "Ambos tipos devuelven el texto con la PII redactada"
+   ],
+   "answer": [
+    1,
+    2
+   ],
+   "explain": "Extractivo = oraciones copiadas del original con puntuación de relevancia; abstractivo = frases nuevas generadas. El extractivo no inventa frases, el abstractivo no se limita a audio y ninguno redacta PII."
+  },
+  {
+   "id": "s06-q15",
+   "type": "single",
+   "q": "¿Qué capacidad determina si \"Mars\" en un texto se refiere al planeta o al dios romano y devuelve un enlace a Wikipedia?",
+   "options": [
+    "Named entity recognition",
+    "Entity linking",
+    "Key phrase extraction",
+    "Language detection"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Entity linking desambigua la identidad de la entidad y la enlaza a Wikipedia. NER categoriza (Location, Person...) pero no enlaza a una base de conocimiento; las otras opciones no desambiguan entidades."
+  },
+  {
+   "id": "s06-q16",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre el estado de Azure Language en 2026, indica Sí o No.",
+   "statements": [
+    {
+     "text": "PII detection, language detection y NER se clasifican como capacidades core recomendadas para desarrollo nuevo.",
+     "answer": true
+    },
+    {
+     "text": "Key phrase extraction y sentiment analysis ya no se pueden usar en 2026.",
+     "answer": false
+    },
+    {
+     "text": "Microsoft recomienda modelos de Foundry para nuevos proyectos de resumen y sentimiento.",
+     "answer": true
+    }
+   ],
+   "explain": "La documentación divide las funciones en core (PII, idioma, NER, salud) y legacy. Las legacy siguen soportadas y funcionan hasta su retirada (31-mar-2029; entity linking 1-sep-2028), aunque Microsoft dirige los proyectos nuevos a modelos de Foundry."
+  },
+  {
+   "id": "s06-q17",
+   "type": "single",
+   "q": "Tu pipeline automático procesa 50.000 documentos al día y necesita la misma salida para la misma entrada, con códigos de idioma y puntuaciones de confianza. ¿Qué enfoque es el más adecuado?",
+   "options": [
+    "Un modelo generativo en el chat playground",
+    "Azure Language in Foundry Tools",
+    "Un agente sin herramientas",
+    "Azure Speech"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Azure Language devuelve resultados estructurados y deterministas con puntuaciones de confianza, ideal para pipelines. Un LLM es probabilístico y el playground no es un pipeline; un agente sin herramientas depende solo del LLM; Speech procesa audio."
+  },
+  {
+   "id": "s06-q18",
+   "type": "multi",
+   "q": "¿Qué DOS situaciones favorecen usar un modelo generativo con prompt en lugar de Azure Language? (Selecciona DOS.)",
+   "options": [
+    "Explicar con matices por qué un cliente está molesto y proponer una respuesta",
+    "Redactar PII con fines de cumplimiento normativo",
+    "Traducir una reseña y después resumirla en la misma conversación",
+    "Obtener el código ISO 639-1 del idioma con su confianza para 1.000 documentos",
+    "Garantizar la misma salida en cada ejecución"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Los LLM destacan en tareas abiertas, con matices y combinables en una conversación. La redacción de PII, los códigos ISO con confianza y la salida idéntica en cada ejecución son puntos fuertes del servicio especializado."
+  },
+  {
+   "id": "s06-q19",
+   "type": "single",
+   "q": "¿Qué paquete de Python y qué clase se usan para llamar a Azure Language desde una aplicación?",
+   "options": [
+    "openai y OpenAI",
+    "azure-ai-textanalytics y TextAnalyticsClient",
+    "azure-ai-translation-text y TextTranslationClient",
+    "azure-ai-projects y AIProjectClient"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El SDK de Azure Language en Python es azure-ai-textanalytics con TextAnalyticsClient. openai/OpenAI es para modelos generativos, azure-ai-translation-text para Translator y azure-ai-projects para el SDK de proyectos de Foundry."
+  },
+  {
+   "id": "s06-q20",
+   "type": "single",
+   "q": "Revisa el código: `result = client.recognize_pii_entities([text])[0]`. ¿Qué atributo contiene el texto con los datos sensibles enmascarados?",
+   "options": [
+    "result.key_phrases",
+    "result.redacted_text",
+    "result.primary_language",
+    "result.sentiment"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "recognize_pii_entities devuelve redacted_text y entities. key_phrases pertenece a extract_key_phrases, primary_language a detect_language y sentiment a analyze_sentiment."
+  },
+  {
+   "id": "s06-q21",
+   "type": "single",
+   "q": "¿Qué argumento de `analyze_sentiment()` activa la minería de opiniones en el SDK de Python?",
+   "options": [
+    "include_opinions=True",
+    "show_opinion_mining=True",
+    "opinion=True",
+    "aspect_based=True"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El parámetro documentado es show_opinion_mining=True (en REST, opinionMining=true). Las demás opciones no existen en el SDK."
+  },
+  {
+   "id": "s06-q22",
+   "type": "multi",
+   "q": "¿Qué DOS métodos de TextAnalyticsClient son operaciones de larga duración que devuelven un poller? (Selecciona DOS.)",
+   "options": [
+    "detect_language",
+    "begin_extract_summary",
+    "extract_key_phrases",
+    "begin_analyze_actions",
+    "recognize_entities"
+   ],
+   "answer": [
+    1,
+    3
+   ],
+   "explain": "Los métodos con prefijo begin_ (begin_extract_summary, begin_abstract_summary, begin_analyze_actions...) son de larga duración y se completan con .result(). detect_language, extract_key_phrases y recognize_entities son síncronos."
+  },
+  {
+   "id": "s06-q23",
+   "type": "single",
+   "q": "Una app usa `client = OpenAI(base_url=endpoint, api_key=key)` y `client.responses.create(model=\"analizador-resenas\", input=prompt)`. ¿Qué valor debe tener el parámetro model?",
+   "options": [
+    "El nombre del Foundry resource",
+    "El nombre del despliegue del modelo",
+    "La región de Azure",
+    "El ID de la suscripción"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En la Responses API contra Foundry, model recibe el nombre del despliegue (que puede coincidir con el del modelo si no lo personalizaste). No es el recurso, la región ni la suscripción."
+  },
+  {
+   "id": "s06-q24",
+   "type": "single",
+   "q": "Necesitas que un modelo GPT devuelva siempre un JSON que cumpla un esquema con los campos sentiment y key_phrases. ¿Qué característica usas?",
+   "options": [
+    "Aumentar la temperatura",
+    "Structured outputs con un esquema JSON (text_format / text.format)",
+    "Opinion mining",
+    "Entity linking"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Structured outputs obliga al modelo a ajustarse a un JSON Schema en la Responses API. Subir la temperatura aumenta la variabilidad; opinion mining y entity linking son funciones de Azure Language."
+  },
+  {
+   "id": "s06-q25",
+   "type": "single",
+   "q": "Una empresa debe traducir 5.000 manuales en Word a tres idiomas conservando el formato original. ¿Qué solución es la adecuada?",
+   "options": [
+    "Azure Language summarization",
+    "Azure Translator: document translation",
+    "Azure Speech: speech translation",
+    "Language detection"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Document translation de Azure Translator traduce archivos por lotes conservando estructura y formato. Summarization resume, speech translation traduce voz y language detection solo identifica el idioma."
+  },
+  {
+   "id": "s06-q26",
+   "type": "single",
+   "q": "Una app de domótica debe interpretar \"enciende las luces del salón\" como la intención TurnOn con la entidad \"salón\". ¿Qué capacidad de Azure Language encaja?",
+   "options": [
+    "Conversational language understanding (CLU)",
+    "Key phrase extraction",
+    "Sentiment analysis",
+    "Text analytics for health"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "CLU predice la intención de un enunciado y extrae entidades relevantes. Las frases clave devuelven temas sin intención, el sentimiento mide opinión y Text analytics for health extrae información médica."
+  },
+  {
+   "id": "s06-q27",
+   "type": "single",
+   "q": "Un soporte recibe correos y quiere clasificarlos en sus propias categorías (Facturación, Envíos, Devoluciones) entrenando con ejemplos etiquetados. ¿Qué capacidad de Azure Language corresponde?",
+   "options": [
+    "Custom text classification",
+    "Prebuilt NER",
+    "Language detection",
+    "Entity linking"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Custom text classification entrena un modelo con clases propias (single o multi label). Prebuilt NER extrae entidades predefinidas, language detection identifica el idioma y entity linking enlaza entidades a Wikipedia."
+  },
+  {
+   "id": "s06-q28",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre agentes y Azure Language, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El Azure Language MCP server expone capacidades de Azure Language como herramientas para agentes.",
+     "answer": true
+    },
+    {
+     "text": "Para usar el Azure Language MCP server necesitas crear un recurso de Language separado del Foundry resource.",
+     "answer": false
+    },
+    {
+     "text": "Añadir Azure Language a un agente aporta análisis de texto consistente y predecible.",
+     "answer": true
+    }
+   ],
+   "explain": "El MCP server conecta agentes con NER, sentimiento, detección de idioma, PII, etc. Un Foundry resource ya incluye acceso a las herramientas de Language, sin recurso aparte. Su valor es combinar el razonamiento del LLM con resultados deterministas."
+  },
+  {
+   "id": "s06-q29",
+   "type": "single",
+   "q": "Tienes 20 reseñas y llamas a `recognize_pii_entities(reviews)` en una sola petición síncrona. ¿Qué ocurre según los límites documentados?",
+   "options": [
+    "Se procesan todas sin problema",
+    "Se supera el máximo de 5 documentos por petición para PII y se devuelve un error HTTP 400",
+    "Solo se procesan las 10 primeras",
+    "El servicio las divide automáticamente en lotes"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "PII (como NER y entity linking) admite 5 documentos por petición; superarlo genera HTTP 400. Sentimiento y frases clave admiten 10 y detección de idioma 1.000. El servicio no divide los lotes por ti: debes agruparlos en tu código."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "Get started with text analysis in Azure (módulo de Microsoft Learn)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-text-analysis-azure/"
+  },
+  {
+   "title": "Understand text analysis in Foundry (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-text-analysis-azure/2-azure-language"
+  },
+  {
+   "title": "Create a client application that analyzes text (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-text-analysis-azure/3-language-sdk"
+  },
+  {
+   "title": "Use Azure Language with an agent (unidad)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-text-analysis-azure/4-language-mcp"
+  },
+  {
+   "title": "Exercise - Get started with text analysis in Microsoft Foundry",
+   "url": "https://microsoftlearning.github.io/mslearn-ai-fundamentals/Instructions/Exercises/03b-text-analysis.html"
+  },
+  {
+   "title": "What is Azure Language in Foundry Tools",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/overview"
+  },
+  {
+   "title": "Sentiment analysis and opinion mining overview",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/sentiment-opinion-mining/overview"
+  },
+  {
+   "title": "How to perform sentiment analysis and opinion mining",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/sentiment-opinion-mining/how-to/call-api"
+  },
+  {
+   "title": "What is key phrase extraction",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/key-phrase-extraction/overview"
+  },
+  {
+   "title": "What is named entity recognition (NER)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/named-entity-recognition/overview"
+  },
+  {
+   "title": "What is entity linking",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/entity-linking/overview"
+  },
+  {
+   "title": "What is PII detection",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/personally-identifiable-information/overview"
+  },
+  {
+   "title": "What is language detection",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/language-detection/overview"
+  },
+  {
+   "title": "What is summarization",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/summarization/overview"
+  },
+  {
+   "title": "Conversational Language Understanding",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/conversational-language-understanding/overview"
+  },
+  {
+   "title": "Custom text classification",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/custom-text-classification/overview"
+  },
+  {
+   "title": "What is custom question answering",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/question-answering/overview"
+  },
+  {
+   "title": "Data limits for Language service features",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/language-service/concepts/data-limits"
+  },
+  {
+   "title": "Azure Text Analytics client library for Python (azure-ai-textanalytics)",
+   "url": "https://learn.microsoft.com/en-us/python/api/overview/azure/ai-textanalytics-readme?view=azure-python"
+  },
+  {
+   "title": "azure-ai-textanalytics en PyPI",
+   "url": "https://pypi.org/project/azure-ai-textanalytics/"
+  },
+  {
+   "title": "What is Azure Translator in Foundry Tools",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/translator/overview"
+  },
+  {
+   "title": "Azure Text translation SDKs",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/translator/text-translation/sdk-overview"
+  },
+  {
+   "title": "azure-ai-translation-text en PyPI",
+   "url": "https://pypi.org/project/azure-ai-translation-text/"
+  },
+  {
+   "title": "How to use structured outputs with Azure OpenAI in Microsoft Foundry Models",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs"
+  },
+  {
+   "title": "Transitioning from Azure Language features to Foundry models (Tech Community)",
+   "url": "https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/transitioning-from-azure-language-features-to-foundry-models/4524092"
+  }
+ ]
+}

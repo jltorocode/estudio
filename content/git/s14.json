@@ -1,0 +1,2542 @@
+{
+ "id": "s14",
+ "order": 14,
+ "title": "Repositorios grandes y estructuras avanzadas",
+ "domain": "experto",
+ "summary": "Cuando un proyecto crece, un clon y una rama por carpeta ya no bastan. Aprenderás a trabajar en varias ramas a la vez con worktrees, a componer proyectos con submódulos y subtrees, a descargar menos con clones superficiales y parciales, a ver solo las carpetas que necesitas con sparse-checkout, y conocerás Git LFS, git maintenance y Scalar para repositorios y monorepos enormes.",
+ "goal": "Elegir y aplicar en la terminal la técnica adecuada (worktree, submódulo, subtree, clon superficial o parcial, sparse-checkout) para cada problema de un repositorio grande o compuesto.",
+ "objectives": [
+  "Crear, listar, eliminar y reparar worktrees para atender urgencias sin stash ni commits a medias",
+  "Añadir, clonar, actualizar y quitar submódulos, y publicar sus cambios en el orden correcto",
+  "Diagnosticar los errores típicos de submódulos (carpeta vacía, new commits, not our ref, HEAD separado, transport 'file' not allowed)",
+  "Incorporar, actualizar y devolver código externo con git subtree, y elegir entre submódulo, subtree, paquete o monorepo",
+  "Crear clones superficiales (--depth, --shallow-since) y parciales (--filter=blob:none) y completarlos cuando haga falta",
+  "Limitar el directorio de trabajo con sparse-checkout en modo cono y combinarlo con un clon parcial",
+  "Explicar qué resuelven Git LFS, git maintenance y Scalar, y ejecutar tareas de mantenimiento"
+ ],
+ "lessons": [
+  {
+   "id": "s14-l1",
+   "title": "git worktree: varias ramas abiertas a la vez",
+   "minutes": 20,
+   "goals": [
+    "Crear, listar y eliminar worktrees vinculados con git worktree add, list y remove",
+    "Resolver una urgencia en otra rama sin stash ni commits a medias",
+    "Distinguir qué comparten los worktrees (objetos, ramas, configuración) y qué es propio de cada uno (HEAD, index, archivos)",
+    "Reparar worktrees huérfanos o bloqueados con prune, lock/unlock y repair"
+   ],
+   "takeaways": [
+    "Un repositorio, varios directorios de trabajo: todos los worktrees comparten objetos y ramas; cada uno tiene su propio HEAD, index y archivos.",
+    "Una rama solo puede estar activa en un worktree a la vez: si no, verás «is already used by worktree at …».",
+    "Frente a stash o a un segundo clon, un worktree no mezcla tu trabajo a medias, no duplica el historial y se crea en segundos.",
+    "Elimina worktrees con git worktree remove; si alguien borró la carpeta a mano, git worktree prune limpia los metadatos.",
+    "Eliminar un worktree nunca borra su rama."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Son las 11 de la mañana. Estás en `feature/despacho` con tres archivos a medias y te avisan que producción cobra mal el IVA. Hasta ahora tenías tres salidas: `git stash` (s10) y cambiarte de rama, hacer un commit «WIP» que después tendrás que limpiar, o clonar el proyecto otra vez en otra carpeta. Las tres tienen costo: la primera interrumpe tu estado mental y puede provocar conflictos al recuperar el stash, la segunda ensucia la historia y la tercera duplica todo el historial y no comparte ramas con tu repo."
+    },
+    {
+     "type": "p",
+     "text": "`git worktree` (disponible desde Git 2.5) resuelve esto de raíz: **un mismo repositorio puede tener varios directorios de trabajo**, cada uno con una rama distinta activa. Tu carpeta de siempre es el *worktree principal*; las demás son *worktrees vinculados*."
+    },
+    {
+     "type": "diagram",
+     "title": "Un .git, dos directorios de trabajo",
+     "mermaid": "flowchart LR\n  subgraph REPO[\"~/tienda/.git (compartido)\"]\n    OBJ[\"objects: commits, árboles, blobs\"]\n    REFS[\"refs: ramas y etiquetas\"]\n    CFG[\"config\"]\n    WTS[\"worktrees/tienda-hotfix/ (HEAD e index del vinculado)\"]\n  end\n  subgraph W1[\"~/tienda (worktree principal)\"]\n    H1[\"HEAD → feature/despacho\"]\n    F1[\"archivos a medias + su index\"]\n  end\n  subgraph W2[\"~/tienda-hotfix (worktree vinculado)\"]\n    G2[\".git es un ARCHIVO: gitdir ...\"]\n    F2[\"archivos de la rama hotfix\"]\n  end\n  W1 --> REPO\n  W2 --> REPO"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Compartido por todos los worktrees",
+      "Propio de cada worktree"
+     ],
+     "rows": [
+      [
+       "Base de objetos (commits, árboles, blobs)",
+       "`HEAD` (qué rama o commit está activo)"
+      ],
+      [
+       "Ramas, etiquetas y ramas remotas (`refs/heads`, `refs/tags`, `refs/remotes`)",
+       "El index (área de preparación)"
+      ],
+      [
+       "Configuración `.git/config` (salvo que actives `extensions.worktreeConfig`)",
+       "Los archivos del directorio de trabajo"
+      ],
+      [
+       "Stash, remotos, hooks",
+       "Refs especiales: `refs/bisect`, `refs/worktree`, `refs/rewritten` (un bisect o un rebase en un worktree no molesta al otro)"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Crear y listar worktrees"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git worktree add ../tienda-hotfix hotfix          # rama existente\ngit worktree add -b fix/iva ../tienda-fix main   # rama nueva desde main (como switch -c)\ngit worktree add --detach ../revisar v1.4.0      # HEAD separado en una etiqueta\ngit worktree add ../tienda-x                     # sin rama: crea la rama tienda-x desde HEAD\ngit worktree list                                # todos los worktrees\ngit worktree list --porcelain                    # formato estable para scripts"
+    },
+    {
+     "type": "p",
+     "text": "Pruébalo. El escenario es una tienda con trabajo a medias en `feature/despacho`. Fíjate en tres detalles de la salida: `git worktree list` muestra cada carpeta con su commit y su rama; `git branch` marca con `+` las ramas activas en **otro** worktree; y el `.git` del worktree vinculado no es una carpeta, sino un archivo de texto que apunta a `.git/worktrees/tienda-hotfix`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-01 11:00'\ncommit_archivo precio.js '// Precios de la tienda (CLP)\nexport const IVA = 0.18;' 'Calcula precios con IVA'\ngit tag -a v1.4.0 -m 'Versión 1.4.0'\ngit branch hotfix\ngit switch -q -c feature/despacho\nfecha '2026-09-04 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Empieza el cálculo de despacho'\nanexar despacho.js 'export const costo = (region) => 0; // TODO'\nescribir tarifas.csv 'region,costo'",
+     "cwd": "tienda",
+     "code": "git status --short\ngit worktree add ../tienda-hotfix hotfix\ngit worktree list\ngit branch\ncat ../tienda-hotfix/.git\nls .git/worktrees/tienda-hotfix\ngit status --short"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Una rama solo puede estar activa en un worktree. Si intentas `git switch hotfix` en `~/tienda` (o `git worktree add ../otra hotfix`) mientras `hotfix` está en `~/tienda-hotfix`, Git responde `fatal: 'hotfix' is already used by worktree at '…/tienda-hotfix'`. Es una protección: dos directorios avanzando la misma rama se pisarían. Soluciones: trabaja en ese worktree, usa `--detach` si solo quieres mirar, o elimina primero el otro worktree."
+    },
+    {
+     "type": "h",
+     "text": "El caso estrella: un hotfix sin tocar tu trabajo"
+    },
+    {
+     "type": "diagram",
+     "title": "fix/iva sale de main en otro worktree mientras feature/despacho sigue a medias",
+     "mermaid": "gitGraph\n  commit id: \"Agrega portada\"\n  commit id: \"Calcula precios\" tag: \"v1.4.0\"\n  branch feature/despacho\n  commit id: \"Empieza despacho\"\n  checkout main\n  branch fix/iva\n  commit id: \"Corrige el IVA\""
+    },
+    {
+     "type": "p",
+     "text": "Todo el flujo sin salir de la terminal: creas el worktree con una rama nueva, corriges, confirmas, integras en `main` (que no está activa en ningún otro worktree, así que puedes cambiarte a ella ahí mismo) y lo eliminas. Al final, `git status --short` en `~/tienda` sigue mostrando tus cambios a medias, intactos. Ojo con el orden: `git branch -d` solo borra ramas ya fusionadas en el HEAD **del worktree donde lo ejecutas**; por eso `fix/iva` se borra estando en `main`. Desde `~/tienda` (HEAD en `feature/despacho`) respondería `error: the branch 'fix/iva' is not fully merged`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-01 11:00'\ncommit_archivo precio.js '// Precios de la tienda (CLP)\nexport const IVA = 0.18;' 'Calcula precios con IVA'\ngit tag -a v1.4.0 -m 'Versión 1.4.0'\ngit branch hotfix\ngit switch -q -c feature/despacho\nfecha '2026-09-04 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Empieza el cálculo de despacho'\nanexar despacho.js 'export const costo = (region) => 0; // TODO'\nescribir tarifas.csv 'region,costo'",
+     "cwd": "tienda",
+     "code": "git worktree add -b fix/iva ../tienda-fix main\ncd ../tienda-fix\nprintf '// Precios de la tienda (CLP)\\nexport const IVA = 0.19;\\n' > precio.js\ngit commit -am \"Corrige el IVA al 19 %\"\ngit switch main\ngit merge fix/iva\ngit branch -d fix/iva\ncd ../tienda\ngit worktree remove ../tienda-fix\ngit status --short\ngit log --oneline --graph --all"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Convención práctica: crea los worktrees como carpetas hermanas con el nombre `proyecto-rama` (`../tienda-fix`, `../tienda-pr42`) o dentro de una carpeta dedicada fuera del repo (por ejemplo `~/wt/tienda-fix`). **Nunca** dentro del propio repositorio: aparecerían como archivos sin seguimiento. Cada worktree nuevo necesita sus dependencias (`npm install`, entornos virtuales…): los objetos de Git se comparten, las carpetas ignoradas no."
+    },
+    {
+     "type": "h",
+     "text": "Mantenimiento: remove, prune, lock, move y repair"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git worktree remove <ruta>`: borra la carpeta y sus metadatos. Se niega si hay cambios o archivos sin seguimiento (`fatal: '…' contains modified or untracked files, use --force to delete it`).",
+      "`git worktree prune [-v] [-n]`: limpia los metadatos de worktrees cuya carpeta ya no existe (en `list` aparecen como `prunable`). `git gc` también lo hace de forma automática pasado un plazo (`gc.worktreePruneExpire`).",
+      "`git worktree lock --reason \"…\" <ruta>` / `unlock`: protege un worktree que vive en un disco externo o de red: `prune` no lo toca y no se puede mover ni eliminar (para `remove` hay que usar `unlock` o `-f -f`).",
+      "`git worktree move <ruta> <nueva-ruta>`: mueve un worktree vinculado (no el principal).",
+      "`git worktree repair`: reconecta worktrees si moviste carpetas a mano. Desde Git 2.48 existe `worktree.useRelativePaths` (y `--relative-paths`) para enlazarlos con rutas relativas y poder mover el conjunto completo."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\ncommit_archivo login.js 'export const login = () => {};' 'Agrega login'\ngit branch hotfix\ngit branch revision\ngit worktree add -q ../tienda-hotfix hotfix",
+     "cwd": "tienda",
+     "code": "git worktree add ../tienda-revision revision\ngit worktree lock --reason \"Vive en un disco externo\" ../tienda-revision\ngit worktree list\ngit worktree remove ../tienda-revision\ngit worktree unlock ../tienda-revision\ngit worktree remove ../tienda-revision\n# Ahora el error clásico: borrar un worktree con rm\nrm -r ../tienda-hotfix\ngit worktree list -v\ngit switch hotfix\ngit worktree prune -v\ngit switch hotfix\ngit worktree list"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Worktrees y submódulos no se llevan bien: la documentación oficial advierte que el soporte de submódulos en worktrees es incompleto y **no recomienda** tener varios checkouts de un superproyecto. Si tu proyecto usa submódulos (lecciones 2 y 3), prefiere un clon aparte para trabajar en paralelo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «¿Qué diferencia hay entre `git worktree add` y clonar el repo otra vez?». Respuesta: el worktree comparte la base de objetos, las ramas y la configuración con el repo original (no duplica historial, una rama creada en uno se ve en el otro) y cada worktree tiene su propio HEAD, index y archivos. Un segundo clon es un repositorio independiente con su propio `.git` completo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Worktree principal",
+       "en": "main worktree",
+       "def": "El directorio de trabajo creado por `git init` o `git clone`; contiene la carpeta `.git` real."
+      },
+      {
+       "term": "Worktree vinculado",
+       "en": "linked worktree",
+       "def": "Directorio de trabajo extra creado con `git worktree add`; su `.git` es un archivo que apunta a `.git/worktrees/<nombre>`."
+      },
+      {
+       "term": "Gitfile",
+       "en": "gitfile",
+       "def": "Archivo de texto `.git` con la línea `gitdir: <ruta>`; lo usan worktrees y submódulos para apuntar al repositorio real."
+      },
+      {
+       "term": "Worktree huérfano",
+       "en": "prunable worktree",
+       "def": "Worktree cuya carpeta ya no existe; `git worktree list` lo marca `prunable` y `git worktree prune` elimina sus metadatos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s14-l2",
+   "title": "Submódulos (I): un repositorio dentro de otro",
+   "minutes": 22,
+   "goals": [
+    "Añadir un submódulo con git submodule add y describir qué guarda el superproyecto (.gitmodules y gitlink 160000)",
+    "Clonar un proyecto con submódulos usando --recurse-submodules o git submodule update --init --recursive",
+    "Interpretar la salida de git submodule status (-, +, U)"
+   ],
+   "takeaways": [
+    "Un submódulo es un puntero a un commit exacto de otro repositorio: no es una copia de sus archivos ni sigue una rama.",
+    "El superproyecto guarda .gitmodules (ruta y URL) y, en su árbol, una entrada gitlink de modo 160000 con el hash del commit.",
+    "git clone no descarga submódulos: usa --recurse-submodules o git submodule update --init --recursive.",
+    "Tras update, cada submódulo queda en HEAD separado, justo en el commit que pide el superproyecto.",
+    "Las URL relativas (../utiles.git) se resuelven respecto del remoto del superproyecto."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Tu tienda usa una librería de utilidades (formato de pesos, validación de RUT) que también usan otros tres proyectos de la empresa. Copiar los archivos a mano en cada proyecto termina en cuatro versiones distintas del mismo código. Un **submódulo** permite incluir otro repositorio de Git dentro de tu proyecto, en una carpeta, manteniendo **historias separadas** y fijando **qué commit exacto** usas."
+    },
+    {
+     "type": "p",
+     "text": "Vocabulario: el repositorio que contiene al otro es el **superproyecto**; el repositorio incluido es el **submódulo**. Casos de uso típicos según la documentación (`gitsubmodules`): usar código de terceros en una versión fija, y dividir artificialmente un proyecto enorme (por tamaño, por permisos de acceso distintos o para no descargar partes que no necesitas)."
+    },
+    {
+     "type": "diagram",
+     "title": "El superproyecto no guarda los archivos del submódulo: guarda un puntero a un commit",
+     "mermaid": "flowchart LR\n  C[\"commit de tienda\"] --> T[\"árbol raíz\"]\n  T --> B1[\"index.html (blob, 100644)\"]\n  T --> GM[\".gitmodules (blob): path + url\"]\n  T --> L[\"libs/ (árbol, 040000)\"]\n  L --> GL[\"utiles (gitlink, 160000) = 753b28b\"]\n  GL -.->|\"commit de OTRO repositorio\"| U[\"commit 753b28b de utiles.git\"]"
+    },
+    {
+     "type": "h",
+     "text": "Añadir un submódulo"
+    },
+    {
+     "type": "p",
+     "text": "`git submodule add <url> <ruta>` clona el repositorio, lo deja en la ruta indicada y prepara dos cambios: el archivo `.gitmodules` y la entrada especial de la carpeta. La URL puede ser absoluta o **relativa**: si empieza por `./` o `../`, se resuelve respecto de la URL del remoto por defecto del superproyecto (normalmente `origin`). Con `origin = ~/servidor/tienda.git`, la URL `../utiles.git` apunta a `~/servidor/utiles.git`. Es lo habitual cuando los repos viven en la misma organización (en GitHub, `../utiles.git` junto a `https://github.com/empresa/tienda.git`)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda",
+     "cwd": "tienda",
+     "code": "git submodule add ../utiles.git libs/utiles\ncat .gitmodules\ngit status\ngit diff --cached\ngit commit -m \"Agrega la librería utiles como submódulo\"\ngit ls-tree HEAD libs/\ncat libs/utiles/.git\ngit submodule status"
+    },
+    {
+     "type": "p",
+     "text": "Lee con calma la salida. En `git diff --cached`, la carpeta aparece como `new file mode 160000` con una sola línea: `+Subproject commit <hash>`. El modo **160000** significa, como explica Pro Git, que se registra *un commit como si fuera una entrada de directorio*, no una subcarpeta ni un archivo. Esa entrada se llama **gitlink**. `git ls-tree` lo confirma: `160000 commit <hash>\tlibs/utiles`. Y el repositorio real del submódulo vive en `.git/modules/libs/utiles`; la carpeta `libs/utiles` solo tiene un archivo `.git` (`gitdir: ../../.git/modules/libs/utiles`)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En tu computador, con submódulos que apuntan a **rutas locales o `file://`**, Git 2.38.1 o posterior responde `fatal: transport 'file' not allowed`. Desde esa versión (vulnerabilidad CVE-2022-39253) `protocol.file.allow` tiene el valor `user` por defecto, lo que bloquea el transporte local cuando lo usa Git por su cuenta (clonar submódulos). Para un caso puntual y de confianza: `git -c protocol.file.allow=always submodule add …` (o `… submodule update --init`). Con URL `https://` o SSH no pasa. En la terminal de práctica ya está permitido."
+    },
+    {
+     "type": "h",
+     "text": "Clonar un proyecto que tiene submódulos"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace cada paso al clonar",
+     "mermaid": "sequenceDiagram\n  participant Tú\n  participant T as tienda.git\n  participant U as utiles.git\n  Tú->>T: git clone\n  T-->>Tú: superproyecto con .gitmodules y gitlink (libs/utiles vacía)\n  Tú->>Tú: git submodule init (copia la URL a .git/config)\n  Tú->>U: git submodule update (clona en .git/modules/libs/utiles)\n  U-->>Tú: checkout del commit registrado, en HEAD separado"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo",
+     "cwd": "",
+     "code": "git clone ~/servidor/tienda.git copia\ncd copia\nls -a libs/utiles\ngit submodule status\ngit submodule init\ngit submodule update\ngit submodule status\ngit -C libs/utiles status"
+    },
+    {
+     "type": "p",
+     "text": "Tras un `git clone` normal, `libs/utiles` existe pero está vacía y `git submodule status` la muestra con `-` delante (no inicializada). `init` copia la URL de `.gitmodules` a tu `.git/config` (ahí puedes cambiarla sin tocar el archivo compartido) y `update` clona y hace checkout del commit exacto: `Submodule path 'libs/utiles': checked out '…'`. Dentro del submódulo, `git status` dice `HEAD detached at …`: es lo esperado, el superproyecto pide un commit, no una rama."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Las dos formas cortas que usarás en la práctica\ngit clone --recurse-submodules ~/servidor/plataforma.git   # clonar e inicializar todo\ngit submodule update --init --recursive                    # si ya clonaste sin la opción\n# --recursive entra también en los submódulos de los submódulos"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/moneda.git\ngit clone -q ~/servidor/moneda.git ~/tmp-moneda 2>/dev/null\ncd ~/tmp-moneda\nfecha '2026-09-01 10:00'\ncommit_archivo clp.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\ngit push -q origin main\ngit init -q --bare ~/servidor/pagos.git\ngit clone -q ~/servidor/pagos.git ~/tmp-pagos 2>/dev/null\ncd ~/tmp-pagos\nfecha '2026-09-02 10:00'\ncommit_archivo pago.js 'import { clp } from \"./vendor/moneda/clp.js\";' 'Crea el módulo de pagos'\ngit submodule add -q ../moneda.git vendor/moneda\ngit commit -q -m 'Agrega el submódulo moneda'\ngit push -q origin main\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/plataforma.git\ngit clone -q ~/servidor/plataforma.git ~/tmp-plataforma 2>/dev/null\ncd ~/tmp-plataforma\nfecha '2026-09-03 10:00'\ncommit_archivo README.md '# Plataforma Tienda Austral' 'Primer commit'\ngit submodule add -q ../pagos.git libs/pagos\ngit commit -q -m 'Agrega el submódulo libs/pagos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-moneda ~/tmp-pagos ~/tmp-plataforma\nyo",
+     "cwd": "",
+     "code": "git clone --recurse-submodules ~/servidor/plataforma.git plataforma\ncd plataforma\ngit submodule status --recursive\ncat libs/pagos/.gitmodules"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Prefijo en `git submodule status`",
+      "Significado",
+      "Qué hacer"
+     ],
+     "rows": [
+      [
+       "(espacio)",
+       "Inicializado y en el commit que registra el superproyecto",
+       "Nada"
+      ],
+      [
+       "`-`",
+       "No inicializado (carpeta vacía)",
+       "`git submodule update --init`"
+      ],
+      [
+       "`+`",
+       "El commit actual del submódulo no coincide con el registrado en el index del superproyecto",
+       "Confirmarlo (`git add` + commit) o volver con `git submodule update`"
+      ],
+      [
+       "`U`",
+       "El submódulo tiene conflictos de fusión",
+       "Resolver dentro del submódulo y `git add <ruta>`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git config --global submodule.recurse true` hace que `checkout`, `switch`, `pull`, `fetch`, `reset`, `restore`, `grep` y `push` actúen también sobre los submódulos, como si pasaras `--recurse-submodules`. Ojo: `clone` no respeta esta opción; ahí sigues necesitando `--recurse-submodules`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si te preguntan qué guarda el superproyecto de un submódulo, la respuesta es: una entrada en `.gitmodules` (nombre, `path`, `url` y opcionalmente `branch`) y un **gitlink** (modo 160000) con el hash de **un commit**. No guarda sus archivos ni el nombre de una rama."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Superproyecto",
+       "en": "superproject",
+       "def": "Repositorio que contiene uno o más submódulos."
+      },
+      {
+       "term": "Submódulo",
+       "en": "submodule",
+       "def": "Repositorio incluido dentro de otro, en una ruta, fijado a un commit concreto."
+      },
+      {
+       "term": "Gitlink",
+       "en": "gitlink",
+       "def": "Entrada de árbol con modo 160000 que guarda el hash de un commit de otro repositorio."
+      },
+      {
+       "term": ".gitmodules",
+       "en": ".gitmodules",
+       "def": "Archivo versionado del superproyecto con la ruta y la URL de cada submódulo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s14-l3",
+   "title": "Submódulos (II): actualizar, trabajar dentro y problemas típicos",
+   "minutes": 24,
+   "goals": [
+    "Actualizar un submódulo a otra versión y registrar el nuevo puntero en el superproyecto",
+    "Hacer cambios dentro de un submódulo y publicarlos en el orden correcto",
+    "Ejecutar un comando en todos los submódulos con git submodule foreach",
+    "Diagnosticar los errores típicos (carpeta vacía, new commits, not our ref, HEAD separado) y quitar un submódulo por completo"
+   ],
+   "takeaways": [
+    "Actualizar un submódulo son dos pasos: mover el submódulo y confirmar el nuevo gitlink en el superproyecto.",
+    "git submodule update --remote trae la punta de la rama seguida (submodule.<nombre>.branch o el HEAD del remoto); para una versión exacta, haz checkout de la etiqueta dentro del submódulo.",
+    "Antes de editar dentro de un submódulo cámbiate a una rama: en HEAD separado tus commits quedan huérfanos.",
+    "Publica primero el submódulo y después el superproyecto: push --recurse-submodules=on-demand (o check para solo verificar).",
+    "Quitar un submódulo: git submodule deinit, git rm y borrar .git/modules/<ruta>."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un submódulo pasa por varios estados, y casi todos los problemas del día a día se explican con este diagrama. La clave: el superproyecto solo «se entera» de que el submódulo cambió cuando confirmas el nuevo gitlink."
+    },
+    {
+     "type": "diagram",
+     "title": "Ciclo de vida de un submódulo visto desde el superproyecto",
+     "mermaid": "stateDiagram-v2\n  [*] --> Registrado: git clone sin recursión\n  Registrado --> Inicializado: git submodule init\n  Inicializado --> Poblado: git submodule update\n  Poblado --> Desfasado: el submódulo se mueve a otro commit\n  Desfasado --> Poblado: git add ruta y commit en el superproyecto\n  Desfasado --> Poblado: git submodule update (vuelve al registrado)\n  Poblado --> Registrado: git submodule deinit"
+    },
+    {
+     "type": "h",
+     "text": "Actualizar a una versión nueva"
+    },
+    {
+     "type": "p",
+     "text": "Hay dos maneras de mover un submódulo. **(1) A lo último de su rama**: `git submodule update --remote [ruta]` hace `fetch` dentro del submódulo y deja su HEAD en la punta de la rama seguida: la de `submodule.<nombre>.branch` si la configuraste, o la que marca el HEAD del remoto. **(2) A una versión exacta**: entras al submódulo, haces `fetch` y `git switch --detach v1.1` (o `git checkout v1.1`). En ambos casos, el superproyecto verá `modified: libs/utiles (new commits)` hasta que hagas `git add libs/utiles` y confirmes."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\n\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null\nautor 'Diego Soto' 'diego@tienda.cl'\ncd ~/tmp-utiles\nfecha '2026-09-08 10:00'\ncommit_archivo fechas.js 'export const hoy = () => new Date();' 'Agrega utilidades de fecha'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-utiles\nyo",
+     "cwd": "tienda",
+     "code": "git submodule status\ngit submodule update --remote\ngit submodule status\ngit status\ngit diff --submodule=log\ngit add libs/utiles\ngit commit -m \"Actualiza utiles\"\ngit submodule status"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Fijar una versión exacta (etiqueta) en vez de «lo último»\ngit -C libs/utiles fetch --tags\ngit -C libs/utiles switch --detach v1.1\ngit add libs/utiles\ngit commit -m \"Actualiza utiles a v1.1\"\n\n# Hacer que update --remote siga otra rama (se guarda en .gitmodules)\ngit submodule set-branch --branch estable libs/utiles\n\n# Tus compañeros, después de git pull:\ngit submodule update --init --recursive"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git pull` en el superproyecto actualiza el **gitlink**, pero no mueve el submódulo: después de hacer pull verás `+` en `git submodule status` hasta que ejecutes `git submodule update`. Si en ese estado haces `git commit -a`, ¡confirmarás el puntero viejo y desharás la actualización de tu compañero! Usa `git submodule update` después de cada pull, o `submodule.recurse true`."
+    },
+    {
+     "type": "h",
+     "text": "Trabajar dentro de un submódulo"
+    },
+    {
+     "type": "p",
+     "text": "El submódulo es un repositorio completo: puedes entrar con `cd`, crear ramas, hacer commits y push. La trampa es que, después de `update`, está en **HEAD separado**. Si confirmas ahí y luego te cambias de rama, Git avisa `Warning: you are leaving 1 commit behind, not connected to any of your branches` y tu arreglo queda huérfano (se recupera con el reflog, s10). La regla: **primero `git switch <rama>`, después editar**."
+    },
+    {
+     "type": "diagram",
+     "title": "El error clásico: publicar el superproyecto y olvidar el submódulo",
+     "mermaid": "sequenceDiagram\n  participant Ana\n  participant U as utiles.git\n  participant T as tienda.git\n  participant Diego\n  Ana->>Ana: commit c9f1 dentro de libs/utiles\n  Ana->>Ana: commit en tienda con gitlink hacia c9f1\n  Ana->>T: git push (solo la tienda)\n  Diego->>T: git pull\n  Diego->>U: git submodule update pide c9f1\n  U-->>Diego: not our ref c9f1 (nunca se publicó)"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null",
+     "cwd": "tienda",
+     "code": "cd libs/utiles\ngit status\ngit switch main\nprintf '// Utilidades para RUT chilenos\\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\").toUpperCase();\\n' > rut.js\ngit commit -am \"Acepta dígito verificador k en minúscula\"\ncd ../..\ngit status\ngit add libs/utiles\ngit commit -m \"Actualiza utiles: RUT con k minúscula\"\ngit push --recurse-submodules=check\ngit push --recurse-submodules=on-demand"
+    },
+    {
+     "type": "p",
+     "text": "Con `=check`, Git se niega a publicar: `The following submodule paths contain changes that can not be found on any remote: libs/utiles` y termina con `fatal: Aborting.`. Con `=on-demand` primero hace `Pushing submodule 'libs/utiles'` y luego publica la tienda. Puedes dejarlo fijo con `git config push.recurseSubmodules check` (o `on-demand`)."
+    },
+    {
+     "type": "h",
+     "text": "Comandos para todos los submódulos: foreach"
+    },
+    {
+     "type": "p",
+     "text": "`git submodule foreach <comando>` ejecuta un comando de shell en cada submódulo poblado (con `--recursive`, también en los anidados). Dentro del comando tienes variables: `$name` (nombre en `.gitmodules`), `$sm_path` (ruta), `$displaypath`, `$sha1` (commit registrado en el superproyecto) y `$toplevel` (ruta del superproyecto). Escribe el comando entre comillas simples para que las variables las expanda `foreach` y no tu shell."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nautor 'Ana Pérez' 'ana@tienda.cl'\ngit init -q --bare ~/servidor/graficos.git\ngit clone -q ~/servidor/graficos.git ~/tmp-graficos 2>/dev/null\ncd ~/tmp-graficos\nfecha '2026-09-02 15:00'\ncommit_archivo barras.js 'export const barras = (datos) => datos.map((d) => \"#\".repeat(d));' 'Gráfico de barras en texto'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-graficos\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\nfecha '2026-09-04 11:00'\ngit submodule add -q ../graficos.git libs/graficos\ngit commit -q -m 'Agrega el submódulo libs/graficos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null",
+     "cwd": "tienda",
+     "code": "git submodule foreach git log --oneline -1\ngit submodule foreach 'echo $name está en $sha1'\n# Quitar libs/graficos por completo\ngit submodule deinit -f libs/graficos\ngit rm libs/graficos\nrm -rf .git/modules/libs/graficos\ngit commit -m \"Quita el submódulo libs/graficos\"\ngit submodule status\ncat .gitmodules"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Síntoma",
+      "Causa",
+      "Solución"
+     ],
+     "rows": [
+      [
+       "La carpeta del submódulo está vacía",
+       "Se clonó sin `--recurse-submodules`",
+       "`git submodule update --init --recursive`"
+      ],
+      [
+       "`modified: libs/x (new commits)` en `git status`",
+       "El submódulo está en otro commit que el registrado",
+       "Si es intencional: `git add libs/x` + commit. Si no (p. ej., tras un pull): `git submodule update`"
+      ],
+      [
+       "`modified: libs/x (modified content)` o `(untracked content)`",
+       "Hay archivos cambiados dentro del submódulo",
+       "Entra al submódulo y confirma o descarta ahí"
+      ],
+      [
+       "`fatal: remote error: upload-pack: not our ref …` y `Fetched in submodule path '…', but it did not contain …`",
+       "Alguien publicó el superproyecto apuntando a un commit del submódulo que no publicó",
+       "Quien hizo el commit debe hacer push del submódulo; prevenir con `push.recurseSubmodules check`"
+      ],
+      [
+       "`fatal: transport 'file' not allowed`",
+       "URL local y `protocol.file.allow=user` (Git ≥ 2.38.1)",
+       "`git -c protocol.file.allow=always submodule update --init` si confías en el origen"
+      ],
+      [
+       "`CONFLICT (submodule): Merge conflict in libs/x`",
+       "Dos ramas movieron el gitlink a commits distintos",
+       "Entra al submódulo, fusiona o elige el commit correcto, vuelve, `git add libs/x` y commit"
+      ],
+      [
+       "Cambió la URL del submódulo en `.gitmodules`",
+       "Tu `.git/config` conserva la URL antigua",
+       "`git submodule sync --recursive` y luego `git submodule update`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Configuración recomendada si trabajas a diario con submódulos: `git config --global diff.submodule log` (los diffs muestran la lista de commits en vez de dos hashes), `git config --global status.submoduleSummary true` (resumen en `git status`) y, por repositorio, `git config push.recurseSubmodules check`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Para quitar un submódulo sin dejar rastros: `git submodule deinit -f <ruta>` (limpia `.git/config` y vacía la carpeta), `git rm <ruta>` (quita el gitlink y su sección de `.gitmodules`), `rm -rf .git/modules/<ruta>` (repositorio interno) y commit. Solo `git rm` deja la sección en `.git/config` y el repositorio en `.git/modules`."
+    }
+   ]
+  },
+  {
+   "id": "s14-l4",
+   "title": "git subtree y cómo elegir entre submódulo, subtree o paquete",
+   "minutes": 20,
+   "goals": [
+    "Incorporar un repositorio externo en una subcarpeta con git subtree add --squash",
+    "Actualizar un subtree con git subtree pull y devolver cambios con git subtree split o push",
+    "Elegir entre submódulo, subtree, gestor de paquetes o monorepo según el caso"
+   ],
+   "takeaways": [
+    "Con subtree, el código externo se guarda como archivos normales de tu repositorio: quien clona no necesita saber nada especial.",
+    "--squash resume la historia externa en un commit; úsalo siempre o nunca, pero de forma consistente en add y pull.",
+    "git subtree split extrae la historia de una carpeta como una rama independiente, y subtree push la publica en otro repositorio.",
+    "git subtree vive en contrib: Apple Git lo incluye; en otras instalaciones compruébalo con git subtree -h.",
+    "Si solo consumes una librería versionada, un gestor de paquetes (npm, pip, Maven…) suele ser mejor que submódulos o subtrees."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los submódulos son precisos, pero exigen disciplina a todo el equipo: clonar con recursión, actualizar después de cada pull, publicar en orden. **git subtree** toma el camino opuesto: fusiona el contenido de otro repositorio **dentro de una subcarpeta** de tu proyecto, como archivos normales. Como dice su documentación, no necesita construcciones especiales (ni `.gitmodules` ni gitlinks) y no obliga a los usuarios de tu repositorio a hacer nada especial ni a entender cómo funciona."
+    },
+    {
+     "type": "p",
+     "text": "`git subtree` no es parte del núcleo de Git: es un script de la carpeta `contrib/`. Apple Git lo trae (lo usamos en la terminal de práctica con Git 2.50.1 de macOS); en otras instalaciones compruébalo con `git subtree -h`. En algunas distribuciones de Linux viene en un paquete aparte (en Fedora, por ejemplo, `git-subtree`)."
+    },
+    {
+     "type": "diagram",
+     "title": "subtree add y subtree pull con --squash",
+     "mermaid": "gitGraph\n  commit id: \"Primer commit\"\n  commit id: \"Agrega app.js\"\n  branch estilos-squash\n  commit id: \"Squashed content from a27273c\"\n  checkout main\n  merge estilos-squash id: \"Merge as vendor/estilos\"\n  commit id: \"Agrega hover\"\n  checkout estilos-squash\n  commit id: \"Squashed changes a27273c..9ca091c\"\n  checkout main\n  merge estilos-squash id: \"Merge commit\""
+    },
+    {
+     "type": "p",
+     "text": "Lectura del diagrama: con `--squash`, `subtree add` crea un commit que resume toda la historia de la librería (en realidad no tiene padre: es una raíz aparte) y lo fusiona en tu rama. Cada `subtree pull --squash` crea otro commit resumen, hijo del anterior, con los cambios nuevos, y lo vuelve a fusionar. Los commits resumen llevan los *trailers* `git-subtree-dir` y `git-subtree-split`, que subtree usa después para saber hasta dónde había sincronizado."
+    },
+    {
+     "type": "h",
+     "text": "Añadir y actualizar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/estilos.git\ngit clone -q ~/servidor/estilos.git ~/tmp-estilos 2>/dev/null\ncd ~/tmp-estilos\nfecha '2026-09-01 10:00'\ncommit_archivo base.css 'body { margin: 0; font-family: system-ui; }' 'Estilos base'\nfecha '2026-09-02 10:00'\ncommit_archivo botones.css '.btn { padding: 8px; }' 'Agrega botones'\nfecha '2026-09-03 10:00'\ncommit_archivo colores.css ':root { --primario: #0033a0; }' 'Agrega paleta de colores'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/tmp-estilos\nnuevo_repo ~/web\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<link rel=\"stylesheet\" href=\"vendor/estilos/base.css\">' 'Primer commit'\nfecha '2026-09-05 11:00'\ncommit_archivo app.js 'console.log(\"Tienda Austral\");' 'Agrega app.js'",
+     "cwd": "web",
+     "code": "git subtree add --prefix=vendor/estilos ~/servidor/estilos.git main --squash\ngit log --oneline --graph\nls vendor/estilos\ngit ls-tree HEAD vendor/\ngit log -1 --format=%B HEAD^2"
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en `git ls-tree`: `vendor/estilos` es un árbol normal (`040000 tree`), no un gitlink (`160000`). Y `HEAD^2` (el segundo padre del merge) es el commit resumen con sus trailers. Ahora, una actualización de la librería y el camino de vuelta: modificas algo dentro de `vendor/estilos`, extraes con `split` la historia de esa carpeta y la publicas con `push` en una rama de la librería, lista para un PR. Como `subtree pull` termina con un merge, Git abre el editor con el mensaje propuesto (`Merge commit '…'`): guárdalo tal cual, o pasa `-m \"…\"` para escribirlo directamente."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/estilos.git\ngit clone -q ~/servidor/estilos.git ~/tmp-estilos 2>/dev/null\ncd ~/tmp-estilos\nfecha '2026-09-01 10:00'\ncommit_archivo base.css 'body { margin: 0; font-family: system-ui; }' 'Estilos base'\nfecha '2026-09-02 10:00'\ncommit_archivo botones.css '.btn { padding: 8px; }' 'Agrega botones'\nfecha '2026-09-03 10:00'\ncommit_archivo colores.css ':root { --primario: #0033a0; }' 'Agrega paleta de colores'\ngit push -q origin main\ncd ~\nyo\nnuevo_repo ~/web\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<link rel=\"stylesheet\" href=\"vendor/estilos/base.css\">' 'Primer commit'\nfecha '2026-09-05 11:00'\ncommit_archivo app.js 'console.log(\"Tienda Austral\");' 'Agrega app.js'\ngit subtree add -q --prefix=vendor/estilos ~/servidor/estilos.git main --squash\nautor 'Camila Rojas' 'camila@tienda.cl'\ncd ~/tmp-estilos\nfecha '2026-09-10 10:00'\ncommit_archivo botones.css '.btn { padding: 8px 16px; border-radius: 4px; }' 'Botones redondeados'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/tmp-estilos\ncd ~/web",
+     "cwd": "web",
+     "code": "git subtree pull --prefix=vendor/estilos ~/servidor/estilos.git main --squash\ncat vendor/estilos/botones.css\necho '.btn:hover { opacity: .8; }' >> vendor/estilos/botones.css\ngit commit -am \"Agrega hover a los botones\"\ngit subtree split --prefix=vendor/estilos -b solo-estilos\ngit log --oneline solo-estilos\ngit subtree push --prefix=vendor/estilos ~/servidor/estilos.git mejora-hover\ngit -C ~/servidor/estilos.git log --oneline --all"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git subtree add --prefix=<carpeta> <repo> <ref> [--squash]`: incorpora el repositorio por primera vez. La carpeta no debe existir y el árbol de trabajo debe estar limpio (`fatal: working tree has modifications.  Cannot add.`).",
+      "`git subtree pull --prefix=<carpeta> <repo> <ref> [--squash] [-m <mensaje>]`: trae y fusiona los cambios nuevos (sin `-m`, abre el editor para el mensaje del merge).",
+      "`git subtree split --prefix=<carpeta> [-b <rama>]`: genera una historia sintética solo con esa carpeta (sirve también para **sacar una carpeta de un monorepo** a su propio repositorio).",
+      "`git subtree push --prefix=<carpeta> <repo> <rama>`: hace `split` y publica el resultado en el repositorio de la librería."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No mezcles modos: si añadiste con `--squash`, usa `--squash` en cada `pull` (y al revés). Y recuerda que con subtree nada impide que alguien edite `vendor/estilos` y se olvide de devolver el cambio a la librería: acuerden en el equipo quién la mantiene."
+    },
+    {
+     "type": "h",
+     "text": "¿Submódulo, subtree, paquete o monorepo?"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Aspecto",
+      "Submódulo",
+      "Subtree",
+      "Gestor de paquetes",
+      "Monorepo"
+     ],
+     "rows": [
+      [
+       "Qué guarda tu repo",
+       "Un puntero (gitlink) a un commit",
+       "Los archivos, como propios",
+       "Un número de versión en un manifiesto (`package.json`…)",
+       "Todo el código de todos los proyectos"
+      ],
+      [
+       "Al clonar",
+       "Hay que inicializar (`--recurse-submodules`)",
+       "Nada especial",
+       "Instalar dependencias",
+       "Nada especial (pero puede ser enorme)"
+      ],
+      [
+       "Actualizar",
+       "Mover el submódulo + commit del puntero",
+       "`git subtree pull`",
+       "Cambiar la versión",
+       "Un solo commit puede cambiar varios proyectos"
+      ],
+      [
+       "Devolver cambios",
+       "Commit y push dentro del submódulo",
+       "`git subtree push` / `split`",
+       "Publicar una versión nueva de la librería",
+       "Directo"
+      ],
+      [
+       "Ideal para",
+       "Fijar versiones exactas de otro repo, partes con permisos distintos",
+       "Código externo que el equipo usa y a veces retoca, sin fricción al clonar",
+       "Librerías con versiones publicadas",
+       "Proyectos que cambian juntos y comparten herramientas"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Una guía rápida para decidir",
+     "mermaid": "flowchart TD\n  A[\"Necesito código de otro proyecto\"] --> B{\"¿Se publica como paquete con versiones?\"}\n  B -->|\"Sí\"| P[\"Gestor de paquetes\"]\n  B -->|\"No\"| C{\"¿Los dos proyectos cambian juntos y son del mismo equipo?\"}\n  C -->|\"Sí\"| M[\"Monorepo (una sola historia)\"]\n  C -->|\"No\"| D{\"¿Quien clona debe recibir los archivos sin pasos extra?\"}\n  D -->|\"Sí\"| S[\"git subtree\"]\n  D -->|\"No: quiero fijar un commit exacto y mantener historias separadas\"| SM[\"Submódulo\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Diferencia clave: un submódulo guarda **una referencia** a un commit de otro repositorio (modo 160000); un subtree guarda **el contenido** (árboles y blobs normales) y, con `--squash`, un commit resumen de la historia externa. Por eso quien clona un proyecto con subtree no necesita ningún comando extra."
+    }
+   ]
+  },
+  {
+   "id": "s14-l5",
+   "title": "Clones superficiales y parciales: descargar menos",
+   "minutes": 22,
+   "goals": [
+    "Crear clones superficiales con --depth, --shallow-since y --shallow-exclude y completarlos con fetch --deepen o --unshallow",
+    "Crear clones parciales sin blobs (--filter=blob:none) y explicar la descarga bajo demanda",
+    "Elegir el tipo de clon adecuado para el desarrollo diario y para CI"
+   ],
+   "takeaways": [
+    "Un clon superficial recorta la historia (commits); uno parcial recorta objetos (blobs o árboles) pero conserva toda la historia.",
+    "Con rutas locales Git ignora --depth y --filter: usa file:// para practicarlos.",
+    "--depth implica --single-branch: para traer otras ramas después, `git remote set-branches origin '*'` y fetch.",
+    "Un clon parcial necesita que el servidor lo permita (uploadpack.allowFilter) y conexión para descargar lo que falta.",
+    "Guía de GitHub: blobless para desarrollar; superficial o treeless solo para builds desechables."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un `git clone` normal descarga **todo**: cada commit, cada árbol y cada versión de cada archivo desde el primer día. En un repositorio con 15 años de historia o con binarios pesados eso puede significar gigabytes y muchos minutos. Hay dos estrategias para descargar menos, y conviene no confundirlas:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Clon superficial** (*shallow*, `--depth`): trae solo los últimos N commits, con todos sus archivos. La historia queda cortada.",
+      "**Clon parcial** (*partial*, `--filter`): trae **toda** la historia de commits, pero omite objetos (el contenido de los archivos, o también los árboles) y los descarga cuando hacen falta."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué descarga cada tipo de clon",
+     "mermaid": "flowchart LR\n  subgraph F[\"Completo\"]\n    F1[\"todos los commits\"] --- F2[\"todos los árboles\"] --- F3[\"todos los blobs\"]\n  end\n  subgraph S[\"Superficial --depth 1\"]\n    S1[\"último commit\"] --- S2[\"sus árboles\"] --- S3[\"sus blobs\"]\n  end\n  subgraph B[\"Parcial --filter=blob:none\"]\n    B1[\"todos los commits\"] --- B2[\"todos los árboles\"] -.- B3[\"blobs bajo demanda\"]\n  end\n  subgraph T[\"Parcial --filter=tree:0\"]\n    T1[\"todos los commits\"] -.- T2[\"árboles y blobs bajo demanda\"]\n  end"
+    },
+    {
+     "type": "h",
+     "text": "Clones superficiales"
+    },
+    {
+     "type": "p",
+     "text": "En la terminal de práctica el «servidor» es una carpeta local. Con una ruta normal, `git clone` usa una optimización local (copia o enlaza `.git/objects`) y **ignora** `--depth` con un aviso. Para usar el protocolo real hay que escribir la URL `file://` con la ruta absoluta: `file://$HOME/servidor/tienda.git` (`file://~/…` no funciona)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nnuevo_repo ~/tmp-hist\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-06-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-06-15 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nautor 'Diego Soto' 'diego@tienda.cl'\nfecha '2026-07-01 10:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Calcula precios con IVA'\ngit tag -a v1.0 -m 'Versión 1.0'\nfecha '2026-07-15 10:00'\nanexar carrito.js 'export const vaciar = () => carrito.splice(0);'\ngit commit -q -am 'Permite vaciar el carrito'\nautor 'Camila Rojas' 'camila@tienda.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo cupones.js 'export const descuento = (t, p) => t * (1 - p / 100);' 'Agrega cupones'\ngit switch -q -c release/2.0\nfecha '2026-08-05 10:00'\ncommit_archivo VERSION '2.0.0-rc1' 'Prepara la versión 2.0'\ngit switch -q main\nfecha '2026-08-20 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Agrega regiones de despacho'\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-09-01 10:00'\nanexar despacho.js 'export const gratisDesde = 50000;'\ngit commit -q -am 'Despacho gratis sobre $50.000'\nfecha '2026-09-10 10:00'\nanexar index.html '<p>Envíos a todo Chile</p>'\ngit commit -q -am 'Anuncia envíos a todo Chile'\ncd ~\ngit clone -q --bare ~/tmp-hist ~/servidor/tienda.git\nrm -rf ~/tmp-hist\nyo",
+     "cwd": "",
+     "code": "git clone --depth 1 ~/servidor/tienda.git local\ngit clone --depth 1 file://$HOME/servidor/tienda.git ci\ncd ci\ngit log --oneline --decorate\ngit rev-parse --is-shallow-repository\ncat .git/shallow\ngit branch -r\ngit config --get-all remote.origin.fetch"
+    },
+    {
+     "type": "p",
+     "text": "Salidas a reconocer: `warning: --depth is ignored in local clones; use file:// instead.`; en el log, el commit frontera aparece como `(grafted, HEAD -> main, …)`: Git «injerta» ahí el final de la historia. La lista de commits frontera se guarda en `.git/shallow`. Y como `--depth` implica `--single-branch`, solo existe `origin/main` y el refspec quedó limitado a esa rama."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nnuevo_repo ~/tmp-hist\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-06-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-06-15 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nautor 'Diego Soto' 'diego@tienda.cl'\nfecha '2026-07-01 10:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Calcula precios con IVA'\ngit tag -a v1.0 -m 'Versión 1.0'\nfecha '2026-07-15 10:00'\nanexar carrito.js 'export const vaciar = () => carrito.splice(0);'\ngit commit -q -am 'Permite vaciar el carrito'\nautor 'Camila Rojas' 'camila@tienda.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo cupones.js 'export const descuento = (t, p) => t * (1 - p / 100);' 'Agrega cupones'\ngit switch -q -c release/2.0\nfecha '2026-08-05 10:00'\ncommit_archivo VERSION '2.0.0-rc1' 'Prepara la versión 2.0'\ngit switch -q main\nfecha '2026-08-20 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Agrega regiones de despacho'\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-09-01 10:00'\nanexar despacho.js 'export const gratisDesde = 50000;'\ngit commit -q -am 'Despacho gratis sobre $50.000'\nfecha '2026-09-10 10:00'\nanexar index.html '<p>Envíos a todo Chile</p>'\ngit commit -q -am 'Anuncia envíos a todo Chile'\ncd ~\ngit clone -q --bare ~/tmp-hist ~/servidor/tienda.git\nrm -rf ~/tmp-hist\nyo\ngit clone -q --depth 1 file://$HOME/servidor/tienda.git ~/tienda",
+     "cwd": "tienda",
+     "code": "git log --oneline\ngit fetch --deepen=2\ngit log --oneline\ngit remote set-branches origin '*'\ngit fetch --unshallow\ngit rev-parse --is-shallow-repository\ngit branch -r\ngit fetch --unshallow"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git clone --depth N`",
+       "Solo los últimos N commits de la rama (implica `--single-branch`; `--no-single-branch` trae la punta de todas)"
+      ],
+      [
+       "`git clone --shallow-since=2026-08-01`",
+       "Historia posterior a una fecha"
+      ],
+      [
+       "`git clone --shallow-exclude=v1.0`",
+       "Excluye lo alcanzable desde una rama o etiqueta"
+      ],
+      [
+       "`git fetch --deepen=N`",
+       "Agrega N commits más desde la frontera actual"
+      ],
+      [
+       "`git fetch --depth=N`",
+       "Deja la historia a N commits desde la punta (puede alargar o acortar)"
+      ],
+      [
+       "`git fetch --unshallow`",
+       "Convierte el clon en completo (si ya lo es: `fatal: --unshallow on a complete repository does not make sense`)"
+      ],
+      [
+       "`git clone --revision=<ref> --depth 1`",
+       "Desde Git 2.49: solo ese commit, sin ramas, con HEAD separado"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un clon superficial tiene límites: `git log` y `git blame` se detienen en la frontera, `git merge-base` puede no encontrar el ancestro común y `git describe` puede fallar si la etiqueta quedó fuera. Además, según el blog de GitHub, los `fetch` posteriores desde un clon superficial son costosos para el servidor: úsalos para builds que se tiran después, no como tu copia de trabajo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# GitHub Actions: actions/checkout clona por defecto con fetch-depth: 1\n- uses: actions/checkout@v7\n  with:\n    fetch-depth: 0   # 0 = toda la historia, todas las ramas y etiquetas (necesario para git describe, changelogs…)"
+    },
+    {
+     "type": "h",
+     "text": "Clones parciales"
+    },
+    {
+     "type": "p",
+     "text": "Con `--filter=<filtro>` el servidor omite objetos y tu repositorio queda marcado como **promisor**: el remoto «promete» entregar lo que falte. Cuando un comando necesita un objeto ausente (un `checkout`, un `git show` de una versión antigua, un `blame`), Git lo descarga en ese momento (*lazy fetch*). Los filtros más usados: `blob:none` (sin contenido de archivos), `blob:limit=1m` (sin archivos de 1 MiB o más) y `tree:0` (sin árboles ni blobs)."
+    },
+    {
+     "type": "p",
+     "text": "El servidor debe aceptar filtros. GitHub y GitLab lo hacen; en un servidor propio hay que activar `uploadpack.allowFilter`. Sin eso, Git avisa `warning: filtering not recognized by server, ignoring` y hace un clon completo. En la demo, `mono.git` lo tiene activado y `sin-filtro.git` no."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo\ngit clone -q --bare ~/servidor/mono.git ~/servidor/sin-filtro.git",
+     "cwd": "",
+     "code": "git clone --filter=blob:none file://$HOME/servidor/sin-filtro.git prueba\ngit clone --filter=blob:none file://$HOME/servidor/mono.git mono\ncd mono\ngit config --get remote.origin.promisor\ngit config --get remote.origin.partialclonefilter\ngit rev-list --objects --all --missing=print\ngit log -p --oneline -- servicios/envios\ngit rev-list --objects --all --missing=print"
+    },
+    {
+     "type": "p",
+     "text": "`git rev-list --objects --all --missing=print` lista todos los objetos alcanzables y marca con `?` los que **no** están en tu disco. Tras el clon, faltan los blobs de las versiones antiguas; después de `git log -p -- servicios/envios` (que necesita comparar versiones), los blobs de esa carpeta ya se descargaron y desaparecen de la lista de `?`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo de clon",
+      "Comando",
+      "Costo después",
+      "Recomendado para"
+     ],
+     "rows": [
+      [
+       "Completo",
+       "`git clone <url>`",
+       "Ninguno",
+       "Repos de tamaño normal"
+      ],
+      [
+       "Sin blobs (blobless)",
+       "`--filter=blob:none`",
+       "Descarga contenido al hacer checkout, blame o diff de versiones antiguas",
+       "Desarrolladores en repos grandes (la opción parcial más usada)"
+      ],
+      [
+       "Sin árboles (treeless)",
+       "`--filter=tree:0`",
+       "`git log -- ruta` y similares descargan árboles casi por cada commit",
+       "Builds de CI desechables; GitHub desaconseja usarlo para trabajo diario"
+      ],
+      [
+       "Superficial",
+       "`--depth 1`",
+       "Fetch posteriores caros; historia cortada",
+       "Builds de una sola vez"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Un clon parcial necesita red: si estás sin conexión y un comando pide un objeto que falta, fallará. Si cambiaste de idea y quieres todo: `git config --unset remote.origin.partialclonefilter` y luego `git fetch --refetch`, que vuelve a pedir todos los objetos como haría un clon nuevo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "No confundas: `--depth` corta **commits** (historia incompleta, `grafted`); `--filter=blob:none` corta **objetos** pero mantiene toda la historia (log completo, contenido bajo demanda). Y ambos se ignoran con rutas locales: hace falta `file://` o un servidor real."
+    }
+   ]
+  },
+  {
+   "id": "s14-l6",
+   "title": "sparse-checkout: trabajar solo con las carpetas que necesitas",
+   "minutes": 18,
+   "goals": [
+    "Limitar el directorio de trabajo a ciertas carpetas con git sparse-checkout set y add en modo cono",
+    "Combinar clon parcial y sparse-checkout (--filter=blob:none --sparse) para un monorepo grande",
+    "Volver al checkout completo con git sparse-checkout disable"
+   ],
+   "takeaways": [
+    "sparse-checkout decide qué archivos se escriben en tu disco; el repositorio, el index y los commits siguen completos.",
+    "El modo cono (predeterminado desde Git 2.37) trabaja con carpetas: incluye la raíz, los archivos de las carpetas padre y todo lo que hay dentro de las carpetas elegidas.",
+    "Los archivos fuera del cono llevan el bit skip-worktree (S en git ls-files -t) y git status informa el porcentaje presente.",
+    "--filter=blob:none --sparse evita descargar y escribir lo que no vas a tocar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En un monorepo (varias aplicaciones y servicios en un solo repositorio), tener 200 000 archivos en el disco vuelve lentos `git status`, tu editor y tu buscador, aunque solo trabajes en una carpeta. **sparse-checkout** limita qué archivos del commit se materializan en tu directorio de trabajo. No borra nada del repositorio: es solo una «vista» parcial."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué incluye git sparse-checkout set apps/web (modo cono)",
+     "mermaid": "flowchart TD\n  R[\"raíz: README.md, package.json (incluidos siempre)\"] --> A[\"apps/: README.md (incluido, carpeta padre)\"]\n  R --> S[\"servicios/ (fuera)\"]\n  R --> D[\"docs/ (fuera)\"]\n  A --> W[\"apps/web/ (incluido completo, a cualquier profundidad)\"]\n  A --> M[\"apps/admin/ (fuera)\"]"
+    },
+    {
+     "type": "p",
+     "text": "Esa es la regla del **modo cono** (*cone mode*): al elegir `A/B/C` se incluyen todos los archivos de la raíz, los archivos que cuelgan **directamente** de `A/` y de `A/B/`, y **todo** lo que hay bajo `A/B/C/`. Desde Git 2.37 es el modo predeterminado; el modo antiguo con patrones estilo `.gitignore` (`--no-cone`) está obsoleto: es lento y confuso."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo\ngit clone -q ~/servidor/mono.git ~/mono",
+     "cwd": "mono",
+     "code": "tree\ngit sparse-checkout set apps/web\ntree\ngit sparse-checkout list\ncat .git/info/sparse-checkout\ngit status\ngit ls-files -t"
+    },
+    {
+     "type": "p",
+     "text": "`git status` dice `You are in a sparse checkout with 56% of tracked files present.`: los otros archivos siguen en el index y en los commits, marcados con el bit **skip-worktree** (`S` en `git ls-files -t`, frente a `H` de los presentes). El archivo `.git/info/sparse-checkout` guarda los patrones que Git genera a partir de tus carpetas; no lo edites a mano."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo\ngit clone -q ~/servidor/mono.git ~/mono\ncd ~/mono\ngit sparse-checkout set apps/web",
+     "cwd": "mono",
+     "code": "git sparse-checkout add servicios/pagos\ngit sparse-checkout list\necho '// Integración Webpay Plus' >> servicios/pagos/pago.go\ngit commit -am \"Documenta la integración con Webpay\"\ngit show --stat HEAD\ngit sparse-checkout disable\ntree"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git sparse-checkout set <carpeta>…`: activa sparse-checkout (si no lo estaba) y **reemplaza** la lista de carpetas.",
+      "`git sparse-checkout add <carpeta>…`: **agrega** carpetas a la lista.",
+      "`git sparse-checkout list`: muestra las carpetas actuales.",
+      "`git sparse-checkout reapply`: vuelve a aplicar las reglas (por ejemplo, si un merge dejó archivos fuera del cono en el disco).",
+      "`git sparse-checkout disable`: vuelve a escribir todos los archivos y desactiva la función.",
+      "`git sparse-checkout init` está obsoleto: usa `set`."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "La combinación ganadora para monorepos"
+    },
+    {
+     "type": "p",
+     "text": "sparse-checkout ahorra disco y tiempo en tu directorio de trabajo, pero un clon normal igual descarga todos los objetos. Si lo combinas con un clon parcial, Git solo descarga los blobs de las carpetas de tu cono: `git clone --filter=blob:none --sparse` empieza con los archivos de la raíz y cada `set`/`add` trae, en un lote, solo lo necesario. Es exactamente lo que hace `scalar clone` (lección 7)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo",
+     "cwd": "",
+     "code": "git clone --filter=blob:none --sparse file://$HOME/servidor/mono.git mono\ncd mono\nls\ngit sparse-checkout set servicios/pagos\ntree\ngit rev-list --objects --all --missing=print"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No «limpies» un monorepo borrando carpetas con `rm -r`: Git lo interpretará como archivos eliminados y un `git commit -a` los borraría del proyecto para todos. Para no verlos, usa sparse-checkout. Tampoco confundas: `.gitignore` es para archivos **sin seguimiento**; sparse-checkout, para archivos **versionados** que no quieres en el disco."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para repositorios gigantes existe además el *sparse index* (`git sparse-checkout set --sparse-index …`), que reduce el propio index a las carpetas del cono. La documentación lo sigue marcando como experimental."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda los tres «sparse/parcial»: `sparse-checkout` limita **el directorio de trabajo**; `--filter` (clon parcial) limita **los objetos descargados**; `--depth` (clon superficial) limita **los commits**. Se pueden combinar."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Modo cono",
+       "en": "cone mode",
+       "def": "Modo de sparse-checkout basado en carpetas; el predeterminado desde Git 2.37."
+      },
+      {
+       "term": "skip-worktree",
+       "en": "skip-worktree bit",
+       "def": "Marca en el index de los archivos que Git no escribe en el disco por estar fuera del sparse-checkout."
+      },
+      {
+       "term": "Monorepo",
+       "en": "monorepo",
+       "def": "Un único repositorio con varios proyectos o servicios que evolucionan juntos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s14-l7",
+   "title": "Repos enormes y monorepos: Git LFS, mantenimiento y Scalar",
+   "minutes": 20,
+   "goals": [
+    "Describir cómo Git LFS reemplaza archivos grandes por punteros y configurarlo con git lfs track",
+    "Ejecutar tareas de mantenimiento con git maintenance run y explicar qué hacen register y start",
+    "Enumerar lo que configura Scalar y cuándo conviene usarlo",
+    "Evaluar ventajas y costos de un monorepo frente a varios repositorios"
+   ],
+   "takeaways": [
+    "Git guarda cada versión completa de cada archivo: un binario grande que cambia seguido infla el repositorio para siempre.",
+    "Git LFS guarda en Git un puntero de texto (versión, oid sha256 y tamaño) y deja el contenido en un servidor LFS; se instala aparte.",
+    "git maintenance run ejecuta tareas (gc, commit-graph, loose-objects, incremental-repack…); register y start las programan en segundo plano.",
+    "Scalar, incluido con Git desde 2.38, configura de una vez clon parcial, sparse-checkout, mantenimiento y opciones de rendimiento.",
+    "Un monorepo facilita cambios atómicos entre proyectos, pero exige herramientas: sparse-checkout, clon parcial, CODEOWNERS y CI selectiva."
+   ],
+   "blocks": [
+    {
+     "type": "diagram",
+     "title": "Cada problema de tamaño tiene su herramienta",
+     "mermaid": "mindmap\n  root((Repos grandes))\n    Historia larga\n      Clon superficial\n      Clon parcial\n      commit-graph\n    Muchos archivos\n      sparse-checkout\n      fsmonitor\n      untrackedCache\n    Archivos grandes\n      Git LFS\n      blob:limit\n    Muchos equipos\n      Monorepo\n      Submódulos\n      CODEOWNERS"
+    },
+    {
+     "type": "h",
+     "text": "Archivos grandes: Git LFS"
+    },
+    {
+     "type": "p",
+     "text": "Git comprime muy bien el texto y guarda las versiones parecidas como diferencias (deltas), pero con binarios (videos, diseños `.psd`, modelos, datasets) cada versión ocupa casi su tamaño completo, y como la historia es inmutable, **ese peso queda para siempre** en cada clon. GitHub avisa con archivos de más de 50 MiB y **bloquea** los de más de 100 MiB. **Git LFS** (*Large File Storage*) es una extensión de código abierto que se instala aparte: en Git queda un pequeño archivo puntero y el contenido real va a un servidor LFS (GitHub, GitLab y Bitbucket lo ofrecen)."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo viaja un archivo con Git LFS",
+     "mermaid": "sequenceDiagram\n  participant Tú\n  participant G as Repositorio Git\n  participant S as Servidor LFS\n  Tú->>G: git add logo.psd (el filtro clean de LFS lo intercepta)\n  Note over G: se guarda un puntero de texto con version, oid y size\n  Tú->>S: git push sube el contenido real\n  Tú->>G: git push sube los commits con el puntero\n  Note over Tú: al hacer checkout, el filtro smudge descarga el archivo real"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git lfs install                 # una vez por usuario: registra los filtros de LFS\ngit lfs track \"*.psd\"            # escribe en .gitattributes\ncat .gitattributes\n*.psd filter=lfs diff=lfs merge=lfs -text\ngit add .gitattributes diseño/logo.psd\ngit commit -m \"Agrega el logo en PSD\"\ngit push\n\n# Lo que Git guarda realmente para logo.psd (el puntero):\nversion https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 12345"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git lfs track` solo afecta a lo que agregues **desde ahora**: los binarios que ya están en la historia siguen ahí. Para convertirlos existe `git lfs migrate import --include=\"*.psd\"`, que **reescribe la historia** (nuevos hashes, force push, todo el equipo debe volver a clonar; lo verás en s15). Otro error típico: olvidar confirmar `.gitattributes`, con lo que tus compañeros suben el binario sin LFS."
+    },
+    {
+     "type": "h",
+     "text": "Mantenimiento: git maintenance"
+    },
+    {
+     "type": "p",
+     "text": "Con el uso, un repositorio acumula objetos sueltos, packs pequeños y referencias dispersas. `git gc` (s12) lo ordena todo de una vez, pero en repos grandes es pesado. `git maintenance` divide el trabajo en **tareas** pequeñas que se pueden ejecutar a mano o programar: `gc`, `commit-graph` (acelera `log` y el cálculo de ancestros), `loose-objects`, `incremental-repack`, `pack-refs`, `prefetch` (trae objetos de los remotos en segundo plano a `refs/prefetch/`) y, en Git 2.50, también `reflog-expire`, `worktree-prune` y `rerere-gc`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Calcula precios con IVA'\ncommit_archivo cupones.js 'export const CUPON = 10;' 'Agrega cupones'",
+     "cwd": "tienda",
+     "code": "git count-objects -v\ngit maintenance run --task=commit-graph\nls .git/objects/info/commit-graphs\ngit maintenance run --task=gc\ngit count-objects -v"
+    },
+    {
+     "type": "p",
+     "text": "`git maintenance register` añade el repositorio a la lista `maintenance.repo` de tu configuración global y, en el repositorio, desactiva el mantenimiento automático en primer plano (`maintenance.auto=false`) y fija `maintenance.strategy=incremental`. `git maintenance start` hace lo mismo y además **programa** en el sistema operativo la ejecución periódica (cada hora, día y semana): con `launchctl` en macOS, `cron` o `systemd` en Linux y el Programador de tareas en Windows. `stop` quita la programación y `unregister` saca el repo de la lista (los valores locales `maintenance.auto` y `maintenance.strategy` se quedan, como verás en la demo)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'",
+     "cwd": "tienda",
+     "code": "git maintenance register\ngit config --show-scope --get-regexp maintenance\ngit maintenance unregister\ngit config --show-scope --get-regexp maintenance"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En la terminal de práctica no ejecutes `git maintenance start`: tocaría el programador de tareas del sistema. En tu computador sí es una buena idea para repos grandes que usas a diario (`git maintenance start` dentro del repo; `git maintenance stop` para deshacerlo)."
+    },
+    {
+     "type": "h",
+     "text": "Scalar y otras optimizaciones"
+    },
+    {
+     "type": "p",
+     "text": "**Scalar** nació en Microsoft para repos gigantes y se incluye con Git desde la versión 2.38. Es un ejecutable aparte (`scalar`, no `git scalar`) que aplica de una vez las mejores prácticas: `scalar clone <url>` hace un clon parcial `blob:none` con sparse-checkout en modo cono (solo archivos de la raíz al inicio), deja el worktree en `<carpeta>/src`, registra el repo en el mantenimiento en segundo plano y ajusta opciones como `core.untrackedCache`, `commitGraph.changedPaths`, `index.version=4` o `gc.auto=0` (el mantenimiento programado reemplaza al `gc` automático)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "scalar clone https://github.com/empresa/monorepo.git   # crea monorepo/src\ncd monorepo/src\ngit sparse-checkout set servicios/pagos\nscalar list            # repos registrados\nscalar register        # aplicar Scalar a un repo ya clonado\nscalar reconfigure --all   # reaplicar la configuración tras actualizar Git\n\n# Sin Scalar, a mano:\ngit config core.fsmonitor true       # monitor de archivos integrado (Windows y macOS, desde Git 2.37)\ngit config core.untrackedCache true  # cachea el estado de los archivos sin seguimiento\ngit config feature.manyFiles true    # opciones pensadas para repos con muchísimos archivos"
+    },
+    {
+     "type": "h",
+     "text": "¿Monorepo o varios repositorios?"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Monorepo",
+      "Varios repositorios (polyrepo)"
+     ],
+     "rows": [
+      [
+       "Un cambio que toca web, API y librería es **un solo commit** y un solo PR",
+       "El mismo cambio son varios PR coordinados y versiones publicadas"
+      ],
+      [
+       "Una sola versión de cada dependencia interna; refactorizar es más fácil",
+       "Cada equipo avanza a su ritmo y con sus propias versiones"
+      ],
+      [
+       "Exige herramientas: sparse-checkout, clon parcial, mantenimiento, CI que solo pruebe lo que cambió, `CODEOWNERS` por carpeta",
+       "Permisos por repositorio, CI simple por proyecto"
+      ],
+      [
+       "`git log`, `status` y clones más pesados sin esas herramientas",
+       "Dependencias entre repos: submódulos, subtrees o paquetes"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Asociaciones que se preguntan mucho: archivos binarios grandes → **Git LFS**; muchos archivos y solo trabajas en una carpeta → **sparse-checkout**; historia enorme → **clon parcial** (desarrollo) o **superficial** (CI); todo junto y configurado → **Scalar**; tareas de optimización programadas → **git maintenance start**."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s14-e1",
+   "title": "Revisa la rama de Camila sin tocar tu trabajo a medias",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Estás en `~/tienda`, en la rama `feature/checkout`, con trabajo a medias: `carrito.js` modificado y un archivo nuevo `notas.txt` sin seguimiento. Camila te pide que revises su rama `cupones` y la pruebes en el navegador.",
+    "Sin hacer commit, sin `git stash` y sin cambiarte de rama, crea un **worktree vinculado** en `~/tienda-cupones` con la rama `cupones`. Después revisa con `git worktree list` y con `git branch` (fíjate en el signo `+`).",
+    "Tu carpeta `~/tienda` debe quedar exactamente como estaba."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit switch -q -c cupones\nfecha '2026-09-02 11:00'\ncommit_archivo cupones.js 'export const descuento = (total, pct) => total * (1 - pct / 100);' 'Agrega cupones de descuento'\nfecha '2026-09-02 12:30'\nanexar cupones.js 'export const CUPON_BIENVENIDA = 10;'\ngit commit -q -am 'Agrega cupón de bienvenida'\nyo\ngit switch -q main\ngit switch -q -c feature/checkout\nfecha '2026-09-03 09:00'\ncommit_archivo checkout.js 'export function pagar() {}' 'Esqueleto del checkout'\nanexar carrito.js 'export const agregar = (p) => carrito.push(p); // a medias'\nescribir notas.txt 'pendiente: validar stock antes de pagar'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "~/tienda-cupones es un worktree de este repositorio",
+     "script": "[ -e ~/tienda-cupones ] || falla \"No existe ~/tienda-cupones (usa git worktree add con esa ruta)\"\n[ -f ~/tienda-cupones/.git ] || falla \"~/tienda-cupones no es un worktree vinculado: su .git debería ser un archivo (¿lo clonaste o copiaste?)\"\na=$(cd ~/tienda-cupones && cd \"$(git rev-parse --git-common-dir)\" && pwd -P)\nb=$(cd \"$(git rev-parse --git-common-dir)\" && pwd -P)\n[ \"$a\" = \"$b\" ] || falla \"~/tienda-cupones pertenece a otro repositorio\""
+    },
+    {
+     "name": "El worktree nuevo tiene la rama cupones",
+     "script": "[ \"$(git -C ~/tienda-cupones symbolic-ref -q --short HEAD 2>/dev/null)\" = cupones ] || falla \"En ~/tienda-cupones debería estar la rama cupones (git worktree add <ruta> cupones)\""
+    },
+    {
+     "name": "Tu trabajo a medias sigue intacto en ~/tienda",
+     "script": "en_rama feature/checkout \"~/tienda debería seguir en feature/checkout\"\n[ \"$(git stash list | wc -l | tr -d ' ')\" = 0 ] || falla \"Hay entradas en git stash: este ejercicio se resuelve sin stash (recupéralas con git stash pop)\"\ngrep -qF 'a medias' carrito.js || falla \"Los cambios de carrito.js desaparecieron\"\ngit diff --quiet -- carrito.js && falla \"carrito.js ya no tiene cambios sin confirmar: ¿hiciste commit? Debía quedar tal cual\"\n[ -f notas.txt ] || falla \"notas.txt desapareció\"\n[ \"$(git rev-list --count main..feature/checkout)\" = 1 ] || falla \"feature/checkout tiene commits nuevos: no hacía falta confirmar nada\""
+    }
+   ],
+   "solution": [
+    "git worktree add ../tienda-cupones cupones",
+    "git worktree list"
+   ],
+   "hints": [
+    "Un worktree es otra carpeta conectada al mismo repositorio, con su propia rama activa.",
+    "La forma es `git worktree add <ruta> <rama>`.",
+    "Desde `~/tienda`, la ruta hermana es `../tienda-cupones`: `git worktree add ../tienda-cupones cupones`."
+   ],
+   "explain": "`git worktree add ../tienda-cupones cupones` crea la carpeta, escribe en ella un archivo `.git` (`gitdir: …/tienda/.git/worktrees/tienda-cupones`) y hace checkout de `cupones` con su propio HEAD y su propio index. Como los objetos y las ramas son compartidos, no se descarga ni se copia nada del historial. En `git branch` la rama `cupones` aparece con `+`: está activa en otro worktree y no podrás hacer `git switch cupones` desde `~/tienda` mientras siga ahí. Alternativas peores: `git stash` + `git switch` (te obliga a guardar y recuperar tu trabajo) o un segundo `git clone` (duplica todo el historial y no comparte ramas). Cuando termines la revisión: `git worktree remove ../tienda-cupones`."
+  },
+  {
+   "id": "s14-e2",
+   "title": "La carpeta del submódulo está vacía",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "Clonaste `~/servidor/plataforma.git` en `~/plataforma` con un `git clone` normal. El proyecto usa el submódulo `libs/pagos`, que a su vez tiene **su propio** submódulo `vendor/moneda`. Al abrir `libs/pagos` la encuentras vacía y nada funciona.",
+    "Descarga y deja en el commit correcto **todos** los submódulos, incluidos los anidados, sin volver a clonar. Revisa el resultado con `git submodule status --recursive`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/moneda.git\ngit clone -q ~/servidor/moneda.git ~/tmp-moneda 2>/dev/null\ncd ~/tmp-moneda\nfecha '2026-09-01 10:00'\ncommit_archivo clp.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\ngit push -q origin main\ngit init -q --bare ~/servidor/pagos.git\ngit clone -q ~/servidor/pagos.git ~/tmp-pagos 2>/dev/null\ncd ~/tmp-pagos\nfecha '2026-09-02 10:00'\ncommit_archivo pago.js 'import { clp } from \"./vendor/moneda/clp.js\";' 'Crea el módulo de pagos'\ngit submodule add -q ../moneda.git vendor/moneda\ngit commit -q -m 'Agrega el submódulo moneda'\ngit push -q origin main\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/plataforma.git\ngit clone -q ~/servidor/plataforma.git ~/tmp-plataforma 2>/dev/null\ncd ~/tmp-plataforma\nfecha '2026-09-03 10:00'\ncommit_archivo README.md '# Plataforma Tienda Austral' 'Primer commit'\ngit submodule add -q ../pagos.git libs/pagos\ngit commit -q -m 'Agrega el submódulo libs/pagos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-moneda ~/tmp-pagos ~/tmp-plataforma\nyo\ngit clone -q ~/servidor/plataforma.git ~/plataforma",
+   "cwd": "plataforma",
+   "checks": [
+    {
+     "name": "libs/pagos está descargado",
+     "script": "[ -f libs/pagos/pago.js ] || falla \"libs/pagos sigue vacía: git clone no descarga los submódulos por sí solo\""
+    },
+    {
+     "name": "El submódulo anidado libs/pagos/vendor/moneda también",
+     "script": "[ -f libs/pagos/vendor/moneda/clp.js ] || falla \"libs/pagos/vendor/moneda sigue vacía: falta la recursión (submódulos dentro de submódulos)\""
+    },
+    {
+     "name": "Cada submódulo está en el commit que registra su superproyecto",
+     "script": "[ \"$(git -C libs/pagos rev-parse HEAD)\" = \"$(git rev-parse HEAD:libs/pagos)\" ] || falla \"libs/pagos no está en el commit que registra plataforma (usa git submodule update, sin --remote)\"\n[ \"$(git -C libs/pagos/vendor/moneda rev-parse HEAD)\" = \"$(git -C libs/pagos rev-parse HEAD:vendor/moneda)\" ] || falla \"vendor/moneda no está en el commit que registra pagos\""
+    },
+    {
+     "name": "Sin cambios pendientes",
+     "script": "limpio \"git status muestra cambios: los submódulos deberían quedar exactamente en los commits registrados\""
+    }
+   ],
+   "solution": [
+    "git submodule update --init --recursive",
+    "git submodule status --recursive"
+   ],
+   "hints": [
+    "Hay que hacer dos cosas: registrar los submódulos en tu `.git/config` (init) y clonarlos/dejarlos en su commit (update).",
+    "`git submodule update` tiene una opción que hace el `init` por ti y otra para entrar en submódulos de submódulos.",
+    "`git submodule update --init --recursive`"
+   ],
+   "explain": "`git clone` solo trae el superproyecto: en su árbol, `libs/pagos` es un gitlink (modo 160000) que apunta a un commit de otro repositorio, así que la carpeta queda vacía. `git submodule update --init --recursive` copia la URL de `.gitmodules` a `.git/config` (init), clona cada submódulo en `.git/modules/…`, hace checkout del commit exacto que registra el superproyecto (queda en HEAD separado) y repite lo mismo dentro de cada submódulo (`--recursive`). Para la próxima vez: `git clone --recurse-submodules <url>` hace todo en un paso. Sin `--recursive`, `vendor/moneda` habría quedado vacía y `git submodule status --recursive` la mostraría con `-` delante."
+  },
+  {
+   "id": "s14-e3",
+   "title": "Solo quiero ver apps/web",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "En `~/mono` tienes clonado el monorepo de la tienda: `apps/web`, `apps/admin`, `servicios/pagos`, `servicios/envios` y `docs`. Tú solo trabajas en el frontend web.",
+    "Usa **sparse-checkout en modo cono** para que en tu directorio de trabajo queden únicamente `apps/web` (con todo su contenido) y los archivos sueltos que Git incluye siempre (los de la raíz y los de `apps/`). No borres nada del repositorio: los commits deben seguir teniendo todas las carpetas."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo\ngit clone -q ~/servidor/mono.git ~/mono",
+   "cwd": "mono",
+   "checks": [
+    {
+     "name": "sparse-checkout activo en modo cono",
+     "script": "[ \"$(git config --bool core.sparseCheckout)\" = true ] || falla \"sparse-checkout no está activo (git sparse-checkout set …)\"\n[ \"$(git config --bool core.sparseCheckoutCone)\" = true ] || falla \"Usa el modo cono (el predeterminado): sin --no-cone\""
+    },
+    {
+     "name": "La lista contiene solo apps/web",
+     "script": "[ \"$(git sparse-checkout list)\" = apps/web ] || falla \"git sparse-checkout list debería mostrar solo apps/web (muestra: $(git sparse-checkout list | tr '\\n' ' '))\""
+    },
+    {
+     "name": "En el disco quedan apps/web y los archivos de la raíz",
+     "script": "[ -f apps/web/src/app.js ] || falla \"Falta apps/web/src/app.js\"\n[ -f README.md ] && [ -f package.json ] || falla \"Los archivos de la raíz deberían seguir en el disco\"\n[ -f apps/README.md ] || falla \"apps/README.md debería estar (el modo cono incluye los archivos de las carpetas padre)\"\n[ -e apps/admin ] && falla \"apps/admin sigue en el disco\"\n[ -e servicios ] && falla \"servicios sigue en el disco\"\n[ -e docs ] && falla \"docs sigue en el disco\"\ntrue"
+    },
+    {
+     "name": "El repositorio no perdió nada",
+     "script": "git cat-file -e HEAD:apps/admin/panel.html 2>/dev/null || falla \"¡apps/admin ya no está en el último commit! sparse-checkout no borra nada del repositorio\"\n[ \"$(git rev-list --count HEAD)\" = 3 ] || falla \"No hacía falta crear commits\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git sparse-checkout set apps/web",
+    "git sparse-checkout list",
+    "git status"
+   ],
+   "hints": [
+    "El subcomando que define (y activa) las carpetas es `set`.",
+    "En modo cono le das carpetas, no patrones: `git sparse-checkout set <carpeta>`.",
+    "`git sparse-checkout set apps/web`"
+   ],
+   "explain": "`git sparse-checkout set apps/web` activa `core.sparseCheckout` y `core.sparseCheckoutCone`, escribe los patrones en `.git/info/sparse-checkout` y actualiza el directorio de trabajo: los archivos fuera del cono se quitan del disco y quedan marcados con el bit *skip-worktree* (`S` en `git ls-files -t`). El modo cono incluye siempre los archivos de la raíz y los que cuelgan directamente de las carpetas padre (`apps/README.md`), y todo lo que hay bajo `apps/web`. El commit y el index siguen teniendo todas las carpetas: `git status` dice «You are in a sparse checkout with N% of tracked files present». Para volver a verlo todo: `git sparse-checkout disable`. Error típico: borrar las carpetas con `rm -r`; Git lo interpretaría como archivos eliminados."
+  },
+  {
+   "id": "s14-e4",
+   "title": "Clon superficial para el build de CI",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "El pipeline de integración continua solo necesita compilar la última versión de `~/servidor/tienda.git`; descargar toda la historia es tiempo perdido.",
+    "Desde `~`, clona ese repositorio en `~/ci-build` con **solo el último commit**. Ojo: con una ruta local normal, Git ignora `--depth` (te lo avisa con un `warning`). Usa una URL `file://` con la ruta completa: `file://$HOME/servidor/tienda.git`."
+   ],
+   "setup": "mkdir -p ~/servidor\nnuevo_repo ~/tmp-hist\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-06-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-06-15 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nautor 'Diego Soto' 'diego@tienda.cl'\nfecha '2026-07-01 10:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Calcula precios con IVA'\ngit tag -a v1.0 -m 'Versión 1.0'\nfecha '2026-07-15 10:00'\nanexar carrito.js 'export const vaciar = () => carrito.splice(0);'\ngit commit -q -am 'Permite vaciar el carrito'\nautor 'Camila Rojas' 'camila@tienda.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo cupones.js 'export const descuento = (t, p) => t * (1 - p / 100);' 'Agrega cupones'\ngit switch -q -c release/2.0\nfecha '2026-08-05 10:00'\ncommit_archivo VERSION '2.0.0-rc1' 'Prepara la versión 2.0'\ngit switch -q main\nfecha '2026-08-20 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Agrega regiones de despacho'\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-09-01 10:00'\nanexar despacho.js 'export const gratisDesde = 50000;'\ngit commit -q -am 'Despacho gratis sobre $50.000'\nfecha '2026-09-10 10:00'\nanexar index.html '<p>Envíos a todo Chile</p>'\ngit commit -q -am 'Anuncia envíos a todo Chile'\ncd ~\ngit clone -q --bare ~/tmp-hist ~/servidor/tienda.git\nrm -rf ~/tmp-hist\nyo",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "~/ci-build existe y es un repositorio",
+     "script": "[ -d ci-build/.git ] || falla \"No existe ~/ci-build (clona dentro de esa carpeta)\""
+    },
+    {
+     "name": "Es un clon superficial",
+     "script": "[ \"$(git -C ci-build rev-parse --is-shallow-repository)\" = true ] || falla 'ci-build tiene la historia completa: con una ruta local Git ignora --depth (usa file://$HOME/servidor/tienda.git)'"
+    },
+    {
+     "name": "Contiene exactamente 1 commit",
+     "script": "c=$(git -C ci-build rev-list --count HEAD); [ \"$c\" = 1 ] || falla \"Debería tener 1 commit y tiene $c (--depth 1)\""
+    },
+    {
+     "name": "Es la última versión de main",
+     "script": "[ \"$(git -C ci-build rev-parse HEAD)\" = \"$(git -C servidor/tienda.git rev-parse main)\" ] || falla \"HEAD de ci-build no es el último commit de main del servidor\""
+    }
+   ],
+   "solution": [
+    "git clone --depth 1 file://$HOME/servidor/tienda.git ci-build",
+    "git -C ci-build log --oneline"
+   ],
+   "hints": [
+    "La opción que corta la historia a N commits es `--depth N`.",
+    "Con `~/servidor/tienda.git` Git hace un clon local (copia o enlaza los objetos) e ignora `--depth`: usa `file://` para forzar el transporte normal.",
+    "`git clone --depth 1 file://$HOME/servidor/tienda.git ci-build`"
+   ],
+   "explain": "`--depth 1` pide al servidor solo el commit de la punta (con sus árboles y blobs). El commit frontera queda anotado en `.git/shallow` y `git log` lo marca como `grafted`. Con una ruta local, `git clone` usa la optimización local (copia/enlaza `.git/objects`) y avisa `warning: --depth is ignored in local clones; use file:// instead.`; con `file://` usa el protocolo normal y el servidor puede recortar. Recuerda que `--depth` implica `--single-branch`: `ci-build` solo conoce `origin/main`. Variantes: `--shallow-since=2026-09-01` (por fecha) y `--shallow-exclude=v1.0` (excluir lo alcanzable desde una etiqueta)."
+  },
+  {
+   "id": "s14-e5",
+   "title": "Hotfix del IVA sin guardar tu trabajo actual",
+   "level": "medio",
+   "minutes": 14,
+   "prompt": [
+    "Producción (`main`, etiqueta `v1.4.0`) calcula mal los precios: `precio.js` usa un IVA de 0.18 y en Chile es 0.19. Tú estás en `~/tienda`, en `feature/despacho`, con cambios a medias en `despacho.js` y un archivo nuevo `tarifas.csv`.",
+    "Sin `git stash` y sin tocar tu carpeta actual:",
+    "1. Crea un worktree en `~/tienda-fix` con una rama nueva `fix/iva` que parta de `main`.\n2. Allí corrige `precio.js` para que diga `export const IVA = 0.19;` (deja igual la primera línea, el comentario) y confírmalo.\n3. Integra la corrección en `main` (puedes hacerlo desde el mismo worktree: `main` no está activa en ningún otro).\n4. Elimina el worktree cuando termines.",
+    "Contenido final de `precio.js`:\n```js\n// Precios de la tienda (CLP)\nexport const IVA = 0.19;\n```"
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-01 11:00'\ncommit_archivo precio.js '// Precios de la tienda (CLP)\nexport const IVA = 0.18;' 'Calcula precios con IVA'\ngit tag -a v1.4.0 -m 'Versión 1.4.0'\ngit switch -q -c feature/despacho\nfecha '2026-09-04 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Empieza el cálculo de despacho'\nanexar despacho.js 'export const costo = (region) => 0; // TODO: tabla de costos'\nescribir tarifas.csv 'region,costo'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "main tiene el IVA al 19 %",
+     "script": "contenido main precio.js | grep -qxF 'export const IVA = 0.19;' || falla \"En main, precio.js todavía no tiene export const IVA = 0.19; (¿integraste la corrección en main?)\""
+    },
+    {
+     "name": "main solo cambió precio.js respecto de v1.4.0",
+     "script": "d=$(git diff --name-only v1.4.0 main | tr '\\n' ' '); [ \"$d\" = 'precio.js ' ] || falla \"Entre v1.4.0 y main deberían cambiar solo precio.js (cambian: $d). ¿Mezclaste feature/despacho?\""
+    },
+    {
+     "name": "Tu trabajo en feature/despacho sigue a medias e intacto",
+     "script": "en_rama feature/despacho \"~/tienda debería seguir en feature/despacho\"\n[ \"$(git stash list | wc -l | tr -d ' ')\" = 0 ] || falla \"Hay entradas en git stash: este ejercicio se resuelve sin stash (recupéralas con git stash pop)\"\ngrep -qF 'TODO: tabla de costos' despacho.js || falla \"Los cambios de despacho.js desaparecieron\"\ngit diff --quiet -- despacho.js && falla \"despacho.js ya no tiene cambios sin confirmar: debía quedar a medias\"\n[ -f tarifas.csv ] || falla \"tarifas.csv desapareció\"\ntrue"
+    },
+    {
+     "name": "El worktree temporal se eliminó",
+     "script": "n=$(git worktree list --porcelain | grep -c '^worktree ')\n[ \"$n\" = 1 ] || falla \"Todavía hay $n worktrees (git worktree list): elimina el temporal con git worktree remove\"\n[ -e ~/tienda-fix ] && falla \"La carpeta ~/tienda-fix sigue existiendo\"\ntrue"
+    }
+   ],
+   "solution": [
+    "git worktree add -b fix/iva ../tienda-fix main",
+    "cd ../tienda-fix",
+    "printf '// Precios de la tienda (CLP)\\nexport const IVA = 0.19;\\n' > precio.js",
+    "git commit -am \"Corrige el IVA al 19 %\"",
+    "git switch main",
+    "git merge fix/iva",
+    "git branch -d fix/iva",
+    "cd ../tienda",
+    "git worktree remove ../tienda-fix"
+   ],
+   "hints": [
+    "`git worktree add` acepta `-b <rama-nueva>`, la ruta y el punto de partida, como `git switch -c`.",
+    "`git worktree add -b fix/iva ../tienda-fix main`, luego `cd ../tienda-fix`, edita con `code precio.js` y haz commit.",
+    "En `~/tienda-fix`: `git switch main` y `git merge fix/iva` (fast-forward). Vuelve a `~/tienda` y ejecuta `git worktree remove ../tienda-fix`."
+   ],
+   "explain": "El worktree te da una segunda carpeta con `fix/iva` recién creada desde `main`, sin tocar tu index ni tus archivos de `feature/despacho`. Como `main` no está activa en ningún worktree, puedes cambiarte a ella dentro de `~/tienda-fix` y fusionar (fast-forward). `git worktree remove` exige que el worktree esté limpio (si no, `fatal: '../tienda-fix' contains modified or untracked files, use --force to delete it`), borra la carpeta y sus metadatos en `.git/worktrees/`. Borra `fix/iva` estando en `main` dentro del worktree: `git branch -d` compara con el HEAD del worktree donde lo ejecutas, y desde `~/tienda` (en `feature/despacho`) diría `not fully merged`. Alternativa: crear el worktree directamente sobre `main` (`git worktree add ../tienda-fix main`) y confirmar ahí; en un equipo real, `fix/iva` se publicaría y pasaría por un PR (s08)."
+  },
+  {
+   "id": "s14-e6",
+   "title": "Añade la librería utiles como submódulo",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En `~/tienda` (clon de `~/servidor/tienda.git`) necesitas la librería de Diego, que vive en `~/servidor/utiles.git`. Queremos fijarla a un commit exacto, así que la incorporarás como **submódulo**.",
+    "1. Añádela en la ruta `libs/utiles`. Como ambos repositorios viven en el mismo servidor, usa la URL **relativa** `../utiles.git` (se resuelve respecto de `origin`).\n2. Confirma con el mensaje `Agrega la librería utiles como submódulo`.\n3. Publica en el servidor."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": ".gitmodules registra libs/utiles",
+     "script": "[ -f .gitmodules ] || falla \"No existe .gitmodules (git submodule add …)\"\ngit config -f .gitmodules --get-regexp '^submodule\\..*\\.path$' | grep -q ' libs/utiles$' || falla \".gitmodules no tiene un submódulo con path = libs/utiles\"\ngit config -f .gitmodules --get-regexp '^submodule\\..*\\.url$' | grep -q 'utiles\\.git$' || falla \"La URL del submódulo debería apuntar a utiles.git\""
+    },
+    {
+     "name": "El último commit guarda un gitlink (160000) al commit actual de utiles",
+     "script": "t=$(git ls-tree HEAD libs/utiles)\ncase \"$t\" in \"160000 commit $(git -C ~/servidor/utiles.git rev-parse main)\"*) ;; *) falla \"HEAD no tiene libs/utiles como gitlink al último commit de utiles (¿hiciste commit?)\";; esac"
+    },
+    {
+     "name": "Mensaje del commit",
+     "script": "mensaje_es HEAD 'Agrega la librería utiles como submódulo'"
+    },
+    {
+     "name": "Publicado en el servidor",
+     "script": "[ \"$(git -C ~/servidor/tienda.git rev-parse main)\" = \"$(git rev-parse HEAD)\" ] || falla \"El servidor no tiene tu commit: falta git push\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git submodule add ../utiles.git libs/utiles",
+    "git status",
+    "git commit -m \"Agrega la librería utiles como submódulo\"",
+    "git push"
+   ],
+   "hints": [
+    "El comando es `git submodule add <url> <ruta>`; deja preparados `.gitmodules` y el gitlink.",
+    "Una URL que empieza por `../` se resuelve respecto de la URL de `origin` (`~/servidor/tienda.git`), así que `../utiles.git` apunta a `~/servidor/utiles.git`.",
+    "`git submodule add ../utiles.git libs/utiles`, luego `git commit -m \"…\"` y `git push`."
+   ],
+   "explain": "`git submodule add` clona utiles en `.git/modules/libs/utiles`, crea `libs/utiles` con un archivo `.git` que apunta ahí, escribe `.gitmodules` (`path` y `url`) y prepara ambos cambios. En el commit, `libs/utiles` no es una carpeta con archivos: es una entrada de modo **160000** que guarda el hash de un commit de utiles (`git ls-tree HEAD libs/utiles` → `160000 commit …`). Usar `../utiles.git` hace que el proyecto funcione aunque el servidor cambie de dominio, siempre que ambos repos sigan juntos. Error típico: escribir `../servidor/utiles.git` pensando en tu carpeta actual; Git la resolvería respecto de `origin` y buscaría `~/servidor/servidor/utiles.git`. En tu computador, con rutas locales, Git ≥ 2.38.1 puede responder `fatal: transport 'file' not allowed` (ver lección)."
+  },
+  {
+   "id": "s14-e7",
+   "title": "Fija el submódulo en la versión v1.1",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "`~/tienda` usa el submódulo `libs/utiles` en la versión `v1.0`. Diego acaba de publicar `v1.1` (corrige la validación de RUT), pero también subió a `main` un commit `WIP` inestable, así que **no** quieres «lo último de main»: quieres exactamente la etiqueta `v1.1`.",
+    "Deja `libs/utiles` en `v1.1` y registra el cambio en la tienda con un commit con el mensaje `Actualiza utiles a v1.1`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\ngit tag -a v1.0 -m 'utiles 1.0'\ngit push -q origin main --tags\ncd ~\n\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null\nautor 'Diego Soto' 'diego@tienda.cl'\ncd ~/tmp-utiles\nfecha '2026-09-08 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\").toUpperCase();' 'Acepta dígito verificador k en minúscula'\ngit tag -a v1.1 -m 'utiles 1.1'\nfecha '2026-09-09 10:00'\ncommit_archivo fechas.js 'export const hoy = () => new Date(); // WIP' 'WIP: nueva API de fechas (inestable)'\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "libs/utiles está en v1.1",
+     "script": "[ \"$(git -C libs/utiles rev-parse HEAD)\" = \"$(git -C ~/servidor/utiles.git rev-parse 'v1.1^{commit}')\" ] || falla \"libs/utiles no está en v1.1 (está en: $(git -C libs/utiles log -1 --format=%s))\""
+    },
+    {
+     "name": "La tienda registra v1.1 en su último commit",
+     "script": "[ \"$(git rev-parse HEAD:libs/utiles)\" = \"$(git -C ~/servidor/utiles.git rev-parse 'v1.1^{commit}')\" ] || falla \"El último commit de tienda no apunta a v1.1: falta git add libs/utiles y git commit\""
+    },
+    {
+     "name": "Mensaje del commit",
+     "script": "mensaje_es HEAD 'Actualiza utiles a v1.1'"
+    },
+    {
+     "name": "Sin cambios pendientes ni operaciones a medias",
+     "script": "limpio && sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git -C libs/utiles fetch --tags",
+    "git -C libs/utiles switch --detach v1.1",
+    "git status",
+    "git add libs/utiles",
+    "git commit -m \"Actualiza utiles a v1.1\"",
+    "git submodule status"
+   ],
+   "hints": [
+    "Actualizar un submódulo son dos pasos: mover el submódulo y luego confirmar el nuevo puntero en el superproyecto.",
+    "Dentro del submódulo primero trae lo nuevo (`fetch`) y después pon HEAD en la etiqueta (`git switch --detach v1.1` o `git checkout v1.1`). Puedes usar `cd libs/utiles` o `git -C libs/utiles …`.",
+    "De vuelta en la tienda: `git add libs/utiles` y `git commit -m \"Actualiza utiles a v1.1\"`. Evita `git submodule update --remote`: te llevaría al WIP."
+   ],
+   "explain": "El submódulo es un repositorio completo: `git -C libs/utiles fetch --tags` trae la etiqueta nueva y `switch --detach v1.1` deja su HEAD en ese commit. En ese momento la tienda ve `modified: libs/utiles (new commits)`: el gitlink del index todavía apunta a v1.0. `git add libs/utiles` guarda el nuevo hash en el index y el commit lo fija para todo el equipo; cuando tus compañeros hagan `git pull` y `git submodule update`, tendrán v1.1. `git submodule update --remote` habría llevado el submódulo a la punta de `main` (el WIP): úsalo solo cuando quieras «lo último de la rama». Para ver qué cambió entre versiones: `git diff --submodule=log`."
+  },
+  {
+   "id": "s14-e8",
+   "title": "Del clon superficial al completo",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "`~/tienda` se clonó con `--depth 1` para un build rápido, pero ahora necesitas investigar un bug con `git log` y `git blame`, y además revisar la rama `release/2.0`, que en tu clon ni siquiera aparece.",
+    "Convierte el clon en uno **completo** (toda la historia de `main`, sin archivo `.git/shallow`) y deja configurado `origin` para que traiga **todas** las ramas, de modo que exista `origin/release/2.0`."
+   ],
+   "setup": "mkdir -p ~/servidor\nnuevo_repo ~/tmp-hist\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-06-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-06-15 10:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nautor 'Diego Soto' 'diego@tienda.cl'\nfecha '2026-07-01 10:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Calcula precios con IVA'\ngit tag -a v1.0 -m 'Versión 1.0'\nfecha '2026-07-15 10:00'\nanexar carrito.js 'export const vaciar = () => carrito.splice(0);'\ngit commit -q -am 'Permite vaciar el carrito'\nautor 'Camila Rojas' 'camila@tienda.cl'\nfecha '2026-08-01 10:00'\ncommit_archivo cupones.js 'export const descuento = (t, p) => t * (1 - p / 100);' 'Agrega cupones'\ngit switch -q -c release/2.0\nfecha '2026-08-05 10:00'\ncommit_archivo VERSION '2.0.0-rc1' 'Prepara la versión 2.0'\ngit switch -q main\nfecha '2026-08-20 10:00'\ncommit_archivo despacho.js 'export const regiones = [\"RM\", \"Valparaíso\"];' 'Agrega regiones de despacho'\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-09-01 10:00'\nanexar despacho.js 'export const gratisDesde = 50000;'\ngit commit -q -am 'Despacho gratis sobre $50.000'\nfecha '2026-09-10 10:00'\nanexar index.html '<p>Envíos a todo Chile</p>'\ngit commit -q -am 'Anuncia envíos a todo Chile'\ncd ~\ngit clone -q --bare ~/tmp-hist ~/servidor/tienda.git\nrm -rf ~/tmp-hist\nyo\ngit clone -q --depth 1 file://$HOME/servidor/tienda.git ~/tienda",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Ya no es superficial",
+     "script": "[ \"$(git rev-parse --is-shallow-repository)\" = false ] || falla \"Sigue siendo un clon superficial (hay .git/shallow)\""
+    },
+    {
+     "name": "main tiene toda la historia",
+     "script": "a=$(git rev-list --count HEAD); b=$(git -C ~/servidor/tienda.git rev-list --count main); [ \"$a\" = \"$b\" ] || falla \"main tiene $a commits y en el servidor tiene $b\""
+    },
+    {
+     "name": "origin trae todas las ramas",
+     "script": "git config --get-all remote.origin.fetch | grep -qxF '+refs/heads/*:refs/remotes/origin/*' || falla \"remote.origin.fetch sigue limitado a main (el --depth implicó --single-branch)\""
+    },
+    {
+     "name": "Existe origin/release/2.0",
+     "script": "git rev-parse -q --verify refs/remotes/origin/release/2.0 >/dev/null || falla \"Todavía no tienes origin/release/2.0 (¿hiciste fetch después de cambiar la configuración?)\""
+    }
+   ],
+   "solution": [
+    "git remote set-branches origin '*'",
+    "git fetch --unshallow",
+    "git branch -r",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Son dos problemas distintos: la profundidad (historia cortada) y el refspec (solo una rama).",
+    "`git fetch --unshallow` completa la historia. Para el refspec mira `git config --get-all remote.origin.fetch`.",
+    "`git remote set-branches origin '*'` y después `git fetch --unshallow` (o `git fetch` si ya quitaste la profundidad)."
+   ],
+   "explain": "`--depth` implica `--single-branch`, así que el clon quedó con `remote.origin.fetch = +refs/heads/main:refs/remotes/origin/main`. `git remote set-branches origin '*'` lo reemplaza por `+refs/heads/*:refs/remotes/origin/*` (las comillas evitan que la terminal expanda el `*`). `git fetch --unshallow` trae los commits que faltaban, borra `.git/shallow` y, con el nuevo refspec, crea también `origin/release/2.0`. Si ejecutas `--unshallow` sobre un repo completo, Git responde `fatal: --unshallow on a complete repository does not make sense`. Si solo necesitas un poco más de historia, `git fetch --deepen=10` o `git fetch --shallow-since=2026-07-01` son más baratos."
+  },
+  {
+   "id": "s14-e9",
+   "title": "Incorpora la librería de estilos con git subtree",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En `~/web` quieres usar la librería de estilos de Camila (`~/servidor/estilos.git`, rama `main`), pero el equipo no quiere submódulos: quien clone `web` debe recibir los archivos sin pasos extra.",
+    "Incorpórala con **git subtree** en la carpeta `vendor/estilos`, resumiendo su historia en un solo commit (`--squash`). Revisa después el gráfico con `git log --oneline --graph`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/estilos.git\ngit clone -q ~/servidor/estilos.git ~/tmp-estilos 2>/dev/null\ncd ~/tmp-estilos\nfecha '2026-09-01 10:00'\ncommit_archivo base.css 'body { margin: 0; font-family: system-ui; }' 'Estilos base'\nfecha '2026-09-02 10:00'\ncommit_archivo botones.css '.btn { padding: 8px; }' 'Agrega botones'\nfecha '2026-09-03 10:00'\ncommit_archivo colores.css ':root { --primario: #0033a0; }' 'Agrega paleta de colores'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/tmp-estilos\nnuevo_repo ~/web\nfecha '2026-09-05 10:00'\ncommit_archivo index.html '<link rel=\"stylesheet\" href=\"vendor/estilos/base.css\">' 'Primer commit'\nfecha '2026-09-05 11:00'\ncommit_archivo app.js 'console.log(\"Tienda Austral\");' 'Agrega app.js'",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "vendor/estilos contiene la última versión de estilos",
+     "script": "[ \"$(git rev-parse -q --verify HEAD:vendor/estilos)\" = \"$(git -C ~/servidor/estilos.git rev-parse 'main^{tree}')\" ] || falla \"En HEAD, vendor/estilos no coincide con estilos/main (¿--prefix=vendor/estilos y rama main? ¿hiciste commit?)\""
+    },
+    {
+     "name": "Son archivos normales, no un submódulo",
+     "script": "git ls-tree -r HEAD | grep -q '^160000' && falla \"Hay un gitlink (160000): eso es un submódulo; aquí se pide git subtree\"; [ -e .gitmodules ] && falla \"No debería existir .gitmodules\"; true"
+    },
+    {
+     "name": "Se usó --squash",
+     "script": "git log --format=%B HEAD | grep -q '^git-subtree-dir: vendor/estilos' || falla \"No encuentro el commit de git subtree (git-subtree-dir: vendor/estilos)\"; git log --format=%s HEAD | grep -q \"^Squashed 'vendor/estilos/' content\" || falla \"Falta --squash: se trajo la historia completa de estilos\""
+    },
+    {
+     "name": "Sin cambios pendientes",
+     "script": "limpio && sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git subtree add --prefix=vendor/estilos ~/servidor/estilos.git main --squash",
+    "git log --oneline --graph"
+   ],
+   "hints": [
+    "El subcomando para incorporar un repositorio por primera vez es `git subtree add`.",
+    "Necesita `--prefix=<carpeta>`, el repositorio y la rama; `--squash` resume la historia.",
+    "`git subtree add --prefix=vendor/estilos ~/servidor/estilos.git main --squash`"
+   ],
+   "explain": "`git subtree add` hace `git fetch` del repositorio, crea un commit «Squashed 'vendor/estilos/' content from commit …» con el contenido (y los trailers `git-subtree-dir` y `git-subtree-split`, que usará después `subtree pull/push`) y lo fusiona con un merge «Merge commit '…' as 'vendor/estilos'». El resultado son archivos normales: quien clone `web` los recibe sin `--recurse-submodules`. Para actualizar: `git subtree pull --prefix=vendor/estilos ~/servidor/estilos.git main --squash` (usa `--squash` siempre si lo usaste al añadir; como termina en un merge, abre el editor para el mensaje, salvo que pases `-m`). Requisito: el árbol de trabajo debe estar limpio o verás `fatal: working tree has modifications.  Cannot add.`"
+  },
+  {
+   "id": "s14-e10",
+   "title": "Corrige un bug dentro del submódulo y publica en el orden correcto",
+   "level": "dificil",
+   "minutes": 16,
+   "prompt": [
+    "En `~/tienda` (clonada con `--recurse-submodules`) los clientes con RUT terminado en `k` minúscula no pueden pagar. El bug está en la librería: `libs/utiles/rut.js`. Tienes permiso para publicar en `~/servidor/utiles.git`.",
+    "1. Corrige `libs/utiles/rut.js` agregando `.toUpperCase()` al final de `limpiar` y confírmalo **en la rama `main` de utiles** (recién clonado, el submódulo está en HEAD separado).\n2. Publica utiles.\n3. Registra el nuevo puntero en la tienda y publícala.",
+    "Contenido final de `libs/utiles/rut.js`:\n```js\n// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\").toUpperCase();\n```",
+    "Pista de oro: `git push --recurse-submodules=on-demand` publica primero los submódulos que lo necesiten."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "La corrección está publicada en utiles (main del servidor)",
+     "script": "git -C ~/servidor/utiles.git show main:rut.js 2>/dev/null | grep -qF 'toUpperCase()' || falla \"main de utiles en el servidor no tiene la corrección (¿hiciste push del submódulo? ¿confirmaste en HEAD separado?)\""
+    },
+    {
+     "name": "La tienda apunta al commit corregido",
+     "script": "[ \"$(git rev-parse HEAD:libs/utiles)\" = \"$(git -C ~/servidor/utiles.git rev-parse main)\" ] || falla \"El gitlink de libs/utiles en tu último commit no es el main publicado de utiles (git add libs/utiles + commit)\""
+    },
+    {
+     "name": "La tienda está publicada con el nuevo puntero",
+     "script": "[ \"$(git -C ~/servidor/tienda.git rev-parse main:libs/utiles)\" = \"$(git -C ~/servidor/utiles.git rev-parse main)\" ] || falla \"El servidor de tienda todavía apunta al utiles antiguo: falta publicar la tienda\""
+    },
+    {
+     "name": "Trabajaste en una rama dentro del submódulo",
+     "script": "[ \"$(git -C libs/utiles symbolic-ref -q --short HEAD)\" = main ] || falla \"libs/utiles está en HEAD separado: cámbiate a main (git switch main) antes de confirmar dentro del submódulo\""
+    },
+    {
+     "name": "Todo limpio en ambos repositorios",
+     "script": "limpio && [ -z \"$(git -C libs/utiles status --porcelain)\" ] || falla \"Quedan cambios sin confirmar en la tienda o en libs/utiles\""
+    }
+   ],
+   "solution": [
+    "cd libs/utiles",
+    "git switch main",
+    "printf '// Utilidades para RUT chilenos\\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\").toUpperCase();\\n' > rut.js",
+    "git commit -am \"Acepta dígito verificador k en minúscula\"",
+    "cd ../..",
+    "git add libs/utiles",
+    "git commit -m \"Actualiza utiles: corrige RUT con k minúscula\"",
+    "git push --recurse-submodules=on-demand"
+   ],
+   "hints": [
+    "Antes de editar, mira `git -C libs/utiles status`: dice `HEAD detached at …`. Si confirmas ahí, el commit no queda en ninguna rama.",
+    "Dentro de `libs/utiles`: `git switch main`, corrige con `code rut.js`, `git commit -am …`. Vuelve a la tienda con `cd ../..`.",
+    "En la tienda: `git add libs/utiles`, `git commit -m …` y `git push --recurse-submodules=on-demand` (o `git -C libs/utiles push` y luego `git push`)."
+   ],
+   "explain": "`git submodule update` (y `clone --recurse-submodules`) deja cada submódulo en HEAD separado, en el commit que pide el superproyecto. Si confirmas así y luego cambias de rama, Git te avisa `Warning: you are leaving 1 commit behind` y el arreglo queda huérfano (recuperable con el reflog, s10). Por eso primero `git switch main` (aquí `main` coincide con el commit registrado). El orden de publicación importa: si publicas la tienda y no utiles, tus compañeros verán `fatal: remote error: upload-pack: not our ref …` y `Fetched in submodule path 'libs/utiles', but it did not contain …` al actualizar. `--recurse-submodules=on-demand` publica primero los submódulos con commits que no están en ningún remoto; `=check` solo verifica y aborta. Deja `git config push.recurseSubmodules check` en proyectos con submódulos."
+  },
+  {
+   "id": "s14-e11",
+   "title": "Monorepo ligero: sin blobs y solo servicios/pagos",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Te sumas al equipo de pagos. El monorepo `~/servidor/mono.git` es enorme (imagina gigabytes) y tú solo tocarás `servicios/pagos`. El servidor ya permite clones parciales (`uploadpack.allowFilter`).",
+    "Desde `~`, clónalo en `~/mono` de forma que:",
+    "- sea un **clon parcial sin blobs** (`blob:none`): toda la historia de commits y árboles, pero el contenido de los archivos solo cuando haga falta;\n- el directorio de trabajo tenga solo `servicios/pagos` (más los archivos de la raíz) en **modo cono**;\n- **nunca** se descarguen los archivos de las otras carpetas (ni siquiera los de la última versión).",
+    "Recuerda que con rutas locales Git ignora `--filter`: usa `file://$HOME/servidor/mono.git`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Ana Pérez' 'ana@tienda.cl'\nfecha '2026-08-01 10:00'\nnuevo_repo ~/tmp-mono\nescribir README.md '# Monorepo Tienda Austral'\nescribir package.json '{ \"private\": true, \"workspaces\": [\"apps/*\"] }'\nescribir apps/README.md 'Aplicaciones de la tienda'\nescribir apps/web/index.html '<h1>Tienda Austral</h1>'\nescribir apps/web/src/app.js 'console.log(\"web\");'\nescribir apps/admin/panel.html '<h1>Panel</h1>'\nescribir servicios/pagos/pago.go 'package pagos'\nescribir servicios/envios/envio.go 'package envios'\nescribir docs/arquitectura.md '# Arquitectura'\ngit add -A\ngit commit -q -m 'Estructura inicial del monorepo'\nfecha '2026-08-10 10:00'\nescribir apps/admin/panel.html '<h1>Panel de administración</h1>'\nescribir servicios/pagos/pago.go 'package pagos // con Webpay'\ngit commit -q -am 'Integra Webpay y mejora el panel'\nfecha '2026-08-20 10:00'\nescribir apps/web/src/app.js 'console.log(\"web v2\");'\nescribir servicios/envios/envio.go 'package envios // con Chilexpress'\ngit commit -q -am 'Actualiza web y envíos'\ncd ~\ngit clone -q --bare ~/tmp-mono ~/servidor/mono.git\ngit -C ~/servidor/mono.git config uploadpack.allowFilter true\nrm -rf ~/tmp-mono\nyo",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "~/mono es un clon parcial blob:none",
+     "script": "[ -d mono/.git ] || falla \"No existe ~/mono\"; [ \"$(git -C mono config --get remote.origin.partialclonefilter)\" = blob:none ] || falla \"~/mono no es un clon parcial blob:none (¿--filter=blob:none con file://?)\""
+    },
+    {
+     "name": "sparse-checkout en cono con solo servicios/pagos",
+     "script": "[ \"$(git -C mono config --bool core.sparseCheckoutCone)\" = true ] || falla \"Falta sparse-checkout en modo cono\"; [ \"$(git -C mono sparse-checkout list)\" = servicios/pagos ] || falla \"git sparse-checkout list debería mostrar solo servicios/pagos\""
+    },
+    {
+     "name": "En el disco solo está servicios/pagos y la raíz",
+     "script": "[ -f mono/servicios/pagos/pago.go ] || falla \"Falta servicios/pagos/pago.go\"; [ -f mono/README.md ] || falla \"Falta README.md\"; [ -e mono/apps ] && falla \"apps sigue en el disco\"; [ -e mono/servicios/envios ] && falla \"servicios/envios sigue en el disco\"; true"
+    },
+    {
+     "name": "No se descargaron los blobs de otras carpetas",
+     "script": "b=$(git -C mono rev-parse HEAD:apps/admin/panel.html)\ngit -C mono rev-list --objects --all --missing=print | grep -qx \"?$b\" || falla \"El contenido de apps/admin/panel.html se descargó: usa --sparse al clonar (o --no-checkout) para que el primer checkout no traiga todo\""
+    }
+   ],
+   "solution": [
+    "git clone --filter=blob:none --sparse file://$HOME/servidor/mono.git mono",
+    "cd mono",
+    "git sparse-checkout set servicios/pagos",
+    "ls"
+   ],
+   "hints": [
+    "Combina dos técnicas: `--filter=blob:none` (clon parcial) y `--sparse` (checkout inicial solo con la raíz).",
+    "Si clonas sin `--sparse`, el primer checkout descarga todos los archivos de la última versión y ya es tarde.",
+    "`git clone --filter=blob:none --sparse file://$HOME/servidor/mono.git mono`, luego `cd mono` y `git sparse-checkout set servicios/pagos`."
+   ],
+   "explain": "`--filter=blob:none` pide todos los commits y árboles, pero ningún blob; el remoto queda como *promisor* (`remote.origin.promisor = true`, `partialclonefilter = blob:none`) y Git descarga los blobs bajo demanda. `--sparse` hace que el checkout inicial incluya solo los archivos de la raíz, así que solo se descargan esos blobs. `git sparse-checkout set servicios/pagos` amplía el cono y Git trae, en un solo lote, únicamente los blobs de esa carpeta. `git rev-list --objects --all --missing=print` marca con `?` los objetos que siguen en el servidor. Esta combinación es la que automatiza `scalar clone`. Si no hubieras usado `--sparse`, el primer checkout habría traído todos los archivos de HEAD (el ahorro quedaría solo en las versiones antiguas)."
+  },
+  {
+   "id": "s14-e12",
+   "title": "Quita un submódulo por completo",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "La tienda dejó de usar la librería de gráficos. En `~/tienda` hay dos submódulos: `libs/utiles` (se queda) y `libs/graficos` (sobra).",
+    "Elimina `libs/graficos` **sin dejar rastros**: fuera del commit (gitlink y `.gitmodules`), fuera de tu `.git/config`, fuera de `.git/modules` y fuera del disco. `libs/utiles` debe seguir funcionando. Confirma con el mensaje `Quita el submódulo libs/graficos`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/utiles.git\ngit clone -q ~/servidor/utiles.git ~/tmp-utiles 2>/dev/null\ncd ~/tmp-utiles\nfecha '2026-09-01 10:00'\ncommit_archivo formato.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\nfecha '2026-09-02 10:00'\ncommit_archivo rut.js '// Utilidades para RUT chilenos\nexport const limpiar = (rut) => rut.replaceAll(\".\", \"\");' 'Agrega utilidades de RUT'\n\ngit push -q origin main --tags\ncd ~\nrm -rf ~/tmp-utiles\nyo\nautor 'Ana Pérez' 'ana@tienda.cl'\ngit init -q --bare ~/servidor/graficos.git\ngit clone -q ~/servidor/graficos.git ~/tmp-graficos 2>/dev/null\ncd ~/tmp-graficos\nfecha '2026-09-02 15:00'\ncommit_archivo barras.js 'export const barras = (datos) => datos.map((d) => \"#\".repeat(d));' 'Gráfico de barras en texto'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-graficos\nyo\nmkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/tmp-tienda 2>/dev/null\ncd ~/tmp-tienda\nfecha '2026-09-03 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\nfecha '2026-09-03 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Crea el carrito'\nfecha '2026-09-04 10:00'\ngit submodule add -q ../utiles.git libs/utiles\ngit commit -q -m 'Agrega el submódulo libs/utiles'\nfecha '2026-09-04 11:00'\ngit submodule add -q ../graficos.git libs/graficos\ngit commit -q -m 'Agrega el submódulo libs/graficos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-tienda\nyo\ngit clone -q --recurse-submodules ~/servidor/tienda.git ~/tienda 2>/dev/null",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "El último commit ya no tiene libs/graficos",
+     "script": "[ -n \"$(git ls-tree HEAD libs/graficos)\" ] && falla \"HEAD todavía contiene el gitlink libs/graficos\"; git config --blob HEAD:.gitmodules --get-regexp '^submodule\\..*graficos' >/dev/null 2>&1 && falla \".gitmodules (en HEAD) todavía menciona graficos\"; true"
+    },
+    {
+     "name": "libs/utiles sigue registrado y en su sitio",
+     "script": "git config --blob HEAD:.gitmodules --get submodule.libs/utiles.path >/dev/null 2>&1 || falla \"¡.gitmodules perdió libs/utiles!\"; [ -f libs/utiles/rut.js ] || falla \"libs/utiles quedó vacío\""
+    },
+    {
+     "name": "Tu .git/config ya no tiene la sección del submódulo",
+     "script": "git config --get-regexp '^submodule\\.libs/graficos\\.' >/dev/null && falla \"En .git/config queda submodule.libs/graficos.* (¿olvidaste git submodule deinit?)\"; true"
+    },
+    {
+     "name": "Ni .git/modules ni el disco guardan graficos",
+     "script": "[ -e .git/modules/libs/graficos ] && falla \"Queda .git/modules/libs/graficos (el repositorio interno del submódulo)\"; [ -e libs/graficos ] && falla \"La carpeta libs/graficos sigue en el disco\"; true"
+    },
+    {
+     "name": "Commit con el mensaje pedido y todo limpio",
+     "script": "mensaje_es HEAD 'Quita el submódulo libs/graficos' && limpio"
+    }
+   ],
+   "solution": [
+    "git submodule deinit -f libs/graficos",
+    "git rm libs/graficos",
+    "rm -rf .git/modules/libs/graficos",
+    "git commit -m \"Quita el submódulo libs/graficos\"",
+    "git submodule status"
+   ],
+   "hints": [
+    "Hay tres lugares: la configuración local (`.git/config`), el commit (gitlink + `.gitmodules`) y el repositorio interno (`.git/modules/…`).",
+    "`git submodule deinit` limpia la configuración local y vacía la carpeta; `git rm` quita el gitlink y la sección de `.gitmodules`.",
+    "`git submodule deinit -f libs/graficos`, `git rm libs/graficos`, `rm -rf .git/modules/libs/graficos` y el commit."
+   ],
+   "explain": "Un submódulo deja huellas en tres sitios. `git submodule deinit -f libs/graficos` borra la sección `submodule.libs/graficos` de `.git/config` y vacía la carpeta (`Cleared directory…`, `…unregistered for path…`). `git rm libs/graficos` quita el gitlink del index y su sección de `.gitmodules` (que queda preparado). El repositorio interno en `.git/modules/libs/graficos` se conserva a propósito (por si vuelves a una rama que lo usa), así que hay que borrarlo a mano si quieres liberar espacio. Solo con `git rm` habría quedado la sección en `.git/config`; solo con `deinit`, el submódulo seguiría en el commit. Ojo con tus compañeros: al hacer `git pull`, el gitlink desaparece pero la carpeta `libs/graficos` queda en su disco como contenido sin seguimiento (`?? libs/`); pueden borrarla o, mejor, ejecutar antes `git submodule deinit libs/graficos`."
+  },
+  {
+   "id": "s14-e13",
+   "title": "Worktrees rotos: uno huérfano y uno bloqueado",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "En `~/tienda` (rama `main`) necesitas trabajar en `hotfix/login`, pero `git switch hotfix/login` falla con `fatal: 'hotfix/login' is already used by worktree at '…/tienda-login'`. Alguien borró esa carpeta con `rm -r` en vez de usar `git worktree remove`.",
+    "Además existe el worktree `~/tienda-pr42` (rama `revision/pr-42`), **bloqueado** con el motivo «Revisión del PR #42 en curso». El PR ya se fusionó, así que sobra.",
+    "Deja el repositorio con **un solo worktree** (el principal), sin metadatos huérfanos en `.git/worktrees`, sin la carpeta `~/tienda-pr42` y con `~/tienda` en la rama `hotfix/login`. No borres ninguna rama."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Agrega portada'\ncommit_archivo login.js 'export const login = () => {};' 'Agrega login'\ngit branch hotfix/login\nautor 'Ana Pérez' 'ana@tienda.cl'\ngit switch -q -c revision/pr-42\nfecha '2026-09-02 10:00'\ncommit_archivo perfil.js 'export const perfil = {};' 'Agrega perfil de usuario'\nyo\ngit switch -q main\ngit worktree add -q ../tienda-login hotfix/login\ngit worktree add -q ../tienda-pr42 revision/pr-42\ngit worktree lock --reason 'Revisión del PR #42 en curso' ../tienda-pr42\nrm -rf ../tienda-login",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Solo queda el worktree principal",
+     "script": "n=$(git worktree list --porcelain | grep -c '^worktree ')\n[ \"$n\" = 1 ] || falla \"git worktree list muestra $n worktrees; debería quedar 1\""
+    },
+    {
+     "name": ".git/worktrees sin metadatos huérfanos",
+     "script": "[ -z \"$(ls -A .git/worktrees 2>/dev/null)\" ] || falla \"Quedan metadatos en .git/worktrees: $(ls .git/worktrees | tr '\\n' ' ')\""
+    },
+    {
+     "name": "La carpeta ~/tienda-pr42 ya no existe",
+     "script": "[ -e ~/tienda-pr42 ] && falla \"~/tienda-pr42 sigue en el disco (estaba bloqueado: unlock o remove con doble -f)\"; true"
+    },
+    {
+     "name": "~/tienda está en hotfix/login",
+     "script": "en_rama hotfix/login"
+    },
+    {
+     "name": "No se borró ninguna rama",
+     "script": "rama_existe hotfix/login && rama_existe revision/pr-42 \"Borraste la rama revision/pr-42: solo había que quitar el worktree\""
+    }
+   ],
+   "solution": [
+    "git worktree list",
+    "git worktree prune -v",
+    "git worktree unlock ../tienda-pr42",
+    "git worktree remove ../tienda-pr42",
+    "git switch hotfix/login",
+    "git worktree list"
+   ],
+   "hints": [
+    "`git worktree list` marca los problemas: `prunable` (la carpeta ya no existe) y `locked`.",
+    "Para metadatos de carpetas que ya no existen: `git worktree prune`. Un worktree bloqueado no se elimina hasta hacer `git worktree unlock` (o `remove -f -f`).",
+    "`git worktree prune`, `git worktree unlock ../tienda-pr42`, `git worktree remove ../tienda-pr42` y `git switch hotfix/login`."
+   ],
+   "explain": "Cada worktree vinculado tiene su carpeta de control en `.git/worktrees/<nombre>` y, mientras exista, su rama cuenta como «en uso». Si alguien borra la carpeta con `rm -r`, esos metadatos quedan huérfanos: `git worktree list` los marca `prunable` y `git worktree prune` los elimina (`Removing worktrees/tienda-login: gitdir file points to non-existent location`); `git gc` también lo hace de forma automática pasado `gc.worktreePruneExpire`. El bloqueo (`lock`) existe para worktrees en discos externos: impide `prune`, `move` y `remove` (`fatal: cannot remove a locked working tree, lock reason: …`). Se quita con `git worktree unlock` o se fuerza con `git worktree remove -f -f`. Eliminar worktrees nunca borra ramas: `hotfix/login` y `revision/pr-42` siguen ahí."
+  },
+  {
+   "id": "s14-p1",
+   "title": "Proyecto: primer día en el equipo de plataforma",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Llegas al equipo de plataforma. El superproyecto `~/servidor/plataforma.git` usa el submódulo `libs/pagos`, que a su vez usa `vendor/moneda`. Tu líder te deja estas tareas (trabaja desde `~`):",
+    "1. Clona `~/servidor/plataforma.git` en `~/plataforma` **con todos sus submódulos**, incluidos los anidados.\n2. Protégete del error clásico: configura **ese repositorio** para que `git push` se niegue a publicar si algún submódulo tiene commits que no están en su remoto (`push.recurseSubmodules`).\n3. El equipo de pagos publicó una versión nueva en la rama `main` de `pagos.git`. Lleva `libs/pagos` a lo último de esa rama y confírmalo con el mensaje `Actualiza libs/pagos`.\n4. Añade la librería de envíos (`~/servidor/envios.git`) como submódulo en `libs/envios` con URL relativa (`../envios.git`) y confírmalo con el mensaje `Agrega el submódulo libs/envios`.\n5. Publica la plataforma.",
+    "Al final, `git submodule status --recursive` no debe mostrar `-` ni `+`."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Diego Soto' 'diego@tienda.cl'\ngit init -q --bare ~/servidor/moneda.git\ngit clone -q ~/servidor/moneda.git ~/tmp-moneda 2>/dev/null\ncd ~/tmp-moneda\nfecha '2026-09-01 10:00'\ncommit_archivo clp.js 'export const clp = (n) => \"$\" + n.toLocaleString(\"es-CL\");' 'Formato de pesos chilenos'\ngit push -q origin main\ngit init -q --bare ~/servidor/pagos.git\ngit clone -q ~/servidor/pagos.git ~/tmp-pagos 2>/dev/null\ncd ~/tmp-pagos\nfecha '2026-09-02 10:00'\ncommit_archivo pago.js 'import { clp } from \"./vendor/moneda/clp.js\";' 'Crea el módulo de pagos'\ngit submodule add -q ../moneda.git vendor/moneda\ngit commit -q -m 'Agrega el submódulo moneda'\ngit push -q origin main\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/plataforma.git\ngit clone -q ~/servidor/plataforma.git ~/tmp-plataforma 2>/dev/null\ncd ~/tmp-plataforma\nfecha '2026-09-03 10:00'\ncommit_archivo README.md '# Plataforma Tienda Austral' 'Primer commit'\ngit submodule add -q ../pagos.git libs/pagos\ngit commit -q -m 'Agrega el submódulo libs/pagos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-moneda ~/tmp-pagos ~/tmp-plataforma\nyo\nautor 'Diego Soto' 'diego@tienda.cl'\ngit clone -q ~/servidor/pagos.git ~/tmp-pagos 2>/dev/null\ncd ~/tmp-pagos\nfecha '2026-09-10 10:00'\nanexar pago.js 'export const pagar = (monto) => ({ monto, estado: \"aprobado\" });'\ngit commit -q -am 'Agrega la función pagar'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-pagos\nautor 'Ana Pérez' 'ana@tienda.cl'\ngit init -q --bare ~/servidor/envios.git\ngit clone -q ~/servidor/envios.git ~/tmp-envios 2>/dev/null\ncd ~/tmp-envios\nfecha '2026-09-11 10:00'\ncommit_archivo envios.js 'export const regiones = 16; // regiones de Chile' 'Crea la librería de envíos'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-envios\nyo",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "~/plataforma clonada con submódulos anidados",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"\n[ -f libs/pagos/pago.js ] || falla \"libs/pagos está vacía\"\n[ -f libs/pagos/vendor/moneda/clp.js ] || falla \"libs/pagos/vendor/moneda está vacía (faltó la recursión)\""
+    },
+    {
+     "name": "push.recurseSubmodules = check en ese repositorio",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"; [ \"$(git config --local --get push.recurseSubmodules)\" = check ] || falla \"En ~/plataforma falta git config push.recurseSubmodules check (a nivel local)\""
+    },
+    {
+     "name": "Commit «Actualiza libs/pagos» con lo último de pagos",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"\nc=$(git log --format='%H %s' | grep ' Actualiza libs/pagos$' | head -n 1 | cut -d' ' -f1)\n[ -n \"$c\" ] || falla \"No encuentro un commit con el mensaje «Actualiza libs/pagos»\"\n[ \"$(git rev-parse $c:libs/pagos)\" = \"$(git -C ~/servidor/pagos.git rev-parse main)\" ] || falla \"El commit «Actualiza libs/pagos» no apunta a lo último de pagos/main\""
+    },
+    {
+     "name": "Último commit: libs/envios como submódulo",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"\nmensaje_es HEAD 'Agrega el submódulo libs/envios'\n[ \"$(git config --blob HEAD:.gitmodules --get submodule.libs/envios.url)\" = ../envios.git ] || falla \"En .gitmodules, libs/envios debería tener url = ../envios.git\"\nt=$(git ls-tree HEAD libs/envios)\ncase \"$t\" in \"160000 commit $(git -C ~/servidor/envios.git rev-parse main)\"*) ;; *) falla \"libs/envios no es un gitlink al commit actual de envios\";; esac"
+    },
+    {
+     "name": "Los commits van en orden y sobre la historia del equipo",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"\nmensaje_es HEAD~1 'Actualiza libs/pagos' \"El penúltimo commit debería ser «Actualiza libs/pagos» (primero actualizas, luego añades envíos)\"\nmensaje_es HEAD~2 'Agrega el submódulo libs/pagos' \"Tus dos commits deberían ir justo encima del último commit del equipo («Agrega el submódulo libs/pagos»)\""
+    },
+    {
+     "name": "Publicado en el servidor",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"; [ \"$(git -C ~/servidor/plataforma.git rev-parse main)\" = \"$(git rev-parse HEAD)\" ] || falla \"El servidor de plataforma no tiene tus commits: falta git push\""
+    },
+    {
+     "name": "Submódulos en su commit y todo limpio",
+     "script": "cd ~/plataforma 2>/dev/null || falla \"No existe ~/plataforma\"\ngit submodule status --recursive | grep -q '^[-+U]' && falla \"git submodule status --recursive muestra - o +: algún submódulo no está inicializado o no coincide con el commit\"\nlimpio && sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git clone --recurse-submodules ~/servidor/plataforma.git plataforma",
+    "cd plataforma",
+    "git config push.recurseSubmodules check",
+    "git submodule update --remote libs/pagos",
+    "git diff --submodule=log",
+    "git add libs/pagos",
+    "git commit -m \"Actualiza libs/pagos\"",
+    "git submodule add ../envios.git libs/envios",
+    "git commit -m \"Agrega el submódulo libs/envios\"",
+    "git push",
+    "git submodule status --recursive"
+   ],
+   "hints": [
+    "Paso 1: `git clone --recurse-submodules …` (si ya clonaste sin la opción: `git submodule update --init --recursive`).",
+    "Paso 2: `git config push.recurseSubmodules check` dentro de `~/plataforma` (sin `--global`). Paso 3: `git submodule update --remote libs/pagos` mueve el submódulo; luego `git add libs/pagos` y commit.",
+    "Paso 4: `git submodule add ../envios.git libs/envios` y commit. Paso 5: `git push`. Comprueba con `git submodule status --recursive`."
+   ],
+   "explain": "`--recurse-submodules` equivale a clonar y ejecutar `git submodule update --init --recursive`: deja `libs/pagos` y `libs/pagos/vendor/moneda` en los commits registrados. `push.recurseSubmodules=check` hace que `git push` aborte («The following submodule paths contain changes that can not be found on any remote») si algún submódulo tiene commits sin publicar: evita el `not our ref` que sufrirían tus compañeros. `git submodule update --remote libs/pagos` hace fetch en pagos y deja su HEAD en `origin/main` (o en la rama de `submodule.libs/pagos.branch`); la plataforma lo ve como `modified: libs/pagos (new commits)` hasta que confirmas el puntero. `git submodule add ../envios.git` resuelve la URL respecto de `origin` y prepara `.gitmodules` + gitlink. Haz commits separados: uno por cambio lógico facilita revisar y revertir."
+  },
+  {
+   "id": "s14-p2",
+   "title": "Proyecto: migrar un submódulo a git subtree",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "En `~/web` (clonado con `--recurse-submodules` desde `~/servidor/web.git`) la librería de estilos está como submódulo en `libs/estilos`. El equipo está cansado de carpetas vacías y punteros olvidados: decidió pasarla a **git subtree** con historia resumida. Camila además publicó una versión nueva de estilos que todavía no usan.",
+    "1. Quita el submódulo `libs/estilos` por completo (commit, `.git/config`, `.git/modules` y disco) y confírmalo con el mensaje `Quita el submódulo libs/estilos`.\n2. Incorpora la **última versión** de `~/servidor/estilos.git` (rama `main`) en la misma ruta `libs/estilos` con `git subtree add … --squash`.\n3. Publica `web`.",
+    "Al final no debe quedar ni un gitlink en el proyecto y `.gitmodules` no debe mencionar ningún submódulo (puedes borrarlo o dejarlo vacío)."
+   ],
+   "setup": "mkdir -p ~/servidor\nautor 'Camila Rojas' 'camila@tienda.cl'\ngit init -q --bare ~/servidor/estilos.git\ngit clone -q ~/servidor/estilos.git ~/tmp-estilos 2>/dev/null\ncd ~/tmp-estilos\nfecha '2026-09-01 10:00'\ncommit_archivo base.css 'body { margin: 0; font-family: system-ui; }' 'Estilos base'\nfecha '2026-09-02 10:00'\ncommit_archivo botones.css '.btn { padding: 8px; }' 'Agrega botones'\nfecha '2026-09-03 10:00'\ncommit_archivo colores.css ':root { --primario: #0033a0; }' 'Agrega paleta de colores'\ngit push -q origin main\ncd ~\nyo\nautor 'Ana Pérez' 'ana@tienda.cl'\ngit init -q --bare ~/servidor/web.git\ngit clone -q ~/servidor/web.git ~/tmp-web 2>/dev/null\ncd ~/tmp-web\nfecha '2026-09-04 10:00'\ncommit_archivo index.html '<link rel=\"stylesheet\" href=\"libs/estilos/base.css\">' 'Primer commit'\nfecha '2026-09-04 11:00'\ngit submodule add -q ../estilos.git libs/estilos\ngit commit -q -m 'Agrega estilos como submódulo'\ngit push -q origin main\ncd ~\nrm -rf ~/tmp-web\nyo\ngit clone -q --recurse-submodules ~/servidor/web.git ~/web 2>/dev/null\nautor 'Camila Rojas' 'camila@tienda.cl'\ncd ~/tmp-estilos\nfecha '2026-09-10 10:00'\ncommit_archivo botones.css '.btn { padding: 8px 16px; border-radius: 4px; }' 'Botones redondeados'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/tmp-estilos",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "Hay un commit que quita el submódulo",
+     "script": "c=$(git log --format='%H %s' | grep ' Quita el submódulo libs/estilos$' | head -n 1 | cut -d' ' -f1); [ -n \"$c\" ] || falla \"No encuentro el commit «Quita el submódulo libs/estilos»\"; [ -z \"$(git ls-tree -r $c | grep '^160000')\" ] || falla \"El commit «Quita el submódulo libs/estilos» todavía tiene un gitlink\""
+    },
+    {
+     "name": "Ningún gitlink ni entrada en .gitmodules",
+     "script": "git ls-tree -r HEAD | grep -q '^160000' && falla \"HEAD todavía contiene un gitlink (160000)\"; git cat-file -e HEAD:.gitmodules 2>/dev/null && git config --blob HEAD:.gitmodules --get-regexp '^submodule\\.' >/dev/null && falla \".gitmodules todavía declara submódulos\"; true"
+    },
+    {
+     "name": "Sin rastro local del submódulo",
+     "script": "git config --get-regexp '^submodule\\.libs/estilos\\.' >/dev/null && falla \"Tu .git/config todavía tiene la sección submodule.libs/estilos (git submodule deinit)\"; [ -e .git/modules/libs/estilos ] && falla \"Queda .git/modules/libs/estilos\"; true"
+    },
+    {
+     "name": "libs/estilos es un subtree con la última versión",
+     "script": "[ \"$(git rev-parse -q --verify HEAD:libs/estilos)\" = \"$(git -C ~/servidor/estilos.git rev-parse 'main^{tree}')\" ] || falla \"En HEAD, libs/estilos no coincide con la última versión de estilos/main\""
+    },
+    {
+     "name": "Se usó git subtree con --squash",
+     "script": "git log --format=%B HEAD | grep -q '^git-subtree-dir: libs/estilos' || falla \"No encuentro el commit de git subtree para libs/estilos\"; git log --format=%s HEAD | grep -q \"^Squashed 'libs/estilos/' content\" || falla \"Falta --squash\""
+    },
+    {
+     "name": "Publicado en el servidor",
+     "script": "[ \"$(git -C ~/servidor/web.git rev-parse main)\" = \"$(git rev-parse HEAD)\" ] || falla \"El servidor no tiene tus commits: falta git push\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio && sin_operacion_en_curso"
+    }
+   ],
+   "solution": [
+    "git submodule deinit -f libs/estilos",
+    "git rm libs/estilos",
+    "rm -rf .git/modules/libs/estilos",
+    "git rm -f .gitmodules",
+    "git commit -m \"Quita el submódulo libs/estilos\"",
+    "git subtree add --prefix=libs/estilos ~/servidor/estilos.git main --squash",
+    "git log --oneline --graph",
+    "git push"
+   ],
+   "hints": [
+    "Primero la limpieza (como en el ejercicio de quitar un submódulo) y commit: `git subtree add` exige un árbol limpio y que la carpeta no exista.",
+    "Como era el único submódulo, tras `git rm libs/estilos` el `.gitmodules` queda vacío: puedes quitarlo con `git rm -f .gitmodules` o confirmarlo vacío.",
+    "Después: `git subtree add --prefix=libs/estilos ~/servidor/estilos.git main --squash` y `git push`."
+   ],
+   "explain": "La migración son dos commits con sentido propio: uno que retira el submódulo (`deinit` limpia `.git/config`, `git rm` quita gitlink y sección de `.gitmodules`, y borras `.git/modules/libs/estilos` a mano) y otro que trae el código como archivos normales con `git subtree add --squash` (commit «Squashed 'libs/estilos/' content…» + merge). Ahora quien clone `web` recibe los estilos sin pasos extra, y para actualizarlos basta `git subtree pull --prefix=libs/estilos ~/servidor/estilos.git main --squash`. Si el equipo quiere devolver mejoras a estilos: `git subtree push --prefix=libs/estilos ~/servidor/estilos.git <rama>`. Aviso para el equipo: quien tenga el submódulo poblado y haga `git pull` recibirá `error: The following untracked working tree files would be overwritten by merge: libs/estilos/…` y el merge se aborta; la solución es ejecutar antes `git submodule deinit -f libs/estilos` y repetir el pull."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué comparten todos los worktrees de un repositorio y qué tiene cada uno?",
+   "back": "Comparten la base de objetos, las ramas y etiquetas, la configuración y el stash. Cada worktree tiene su propio HEAD, su index, sus archivos y refs especiales (refs/bisect, refs/worktree, refs/rewritten)."
+  },
+  {
+   "front": "Crear un worktree en ../tienda-fix con una rama nueva fix/iva que parta de main",
+   "back": "`git worktree add -b fix/iva ../tienda-fix main`"
+  },
+  {
+   "front": "`fatal: 'main' is already used by worktree at '…'`",
+   "back": "La rama ya está activa en otro worktree. Trabaja en ese worktree, usa `--detach` si solo quieres mirar o elimina primero el otro worktree."
+  },
+  {
+   "front": "Alguien borró la carpeta de un worktree con `rm -r`. ¿Cómo se limpian los metadatos?",
+   "back": "`git worktree prune` (en `git worktree list` aparece como `prunable`). `git gc` también lo hace pasado `gc.worktreePruneExpire`."
+  },
+  {
+   "front": "¿Para qué sirve `git worktree lock`?",
+   "back": "Protege un worktree (por ejemplo, en un disco externo) contra prune, move y remove. Se quita con `unlock`; `remove -f -f` fuerza la eliminación."
+  },
+  {
+   "front": "¿Qué es un gitlink?",
+   "back": "Una entrada del árbol del superproyecto con modo 160000 que guarda el hash de un commit de otro repositorio (el submódulo)."
+  },
+  {
+   "front": "¿Qué contiene `.gitmodules`?",
+   "back": "Una sección `[submodule \"nombre\"]` por submódulo con `path`, `url` y opcionalmente `branch`. Es un archivo versionado y compartido."
+  },
+  {
+   "front": "Clonar un proyecto con submódulos (incluidos los anidados)",
+   "back": "`git clone --recurse-submodules <url>`. Si ya clonaste sin la opción: `git submodule update --init --recursive`."
+  },
+  {
+   "front": "Prefijos de `git submodule status`: `-`, `+`, `U`",
+   "back": "`-` no inicializado; `+` el commit actual no coincide con el registrado en el index del superproyecto; `U` conflictos de fusión."
+  },
+  {
+   "front": "¿Por qué un submódulo recién actualizado está en HEAD separado?",
+   "back": "Porque `git submodule update` hace checkout del commit exacto que registra el superproyecto, no de una rama."
+  },
+  {
+   "front": "`git submodule update` vs `git submodule update --remote`",
+   "back": "Sin `--remote`: lleva el submódulo al commit registrado. Con `--remote`: hace fetch y lo lleva a la punta de la rama seguida (`submodule.<nombre>.branch` o el HEAD del remoto)."
+  },
+  {
+   "front": "`modified: libs/utiles (new commits)` en `git status`",
+   "back": "El submódulo está en otro commit que el registrado. Si es intencional: `git add libs/utiles` + commit. Si no (por ejemplo, después de un pull): `git submodule update`."
+  },
+  {
+   "front": "`fatal: remote error: upload-pack: not our ref …` al actualizar submódulos",
+   "back": "Alguien publicó el superproyecto apuntando a un commit del submódulo que nunca publicó. Debe hacer push del submódulo."
+  },
+  {
+   "front": "`push.recurseSubmodules=check` vs `on-demand`",
+   "back": "`check` aborta el push si algún submódulo tiene commits que no están en ningún remoto; `on-demand` publica primero esos submódulos y después el superproyecto."
+  },
+  {
+   "front": "Quitar un submódulo sin dejar rastros",
+   "back": "`git submodule deinit -f <ruta>`, `git rm <ruta>`, `rm -rf .git/modules/<ruta>` y commit."
+  },
+  {
+   "front": "`fatal: transport 'file' not allowed` con un submódulo local",
+   "back": "Desde Git 2.38.1 `protocol.file.allow` tiene el valor `user`. Para un caso de confianza: `git -c protocol.file.allow=always submodule update --init`."
+  },
+  {
+   "front": "¿Qué guarda tu repositorio con `git subtree add --squash`?",
+   "back": "Los archivos como árboles y blobs normales, un commit resumen «Squashed '<prefijo>/' content…» (con trailers git-subtree-dir y git-subtree-split) y un merge que lo incorpora."
+  },
+  {
+   "front": "Extraer la historia de una carpeta como rama independiente",
+   "back": "`git subtree split --prefix=<carpeta> -b <rama>` (y `git subtree push` para publicarla en otro repositorio)."
+  },
+  {
+   "front": "¿Por qué `git clone --depth 1 ~/servidor/app.git` trae toda la historia?",
+   "back": "Con rutas locales Git hace un clon local e ignora `--depth` (`warning: --depth is ignored in local clones; use file:// instead.`). Usa `file://$HOME/servidor/app.git`."
+  },
+  {
+   "front": "¿Qué significa `grafted` en `git log` de un clon superficial?",
+   "back": "Es el commit frontera: la historia se corta ahí. Los commits frontera se listan en `.git/shallow`."
+  },
+  {
+   "front": "Completar un clon hecho con `--depth` y traer todas las ramas",
+   "back": "`git remote set-branches origin '*'` y `git fetch --unshallow` (`--depth` implica `--single-branch`)."
+  },
+  {
+   "front": "Blobless, treeless y superficial: ¿para quién?",
+   "back": "`--filter=blob:none`: desarrolladores en repos grandes. `--filter=tree:0` y `--depth 1`: builds de CI desechables."
+  },
+  {
+   "front": "¿Qué necesita un servidor propio para aceptar clones parciales?",
+   "back": "`git config uploadpack.allowFilter true` en el repositorio del servidor. Si no, el cliente avisa `warning: filtering not recognized by server, ignoring`."
+  },
+  {
+   "front": "¿Cómo ver qué objetos faltan en un clon parcial?",
+   "back": "`git rev-list --objects --all --missing=print`: las líneas que empiezan con `?` son objetos que siguen en el servidor."
+  },
+  {
+   "front": "Regla del modo cono para `git sparse-checkout set A/B`",
+   "back": "Incluye los archivos de la raíz, los que cuelgan directamente de `A/` y todo lo que hay bajo `A/B/`, a cualquier profundidad."
+  },
+  {
+   "front": "`git sparse-checkout set` vs `add` vs `disable`",
+   "back": "`set` reemplaza la lista de carpetas (y activa la función), `add` agrega carpetas, `disable` vuelve a escribir todo y desactiva sparse-checkout."
+  },
+  {
+   "front": "¿Qué guarda Git para un archivo manejado por Git LFS?",
+   "back": "Un puntero de texto con `version https://git-lfs.github.com/spec/v1`, `oid sha256:…` y `size …`. El contenido real está en el servidor LFS."
+  },
+  {
+   "front": "`git maintenance run` vs `git maintenance start`",
+   "back": "`run` ejecuta tareas ahora (`--task=gc`, `commit-graph`…). `start` registra el repo y programa ejecuciones periódicas en el sistema (launchctl, cron/systemd, schtasks)."
+  },
+  {
+   "front": "¿Qué hace `scalar clone <url>`?",
+   "back": "Clon parcial `blob:none` + sparse-checkout en modo cono (solo la raíz), worktree en `src/`, mantenimiento en segundo plano y configuración de rendimiento."
+  },
+  {
+   "front": "¿Qué hace `submodule.recurse true`?",
+   "back": "Activa `--recurse-submodules` por defecto en checkout, switch, pull, fetch, push, reset, restore y grep. No afecta a `clone`."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s14-q1",
+   "type": "single",
+   "q": "Estás en `feature/checkout` con cambios sin confirmar y debes corregir un bug en `main` sin usar stash, sin tocar tu carpeta y sin duplicar el historial. ¿Qué haces?",
+   "options": [
+    "`git worktree add -b fix/bug ../tienda-fix main`",
+    "`git switch -c fix/bug main`",
+    "`git clone . ../tienda-fix`",
+    "`git stash && git switch main`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git worktree add` crea otra carpeta vinculada al mismo repositorio con la rama nueva, sin tocar tu index ni tus archivos. `git switch` intentaría llevarse tus cambios (o fallaría), clonar duplica todo el historial y el stash es justo lo que querías evitar."
+  },
+  {
+   "id": "s14-q2",
+   "type": "single",
+   "q": "Al ejecutar `git switch hotfix` ves `fatal: 'hotfix' is already used by worktree at '/home/ana/tienda-hotfix'`. ¿Qué significa?",
+   "options": [
+    "La rama `hotfix` está activa en otro worktree del mismo repositorio",
+    "La rama `hotfix` fue borrada en el remoto",
+    "Tienes cambios sin confirmar que chocan con `hotfix`",
+    "El repositorio está corrupto y hay que ejecutar `git fsck`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git impide que dos worktrees tengan activa la misma rama. No tiene relación con el remoto, con cambios locales (ese error es otro) ni con corrupción."
+  },
+  {
+   "id": "s14-q3",
+   "type": "yesno",
+   "q": "Sobre `git worktree`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "Un commit hecho en un worktree vinculado se ve desde el worktree principal con `git log --all`.",
+     "answer": true
+    },
+    {
+     "text": "Cada worktree tiene su propio index.",
+     "answer": true
+    },
+    {
+     "text": "`git worktree remove` borra también la rama que tenía activa.",
+     "answer": false
+    },
+    {
+     "text": "Si borras la carpeta de un worktree con `rm -r`, Git elimina sus metadatos en ese mismo instante.",
+     "answer": false
+    }
+   ],
+   "explain": "Objetos y ramas son compartidos, así que el commit se ve desde cualquier worktree; el index es propio de cada uno. `remove` nunca borra ramas. Con `rm -r` quedan metadatos huérfanos en `.git/worktrees` hasta un `git worktree prune` (o un `gc` pasado el plazo)."
+  },
+  {
+   "id": "s14-q4",
+   "type": "single",
+   "q": "`git worktree list` muestra:\n```bash\n/home/ana/tienda        a1b2c3d [main]\n/home/ana/tienda-login  a1b2c3d [hotfix/login] prunable\n```\n¿Qué comando limpia el problema?",
+   "options": [
+    "`git worktree prune`",
+    "`git branch -D hotfix/login`",
+    "`git worktree unlock ../tienda-login`",
+    "`git gc --aggressive`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`prunable` indica que la carpeta ya no existe: `git worktree prune` borra sus metadatos. Borrar la rama no arregla nada (y además Git no te dejaría mientras está «en uso»), `unlock` es para worktrees bloqueados y `gc --aggressive` recomprime objetos."
+  },
+  {
+   "id": "s14-q5",
+   "type": "multi",
+   "q": "¿Qué comparten todos los worktrees de un repositorio? (Selecciona DOS.)",
+   "options": [
+    "La base de objetos",
+    "El index",
+    "Las ramas (`refs/heads`)",
+    "HEAD",
+    "`refs/bisect`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Objetos y ramas son comunes. El index, HEAD y las refs de bisect son propios de cada worktree, por eso puedes hacer un bisect en uno sin afectar al otro."
+  },
+  {
+   "id": "s14-q6",
+   "type": "single",
+   "q": "¿Qué guarda el árbol del superproyecto en la ruta de un submódulo?",
+   "options": [
+    "Una entrada de modo 160000 con el hash de un commit del submódulo",
+    "Una copia comprimida de los archivos del submódulo",
+    "El nombre de la rama que sigue el submódulo",
+    "Un blob con la URL del submódulo"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Es un gitlink: modo 160000 y el hash de un commit. Los archivos viven en el repositorio del submódulo; la rama (opcional) y la URL van en `.gitmodules`, que es un archivo aparte."
+  },
+  {
+   "id": "s14-q7",
+   "type": "single",
+   "q": "Clonaste `plataforma` con un `git clone` normal. `libs/pagos` está vacía y además `libs/pagos` tiene sus propios submódulos. ¿Qué ejecutas?",
+   "options": [
+    "`git submodule update --init --recursive`",
+    "`git submodule update --remote`",
+    "`git submodule init`",
+    "`git pull --recurse-submodules`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--init` registra las URL y `update` clona y hace checkout del commit registrado; `--recursive` repite todo en los anidados. `--remote` iría a la punta de la rama (no al commit registrado), `init` solo no descarga nada y `pull` no inicializa submódulos nuevos."
+  },
+  {
+   "id": "s14-q8",
+   "type": "single",
+   "q": "`git submodule status` muestra `+9f3c2a1… libs/utiles (heads/main)`. ¿Qué indica el `+`?",
+   "options": [
+    "El commit actual del submódulo no coincide con el registrado en el index del superproyecto",
+    "El submódulo no está inicializado",
+    "El submódulo tiene conflictos de fusión",
+    "El submódulo tiene commits sin publicar"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`+` = desfasado respecto del gitlink del index. No inicializado se marca con `-` y conflictos con `U`. `status` no informa si hay commits sin publicar."
+  },
+  {
+   "id": "s14-q9",
+   "type": "single",
+   "q": "Recién clonada la tienda con `--recurse-submodules`, haces esto:\n```bash\ncd libs/utiles\necho \"// fix\" >> rut.js\ngit commit -am \"Arregla rut\"\ngit switch main\n```\n¿Qué pasa con el commit «Arregla rut»?",
+   "options": [
+    "Queda fuera de toda rama: Git avisa «you are leaving 1 commit behind» y habría que rescatarlo con `git branch <nombre> <hash>` o el reflog",
+    "Queda en `main` del submódulo",
+    "Se publica solo al hacer push del superproyecto",
+    "Git impide hacer commit en un submódulo"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Después de `submodule update` el submódulo está en HEAD separado; el commit no pertenece a ninguna rama y al cambiarte a `main` queda huérfano. Lo correcto era `git switch main` antes de editar. Un submódulo admite commits normalmente y el push del superproyecto no publica el submódulo."
+  },
+  {
+   "id": "s14-q10",
+   "type": "single",
+   "q": "Tu compañero ejecuta `git submodule update` y recibe `fatal: remote error: upload-pack: not our ref 4f87174…`. ¿Cuál es la causa más probable?",
+   "options": [
+    "Publicaste el superproyecto apuntando a un commit del submódulo que nunca publicaste",
+    "Su Git es antiguo y no entiende gitlinks",
+    "Falta `git submodule sync`",
+    "El submódulo usa una URL relativa"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El gitlink apunta a un commit que el servidor del submódulo no tiene. `sync` solo actualiza URL y las URL relativas funcionan bien; no es un problema de versión."
+  },
+  {
+   "id": "s14-q11",
+   "type": "multi",
+   "q": "¿Qué evita el problema de la pregunta anterior? (Selecciona DOS.)",
+   "options": [
+    "`git push --recurse-submodules=on-demand`",
+    "`git config push.recurseSubmodules check`",
+    "`git submodule sync --recursive`",
+    "`git config submodule.recurse false`",
+    "`git push --force-with-lease`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`on-demand` publica primero los submódulos con commits sin publicar; `check` aborta el push si los hay. `sync` actualiza URL, desactivar `submodule.recurse` no publica nada y `--force-with-lease` es para reescrituras."
+  },
+  {
+   "id": "s14-q12",
+   "type": "single",
+   "q": "¿Qué hace `git submodule update --remote libs/utiles`?",
+   "options": [
+    "Hace fetch en el submódulo y lo deja en la punta de su rama seguida, sin confirmar nada en el superproyecto",
+    "Lo deja en el commit registrado por el superproyecto",
+    "Hace commit automáticamente del nuevo puntero",
+    "Publica el submódulo en su remoto"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--remote` cambia la fuente del commit: la rama remota (`submodule.<nombre>.branch` o el HEAD del remoto). El superproyecto verá `new commits` hasta que hagas `git add` + commit. Sin `--remote` se usa el commit registrado."
+  },
+  {
+   "id": "s14-q13",
+   "type": "yesno",
+   "q": "El `origin` del superproyecto es `https://github.com/empresa/tienda.git`. Indica Sí o No:",
+   "statements": [
+    {
+     "text": "`url = ../utiles.git` en `.gitmodules` apunta a `https://github.com/empresa/utiles.git`.",
+     "answer": true
+    },
+    {
+     "text": "Una URL relativa en `git submodule add` se resuelve siempre respecto de tu carpeta actual.",
+     "answer": false
+    },
+    {
+     "text": "Si el superproyecto no tiene remoto por defecto, se usa su directorio de trabajo como base.",
+     "answer": true
+    }
+   ],
+   "explain": "Las URL que empiezan por `./` o `../` se resuelven respecto de la URL del remoto por defecto; solo si no hay remoto, el superproyecto es su propia referencia y se usa el directorio actual."
+  },
+  {
+   "id": "s14-q14",
+   "type": "multi",
+   "q": "Quieres quitar el submódulo `libs/graficos` sin dejar rastros. ¿Qué pasos necesitas? (Selecciona TRES.)",
+   "options": [
+    "`git submodule deinit -f libs/graficos`",
+    "`git rm libs/graficos`",
+    "`rm -rf .git/modules/libs/graficos`",
+    "`git submodule sync`",
+    "`git clean -fdx`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "`deinit` limpia `.git/config` y vacía la carpeta; `git rm` quita gitlink y sección de `.gitmodules`; el repositorio interno de `.git/modules` hay que borrarlo a mano. `sync` actualiza URL y `clean -fdx` borraría archivos ignorados sin tocar la configuración."
+  },
+  {
+   "id": "s14-q15",
+   "type": "single",
+   "q": "Tras `git pull`, `git status` muestra `modified: libs/utiles (new commits)` aunque no tocaste el submódulo. ¿Qué debes hacer?",
+   "options": [
+    "`git submodule update`",
+    "`git commit -am \"Actualiza\"`",
+    "`git submodule add --force libs/utiles`",
+    "`git restore --staged libs/utiles`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El pull actualizó el gitlink, pero el submódulo sigue en el commit viejo: `git submodule update` lo lleva al nuevo. `git commit -a` confirmaría el commit viejo y desharía la actualización de tu compañero; `add --force` y `restore --staged` no resuelven el desfase."
+  },
+  {
+   "id": "s14-q16",
+   "type": "single",
+   "q": "En tu computador, `git submodule update --init` de un submódulo con URL local falla con `fatal: transport 'file' not allowed`. Confías en el origen. ¿Qué haces?",
+   "options": [
+    "`git -c protocol.file.allow=always submodule update --init`",
+    "Actualizar Git: es un bug de versiones antiguas",
+    "`git submodule sync`",
+    "Cambiar la URL a `git://`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Desde Git 2.38.1 (CVE-2022-39253) `protocol.file.allow` tiene el valor `user`, lo que bloquea el transporte local cuando Git clona submódulos por su cuenta. Es intencional, no un bug; `sync` no cambia la política y `git://` no aplica a una ruta local."
+  },
+  {
+   "id": "s14-q17",
+   "type": "single",
+   "q": "Dentro de `git submodule foreach '…'`, ¿qué variable contiene el commit registrado para ese submódulo en el superproyecto?",
+   "options": [
+    "`$sha1`",
+    "`$name`",
+    "`$toplevel`",
+    "`$sm_path`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`$sha1` es el commit registrado; `$name` el nombre en `.gitmodules`, `$toplevel` la ruta absoluta del superproyecto y `$sm_path` la ruta del submódulo."
+  },
+  {
+   "id": "s14-q18",
+   "type": "single",
+   "q": "¿Qué ventaja principal tiene `git subtree` frente a los submódulos?",
+   "options": [
+    "Quien clona el proyecto recibe los archivos sin ejecutar ningún comando extra",
+    "Ocupa menos espacio porque solo guarda un puntero",
+    "Mantiene la historia del proyecto externo totalmente separada",
+    "No necesita hacer merges"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con subtree el código es parte normal de tu repo. Justamente guarda contenido, no punteros (eso es el submódulo), mezcla la historia (resumida con `--squash`) y funciona mediante merges."
+  },
+  {
+   "id": "s14-q19",
+   "type": "single",
+   "q": "Añadiste `vendor/estilos` con `git subtree add … --squash`. ¿Cómo traes la nueva versión de la librería?",
+   "options": [
+    "`git subtree pull --prefix=vendor/estilos ~/servidor/estilos.git main --squash`",
+    "`git submodule update --remote vendor/estilos`",
+    "`git pull ~/servidor/estilos.git main`",
+    "`git subtree split --prefix=vendor/estilos`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`subtree pull` con el mismo `--prefix` y `--squash`. No es un submódulo; un `git pull` directo fusionaría la librería en la raíz del proyecto; `split` sirve para extraer historia, no para traerla."
+  },
+  {
+   "id": "s14-q20",
+   "type": "yesno",
+   "q": "Sobre `git subtree`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "`git subtree add` exige un árbol de trabajo limpio.",
+     "answer": true
+    },
+    {
+     "text": "`git subtree add` crea un gitlink de modo 160000.",
+     "answer": false
+    },
+    {
+     "text": "`git subtree split --prefix=docs -b solo-docs` crea una rama solo con la historia de `docs`.",
+     "answer": true
+    },
+    {
+     "text": "`git subtree` forma parte del núcleo de Git y está en todas las instalaciones.",
+     "answer": false
+    }
+   ],
+   "explain": "Con cambios pendientes responde `fatal: working tree has modifications.  Cannot add.`. Subtree guarda árboles normales, no gitlinks. `split` genera una historia sintética de la carpeta. Vive en `contrib/`: Apple Git lo trae, pero algunas distribuciones lo empaquetan aparte."
+  },
+  {
+   "id": "s14-q21",
+   "type": "single",
+   "q": "Ejecutas `git clone --depth 1 ~/servidor/app.git` y ves `warning: --depth is ignored in local clones; use file:// instead.`. ¿Qué pasó?",
+   "options": [
+    "Git hizo un clon local completo e ignoró `--depth`",
+    "El clon falló y no se creó nada",
+    "Se creó un clon con 1 commit, el aviso es informativo",
+    "El servidor no permite clones superficiales"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con rutas locales Git copia o enlaza `.git/objects` y no puede recortar; el clon se creó completo. Para recortar hay que usar `file:///ruta` (o un servidor real)."
+  },
+  {
+   "id": "s14-q22",
+   "type": "single",
+   "q": "Clonaste con `--depth 1` y `git branch -r` solo muestra `origin/main`, aunque el servidor tiene más ramas. ¿Por qué?",
+   "options": [
+    "`--depth` implica `--single-branch`",
+    "Las otras ramas no tienen commits recientes",
+    "Hace falta `git fetch --prune`",
+    "Los clones superficiales no admiten ramas"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El refspec quedó limitado a `main`. Se arregla con `git remote set-branches origin '*'` y un fetch (o clonando con `--no-single-branch`)."
+  },
+  {
+   "id": "s14-q23",
+   "type": "single",
+   "q": "¿Qué contiene un clon hecho con `--filter=blob:none` justo después del clon?",
+   "options": [
+    "Todos los commits y árboles, y solo los blobs necesarios para el checkout",
+    "Solo el último commit con todos sus archivos",
+    "Solo los commits, sin árboles ni blobs",
+    "Todo el repositorio, pero comprimido"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Blobless: historia completa (commits y árboles), contenido bajo demanda; el checkout inicial ya trajo los blobs de HEAD. «Solo el último commit» es un clon superficial y «sin árboles» es `tree:0`."
+  },
+  {
+   "id": "s14-q24",
+   "type": "multi",
+   "q": "¿Qué es cierto de un clon hecho con `git clone --depth 1 file:///…`? (Selecciona DOS.)",
+   "options": [
+    "`git rev-parse --is-shallow-repository` responde `true`",
+    "El commit frontera aparece como `grafted` en `git log --decorate`",
+    "Tiene todos los commits pero sin blobs",
+    "No permite hacer commits",
+    "Requiere `uploadpack.allowFilter` en el servidor"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Es superficial: `true` y el commit frontera `grafted` (listado en `.git/shallow`). «Commits sin blobs» describe un clon parcial; en un clon superficial se puede confirmar; `allowFilter` es para `--filter`, no para `--depth`."
+  },
+  {
+   "id": "s14-q25",
+   "type": "single",
+   "q": "Al clonar con `--filter=blob:none` desde tu servidor aparece `warning: filtering not recognized by server, ignoring`. ¿Qué falta?",
+   "options": [
+    "`uploadpack.allowFilter = true` en el repositorio del servidor",
+    "Usar `--depth 1` junto con el filtro",
+    "Ejecutar `git maintenance start` en el cliente",
+    "Activar `core.sparseCheckout`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El servidor debe aceptar filtros. Sin eso, el clon se hace completo. Las demás opciones no tienen relación con el protocolo de filtros."
+  },
+  {
+   "id": "s14-q26",
+   "type": "single",
+   "q": "Según la guía del blog de GitHub, ¿qué clon conviene a un desarrollador que trabaja a diario en un repositorio muy grande?",
+   "options": [
+    "Blobless (`--filter=blob:none`)",
+    "Treeless (`--filter=tree:0`)",
+    "Superficial (`--depth 1`)",
+    "Espejo (`--mirror`)"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Blobless es la opción parcial más usada para desarrollar. Treeless y superficial se recomiendan para builds desechables (con ellos, `git log -- ruta` o los fetch posteriores salen caros). `--mirror` es un clon bare completo."
+  },
+  {
+   "id": "s14-q27",
+   "type": "single",
+   "q": "Tras `git sparse-checkout set apps/web` (modo cono), ¿qué archivo NO estará en tu disco?",
+   "options": [
+    "`apps/admin/panel.html`",
+    "`README.md`",
+    "`apps/README.md`",
+    "`apps/web/src/app.js`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El cono incluye los archivos de la raíz, los que cuelgan directamente de las carpetas padre (`apps/README.md`) y todo lo que hay bajo `apps/web`. `apps/admin` es otra carpeta y queda fuera."
+  },
+  {
+   "id": "s14-q28",
+   "type": "yesno",
+   "q": "Sobre `git sparse-checkout`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "Borra del repositorio los archivos que quedan fuera del cono.",
+     "answer": false
+    },
+    {
+     "text": "`git sparse-checkout add` agrega carpetas sin quitar las anteriores.",
+     "answer": true
+    },
+    {
+     "text": "El modo cono es el predeterminado desde Git 2.37.",
+     "answer": true
+    },
+    {
+     "text": "`git sparse-checkout init` es la forma recomendada de activarlo.",
+     "answer": false
+    }
+   ],
+   "explain": "sparse-checkout solo decide qué se escribe en el disco; commits e index siguen completos (skip-worktree). `add` suma carpetas y `set` reemplaza la lista. Desde 2.37 el cono es el predeterminado y `init` está obsoleto: usa `set`."
+  },
+  {
+   "id": "s14-q29",
+   "type": "single",
+   "q": "Monorepo gigante; solo trabajarás en `servicios/pagos`. ¿Qué combinación minimiza la descarga y los archivos en disco?",
+   "options": [
+    "`git clone --filter=blob:none --sparse <url>` y luego `git sparse-checkout set servicios/pagos`",
+    "`git clone --depth 1 <url>` y luego `rm -r` de las demás carpetas",
+    "`git clone <url>` y luego `git sparse-checkout set servicios/pagos`",
+    "`git clone --mirror <url>`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El clon parcial evita descargar blobs y `--sparse` evita que el checkout inicial traiga todos los archivos; luego `set` trae solo los de pagos. Borrar con `rm -r` deja cambios pendientes, el clon normal descarga todo y `--mirror` no tiene directorio de trabajo."
+  },
+  {
+   "id": "s14-q30",
+   "type": "single",
+   "q": "¿Qué guarda Git en el commit para un archivo `.psd` manejado por Git LFS?",
+   "options": [
+    "Un puntero de texto con `version`, `oid sha256:…` y `size`",
+    "El archivo completo comprimido con zlib",
+    "Un gitlink de modo 160000",
+    "Nada: el archivo queda ignorado"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El filtro *clean* de LFS reemplaza el contenido por un puntero; el archivo real se sube al servidor LFS y el filtro *smudge* lo descarga al hacer checkout. No es un gitlink ni un archivo ignorado."
+  },
+  {
+   "id": "s14-q31",
+   "type": "multi",
+   "q": "¿Qué afirmaciones sobre Git LFS son correctas? (Selecciona DOS.)",
+   "options": [
+    "`git lfs track \"*.psd\"` escribe en `.gitattributes`, y ese archivo hay que confirmarlo",
+    "Convertir binarios que ya están en la historia exige reescribirla (`git lfs migrate`)",
+    "Viene incluido en Git como subcomando nativo",
+    "Reduce el tamaño de los archivos ya confirmados sin tocar la historia",
+    "Con LFS, GitHub acepta archivos de cualquier tamaño sin límites"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`track` agrega `*.psd filter=lfs diff=lfs merge=lfs -text` a `.gitattributes`, que debe versionarse. Lo ya confirmado solo cambia reescribiendo la historia. LFS es una extensión que se instala aparte, y los servicios mantienen sus propios límites de almacenamiento."
+  },
+  {
+   "id": "s14-q32",
+   "type": "single",
+   "q": "¿Qué hace `git maintenance start` en un repositorio?",
+   "options": [
+    "Lo registra en `maintenance.repo` y programa ejecuciones periódicas con el programador del sistema",
+    "Ejecuta `git gc --aggressive` una sola vez",
+    "Activa `core.fsmonitor`",
+    "Convierte el repositorio en un clon parcial"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`start` hace lo mismo que `register` y además programa tareas horarias, diarias y semanales (launchctl en macOS, cron o systemd en Linux, schtasks en Windows). Para ejecutar una vez, `git maintenance run`."
+  },
+  {
+   "id": "s14-q33",
+   "type": "single",
+   "q": "¿Qué describe mejor lo que hace `scalar clone <url>`?",
+   "options": [
+    "Un clon parcial `blob:none` con sparse-checkout en modo cono, worktree en `src/`, mantenimiento en segundo plano y configuración de rendimiento",
+    "Un clon superficial de profundidad 1",
+    "Un clon con todos los submódulos inicializados",
+    "Un clon bare para usar como servidor"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Scalar (incluido con Git desde 2.38) aplica de una vez las prácticas para repos grandes. No hace clones superficiales (usa parcial), no trata especialmente los submódulos y no crea repos bare."
+  },
+  {
+   "id": "s14-q34",
+   "type": "yesno",
+   "q": "Configuración para submódulos. Indica Sí o No:",
+   "statements": [
+    {
+     "text": "Con `submodule.recurse true`, `git clone` también clona los submódulos.",
+     "answer": false
+    },
+    {
+     "text": "`diff.submodule log` hace que los diffs muestren la lista de commits del submódulo.",
+     "answer": true
+    },
+    {
+     "text": "`status.submoduleSummary true` agrega un resumen de commits de los submódulos a `git status`.",
+     "answer": true
+    }
+   ],
+   "explain": "`submodule.recurse` afecta a checkout, switch, pull, fetch, push, reset, restore y grep, pero no a `clone` (ahí sigue haciendo falta `--recurse-submodules`). Las otras dos opciones mejoran la información sobre submódulos."
+  },
+  {
+   "id": "s14-q35",
+   "type": "single",
+   "q": "Tu proyecto usa submódulos y quieres trabajar en dos ramas a la vez. ¿Qué recomienda la documentación de `git worktree`?",
+   "options": [
+    "Evitar varios worktrees de un superproyecto: el soporte de submódulos es incompleto; mejor un clon aparte",
+    "Usar worktrees sin problema: los submódulos se comparten automáticamente",
+    "Convertir los submódulos en worktrees",
+    "Activar `extensions.worktreeConfig` para que funcione"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La documentación advierte que el soporte de submódulos en worktrees está incompleto y no recomienda varios checkouts de un superproyecto. Los submódulos no se comparten automáticamente y `worktreeConfig` solo separa la configuración."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-worktree — documentación oficial",
+   "url": "https://git-scm.com/docs/git-worktree"
+  },
+  {
+   "title": "git-submodule — documentación oficial",
+   "url": "https://git-scm.com/docs/git-submodule"
+  },
+  {
+   "title": "gitsubmodules — conceptos de submódulos",
+   "url": "https://git-scm.com/docs/gitsubmodules"
+  },
+  {
+   "title": "Pro Git 2.ª ed. — Herramientas de Git: Submódulos",
+   "url": "https://git-scm.com/book/es/v2/Herramientas-de-Git-Subm%C3%B3dulos"
+  },
+  {
+   "title": "Pro Git 2nd ed. — Git Tools: Submodules",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Submodules"
+  },
+  {
+   "title": "git-subtree (contrib) — documentación",
+   "url": "https://github.com/git/git/blob/master/contrib/subtree/git-subtree.adoc"
+  },
+  {
+   "title": "git-sparse-checkout — documentación oficial",
+   "url": "https://git-scm.com/docs/git-sparse-checkout"
+  },
+  {
+   "title": "Partial Clone — documentación técnica de Git",
+   "url": "https://git-scm.com/docs/partial-clone"
+  },
+  {
+   "title": "git-clone — documentación oficial",
+   "url": "https://git-scm.com/docs/git-clone"
+  },
+  {
+   "title": "git-fetch — documentación oficial",
+   "url": "https://git-scm.com/docs/git-fetch"
+  },
+  {
+   "title": "git-maintenance — documentación oficial",
+   "url": "https://git-scm.com/docs/git-maintenance"
+  },
+  {
+   "title": "scalar — documentación oficial",
+   "url": "https://git-scm.com/docs/scalar"
+  },
+  {
+   "title": "gitrepository-layout (shallow, modules, worktrees)",
+   "url": "https://git-scm.com/docs/gitrepository-layout"
+  },
+  {
+   "title": "git-config (protocol.allow, submodule.recurse, push.recurseSubmodules)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "GitHub Blog — Get up to speed with partial clone and shallow clone",
+   "url": "https://github.blog/open-source/git/get-up-to-speed-with-partial-clone-and-shallow-clone/"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.37 (sparse-checkout, fsmonitor)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-37/"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.38 (Scalar)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-38/"
+  },
+  {
+   "title": "GitHub Blog — Git security vulnerabilities announced (CVE-2022-39253, protocol.file.allow)",
+   "url": "https://github.blog/open-source/git/git-security-vulnerabilities-announced/"
+  },
+  {
+   "title": "Git 2.48 release notes (worktrees con rutas relativas)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.48.0.adoc"
+  },
+  {
+   "title": "Git 2.49 release notes (git clone --revision)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.49.0.adoc"
+  },
+  {
+   "title": "Git 2.50 release notes (git maintenance)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.50.0.adoc"
+  },
+  {
+   "title": "Git LFS",
+   "url": "https://git-lfs.com/"
+  },
+  {
+   "title": "Git LFS — especificación del puntero",
+   "url": "https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md"
+  },
+  {
+   "title": "GitHub Docs — About large files on GitHub",
+   "url": "https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github"
+  },
+  {
+   "title": "actions/checkout (fetch-depth, filter, sparse-checkout)",
+   "url": "https://github.com/actions/checkout"
+  }
+ ]
+}

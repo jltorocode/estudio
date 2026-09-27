@@ -1,0 +1,2589 @@
+{
+ "id": "s07",
+ "order": 7,
+ "title": "Repositorios remotos",
+ "domain": "colaboracion",
+ "summary": "Trabaja con copias del repositorio en otros lugares: clona, conecta y administra remotos, trae cambios con fetch y pull, publica con push y entiende de verdad las ramas remotas (`origin/main`) y el upstream. Resolverás pushes rechazados sin perder el trabajo de nadie y aprenderás a autenticarte por HTTPS o SSH. Todo se practica con un servidor simulado y compañeros que hacen commits reales.",
+ "goal": "Sincronizar un repositorio con un servidor sin perder trabajo: clonar, traer (fetch/pull), publicar (push), resolver un push rechazado y mantener ordenados los remotos, las ramas remotas y los upstreams.",
+ "objectives": [
+  "Explicar qué es un remoto, un repositorio bare y la diferencia entre una rama local, una rama remota (`origin/main`) y su upstream.",
+  "Clonar repositorios y administrar remotos con `git remote` (`-v`, `add`, `rename`, `remove`, `set-url`, `get-url`, `show`).",
+  "Traer cambios con `git fetch` (y `--prune`) e inspeccionarlos antes de integrarlos.",
+  "Integrar cambios con `git pull` eligiendo merge, rebase o solo fast-forward (`--no-rebase`, `--rebase`, `--ff-only`, `pull.rebase`, `pull.ff`).",
+  "Publicar ramas con `git push -u`, borrar ramas remotas y resolver un push rechazado por non-fast-forward sin forzar.",
+  "Diagnosticar la sincronización con `git status`, `git branch -vv`, ahead/behind y `@{u}`, y corregir el upstream con `git branch -u`.",
+  "Configurar la autenticación con GitHub por HTTPS (token personal y credential helper) o por SSH (`ssh-keygen`, `ssh-agent`)."
+ ],
+ "lessons": [
+  {
+   "id": "s07-l1",
+   "title": "Remotos: el modelo mental",
+   "minutes": 15,
+   "goals": [
+    "Explicar qué es un remoto y por qué cada clon es un repositorio completo.",
+    "Crear un repositorio bare que haga de servidor con `git init --bare`.",
+    "Conectar un repositorio existente a un servidor con `git remote add` e interpretar `git remote -v`."
+   ],
+   "takeaways": [
+    "Un remoto es un nombre corto para la URL de otro repositorio; `origin` es solo el nombre que pone `git clone` por defecto.",
+    "Git es distribuido: cada clon tiene toda la historia y casi todo es local; solo unos pocos comandos (`clone`, `fetch`, `pull`, `push`, `ls-remote`…) hablan con otro repositorio.",
+    "Los servidores guardan repositorios **bare**: la base de datos de Git sin directorio de trabajo.",
+    "`git remote add` solo guarda configuración (URL y refspec); no descarga ni sube nada."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora todo ocurrió en un solo repositorio, en tu computador. Colaborar significa que **varias copias del mismo repositorio** viven en lugares distintos —tu computador, el de tu compañera, un servidor como GitHub— y que de vez en cuando se **sincronizan**. Git es **distribuido**: cada copia es un repositorio completo, con toda la historia; ninguna es «más Git» que otra. Si el equipo trata a una como la oficial (el «servidor»), es por acuerdo, no porque Git lo exija."
+    },
+    {
+     "type": "diagram",
+     "title": "Un equipo típico: un repositorio central y un clon por persona",
+     "mermaid": "flowchart LR\n  subgraph PC1[\"Tu computador\"]\n    T[\"~/tienda<br/>repo con directorio de trabajo\"]\n  end\n  subgraph PC2[\"Computador de Ana\"]\n    A[\"~/tienda<br/>repo con directorio de trabajo\"]\n  end\n  S[(\"Servidor: tienda.git<br/>repositorio bare\")]\n  T -- \"git push\" --> S\n  S -- \"git fetch / git pull\" --> T\n  A -- \"git push\" --> S\n  S -- \"git fetch / git pull\" --> A",
+     "caption": "Tú y Ana no se conectan entre ustedes: ambos sincronizan con el servidor. Cada flecha es un comando que viaja por la red; todo lo demás (`commit`, `branch`, `merge`, `log`…) es local y funciona sin conexión."
+    },
+    {
+     "type": "h",
+     "text": "Qué es exactamente un remoto"
+    },
+    {
+     "type": "p",
+     "text": "Un **remoto** (*remote*) es una entrada en la configuración de tu repositorio que asocia un **nombre corto** a una **URL**. En vez de escribir `https://github.com/ana/tienda.git` cada vez, escribes `origin`. Ese nombre también sirve de prefijo para las **ramas remotas** de la lección 3: `origin/main` significa «la rama `main` tal como la vi la última vez en `origin`»."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`origin` es solo el nombre que `git clone` le pone al remoto desde el que clonaste. No tiene nada de especial: puedes renombrarlo o tener otros (`upstream`, `ana`, `respaldo`…).",
+      "Un repositorio puede tener **cero, uno o muchos** remotos. Uno creado con `git init` empieza sin ninguno.",
+      "Solo unos pocos comandos hablan con otro repositorio; los principales son `git clone`, `git fetch`, `git pull`, `git push` y `git ls-remote` (también `git remote show`, que consulta al servidor). `commit`, `log`, `branch`, `merge` y compañía trabajan solo con tu copia local."
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Remoto",
+       "en": "remote",
+       "def": "Nombre corto guardado en tu configuración que apunta a la URL de otro repositorio con el que te sincronizas."
+      },
+      {
+       "term": "origin",
+       "en": "origin",
+       "def": "Nombre por defecto del remoto desde el que clonaste. Es una convención, no una palabra reservada."
+      },
+      {
+       "term": "Repositorio bare",
+       "en": "bare repository",
+       "def": "Repositorio sin directorio de trabajo: solo la base de datos de Git. Es el formato de los servidores."
+      },
+      {
+       "term": "URL del remoto",
+       "en": "remote URL",
+       "def": "Dirección del otro repositorio: una ruta (`/srv/git/x.git`), `file://…`, `https://…` o `git@host:…` (SSH)."
+      }
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Repositorios bare: el formato de los servidores"
+    },
+    {
+     "type": "p",
+     "text": "Un repositorio normal tiene dos partes: tus archivos (el directorio de trabajo) y la base de datos de Git (la carpeta `.git`). Un repositorio **bare** («desnudo») es **solo la base de datos**, sin directorio de trabajo: nadie edita archivos ahí, solo recibe y entrega commits. Por eso GitHub, GitLab o el servidor de una empresa guardan los repositorios así, y por convención su nombre termina en `.git`. En los ejemplos, `git -C carpeta …` ejecuta Git como si estuvieras dentro de esa carpeta."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "# Crea el «servidor» del curso: un repositorio bare\ngit init --bare ~/servidor/tienda.git\n# Por dentro es lo mismo que una carpeta .git, pero sin archivos de trabajo\nls ~/servidor/tienda.git\ngit -C ~/servidor/tienda.git rev-parse --is-bare-repository",
+     "caption": "En la terminal de práctica no hay red: el «servidor» es una carpeta de tu `~`. Los comandos son idénticos a los que usarías con GitHub; solo cambia la URL."
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "Repositorio normal",
+      "Repositorio bare"
+     ],
+     "rows": [
+      [
+       "Se crea con",
+       "`git init` o `git clone URL`",
+       "`git init --bare` o `git clone --bare URL`"
+      ],
+      [
+       "Directorio de trabajo",
+       "Sí (tus archivos)",
+       "No"
+      ],
+      [
+       "Dónde está la base de datos",
+       "En la subcarpeta `.git`",
+       "Es la carpeta misma (`tienda.git/`)"
+      ],
+      [
+       "Para qué sirve",
+       "Trabajar: editar, preparar, confirmar",
+       "Compartir: recibir `push` y atender `fetch` y `clone`"
+      ],
+      [
+       "¿Se hacen commits ahí?",
+       "Sí",
+       "No (no hay archivos que editar)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "¿Por qué no hacer `push` directamente al repositorio normal de tu compañera? Porque si ella tiene activa esa rama, Git lo rechaza para no dejar sus archivos desincronizados: `! [remote rejected] main -> main (branch is currently checked out)` (lo controla la opción `receive.denyCurrentBranch` del repo que recibe). Los servidores usan repositorios bare justamente para que no exista un directorio de trabajo que romper."
+    },
+    {
+     "type": "h",
+     "text": "Conectar tu repositorio con un remoto: `git remote add`"
+    },
+    {
+     "type": "p",
+     "text": "Si empezaste un proyecto con `git init` y ahora quieres publicarlo, le agregas un remoto con `git remote add <nombre> <url>`. Ojo: esto **solo guarda la configuración**; no descarga ni sube nada."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 10:00'\nnuevo_repo tienda\ncommit_archivo index.html '<h1>Tienda</h1>' 'Crea la portada'\ngit init -q --bare ~/servidor/tienda.git",
+     "cwd": "tienda",
+     "code": "# Sin remotos todavía: no imprime nada\ngit remote\ngit remote add origin ~/servidor/tienda.git\ngit remote -v\ncat .git/config\n# Aún no aparece origin/main: no hemos hablado con el servidor\ngit branch -a",
+     "caption": "`-v` (*verbose*) muestra la URL que se usa para traer (`fetch`) y para publicar (`push`); normalmente es la misma."
+    },
+    {
+     "type": "p",
+     "text": "Mira la sección que agregó el comando en `.git/config`:"
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "[remote \"origin\"]\n\turl = ~/servidor/tienda.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*",
+     "caption": "En el archivo se guarda la ruta completa de la carpeta; la terminal de práctica abrevia tu carpeta personal como `~`."
+    },
+    {
+     "type": "p",
+     "text": "`url` es a dónde conectarse. `fetch` es el **refspec**: «toma todas las ramas del servidor (`refs/heads/*`) y guárdalas en mi repositorio como `refs/remotes/origin/*`». Por eso la rama `main` del servidor aparecerá en tu repo como `origin/main`. El `+` inicial permite actualizar esas copias aunque no sea un avance fast-forward: para las ramas remotas, manda lo que diga el servidor."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En la terminal de práctica las URLs son carpetas de tu `~`: `git remote -v` muestra `origin  ~/servidor/tienda.git (fetch)`. Con un servidor real la URL sería `https://github.com/tu-usuario/tienda.git` o `git@github.com:tu-usuario/tienda.git` (lección 7). Los comandos no cambian."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: «¿Git necesita un servidor para funcionar?». **No.** Git es distribuido: puedes versionar sin ningún remoto, y cualquier repositorio puede hacer de remoto de otro. GitHub es un servicio que aloja repositorios Git (s01), no una parte de Git."
+    }
+   ]
+  },
+  {
+   "id": "s07-l2",
+   "title": "Clonar y administrar remotos",
+   "minutes": 15,
+   "goals": [
+    "Clonar un repositorio con `git clone` y describir lo que crea: remoto, ramas remotas y rama local con upstream.",
+    "Cambiar la URL, renombrar y eliminar remotos con `git remote set-url`, `rename` y `remove`.",
+    "Inspeccionar un remoto con `git remote show` y `git ls-remote`."
+   ],
+   "takeaways": [
+    "`git clone URL [carpeta]` equivale a: crear la carpeta, `git init`, `git remote add origin URL`, `git fetch` y crear tu `main` a partir de `origin/main` con seguimiento.",
+    "Tras clonar tienes TODA la historia: puedes ver el log, crear ramas y hacer commits sin conexión.",
+    "`git remote set-url` cambia a dónde apunta un remoto (servidor que se mudó, paso de HTTPS a SSH) sin tocar la historia.",
+    "`git remote rename` y `git remote remove` también renombran o borran las ramas remotas `<remoto>/*` y la configuración asociada, pero no tocan el servidor."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Lo más común no es crear un repositorio y conectarlo, sino **sumarse a uno que ya existe**: `git clone URL`. Clonar no es «descargar los archivos»: es copiar el **repositorio completo**, con cada versión de cada archivo y todas las ramas del servidor. Paso a paso, `git clone` hace esto:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Crea la carpeta (por defecto, el nombre del repositorio sin `.git`: `recetario.git` → `recetario/`) y ejecuta `git init` dentro.",
+      "Agrega el remoto `origin` con la URL que le diste.",
+      "Hace un `fetch`: descarga todos los objetos y crea una rama remota por cada rama del servidor (`origin/main`, `origin/postres`…), además de `origin/HEAD`, que indica cuál es la rama por defecto del servidor.",
+      "Crea tu rama local `main` (la rama por defecto del servidor) en el mismo commit que `origin/main` y con `origin/main` como **upstream**.",
+      "Hace checkout de `main`: tu directorio de trabajo queda listo para trabajar."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "diagram",
+     "title": "Lo que hace git clone, paso a paso",
+     "mermaid": "flowchart LR\n  C[\"git clone URL\"] --> I[\"git init en ./recetario\"]\n  I --> R[\"git remote add origin URL\"]\n  R --> F[\"fetch: crea origin/main, origin/postres y origin/HEAD\"]\n  F --> B[\"crea main desde origin/main con upstream\"]\n  B --> K[\"checkout de main: archivos listos\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/recetario.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/recetario.git ~/ana/recetario 2>/dev/null\ncd ~/ana/recetario\ncommit_archivo README.md '# Recetario familiar' 'Crea el recetario'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega empanadas de pino'\ngit switch -q -c postres\ncommit_archivo sopaipillas.md '# Sopaipillas pasadas' 'Agrega sopaipillas pasadas'\ngit push -q origin postres\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+     "cwd": "",
+     "code": "git clone ~/servidor/recetario.git\ncd recetario\ngit branch -a\ngit branch -vv\ngit log --oneline --graph --all",
+     "caption": "Solo hay una rama local (`main`), pero ves `remotes/origin/postres`: la tienes descargada como rama remota. En la lección 3 crearás una rama local a partir de ella. `git branch -vv` muestra entre corchetes el upstream de `main`: `[origin/main]`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git clone URL`",
+       "Clona en una carpeta con el nombre del repositorio."
+      ],
+      [
+       "`git clone URL mi-carpeta`",
+       "Clona en `mi-carpeta` (no debe existir o debe estar vacía)."
+      ],
+      [
+       "`git clone -b postres URL`",
+       "Deja activa la rama `postres` en vez de la rama por defecto."
+      ],
+      [
+       "`git clone -o central URL`",
+       "Llama `central` al remoto en vez de `origin` (y sus ramas remotas serán `central/main`…)."
+      ],
+      [
+       "`git clone --bare URL copia.git`",
+       "Crea un clon bare, sin directorio de trabajo: sirve para montar un servidor o un respaldo."
+      ],
+      [
+       "`git clone --depth 1 URL`",
+       "Clon superficial con solo el último commit (lo veremos en s14)."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si clonas un repositorio recién creado, sin commits, Git avisa `warning: You appear to have cloned an empty repository.` No es un error: haz tu primer commit y publícalo con `git push`."
+    },
+    {
+     "type": "h",
+     "text": "Administrar remotos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Para qué"
+     ],
+     "rows": [
+      [
+       "`git remote` / `git remote -v`",
+       "Listar los remotos (con `-v`, también sus URLs de fetch y de push)."
+      ],
+      [
+       "`git remote add ana ~/ana/tienda`",
+       "Agregar otro remoto, por ejemplo el repositorio de una compañera."
+      ],
+      [
+       "`git remote rename ana companera`",
+       "Renombrar: también mueve `ana/*` a `companera/*` y actualiza el upstream de tus ramas."
+      ],
+      [
+       "`git remote remove ana`",
+       "Eliminar (alias `rm`): borra su configuración y sus ramas remotas. No toca el servidor."
+      ],
+      [
+       "`git remote set-url origin NUEVA_URL`",
+       "Cambiar la URL: servidor que se mudó, paso de HTTPS a SSH…"
+      ],
+      [
+       "`git remote set-url --push origin URL`",
+       "Usar una URL distinta solo para `push`."
+      ],
+      [
+       "`git remote get-url origin`",
+       "Mostrar la URL de un remoto."
+      ],
+      [
+       "`git remote show origin`",
+       "Resumen: URLs, rama por defecto del servidor, sus ramas y qué rama local se sincroniza con cuál (consulta al servidor)."
+      ],
+      [
+       "`git ls-remote origin`",
+       "Listar las referencias que tiene el servidor **ahora**, con sus hashes, sin descargar nada."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ngit clone -q --bare ~/servidor/tienda.git ~/servidor/tienda-nueva.git\ngit init -q --bare ~/respaldo/tienda.git",
+     "cwd": "tienda",
+     "code": "git remote add respaldo ~/respaldo/tienda.git\ngit remote -v\ngit remote rename respaldo copia\ngit remote remove copia\n# El servidor se mudó: actualiza la URL sin volver a clonar\ngit remote set-url origin ~/servidor/tienda-nueva.git\ngit remote get-url origin\ngit remote show origin\ngit ls-remote origin",
+     "caption": "`git remote show origin` consulta al servidor y resume la relación entre tus ramas y las suyas («main merges with remote main», «main pushes to main (up to date)»). `git ls-remote` lista las referencias del servidor con su hash."
+    },
+    {
+     "type": "p",
+     "text": "Con un servidor real es igual. Un caso típico: clonaste por HTTPS y quieres pasar a SSH (lección 7) sin volver a clonar:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git remote set-url origin git@github.com:tu-usuario/tienda.git\ngit remote -v\n# origin  git@github.com:tu-usuario/tienda.git (fetch)\n# origin  git@github.com:tu-usuario/tienda.git (push)"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git remote remove` y `git remote rename` actúan **solo en tu repositorio**: no borran ni renombran nada en el servidor. Y si intentas agregar un remoto con un nombre que ya existe, Git se queja con `error: remote origin already exists.`: si lo que querías era cambiar la URL, usa `set-url`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué hace `git clone`?». Respuesta completa: copia todo el repositorio (historia incluida), configura el remoto `origin`, crea ramas remotas `origin/*` para cada rama del servidor y crea y activa una rama local para la rama por defecto, con upstream configurado. **No** crea ramas locales para las demás ramas."
+    }
+   ]
+  },
+  {
+   "id": "s07-l3",
+   "title": "Ramas remotas y ramas de seguimiento",
+   "minutes": 20,
+   "goals": [
+    "Distinguir tu `main`, `origin/main` y la rama `main` del servidor.",
+    "Interpretar los mensajes ahead/behind de `git status` y `git branch -vv`.",
+    "Crear ramas que sigan a una rama remota y cambiar el upstream con `git branch -u`.",
+    "Usar `@{u}` para referirte al upstream en `git log` y otros comandos."
+   ],
+   "takeaways": [
+    "`origin/main` es una referencia local (en `refs/remotes/origin/`) que recuerda dónde estaba `main` en el servidor la última vez que hablaste con él; no la mueves tú: la mueven `fetch`, `pull` y `push`.",
+    "El upstream de una rama se guarda en `branch.<rama>.remote` y `branch.<rama>.merge`, y lo usan `git status`, `git pull` y `git push` sin argumentos.",
+    "ahead = commits tuyos que el remoto no tiene; behind = commits del remoto que tú no tienes. Los números son según tu último fetch.",
+    "`git switch rama` crea automáticamente una rama con seguimiento si existe `origin/rama` (y solo en un remoto).",
+    "`@{u}` (o `@{upstream}`) es el upstream de la rama actual: `git log ..@{u}` muestra lo que te falta y `git log @{u}..` lo que no has publicado."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cuando trabajas con un servidor hay **tres** cosas que se llaman «main», y confundirlas es la fuente de la mitad de los sustos con Git:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**`main` del servidor**: la rama en el repositorio remoto. No la ves directamente; cambia cuando alguien hace `push`.",
+      "**`origin/main`** (rama remota, *remote-tracking branch*): una referencia **en tu repositorio** que recuerda dónde estaba `main` del servidor la última vez que te comunicaste con él. Es de solo lectura: no puedes hacer commits en ella; Git la actualiza en cada `fetch`, `pull` o `push`.",
+      "**Tu `main`** (rama local): la que avanza con tus commits. Si tiene `origin/main` como **upstream**, Git puede decirte cuánto se han separado."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Tu main, origin/main y el main del servidor",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\" tag: \"origin/main (tu última foto)\"\n  branch servidor\n  commit id: \"C (Ana)\"\n  commit id: \"D (Ana)\" tag: \"main en el servidor\"\n  checkout main\n  commit id: \"E (tú)\" tag: \"tu main\"",
+     "caption": "Tu repositorio todavía no conoce C ni D: `git status` dirá «ahead 1», aunque en realidad también estás 2 commits atrás. Tras `git fetch`, `origin/main` saltará a D y verás «ahead 1, behind 2»."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Rama remota",
+       "en": "remote-tracking branch",
+       "def": "Referencia local de solo lectura (`origin/main`, guardada en `refs/remotes/origin/main`) que refleja el estado de una rama del servidor en tu última comunicación con él."
+      },
+      {
+       "term": "Upstream",
+       "en": "upstream branch",
+       "def": "La rama remota a la que sigue una rama local; se guarda en `branch.<rama>.remote` y `branch.<rama>.merge`."
+      },
+      {
+       "term": "Rama de seguimiento",
+       "en": "tracking branch",
+       "def": "Rama local que tiene upstream configurado; `git status`, `pull` y `push` la relacionan con él."
+      },
+      {
+       "term": "ahead / behind",
+       "en": "ahead / behind",
+       "def": "Cuántos commits tienes que tu upstream no tiene (ahead) y cuántos tiene él que tú no (behind)."
+      }
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/tienda\nfecha '2026-09-02 10:00'\ncommit_archivo envios.js 'calcularEnvio()' 'Agrega cálculo de envío'\ncd ~\ncd ~/ana/tienda\nfecha '2026-09-02 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo ofertas.md '# Ofertas de septiembre' 'Agrega ofertas de septiembre'\ncommit_archivo contacto.md '# Contacto: WhatsApp y correo' 'Agrega datos de contacto'\ngit push -q origin main\ncd ~\nyo",
+     "cwd": "tienda",
+     "code": "# Antes de hablar con el servidor: Git solo sabe lo que vio al clonar\ngit status\ngit branch -vv\n# Actualiza las ramas remotas\ngit fetch\ngit status\ngit branch -vv\ngit log --oneline --graph --all",
+     "caption": "Primero dice `ahead 1` (tu commit sin publicar). Tras el fetch aparece la verdad: `Your branch and 'origin/main' have diverged, and have 1 and 2 different commits each` y `[origin/main: ahead 1, behind 2]`. El `fetch` no cambió tu `main`: solo movió `origin/main`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`Your branch is up to date with 'origin/main'` **no** significa que el servidor no tenga nada nuevo: compara con tu copia local `origin/main`, que puede estar vieja. Antes de sacar conclusiones, `git fetch`."
+    },
+    {
+     "type": "h",
+     "text": "¿Dónde se guarda el upstream?"
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "[branch \"main\"]\n\tremote = origin\n\tmerge = refs/heads/main"
+    },
+    {
+     "type": "p",
+     "text": "Estas dos líneas de `.git/config` dicen: «la rama `main` sigue a la rama `main` del remoto `origin`». Con ellas, `git pull` sabe de dónde traer, `git push` sabe a dónde enviar y `git status` sabe con qué comparar. Una rama local con upstream se llama **rama de seguimiento** (*tracking branch*). Estas son las formas de configurarlo:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación",
+      "Comando",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "Al clonar",
+       "`git clone URL`",
+       "`main` sigue a `origin/main` automáticamente."
+      ],
+      [
+       "Al publicar una rama nueva",
+       "`git push -u origin feature/x`",
+       "Crea la rama en el servidor y la deja como upstream (lección 6)."
+      ],
+      [
+       "Al tomar una rama que ya está en el servidor",
+       "`git switch feature/x`",
+       "Si no existe localmente pero sí `origin/feature/x` (en un solo remoto), crea la rama local con seguimiento."
+      ],
+      [
+       "Con otro nombre local",
+       "`git switch -c pagos --track origin/feature/pagos`",
+       "Rama `pagos` que sigue a `origin/feature/pagos`."
+      ],
+      [
+       "Forma antigua",
+       "`git checkout --track origin/feature/x`",
+       "Lo mismo; la verás en tutoriales y en el libro Pro Git."
+      ],
+      [
+       "A una rama que ya existe",
+       "`git branch -u origin/feature/x` (`--set-upstream-to`)",
+       "Fija o cambia el upstream de la rama actual."
+      ],
+      [
+       "Quitarlo",
+       "`git branch --unset-upstream`",
+       "La rama deja de seguir a otra."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit switch -q -c feature/pagos\ncommit_archivo pagos.js 'pagarConTarjeta()' 'Agrega pago con tarjeta'\ngit push -q origin feature/pagos\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\nrm -rf ~/ana",
+     "cwd": "tienda",
+     "code": "git branch -a\ngit switch feature/pagos\ngit branch -vv\ngit branch --unset-upstream\ngit status\ngit branch -u origin/feature/pagos\ngit status",
+     "caption": "`git switch feature/pagos` encontró `origin/feature/pagos` y creó la rama local con seguimiento: `branch 'feature/pagos' set up to track 'origin/feature/pagos'.` Sin upstream, `git status` ya no te compara con nada."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si la rama existe en **dos** remotos (por ejemplo `origin/nivel-2` y `ana/nivel-2`), `git switch nivel-2` no adivina y falla con `fatal: 'nivel-2' matched multiple (2) remote tracking branches`. Sé explícito: `git switch --track origin/nivel-2`."
+    },
+    {
+     "type": "h",
+     "text": "`@{u}`: el atajo al upstream"
+    },
+    {
+     "type": "p",
+     "text": "`@{upstream}`, abreviado `@{u}`, significa «el upstream de la rama actual» (`main@{u}` es el de `main`). Combinado con los rangos de s03 responde las dos preguntas del día a día: ¿qué me falta? y ¿qué no he publicado?"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/tienda\nfecha '2026-09-02 10:00'\ncommit_archivo envios.js 'calcularEnvio()' 'Agrega cálculo de envío'\ncd ~\ncd ~/ana/tienda\nfecha '2026-09-02 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo ofertas.md '# Ofertas de septiembre' 'Agrega ofertas de septiembre'\ncommit_archivo contacto.md '# Contacto: WhatsApp y correo' 'Agrega datos de contacto'\ngit push -q origin main\ncd ~\nyo\ncd ~/tienda\ngit fetch -q",
+     "cwd": "tienda",
+     "code": "git rev-parse --abbrev-ref @{u}\n# ¿Qué tiene el servidor que yo no? (behind)\ngit log --oneline ..@{u}\n# ¿Qué tengo yo que el servidor no? (ahead)\ngit log --oneline @{u}..\n# Los dos números de una vez: ahead y behind\ngit rev-list --left-right --count HEAD...@{u}\ngit for-each-ref --format=\"%(refname:short) %(upstream:short) %(upstream:track)\" refs/heads",
+     "caption": "`..@{u}` es la abreviatura de `HEAD..@{u}`. `git rev-list --left-right --count HEAD...@{u}` imprime «ahead TAB behind»: los scripts y las herramientas usan esto en vez de leer la salida de `git status`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los números ahead/behind se calculan con lo que tu repositorio sabe. Para ver cifras reales de todas tus ramas, primero `git fetch --all` y luego `git branch -vv` (así lo recomienda el libro Pro Git)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Distingue bien: **rama remota** = `origin/main` (referencia local de solo lectura, en `refs/remotes/`); **rama de seguimiento** = rama local con upstream configurado; **upstream** = la rama remota a la que sigue. Y recuerda: `git branch -r` lista solo las remotas, `-a` todas, y `-vv` muestra el upstream y el ahead/behind de cada rama."
+    }
+   ]
+  },
+  {
+   "id": "s07-l4",
+   "title": "git fetch: traer sin tocar",
+   "minutes": 15,
+   "goals": [
+    "Descargar el trabajo nuevo del servidor con `git fetch` sin modificar tus ramas ni tus archivos.",
+    "Revisar lo que llegó con `git log main..origin/main` y `git diff` antes de integrarlo.",
+    "Eliminar ramas remotas obsoletas con `git fetch --prune` o la opción `fetch.prune`."
+   ],
+   "takeaways": [
+    "`git fetch` descarga objetos y actualiza `refs/remotes/<remoto>/*` (y `FETCH_HEAD`); nunca toca tus ramas locales, el área de preparación ni tus archivos.",
+    "Después de un fetch decides tú cuándo integrar: `git merge origin/main` (o `git pull`).",
+    "Sin `--prune`, las ramas borradas en el servidor siguen apareciendo en tu repo; `git fetch --prune` las limpia y `fetch.prune=true` lo hace siempre.",
+    "`--prune` borra ramas remotas (`origin/x`), nunca tus ramas locales: esas se borran con `git branch -d`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git fetch` es la forma **segura** de hablar con el servidor: pregunta qué ramas tiene, descarga los commits que te faltan y **mueve tus ramas remotas** (`origin/main`, `origin/feature/x`…). Tu `main`, tu área de preparación y tus archivos quedan exactamente igual. Puedes ejecutarlo cuando quieras, incluso con trabajo a medias."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué ocurre en un git fetch",
+     "mermaid": "sequenceDiagram\n  participant T as Tu repositorio\n  participant S as Servidor (origin)\n  T->>S: ¿Qué ramas tienes y a qué commit apunta cada una?\n  S-->>T: main en D, borrador/chiloe en F\n  T->>S: Envíame los objetos que me faltan\n  S-->>T: Paquete con los commits C, D, E, F y sus archivos\n  Note over T: Mueve origin/main a D y crea origin/borrador/chiloe en F\n  Note over T: Tu main, el index y tus archivos no cambian"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/blog.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/blog.git ~/ana/blog 2>/dev/null\ncd ~/ana/blog\ncommit_archivo README.md '# Blog: Patagonia en bicicleta' 'Crea el blog'\ncommit_archivo posts/01-bienvenida.md '# Bienvenida' 'Publica post de bienvenida'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/blog.git ~/blog\ncd ~/ana/blog\nfecha '2026-09-03 18:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo posts/02-carretera-austral.md '# Carretera Austral' 'Publica post de la Carretera Austral'\ncommit_archivo posts/03-torres.md '# Torres del Paine' 'Publica post de Torres del Paine'\ngit switch -q -c borrador/chiloe\ncommit_archivo posts/04-chiloe.md '# Chiloé (borrador)' 'Empieza borrador de Chiloé'\ngit push -q origin main borrador/chiloe\ncd ~\nyo\nrm -rf ~/ana",
+     "cwd": "blog",
+     "code": "git fetch\ngit status\n# Lo que llegó y todavía no está en tu main\ngit log --oneline main..origin/main\n# Qué archivos cambiarían si lo integras\ngit diff --stat main origin/main\n# Conforme: intégralo (será un fast-forward)\ngit merge origin/main\ngit status",
+     "caption": "La salida de `git fetch` marca cada referencia: `*` rama nueva (`[new branch]`), un espacio para un avance fast-forward (`a1b2c3d..e4f5a6b`), `+` para una actualización forzada y `-` para una rama podada."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué trae"
+     ],
+     "rows": [
+      [
+       "`git fetch`",
+       "Del remoto del upstream de la rama actual o, si no hay upstream, de `origin`."
+      ],
+      [
+       "`git fetch origin`",
+       "Todas las ramas de `origin`."
+      ],
+      [
+       "`git fetch origin main`",
+       "Solo `main` de `origin` (y actualiza `origin/main`)."
+      ],
+      [
+       "`git fetch --all`",
+       "De todos los remotos configurados."
+      ],
+      [
+       "`git fetch --prune` (`-p`)",
+       "Antes de traer, elimina las ramas remotas que ya no existen en el servidor."
+      ],
+      [
+       "`git fetch --dry-run`",
+       "Muestra qué haría, sin hacerlo."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "El refspec: por qué `main` se convierte en `origin/main`"
+    },
+    {
+     "type": "p",
+     "text": "En la lección 1 viste la línea `fetch = +refs/heads/*:refs/remotes/origin/*`. Se lee de izquierda a derecha: **origen** (las ramas del servidor, `refs/heads/*`) `:` **destino** (dónde se guardan en tu repositorio, `refs/remotes/origin/*`). El `*` hace que cada rama del servidor tenga su copia con el mismo nombre, y el `+` permite actualizarla aunque el servidor haya reescrito la rama. Además, Git anota en `.git/FETCH_HEAD` lo último que trajo; `git pull` lo usa para saber qué integrar."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Hábito profesional: **fetch primero, mirar después, integrar al final**. Un `git log --oneline main..origin/main` antes de integrar te evita sorpresas y te muestra quién cambió qué."
+    },
+    {
+     "type": "h",
+     "text": "Podar ramas remotas: `--prune`"
+    },
+    {
+     "type": "p",
+     "text": "Cuando alguien borra una rama del servidor (típicamente después de fusionarla), tu `origin/feature/x` **no desaparece** con un `fetch` normal: por defecto Git no borra nada. Con el tiempo, `git branch -a` se llena de ramas fantasma. `git fetch --prune` las elimina, y `git remote prune origin --dry-run` te deja ver antes cuáles serían."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/blog.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/blog.git ~/ana/blog 2>/dev/null\ncd ~/ana/blog\ncommit_archivo README.md '# Blog: Patagonia en bicicleta' 'Crea el blog'\ngit switch -q -c feature/mapa\ncommit_archivo mapa.md '# Mapa de la ruta' 'Agrega mapa de la ruta'\ngit switch -q -c feature/fotos main\ncommit_archivo fotos.md '# Galería' 'Agrega galería de fotos'\ngit push -q origin feature/mapa feature/fotos\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/blog.git ~/blog\ncd ~/ana/blog\nfecha '2026-09-04 09:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit push -q origin --delete feature/mapa\ncd ~\nyo\nrm -rf ~/ana",
+     "cwd": "blog",
+     "code": "git branch -r\n# Un fetch normal no borra nada\ngit fetch\ngit branch -r\ngit remote prune origin --dry-run\ngit fetch --prune\ngit branch -r",
+     "caption": "Tras `git fetch --prune` verás `- [deleted]         (none)     -> origin/feature/mapa`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Configúralo una vez y olvídate: `git config --global fetch.prune true`. Desde entonces cada `fetch` (y cada `pull`) poda automáticamente."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`--prune` solo borra **ramas remotas** (`origin/…`). Tus ramas **locales** que seguían a una rama borrada quedan intactas, y `git branch -vv` las marca así: `[origin/feature/x: gone]`. Si ya están fusionadas, bórralas tú con `git branch -d`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿`git fetch` modifica tu directorio de trabajo? **No.** ¿Y tu rama `main`? **Tampoco.** Solo las ramas remotas y `FETCH_HEAD`. Esa es la diferencia clave con `git pull`."
+    }
+   ]
+  },
+  {
+   "id": "s07-l5",
+   "title": "git pull: traer e integrar",
+   "minutes": 20,
+   "goals": [
+    "Actualizar tu rama con `git pull` y explicar que equivale a `git fetch` seguido de un merge o un rebase.",
+    "Elegir cómo integrar historias divergentes con `--no-rebase`, `--rebase` o `--ff-only` y dejarlo configurado con `pull.rebase` o `pull.ff`.",
+    "Resolver un conflicto que aparece durante un `git pull`."
+   ],
+   "takeaways": [
+    "`git pull` = `git fetch` + integrar el upstream en la rama actual.",
+    "Si solo avanzó el servidor, `pull` hace fast-forward: tu rama avanza sin crear commits nuevos.",
+    "Si ambos avanzaron y no configuraste nada, Git se detiene con `fatal: Need to specify how to reconcile divergent branches.`: eliges merge (`--no-rebase`), rebase (`--rebase`) o solo fast-forward (`--ff-only`).",
+    "Un conflicto durante un `pull` se resuelve igual que en s06: editar, `git add`, `git commit` (o abortar con `git merge --abort`).",
+    "Confirma tu trabajo antes de hacer pull: si un cambio sin confirmar choca con lo que llega, Git aborta sin tocar nada."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git pull` es un atajo: hace `git fetch` y enseguida integra el upstream de tu rama en ella. Qué significa «integrar» depende de la situación y de tu configuración."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace git pull",
+     "mermaid": "flowchart TD\n  P[\"git pull\"] --> F[\"git fetch: actualiza origin/main\"]\n  F --> Q{\"¿Tu main tiene commits que origin/main no tiene?\"}\n  Q -- \"No, solo avanzó el servidor\" --> FF[\"Fast-forward: main avanza, sin commit nuevo\"]\n  Q -- \"Sí, las historias divergen\" --> C{\"¿Qué indicaste con una opción o en la configuración?\"}\n  C -- \"Nada\" --> E[\"fatal: Need to specify how to reconcile divergent branches.\"]\n  C -- \"pull.rebase false o --no-rebase\" --> M[\"Merge: crea un commit de fusión\"]\n  C -- \"pull.rebase true o --rebase\" --> R[\"Rebase: reaplica tus commits encima (s09)\"]\n  C -- \"pull.ff only o --ff-only\" --> X[\"fatal: Not possible to fast-forward, aborting.\"]"
+    },
+    {
+     "type": "h",
+     "text": "Caso 1: solo avanzó el servidor (fast-forward)"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/ana/tienda\nfecha '2026-09-02 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo ofertas.md '# Ofertas de septiembre' 'Agrega ofertas de septiembre'\ncommit_archivo contacto.md '# Contacto: WhatsApp y correo' 'Agrega datos de contacto'\ngit push -q origin main\ncd ~\nyo",
+     "cwd": "tienda",
+     "code": "# Todavía no hay fetch: status no sabe que Ana publicó\ngit status\ngit pull\ngit log --oneline --graph\ngit status",
+     "caption": "`Updating a1b2c3d..e4f5a6b` y `Fast-forward`: tu `main` simplemente avanzó hasta donde está `origin/main`, sin commits nuevos."
+    },
+    {
+     "type": "h",
+     "text": "Caso 2: las historias divergen"
+    },
+    {
+     "type": "p",
+     "text": "Si tú hiciste commits y alguien publicó otros, no hay fast-forward posible. En las versiones modernas de Git (desde la 2.33.1, de octubre de 2021), si no has dicho qué hacer, `git pull` descarga igual, pero **se niega a integrar** y te pide elegir (las versiones antiguas hacían un merge sin preguntar):"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "$ git pull\nhint: You have divergent branches and need to specify how to reconcile them.\nhint: You can do so by running one of the following commands sometime before\nhint: your next pull:\nhint:\nhint:   git config pull.rebase false  # merge\nhint:   git config pull.rebase true   # rebase\nhint:   git config pull.ff only       # fast-forward only\nhint:\nhint: You can replace \"git config\" with \"git config --global\" to set a default\nhint: preference for all repositories. You can also pass --rebase, --no-rebase,\nhint: or --ff-only on the command line to override the configured default per\nhint: invocation.\nfatal: Need to specify how to reconcile divergent branches."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción en la línea de comandos",
+      "Configuración equivalente",
+      "Qué hace si las historias divergen"
+     ],
+     "rows": [
+      [
+       "`git pull --no-rebase`",
+       "`pull.rebase false`",
+       "Merge: crea un commit de fusión `Merge branch 'main' of <url>`. Conserva la historia tal como ocurrió, con bifurcaciones."
+      ],
+      [
+       "`git pull --rebase`",
+       "`pull.rebase true`",
+       "Rebase: rehace tus commits locales encima de los del servidor. Historia lineal (lo verás a fondo en s09)."
+      ],
+      [
+       "`git pull --ff-only`",
+       "`pull.ff only`",
+       "No integra: falla con `fatal: Not possible to fast-forward, aborting.` y decides tú qué hacer."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/tienda\nfecha '2026-09-02 10:00'\ncommit_archivo envios.js 'calcularEnvio()' 'Agrega cálculo de envío'\ncd ~\ncd ~/ana/tienda\nfecha '2026-09-02 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo ofertas.md '# Ofertas de septiembre' 'Agrega ofertas de septiembre'\ncommit_archivo contacto.md '# Contacto: WhatsApp y correo' 'Agrega datos de contacto'\ngit push -q origin main\ncd ~\nyo",
+     "cwd": "tienda",
+     "code": "git pull --ff-only\ngit pull --no-rebase\ngit log --oneline --graph --all\n# Ahora tu main contiene todo lo del servidor: el push se acepta\ngit push",
+     "caption": "Con `--ff-only` Git se niega. Con `--no-rebase` se abre el editor con el mensaje de fusión propuesto, `Merge branch 'main' of ~/servidor/tienda`: guárdalo tal cual (o mejóralo) y se crea el commit de fusión. Luego `git push` es aceptado."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Cuando `git pull` integra con un merge, igual que `git merge`, abre el editor con el mensaje propuesto. En la plataforma es el editor integrado; en tu computador, el que configuraste con `core.editor` (s01). Guardar y cerrar acepta el mensaje (si lo dejas vacío, el merge se cancela). Si no quieres editarlo, agrega `--no-edit`: `git pull --no-rebase --no-edit`."
+    },
+    {
+     "type": "diagram",
+     "title": "Resultado de git pull --no-rebase",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  branch origin/main\n  commit id: \"C (Ana)\"\n  commit id: \"D (Ana)\"\n  checkout main\n  commit id: \"E (tú)\"\n  merge origin/main id: \"M (merge)\"",
+     "caption": "El commit de fusión M tiene dos padres: tu E y la D de Ana. Tras el `push`, el servidor queda en M y nadie pierde trabajo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Qué configurar? Una opción sensata para empezar es `git config --global pull.ff only`: los pull que solo avanzan funcionan solos y, cuando hay divergencia, Git se detiene y eliges en ese momento con `git pull --no-rebase` o `git pull --rebase` (las opciones de la línea de comandos mandan sobre la configuración). Muchos equipos prefieren `pull.rebase true` para mantener lineal la historia; lo verás en s09."
+    },
+    {
+     "type": "h",
+     "text": "Caso 3: conflicto durante el pull"
+    },
+    {
+     "type": "p",
+     "text": "Si tu cambio y el del servidor tocan las mismas líneas, el merge del pull se detiene con un conflicto. Es exactamente lo de s06: el `pull` ya hizo el fetch y quedó a mitad de un merge. Un detalle: el marcador de cierre muestra el hash del commit que llegó (`>>>>>>> 3f9c2a1…`) en vez del nombre de una rama."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/cafe.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/cafe.git ~/ana/cafe 2>/dev/null\ncd ~/ana/cafe\nprintf '# Café Andino\\nLunes a viernes: 08:00 a 18:00\\n' > horario.md\ngit add horario.md\ngit commit -qm 'Publica horario'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/cafe.git ~/cafe\ncd ~/cafe\nfecha '2026-09-06 09:00'\nprintf '# Café Andino\\nLunes a viernes: 07:30 a 18:00\\n' > horario.md\ngit commit -qam 'Abre más temprano'\ncd ~\ncd ~/ana/cafe\nfecha '2026-09-06 10:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nprintf '# Café Andino\\nLunes a viernes: 08:00 a 19:00\\n' > horario.md\ngit commit -qam 'Cierra más tarde'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+     "cwd": "cafe",
+     "code": "git pull --no-rebase\ngit status\ncat horario.md\n# Decides la versión final y la escribes (o la editas con: code horario.md)\nprintf \"# Café Andino\\nLunes a viernes: 07:30 a 19:00\\n\" > horario.md\ngit add horario.md\ngit commit --no-edit\ngit push\ngit log --oneline --graph",
+     "caption": "`git status` muestra `both modified: horario.md` y recuerda que puedes abortar con `git merge --abort`. Tras resolver, `git commit --no-edit` usa el mensaje de merge que Git preparó."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si tienes cambios **sin confirmar** en un archivo que el pull necesita modificar, Git aborta antes de tocar nada: `error: Your local changes to the following files would be overwritten by merge:` … `Please commit your changes or stash them before you merge.` Confirma tu trabajo (o guárdalo con `git stash`, s10) y repite el pull."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«`git pull` = ?» → `git fetch` + `git merge` (o `git rebase` con `--rebase`). Y recuerda qué pasa ante una divergencia sin configuración en Git moderno: **falla** pidiendo que elijas; no hace un merge automático."
+    }
+   ]
+  },
+  {
+   "id": "s07-l6",
+   "title": "git push: publicar tu trabajo",
+   "minutes": 20,
+   "goals": [
+    "Publicar una rama nueva con `git push -u origin <rama>` y las siguientes veces con `git push`.",
+    "Diagnosticar un push rechazado (`fetch first` o `non-fast-forward`) y resolverlo integrando antes de volver a publicar.",
+    "Borrar una rama del servidor con `git push origin --delete <rama>`."
+   ],
+   "takeaways": [
+    "`git push <remoto> <rama>` envía tus commits y pide al servidor mover su rama; solo se acepta si es un fast-forward (no se pierde ningún commit).",
+    "`-u` (`--set-upstream`) además guarda el upstream; después basta `git push` y `git pull`. Con `push.autoSetupRemote=true` (Git 2.37+) no hace falta ni el `-u`.",
+    "Push rechazado = el servidor tiene commits que tu rama no contiene: integra (`git pull`, resolviendo conflictos si los hay) y vuelve a publicar. Nunca `--force` en una rama compartida.",
+    "`git push origin --delete rama` (forma antigua `git push origin :rama`) borra la rama del servidor y tu `origin/rama`, no tu rama local."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git push` es el único comando de esta sección que **modifica otro repositorio**: envía tus commits al servidor y le pide mover una de sus ramas para que apunte a tu commit. El servidor solo acepta si el cambio es un **fast-forward**, es decir, si su rama es antecesora de la tuya y, por lo tanto, no se pierde ningún commit."
+    },
+    {
+     "type": "h",
+     "text": "Publicar una rama nueva"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\nrm -rf ~/ana",
+     "cwd": "tienda",
+     "code": "git switch -c feature/carrito\necho \"export function agregar() {}\" > carrito.js\ngit add carrito.js\ngit commit -m \"Agrega carrito de compras\"\n# Sin upstream, git push no sabe a dónde enviar\ngit push\ngit push -u origin feature/carrito\ngit branch -vv",
+     "caption": "El primer `git push` falla con `fatal: The current branch feature/carrito has no upstream branch.` y te sugiere el comando exacto. Con `-u` la rama se crea en el servidor (`* [new branch]`) y queda como upstream: `branch 'feature/carrito' set up to track 'origin/feature/carrito'.`"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git push`",
+       "Publica la rama actual en su upstream. Con la configuración por defecto (`push.default=simple`, desde Git 2.0) solo lo hace si ambas ramas se llaman igual."
+      ],
+      [
+       "`git push origin main`",
+       "Publica tu `main` en la rama `main` de `origin`."
+      ],
+      [
+       "`git push -u origin feature/x`",
+       "Publica y configura el upstream."
+      ],
+      [
+       "`git push origin HEAD`",
+       "Publica la rama actual con su mismo nombre, sin tener que escribirlo."
+      ],
+      [
+       "`git push origin local:remota`",
+       "Publica tu rama `local` en una rama con otro nombre en el servidor (refspec `origen:destino`)."
+      ],
+      [
+       "`git push origin --delete feature/x`",
+       "Borra la rama del servidor (forma antigua: `git push origin :feature/x`)."
+      ],
+      [
+       "`git push --dry-run`",
+       "Muestra qué enviaría, sin enviarlo."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Desde Git 2.37 puedes ahorrarte el `-u`: `git config --global push.autoSetupRemote true`. Con eso, el primer `git push` de una rama nueva la crea en el servidor y configura el upstream automáticamente."
+    },
+    {
+     "type": "h",
+     "text": "Push rechazado: alguien publicó antes que tú"
+    },
+    {
+     "type": "p",
+     "text": "Es la situación más común del trabajo en equipo. Tú hiciste un commit; mientras tanto, Ana publicó el suyo. Tu `push` pediría al servidor mover `main` a tu commit, que **no contiene** el de Ana: eso lo borraría de la historia, así que el servidor lo rechaza."
+    },
+    {
+     "type": "diagram",
+     "title": "Push rechazado y cómo se resuelve",
+     "mermaid": "sequenceDiagram\n  participant T as Tú\n  participant S as Servidor\n  participant A as Ana\n  A->>S: git push (main pasa de B a C)\n  T->>S: git push (quieres main en D, que no contiene C)\n  S-->>T: rechazado (fetch first)\n  T->>S: git pull (trae C y crea el merge M en tu repo)\n  T->>S: git push (M contiene C y D)\n  S-->>T: aceptado, main pasa de C a M"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\ncd ~/tienda\nfecha '2026-09-02 10:00'\ncommit_archivo envios.js 'calcularEnvio()' 'Agrega cálculo de envío'\ncd ~\ncd ~/ana/tienda\nfecha '2026-09-02 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo ofertas.md '# Ofertas de septiembre' 'Agrega ofertas de septiembre'\ncommit_archivo contacto.md '# Contacto: WhatsApp y correo' 'Agrega datos de contacto'\ngit push -q origin main\ncd ~\nyo",
+     "cwd": "tienda",
+     "code": "git push\ngit pull --no-rebase\ngit push\ngit log --oneline --graph",
+     "caption": "Lee el mensaje del rechazo: `hint: Updates were rejected because the remote contains work that you do not have locally.` El propio Git te sugiere `git pull` antes de volver a publicar. El `git pull --no-rebase` abre el editor con el mensaje de fusión: guárdalo para que se cree el merge (o usa `--no-edit`)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Mensaje",
+      "Qué significa",
+      "Qué hacer"
+     ],
+     "rows": [
+      [
+       "`! [rejected] main -> main (fetch first)`",
+       "El servidor tiene commits que tu repositorio ni siquiera ha descargado.",
+       "`git pull` (o `git fetch` + `git merge origin/main`) y luego `git push`."
+      ],
+      [
+       "`! [rejected] main -> main (non-fast-forward)`",
+       "Ya descargaste esos commits (están en `origin/main`), pero tu rama no los incluye.",
+       "Integra `origin/main` en tu rama (merge o rebase) y vuelve a publicar."
+      ],
+      [
+       "`! [remote rejected] main -> main (branch is currently checked out)`",
+       "Hiciste push a un repositorio **no bare** que tiene esa rama activa.",
+       "Publica en un repositorio bare (el servidor) o en otra rama."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hacer ante un push rechazado",
+     "mermaid": "flowchart TD\n  R[\"git push rechazado: fetch first o non-fast-forward\"] --> P[\"git pull (merge) o git pull --rebase (s09)\"]\n  P --> Q{\"¿Hay conflictos?\"}\n  Q -- \"Sí\" --> C[\"Resuelve, git add y git commit\"]\n  Q -- \"No\" --> U[\"git push\"]\n  C --> U\n  R -. \"Tentación\" .-> F[\"git push --force\"]\n  F --> X[\"Borra del servidor los commits de otros: nunca en una rama compartida\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git push --force` sobrescribe la rama del servidor con la tuya **aunque se pierdan commits de otros**. Nunca lo uses para «arreglar» un push rechazado en una rama compartida. Hay casos legítimos (tu propia rama después de reescribir su historia) y para ellos existe la versión segura, `--force-with-lease`: la verás en s09."
+    },
+    {
+     "type": "h",
+     "text": "Borrar ramas del servidor"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit switch -q -c feature/menu\ncommit_archivo menu.js 'mostrarMenu()' 'Agrega menú lateral'\ngit switch -q main\ngit merge -q --no-ff --no-edit feature/menu\ngit push -q origin feature/menu\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\nrm -rf ~/ana",
+     "cwd": "tienda",
+     "code": "git branch -r\ngit push origin --delete feature/menu\ngit branch -r\ngit ls-remote --heads origin",
+     "caption": "`- [deleted]         feature/menu`. El push también eliminó tu `origin/feature/menu`; tus compañeros la seguirán viendo hasta que hagan `git fetch --prune`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Tres clásicos: (1) `-u` es `--set-upstream`; (2) push rechazado → integrar (`pull`) y volver a publicar, no `--force`; (3) borrar una rama remota es `git push origin --delete rama` (o `git push origin :rama`), y eso **no** borra tu rama local."
+    }
+   ]
+  },
+  {
+   "id": "s07-l7",
+   "title": "Protocolos y autenticación: HTTPS y SSH",
+   "minutes": 15,
+   "goals": [
+    "Reconocer las URLs de los protocolos local, HTTPS y SSH y comparar sus ventajas.",
+    "Configurar el acceso por HTTPS con un token personal y un credential helper.",
+    "Generar una llave SSH con `ssh-keygen`, cargarla en el agente y probar la conexión con GitHub."
+   ],
+   "takeaways": [
+    "Los comandos de Git son los mismos con cualquier protocolo: la URL decide el transporte (`/ruta` o `file://`, `https://`, `git@host:ruta` o `ssh://`).",
+    "Desde el 13 de agosto de 2021 GitHub no acepta la contraseña de tu cuenta para operaciones Git: usa un token personal (HTTPS) o una llave SSH.",
+    "Un credential helper (osxkeychain, Git Credential Manager) guarda tu token de forma segura para no escribirlo en cada push.",
+    "Con SSH, la llave privada nunca sale de tu computador: solo subes la `.pub` a la plataforma.",
+    "`git remote set-url` cambia de HTTPS a SSH (o al revés) sin volver a clonar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora tus remotos eran carpetas de tu disco. En el mundo real el servidor está en otra máquina y Git necesita dos cosas: un **protocolo** para transportar los datos y una forma de **autenticarte** (demostrar quién eres) cuando publicas o cuando accedes a un repositorio privado."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Protocolo",
+      "URL de ejemplo",
+      "Autenticación",
+      "Ventajas",
+      "Desventajas"
+     ],
+     "rows": [
+      [
+       "Local",
+       "`/srv/git/tienda.git` o `file:///srv/git/tienda.git`",
+       "Permisos de archivos del sistema",
+       "Simple; útil con carpetas compartidas y para practicar",
+       "Solo sirve si el otro repositorio es accesible como carpeta; quien tenga acceso puede dañarlo"
+      ],
+      [
+       "HTTPS",
+       "`https://github.com/ana/tienda.git`",
+       "Usuario + token (guardado por un credential helper)",
+       "Pasa casi cualquier firewall; clonar un repositorio público no pide credenciales",
+       "Hay que gestionar tokens"
+      ],
+      [
+       "SSH",
+       "`git@github.com:ana/tienda.git` o `ssh://git@github.com/ana/tienda.git`",
+       "Par de llaves pública/privada",
+       "Seguro y cómodo una vez configurado",
+       "Configuración inicial; no permite acceso anónimo"
+      ],
+      [
+       "Git",
+       "`git://servidor/tienda.git`",
+       "Ninguna",
+       "Rápido",
+       "Sin autenticación ni cifrado; GitHub lo desactivó en marzo de 2022"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Protocolos y cómo te autenticas",
+     "mermaid": "mindmap\n  root((Remotos))\n    Local\n      ruta o file://\n      permisos del sistema\n    HTTPS\n      https://host/usuario/repo.git\n      token personal\n      credential helper\n    SSH\n      git@host:usuario/repo.git\n      llave privada en tu equipo\n      llave pública en la plataforma\n    Git\n      git://\n      sin autenticación"
+    },
+    {
+     "type": "h",
+     "text": "Local: ruta directa o `file://`"
+    },
+    {
+     "type": "p",
+     "text": "Con una ruta directa, Git copia (o enlaza con *hardlinks*) los archivos del repositorio. Con `file://` arranca los mismos procesos que usaría por red: es menos eficiente, pero se comporta como un clon real. Compruébalo: el segundo clon muestra el típico `remote: Enumerating objects…` que verás al clonar desde GitHub."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/web.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/web.git ~/ana/web 2>/dev/null\ncd ~/ana/web\ncommit_archivo index.html '<h1>Web</h1>' 'Crea la web'\ncommit_archivo estilos.css 'body { margin: 0; }' 'Agrega estilos'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+     "cwd": "",
+     "code": "git clone ~/servidor/web.git web-ruta\ngit clone --progress file://$HOME/servidor/web.git web-file\ngit -C web-ruta remote get-url origin\ngit -C web-file remote get-url origin",
+     "caption": "Git solo muestra el avance cuando escribe en una terminal interactiva; `--progress` lo fuerza. `$HOME` es tu carpeta personal, igual que `~`."
+    },
+    {
+     "type": "h",
+     "text": "HTTPS con token personal"
+    },
+    {
+     "type": "p",
+     "text": "Clonar un repositorio público por HTTPS no pide nada. Para publicar, o para leer un repositorio privado, GitHub pide usuario y «contraseña»… pero **desde el 13 de agosto de 2021 no acepta la contraseña de tu cuenta** en operaciones Git: debes usar un **token de acceso personal** (*personal access token*, PAT) que creas en *Settings → Developer settings → Personal access tokens*. GitHub recomienda los tokens *fine-grained* (limitados a ciertos repositorios y permisos) y con fecha de expiración."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "$ git push\nUsername for 'https://github.com': tu-usuario\nPassword for 'https://tu-usuario@github.com':   # aquí pegas el TOKEN, no tu contraseña\n\n# Si escribes la contraseña de tu cuenta:\nremote: Support for password authentication was removed on August 13, 2021.\n…\nfatal: Authentication failed for 'https://github.com/tu-usuario/tienda.git/'"
+    },
+    {
+     "type": "p",
+     "text": "Escribir el token en cada push es incómodo, y guardarlo en un archivo de texto es peligroso. Para eso existen los **credential helpers**, que lo guardan en el almacén seguro del sistema operativo y se lo entregan a Git cuando lo necesita:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# macOS: llavero del sistema (el Git de Apple ya lo trae configurado)\ngit config --global credential.helper osxkeychain\n# Windows: Git Credential Manager viene con Git for Windows (se elige en el instalador).\n# En macOS y Linux se instala aparte y se activa con:\ngit-credential-manager configure\n# Linux sin GCM: recordar las credenciales en memoria durante 1 hora\ngit config --global credential.helper \"cache --timeout=3600\"\n# ¿Qué helper tengo y de dónde sale?\ngit config --show-origin --get-all credential.helper"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Nunca pongas el token dentro de la URL (`https://TOKEN@github.com/…`): quedaría en texto plano en `.git/config` y en el historial de tu terminal. Evita también `credential.helper store`, que lo guarda sin cifrar en `~/.git-credentials`. Trata el token como una contraseña: si se filtra, revócalo de inmediato."
+    },
+    {
+     "type": "h",
+     "text": "SSH: llaves en vez de contraseñas"
+    },
+    {
+     "type": "p",
+     "text": "SSH usa un **par de llaves**: la **privada** (`~/.ssh/id_ed25519`) se queda en tu computador y jamás se comparte; la **pública** (`~/.ssh/id_ed25519.pub`) se sube a GitHub en *Settings → SSH and GPG keys → New SSH key*. Al conectarte, el servidor comprueba que tienes la llave privada correspondiente sin que esta viaje por la red. Estos son los pasos que indica la documentación de GitHub:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# 1. Generar la llave (pide dónde guardarla y una passphrase para protegerla)\nssh-keygen -t ed25519 -C \"tu_correo@ejemplo.com\"\n#    Si tu sistema no soporta Ed25519:\nssh-keygen -t rsa -b 4096 -C \"tu_correo@ejemplo.com\"\n\n# 2. Iniciar el agente y cargar la llave (así la passphrase se pide una sola vez)\neval \"$(ssh-agent -s)\"\nssh-add ~/.ssh/id_ed25519                        # Linux y Git Bash en Windows\nssh-add --apple-use-keychain ~/.ssh/id_ed25519   # macOS: guarda la passphrase en el llavero\n\n# 3. Mostrar la llave PÚBLICA para copiarla en GitHub\ncat ~/.ssh/id_ed25519.pub\n\n# 4. Probar la conexión\nssh -T git@github.com\n# Hi tu-usuario! You've successfully authenticated, but GitHub does not provide shell access."
+    },
+    {
+     "type": "p",
+     "text": "En macOS, GitHub recomienda además este bloque en `~/.ssh/config` para que el agente cargue la llave solo. La primera vez que te conectes verás `The authenticity of host 'github.com (…)' can't be established.` con una huella (*fingerprint*): compárala con la que publica GitHub en su documentación antes de responder `yes`."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Host github.com\n  AddKeysToAgent yes\n  UseKeychain yes\n  IdentityFile ~/.ssh/id_ed25519"
+    },
+    {
+     "type": "p",
+     "text": "¿Clonaste por HTTPS y ahora quieres usar SSH? No hace falta volver a clonar:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git remote set-url origin git@github.com:tu-usuario/tienda.git\ngit remote -v\n# origin  git@github.com:tu-usuario/tienda.git (fetch)\n# origin  git@github.com:tu-usuario/tienda.git (push)"
+    },
+    {
+     "type": "p",
+     "text": "En la terminal de práctica puedes hacer el equivalente con los dos «protocolos» locales: cambiar la URL de un remoto no toca la historia, solo el camino por el que Git llega al servidor."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/web.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/web.git ~/ana/web 2>/dev/null\ncd ~/ana/web\ncommit_archivo index.html '<h1>Web</h1>' 'Crea la web'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/web.git ~/web\nrm -rf ~/ana",
+     "cwd": "web",
+     "code": "git remote get-url origin\n# Cambiar de protocolo sin volver a clonar: de ruta directa a file://\ngit remote set-url origin file://$HOME/servidor/web.git\ngit remote -v\ngit fetch\ngit ls-remote origin",
+     "caption": "Mismo repositorio, mismas ramas, otra URL. Con GitHub sería pasar de `https://github.com/…` a `git@github.com:…`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Atajo: la GitHub CLI (`gh auth login`) te guía para autenticarte, elegir HTTPS o SSH (y crear y subir una llave SSH si no tienes) y guarda el token en el almacén seguro del sistema; `gh auth setup-git` configura Git para usar esas credenciales."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «Al hacer push por HTTPS a GitHub aparece `Support for password authentication was removed`. ¿Qué haces?». → Crear un token personal y usarlo en lugar de la contraseña (idealmente guardado por un credential helper), o subir tu llave pública SSH y cambiar el remoto con `git remote set-url origin git@github.com:usuario/repo.git`."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s07-e1",
+   "title": "Clona el recetario familiar",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Tu prima Ana lleva el **recetario familiar** en un repositorio publicado en el servidor del curso: `~/servidor/recetario.git` (con un servidor real sería algo como `https://github.com/ana/recetario.git`). Quieres sumarte.",
+    "1. Clona ese repositorio en una carpeta llamada **`recetas`** dentro de tu carpeta personal, es decir, `~/recetas` (ojo: no `~/recetario`).\n2. Entra en la carpeta y revisa con `git branch -a` y `git log --oneline --graph --all` qué trajiste. ¿Qué ramas tiene el servidor? ¿Cuál quedó activa en tu clon?"
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/recetario.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/recetario.git ~/ana/recetario 2>/dev/null\ncd ~/ana/recetario\ncommit_archivo README.md '# Recetario familiar' 'Crea el recetario'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega empanadas de pino'\ncommit_archivo pastel-de-choclo.md '# Pastel de choclo' 'Agrega pastel de choclo'\ngit switch -q -c postres\ncommit_archivo sopaipillas.md '# Sopaipillas pasadas' 'Agrega sopaipillas pasadas'\ngit push -q origin postres\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "Hay un clon en ~/recetas",
+     "script": "if [ ! -d ~/recetas/.git ]; then\n  [ -d ~/recetario/.git ] && falla \"Clonaste en ~/recetario: git clone acepta como segundo argumento la carpeta destino\"\n  falla \"No hay ningún repositorio en ~/recetas\"\nfi"
+    },
+    {
+     "name": "origin apunta al servidor del recetario",
+     "script": "cd ~/recetas 2>/dev/null || falla \"Falta ~/recetas\"\nu=$(git remote get-url origin 2>/dev/null) || falla \"No existe ningún remoto llamado origin (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/servidor/recetario.git 2>/dev/null && pwd -P)\" ] || falla \"origin no apunta a ~/servidor/recetario.git (revisa git remote -v)\""
+    },
+    {
+     "name": "Tu main es igual a la del servidor y sigue a origin/main",
+     "script": "cd ~/recetas 2>/dev/null || falla \"Falta ~/recetas\"\nl=$(git rev-parse -q --verify refs/heads/main) || falla \"Tu clon no tiene la rama main\"\nr=$(git -C ~/servidor/recetario.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main no coincide con la del servidor\"\n[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"main no sigue a origin/main\""
+    },
+    {
+     "name": "Tienes descargada la rama remota origin/postres",
+     "script": "git -C ~/recetas show-ref --verify -q refs/remotes/origin/postres || falla \"No veo origin/postres en tu clon\""
+    }
+   ],
+   "solution": [
+    "git clone ~/servidor/recetario.git recetas",
+    "cd recetas",
+    "git branch -a",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "`git clone` acepta un segundo argumento opcional: el nombre de la carpeta donde quieres el clon.",
+    "Desde `~`: `git clone ~/servidor/recetario.git recetas`. Si ya clonaste en otra carpeta, bórrala con `rm -r` y repite (o renómbrala con `mv`)."
+   ],
+   "explain": "`git clone ~/servidor/recetario.git recetas` creó `~/recetas`, ejecutó `git init`, agregó el remoto `origin`, descargó todo (creando `origin/main`, `origin/postres` y `origin/HEAD`) y creó tu `main` con upstream `origin/main`. Solo `main` es una rama **local**: `postres` existe como rama remota y se convertiría en local con `git switch postres` (lección 3).\n\nAlternativas: `git clone URL` a secas crea la carpeta `recetario`; luego `mv recetario recetas` también sirve (un repositorio se puede mover de carpeta sin problema). `git clone -b postres URL recetas` habría dejado activa la rama `postres`."
+  },
+  {
+   "id": "s07-e2",
+   "title": "Publica tu portafolio en un servidor vacío",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Llevas días trabajando en tu portafolio en `~/portafolio`, un repositorio creado con `git init` y **sin remotos**. Ya creaste en el servidor un repositorio vacío para publicarlo, `~/servidor/portafolio.git` (el equivalente a crear un repositorio vacío en GitHub).",
+    "Conecta tu repositorio a ese servidor con el nombre de remoto habitual, **`origin`**, y publica tu rama `main` dejándola **con upstream**, de modo que en el futuro te baste escribir `git push` y `git pull`."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\nnuevo_repo portafolio\ncommit_archivo index.html '<h1>Mi portafolio</h1>' 'Crea la portada'\nfecha '2026-09-02 09:00'\ncommit_archivo proyectos.html '<h2>Proyectos</h2>' 'Agrega sección de proyectos'\nfecha '2026-09-03 09:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Agrega página de contacto'\ncd ~\ngit init -q --bare ~/servidor/portafolio.git",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "Existe el remoto origin y apunta al servidor",
+     "script": "u=$(git remote get-url origin 2>/dev/null) || falla \"No existe ningún remoto llamado origin (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/servidor/portafolio.git 2>/dev/null && pwd -P)\" ] || falla \"origin no apunta a ~/servidor/portafolio.git (revisa git remote -v)\""
+    },
+    {
+     "name": "El servidor tiene tu main completa",
+     "script": "git -C ~/servidor/portafolio.git rev-parse -q --verify refs/heads/main >/dev/null || falla \"El servidor todavía no tiene ninguna rama main: falta publicar\"\nl=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/portafolio.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"La main del servidor no coincide con la tuya\""
+    },
+    {
+     "name": "main sigue a origin/main",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"main no tiene upstream: git status no podrá compararla con el servidor (¿usaste -u al publicar?)\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git remote add origin ~/servidor/portafolio.git",
+    "git remote -v",
+    "git push -u origin main",
+    "git status"
+   ],
+   "hints": [
+    "Son dos pasos: primero registrar el remoto (`git remote …`) y después publicar (`git push …`).",
+    "`git remote add origin ~/servidor/portafolio.git` y luego `git push -u origin main` (la `-u` guarda el upstream)."
+   ],
+   "explain": "`git remote add` solo escribe en `.git/config` la sección `[remote \"origin\"]` con la URL y el refspec. `git push -u origin main` envía tus tres commits, crea la rama en el servidor (`* [new branch]      main -> main`) y guarda el upstream (`branch 'main' set up to track 'origin/main'.`); por eso ahora `git status` dice `Your branch is up to date with 'origin/main'.`\n\nAlternativas: `git push --set-upstream origin main` (forma larga de `-u`); publicar con `git push origin main` y fijar el upstream después con `git branch -u origin/main`; o activar `push.autoSetupRemote` (Git 2.37+). Es exactamente lo que GitHub te sugiere al crear un repositorio vacío: `git remote add origin …` y `git push -u origin main`."
+  },
+  {
+   "id": "s07-e3",
+   "title": "Ordena los remotos tras una mudanza",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "El equipo de la **API de reservas** hizo orden y la configuración de remotos de tu clon `~/reservas` quedó desactualizada. Revísala con `git remote -v` y corrígela:",
+    "- El servidor oficial se mudó a **`~/servidor/reservas-2026.git`** (la dirección antigua ya no existe). Haz que `origin` apunte ahí.\n- El remoto `respaldo` apunta a un disco que ya no existe: elimínalo.\n- Diego quiere que el remoto que apunta a su copia se llame **`diego`** y no `d`. Renómbralo **conservando las ramas remotas ya descargadas** (`d/pruebas-carga` debe pasar a ser `diego/pruebas-carga`).\n- Comprueba que la nueva dirección funciona trayendo lo último con `git fetch origin` (no hace falta actualizar tu `main`)."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/reservas.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/reservas.git ~/ana/reservas 2>/dev/null\ncd ~/ana/reservas\ncommit_archivo README.md '# API de reservas' 'Crea la API de reservas'\ncommit_archivo rutas.js 'GET /reservas' 'Agrega ruta de listado'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/reservas.git ~/reservas\ngit clone -q ~/servidor/reservas.git ~/diego/reservas\ncd ~/diego/reservas\nautor 'Diego Soto' 'diego.soto@ejemplo.com'\ngit switch -q -c pruebas-carga\ncommit_archivo carga.js 'simular(1000)' 'Agrega prueba de carga'\nyo\ncd ~/reservas\ngit remote add d ~/diego/reservas\ngit fetch -q d\ngit remote add respaldo ~/discos/respaldo/reservas.git\nmv ~/servidor/reservas.git ~/servidor/reservas-2026.git\ncd ~/ana/reservas\ngit remote set-url origin ~/servidor/reservas-2026.git\ncd ~\ncd ~/ana/reservas\nfecha '2026-09-05 09:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nprintf 'GET /reservas\\nPOST /reservas\\n' > rutas.js\ngit commit -qam 'Agrega ruta de creación'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "reservas",
+   "checks": [
+    {
+     "name": "origin apunta al servidor nuevo",
+     "script": "u=$(git remote get-url origin 2>/dev/null) || falla \"No existe ningún remoto llamado origin (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/servidor/reservas-2026.git 2>/dev/null && pwd -P)\" ] || falla \"origin todavía no apunta a ~/servidor/reservas-2026.git\""
+    },
+    {
+     "name": "Ya no existe el remoto respaldo",
+     "script": "git config --get remote.respaldo.url >/dev/null && falla \"Todavía existe el remoto respaldo (revisa git remote -v)\"; true"
+    },
+    {
+     "name": "El remoto d ahora se llama diego",
+     "script": "git config --get remote.d.url >/dev/null && falla \"Todavía existe un remoto llamado d\"\nu=$(git remote get-url diego 2>/dev/null) || falla \"No existe ningún remoto llamado diego (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/diego/reservas 2>/dev/null && pwd -P)\" ] || falla \"El remoto diego no apunta a ~/diego/reservas\""
+    },
+    {
+     "name": "Se conservan sus ramas remotas: diego/pruebas-carga",
+     "script": "git show-ref --verify -q refs/remotes/d/pruebas-carga && falla \"Siguen existiendo ramas remotas con el prefijo d/\"\ngit show-ref --verify -q refs/remotes/diego/pruebas-carga || falla \"No existe diego/pruebas-carga: git remote rename conserva (y renombra) las ramas remotas ya descargadas\""
+    },
+    {
+     "name": "origin/main refleja el servidor nuevo",
+     "script": "[ \"$(git rev-parse -q --verify refs/remotes/origin/main)\" = \"$(git -C ~/servidor/reservas-2026.git rev-parse main)\" ] || falla \"origin/main no refleja el servidor nuevo: ¿hiciste git fetch origin después de cambiar la URL?\""
+    }
+   ],
+   "solution": [
+    "git remote -v",
+    "git remote set-url origin ~/servidor/reservas-2026.git",
+    "git remote remove respaldo",
+    "git remote rename d diego",
+    "git fetch origin",
+    "git branch -a"
+   ],
+   "hints": [
+    "Todo se hace con subcomandos de `git remote`: uno cambia URLs, otro elimina y otro renombra.",
+    "`git remote set-url origin ~/servidor/reservas-2026.git`, `git remote remove respaldo`, `git remote rename d diego` y, al final, `git fetch origin`."
+   ],
+   "explain": "`set-url` reemplaza la URL sin tocar nada más: tus ramas, tu historia y tus `origin/*` siguen iguales hasta el próximo fetch, que ahora sí llega al servidor nuevo y trae «Agrega ruta de creación». `remove` borra la sección `[remote \"respaldo\"]` y sus ramas remotas. `rename` cambia la sección, el refspec (`refs/remotes/diego/*`), mueve las ramas remotas `d/*` a `diego/*` y actualiza el upstream de cualquier rama que siguiera a `d`.\n\nAlternativa para el último punto: `git remote remove d` + `git remote add diego ~/diego/reservas` + `git fetch diego`. Llegas al mismo lugar, pero descargando todo de nuevo y perdiendo la configuración de seguimiento que hubiera. Nada de esto modifica los servidores: los remotos son configuración de tu repositorio."
+  },
+  {
+   "id": "s07-e4",
+   "title": "Mira antes de tocar: git fetch",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Ana escribe contigo el blog de viajes. Te avisó por chat que publicó dos posts nuevos y un borrador en una rama aparte, pero estás a medio revisar algo y **no quieres que tu rama `main` ni tus archivos cambien todavía**.",
+    "Descarga todo lo nuevo del servidor sin integrarlo y luego revisa qué commits llegaron a `origin/main` que tu `main` todavía no tiene. Deja tu `main` exactamente donde está."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/blog.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/blog.git ~/ana/blog 2>/dev/null\ncd ~/ana/blog\ncommit_archivo README.md '# Blog: Patagonia en bicicleta' 'Crea el blog'\ncommit_archivo posts/01-bienvenida.md '# Bienvenida' 'Publica post de bienvenida'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/blog.git ~/blog\ncd ~/ana/blog\nfecha '2026-09-03 18:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo posts/02-carretera-austral.md '# Carretera Austral' 'Publica post de la Carretera Austral'\ncommit_archivo posts/03-torres.md '# Torres del Paine' 'Publica post de Torres del Paine'\ngit switch -q -c borrador/chiloe\ncommit_archivo posts/04-chiloe.md '# Chiloé (borrador)' 'Empieza borrador de Chiloé'\ngit push -q origin main borrador/chiloe\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "origin/main refleja el servidor",
+     "script": "[ \"$(git rev-parse -q --verify refs/remotes/origin/main)\" = \"$(git -C ~/servidor/blog.git rev-parse main)\" ] || falla \"origin/main todavía no refleja el servidor: falta descargar\""
+    },
+    {
+     "name": "Descargaste la rama nueva origin/borrador/chiloe",
+     "script": "git show-ref --verify -q refs/remotes/origin/borrador/chiloe || falla \"No veo origin/borrador/chiloe\""
+    },
+    {
+     "name": "Tu main no se movió",
+     "script": "mensaje_es main \"Publica post de bienvenida\" \"Tu main cambió: fetch nunca la mueve (pull sí). Si hiciste pull, vuelve atrás con: git reset --hard ORIG_HEAD\""
+    },
+    {
+     "name": "Sin cambios en tus archivos",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git fetch",
+    "git status",
+    "git log --oneline main..origin/main",
+    "git branch -r"
+   ],
+   "hints": [
+    "Hay un comando que solo descarga y actualiza las ramas remotas (`origin/...`) sin tocar tus ramas.",
+    "`git fetch` y después `git log --oneline main..origin/main` (commits que están en `origin/main` y no en `main`)."
+   ],
+   "explain": "`git fetch` descargó los commits y movió `origin/main` (`a1b2c3d..e4f5a6b  main -> origin/main`) y creó `origin/borrador/chiloe` (`* [new branch]`). Tu `main` y tus archivos no cambiaron; `git status` ahora sabe que estás `behind 'origin/main' by 2 commits, and can be fast-forwarded`.\n\nPara revisar: `git log --oneline main..origin/main` (qué commits llegan), `git diff --stat main origin/main` (qué archivos cambian) o `git log -p main..origin/main` (con el detalle). Cuando quieras integrarlos: `git merge origin/main` o `git pull`. Un `git pull` aquí habría movido `main`: justo lo que querías evitar."
+  },
+  {
+   "id": "s07-e5",
+   "title": "Ponte al día con un solo comando",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Estudias Cálculo con Ana y comparten apuntes en `~/servidor/apuntes.git`. Ella subió la unidad 2 y una guía de ejercicios. Tú no has hecho commits nuevos, pero tienes un archivo propio a medio escribir, `borrador-unidad3.md`, que todavía **no** quieres confirmar.",
+    "Pon tu rama `main` al día con el servidor **en un solo comando**, sin crear commits de fusión y sin perder tu borrador."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/apuntes.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/apuntes.git ~/ana/apuntes 2>/dev/null\ncd ~/ana/apuntes\ncommit_archivo README.md '# Apuntes de Cálculo I' 'Crea los apuntes'\ncommit_archivo unidad1.md '# Unidad 1: Límites' 'Agrega unidad 1'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/apuntes.git ~/apuntes\nescribir ~/apuntes/borrador-unidad3.md '# Unidad 3: Integrales (mis notas, sin terminar)'\ncd ~/ana/apuntes\nfecha '2026-09-04 20:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo unidad2.md '# Unidad 2: Derivadas' 'Agrega unidad 2'\ncommit_archivo ejercicios.md '# Guía de ejercicios' 'Agrega guía de ejercicios'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "apuntes",
+   "checks": [
+    {
+     "name": "main está al día con el servidor",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/apuntes.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main todavía no coincide con la del servidor\""
+    },
+    {
+     "name": "No se creó ningún commit de fusión",
+     "script": "[ \"$(git rev-list --merges --count main)\" = 0 ] || falla \"Hay un commit de merge: como solo avanzó el servidor, bastaba un fast-forward\""
+    },
+    {
+     "name": "Tu borrador sigue ahí, sin confirmar",
+     "script": "archivo_tiene borrador-unidad3.md \"Unidad 3\" \"Desapareció (o cambió) tu borrador-unidad3.md\"\ngit ls-files --error-unmatch borrador-unidad3.md >/dev/null 2>&1 && falla \"Confirmaste el borrador: el enunciado pedía dejarlo sin confirmar\"; true"
+    },
+    {
+     "name": "main sigue a origin/main",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"main dejó de seguir a origin/main\""
+    }
+   ],
+   "solution": [
+    "git status",
+    "git pull",
+    "git log --oneline"
+   ],
+   "hints": [
+    "«Traer y actualizar mi rama» en un solo paso es el comando que combina `fetch` con la integración.",
+    "`git pull`. Como solo avanzó el servidor será un fast-forward; si quieres garantizar que nunca cree un merge, usa `git pull --ff-only`."
+   ],
+   "explain": "`git pull` hizo `git fetch` y luego integró `origin/main` en `main`: como tu rama no tenía commits propios, fue un **fast-forward** (`Updating …`, `Fast-forward`), sin commit de fusión. Tu borrador no se tocó porque es un archivo sin seguimiento que no choca con nada de lo que llegó.\n\nOjo con dos casos: si el borrador se llamara igual que un archivo que viene del servidor, Git abortaría (`untracked working tree files would be overwritten by merge`); y si tuvieras cambios sin confirmar en archivos que el pull modifica, también abortaría. `git pull --ff-only` es la variante segura cuando esperas solo un avance."
+  },
+  {
+   "id": "s07-e6",
+   "title": "Publica tu rama de funcionalidad",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En la tienda de artesanía te toca la funcionalidad de cupones. El equipo trabaja con ramas: nada se sube directo a `main`.",
+    "1. Crea la rama **`feature/cupones`** a partir de `main`.\n2. Crea el archivo `cupones.js` con esta línea exacta:\n```\nexport const DESCUENTO = 10;\n```\n3. Confírmalo con el mensaje «Agrega cupones de descuento».\n4. Publica la rama en `origin` **con upstream**, para que Ana pueda revisarla y tú puedas seguir con `git push` a secas."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/tienda.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/tienda.git ~/ana/tienda 2>/dev/null\ncd ~/ana/tienda\ncommit_archivo README.md '# Tienda de artesanía' 'Crea la tienda'\ncommit_archivo catalogo.js 'export const productos = [];' 'Agrega catálogo'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/tienda.git ~/tienda\nrm -rf ~/ana",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "feature/cupones tiene tu commit con cupones.js",
+     "script": "rama_existe feature/cupones \"No existe la rama local feature/cupones\"\ncontenido feature/cupones cupones.js | grep -qxF \"export const DESCUENTO = 10;\" || falla \"El último commit de feature/cupones no tiene cupones.js con la línea pedida\"\nmensaje_es feature/cupones \"Agrega cupones de descuento\""
+    },
+    {
+     "name": "La rama está publicada en el servidor",
+     "script": "l=$(git rev-parse -q --verify refs/heads/feature/cupones) || falla \"No existe feature/cupones\"\nr=$(git -C ~/servidor/tienda.git rev-parse -q --verify refs/heads/feature/cupones) || falla \"El servidor no tiene la rama feature/cupones\"\n[ \"$l\" = \"$r\" ] || falla \"La feature/cupones del servidor no coincide con la tuya\""
+    },
+    {
+     "name": "feature/cupones sigue a origin/feature/cupones",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'feature/cupones@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/feature/cupones\" ] || falla \"feature/cupones no tiene upstream (¿publicaste sin -u?)\""
+    },
+    {
+     "name": "main del servidor no cambió",
+     "script": "[ \"$(git -C ~/servidor/tienda.git log -1 --format=%s main)\" = \"Agrega catálogo\" ] || falla \"Cambiaste main en el servidor: la funcionalidad debía ir solo en feature/cupones\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git switch -c feature/cupones",
+    "echo \"export const DESCUENTO = 10;\" > cupones.js",
+    "git add cupones.js",
+    "git commit -m \"Agrega cupones de descuento\"",
+    "git push -u origin feature/cupones",
+    "git branch -vv"
+   ],
+   "hints": [
+    "Primero la rama y el commit (s05 y s02); al final, un `push` que además guarde el upstream.",
+    "`git switch -c feature/cupones`, crea el archivo con `echo … > cupones.js`, `git add` + `git commit -m …` y `git push -u origin feature/cupones`."
+   ],
+   "explain": "`git push -u origin feature/cupones` crea la rama en el servidor (`* [new branch]      feature/cupones -> feature/cupones`) y guarda el upstream. Si hubieras escrito solo `git push`, Git habría respondido `fatal: The current branch feature/cupones has no upstream branch.` sugiriendo justamente `git push --set-upstream origin feature/cupones`.\n\nAlternativas: `git push -u origin HEAD` (publica la rama actual con su nombre) o configurar una vez `git config --global push.autoSetupRemote true` (Git 2.37+) y usar `git push` a secas. `main` del servidor no se toca porque solo publicaste `feature/cupones`."
+  },
+  {
+   "id": "s07-e7",
+   "title": "El upstream equivocado",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Al revisar tu clon de la app del clima, `git status` te muestra algo raro: tu `main` se compara con **`origin/develop`**. Alguien configuró por error que `main` siga a `develop`, la rama de experimentos. Si haces `git pull` así, ¡te traerías a `main` todo lo experimental!",
+    "Arregla la configuración para que `main` siga a **`origin/main`** y luego ponla al día con el servidor **solo con fast-forward** (sin commits de fusión). Tu `main` no debe contener ningún commit de `develop`."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/app-clima.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/app-clima.git ~/ana/app-clima 2>/dev/null\ncd ~/ana/app-clima\ncommit_archivo README.md '# App del clima' 'Crea la app del clima'\ncommit_archivo clima.js 'mostrarTemperatura()' 'Muestra la temperatura'\ngit switch -q -c develop\ncommit_archivo radar.js 'radarExperimental()' 'Prueba radar experimental'\ncommit_archivo alertas.js 'alertasBeta()' 'Prueba alertas beta'\ngit push -q origin develop\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/app-clima.git ~/app-clima\ngit -C ~/app-clima branch -q -u origin/develop main\ncd ~/ana/app-clima\nfecha '2026-09-05 12:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nanexar clima.js 'mostrarHumedad()'\ngit commit -qam 'Muestra la humedad'\ncommit_archivo pronostico.js 'pronostico(3)' 'Agrega pronóstico de 3 días'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "app-clima",
+   "checks": [
+    {
+     "name": "main sigue a origin/main",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"main todavía no sigue a origin/main (mira git branch -vv)\""
+    },
+    {
+     "name": "main está al día con main del servidor",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/app-clima.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main no coincide con la main del servidor\""
+    },
+    {
+     "name": "main no contiene commits de develop",
+     "script": "git merge-base --is-ancestor refs/remotes/origin/develop main 2>/dev/null && falla \"Tu main contiene los commits experimentales de develop (¿hiciste pull antes de arreglar el upstream?). Déjala como la del servidor con: git reset --hard origin/main\"; true"
+    },
+    {
+     "name": "Sin commits de fusión",
+     "script": "[ \"$(git rev-list --merges --count main)\" = 0 ] || falla \"Hay un commit de merge en main: se pedía solo fast-forward\""
+    }
+   ],
+   "solution": [
+    "git status",
+    "git branch -vv",
+    "git branch -u origin/main",
+    "git pull --ff-only",
+    "git branch -vv"
+   ],
+   "hints": [
+    "`git branch -vv` muestra entre corchetes a qué rama remota sigue cada rama local. Cambia ese upstream antes de traer nada.",
+    "Estando en `main`: `git branch -u origin/main` (o `--set-upstream-to=origin/main`) y después `git pull --ff-only`."
+   ],
+   "explain": "El upstream vive en `branch.main.remote` y `branch.main.merge`; `git branch -u origin/main` los reescribe (`branch 'main' set up to track 'origin/main'.`). Desde ese momento `git status`, `git pull` y `git push` sin argumentos usan `origin/main`. `git pull --ff-only` trae los dos commits de Ana y avanza `main` sin crear merges.\n\nLa trampa: con el upstream mal puesto, `git pull` habría hecho fast-forward de `main` hasta `develop`, porque `develop` contenía a `main` y un commit más. Otras formas equivalentes: `git branch --set-upstream-to=origin/main main`, o `git config branch.main.merge refs/heads/main`. Para integrar sin depender del upstream: `git fetch` + `git merge --ff-only origin/main`."
+  },
+  {
+   "id": "s07-e8",
+   "title": "Push rechazado: integra y vuelve a publicar",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Ayer confirmaste el menú de invierno de la cafetería, pero no alcanzaste a publicarlo. Hoy, antes que tú, Ana publicó un cambio en el horario.",
+    "Publica tu commit en `main` del servidor. Git lo va a rechazar: lee el mensaje, integra el trabajo de Ana **con un merge** (el rebase lo verás en s09) y vuelve a publicar. Prohibido `--force`: el commit de Ana debe seguir en el servidor."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/cafeteria.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/cafeteria.git ~/ana/cafeteria 2>/dev/null\ncd ~/ana/cafeteria\ncommit_archivo README.md '# Café Andino' 'Crea el sitio de la cafetería'\ncommit_archivo menu.md '# Menú: café de grano y sándwiches' 'Agrega menú base'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/cafeteria.git ~/cafeteria\ncd ~/cafeteria\nfecha '2026-09-04 10:00'\ncommit_archivo menu-invierno.md '# Menú de invierno: sopaipillas y chocolate caliente' 'Agrega menú de invierno'\ncd ~\ncd ~/ana/cafeteria\nfecha '2026-09-04 11:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ncommit_archivo horario.md '# Horario: lunes a sábado de 08:00 a 19:00' 'Actualiza horario'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "cafeteria",
+   "checks": [
+    {
+     "name": "Tu commit está en el servidor",
+     "script": "git -C ~/servidor/cafeteria.git log --format=%s main | grep -qxF \"Agrega menú de invierno\" || falla \"El servidor todavía no tiene tu commit «Agrega menú de invierno»\""
+    },
+    {
+     "name": "El commit de Ana sigue en el servidor",
+     "script": "git -C ~/servidor/cafeteria.git log --format=%s main | grep -qxF \"Actualiza horario\" || falla \"¡El commit de Ana ya no está en el servidor! ¿Usaste --force?\""
+    },
+    {
+     "name": "Tu main y la del servidor son iguales",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/cafeteria.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main y la del servidor no coinciden: ¿falta el último push?\""
+    },
+    {
+     "name": "Sin merge a medias y todo confirmado",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git push",
+    "git pull --no-rebase",
+    "git log --oneline --graph",
+    "git push"
+   ],
+   "hints": [
+    "El rechazo dice `(fetch first)`: el servidor tiene un commit que tú no. Hay que traerlo e integrarlo antes de publicar.",
+    "`git pull --no-rebase` (Git abre el editor con el mensaje del merge: guárdalo) y después `git push`."
+   ],
+   "explain": "El primer `git push` responde `! [rejected]        main -> main (fetch first)`: aceptarlo borraría el commit de Ana. `git pull --no-rebase` hace el fetch y un merge: Git abre el editor con el mensaje `Merge branch 'main' of ~/servidor/cafeteria` y, al guardarlo, crea un commit con dos padres (el tuyo y el de Ana). Con `git pull --no-rebase --no-edit` se acepta el mensaje sin abrir el editor. Ahora tu `main` **contiene** la del servidor, así que el segundo push es un fast-forward y se acepta.\n\nAlternativas: `git fetch` + `git merge origin/main` (lo mismo en dos pasos); `git pull --rebase`, que deja la historia lineal reescribiendo tu commit encima del de Ana (s09). Lo que nunca debes hacer es `git push --force`: el servidor quedaría con tu commit y el de Ana desaparecería."
+  },
+  {
+   "id": "s07-e9",
+   "title": "Súmate a la rama de tu compañera",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Ana publicó la rama **`feature/pagos`** y te pidió que la revises. Tu clon `~/almacen` es de antes, así que todavía no la conoce.",
+    "1. Trae las novedades del servidor y crea tu rama local `feature/pagos` **siguiendo** a `origin/feature/pagos` (no una rama nueva a partir de tu `main`).\n2. En esa rama agrega el archivo `REVIEW.md` con el texto `Revisado por Alumno: OK` y confírmalo con el mensaje «Agrega revisión de pagos».\n3. Publícalo en la misma rama del servidor."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/almacen.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/almacen.git ~/ana/almacen 2>/dev/null\ncd ~/ana/almacen\ncommit_archivo README.md '# Almacén Don Pepe' 'Crea el sistema del almacén'\ncommit_archivo ventas.js 'registrarVenta()' 'Registra ventas'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/almacen.git ~/almacen\ncd ~/ana/almacen\nfecha '2026-09-05 10:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit switch -q -c feature/pagos\ncommit_archivo pagos.js 'pagarConTarjeta()' 'Agrega pago con tarjeta'\nanexar pagos.js 'pagarConTransferencia()'\ngit commit -qam 'Agrega pago por transferencia'\ngit push -q -u origin feature/pagos\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "almacen",
+   "checks": [
+    {
+     "name": "feature/pagos sigue a origin/feature/pagos",
+     "script": "rama_existe feature/pagos \"No existe tu rama local feature/pagos\"\n[ \"$(git rev-parse --symbolic-full-name 'feature/pagos@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/feature/pagos\" ] || falla \"feature/pagos no sigue a origin/feature/pagos (mira git branch -vv)\""
+    },
+    {
+     "name": "Tu rama parte del trabajo de Ana",
+     "script": "rama_existe feature/pagos \"No existe tu rama local feature/pagos\"\ngit log --format=%s feature/pagos | grep -qxF \"Agrega pago por transferencia\" || falla \"Tu feature/pagos no contiene los commits de Ana: la creaste desde main en vez de desde origin/feature/pagos\""
+    },
+    {
+     "name": "El servidor tiene tu revisión encima de lo de Ana",
+     "script": "l=$(git rev-parse -q --verify refs/heads/feature/pagos) || falla \"No existe feature/pagos\"\nr=$(git -C ~/servidor/almacen.git rev-parse -q --verify refs/heads/feature/pagos) || falla \"El servidor no tiene la rama feature/pagos\"\n[ \"$l\" = \"$r\" ] || falla \"La feature/pagos del servidor no coincide con la tuya (¿falta el push?)\"\n[ \"$(git -C ~/servidor/almacen.git log -1 --format=%s feature/pagos)\" = \"Agrega revisión de pagos\" ] || falla \"El último commit de feature/pagos en el servidor no es «Agrega revisión de pagos»\"\ngit -C ~/servidor/almacen.git show feature/pagos:REVIEW.md 2>/dev/null | grep -qF \"Revisado por Alumno: OK\" || falla \"REVIEW.md no tiene el texto pedido\""
+    },
+    {
+     "name": "No publicaste ramas de más",
+     "script": "[ \"$(git -C ~/servidor/almacen.git for-each-ref --format='%(refname)' refs/heads | tr '\\n' ' ')\" = \"refs/heads/feature/pagos refs/heads/main \" ] || falla \"El servidor tiene ramas de más: solo debían existir main y feature/pagos\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git fetch",
+    "git branch -a",
+    "git switch feature/pagos",
+    "echo \"Revisado por Alumno: OK\" > REVIEW.md",
+    "git add REVIEW.md",
+    "git commit -m \"Agrega revisión de pagos\"",
+    "git push"
+   ],
+   "hints": [
+    "Mientras tu repositorio no tenga `origin/feature/pagos`, Git no puede crear una rama que la siga: primero hay que traerla.",
+    "`git fetch`, luego `git switch feature/pagos` (crea la rama con seguimiento), commit de `REVIEW.md` y `git push`."
+   ],
+   "explain": "Tras `git fetch` aparece `origin/feature/pagos`. `git switch feature/pagos` no encuentra una rama local con ese nombre, pero sí una remota en un único remoto, así que crea la local en el mismo commit y con upstream: `branch 'feature/pagos' set up to track 'origin/feature/pagos'.` Tu commit queda encima de los de Ana y `git push` es un fast-forward.\n\nEquivalentes: `git switch -c feature/pagos --track origin/feature/pagos` o `git checkout --track origin/feature/pagos`. El error típico es `git switch -c feature/pagos` **antes** del fetch: crea la rama desde tu `main`, sin los commits de Ana ni upstream, y el push posterior sería rechazado por no ser fast-forward."
+  },
+  {
+   "id": "s07-e10",
+   "title": "Limpieza: ramas que ya no existen en el servidor",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En el sitio del club de ajedrez se hizo limpieza: Ana fusionó `feature/ranking` y `fix/horarios` en `main`, descartó `experimento/blitz` y **borró esas tres ramas del servidor**. `feature/torneo` sigue viva.",
+    "Tu clon todavía muestra las ramas borradas. Déjalo en orden:\n1. Actualiza tus ramas remotas eliminando las que ya no existen en el servidor.\n2. Pon tu `main` al día.\n3. Borra tus ramas locales cuyo upstream desapareció: `feature/ranking` y `experimento/blitz` (el equipo decidió descartar el experimento).\n`origin/feature/torneo` debe seguir en tu repositorio."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/club.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/club.git ~/ana/club 2>/dev/null\ncd ~/ana/club\ncommit_archivo README.md '# Club de ajedrez' 'Crea el sitio del club'\ngit switch -q -c feature/ranking\ncommit_archivo ranking.md '# Ranking del club' 'Agrega ranking'\ngit switch -q -c fix/horarios main\ncommit_archivo horarios.md '# Martes y jueves, 19:00' 'Corrige horarios'\ngit switch -q -c experimento/blitz main\ncommit_archivo blitz.md '# Torneo blitz' 'Prueba torneo blitz'\ngit switch -q -c feature/torneo main\ncommit_archivo torneo.md '# Torneo de primavera' 'Agrega bases del torneo'\ngit push -q origin feature/ranking fix/horarios experimento/blitz feature/torneo\ngit switch -q main\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/club.git ~/club\ncd ~/club\ngit branch -q --track feature/ranking origin/feature/ranking\ngit branch -q --track experimento/blitz origin/experimento/blitz\ncd ~\ncd ~/ana/club\nfecha '2026-09-06 18:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit merge -q feature/ranking\ngit merge -q --no-edit fix/horarios\ngit push -q origin main\ngit push -q origin --delete feature/ranking fix/horarios experimento/blitz\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "club",
+   "checks": [
+    {
+     "name": "No quedan ramas remotas obsoletas",
+     "script": "for r in feature/ranking fix/horarios experimento/blitz; do\n  git show-ref --verify -q refs/remotes/origin/$r && falla \"Todavía existe origin/$r, que ya no está en el servidor\"\ndone; true"
+    },
+    {
+     "name": "origin/feature/torneo sigue ahí",
+     "script": "git show-ref --verify -q refs/remotes/origin/feature/torneo || falla \"Desapareció origin/feature/torneo, que sí existe en el servidor\""
+    },
+    {
+     "name": "main está al día",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/club.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main no coincide con la del servidor\""
+    },
+    {
+     "name": "Borraste las ramas locales huérfanas",
+     "script": "rama_no_existe feature/ranking \"Todavía existe tu rama local feature/ranking\"\nrama_no_existe experimento/blitz \"Todavía existe tu rama local experimento/blitz\""
+    },
+    {
+     "name": "Todo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git fetch --prune",
+    "git branch -vv",
+    "git pull",
+    "git branch -d feature/ranking",
+    "git branch -D experimento/blitz",
+    "git branch -a"
+   ],
+   "hints": [
+    "Un `fetch` normal no borra ramas remotas; hay una opción que sí lo hace. Después, `git branch -vv` marca con `gone` las ramas locales cuyo upstream desapareció.",
+    "`git fetch --prune`, `git pull`, `git branch -d feature/ranking` y, como el experimento nunca se fusionó, `git branch -D experimento/blitz`."
+   ],
+   "explain": "`git fetch --prune` elimina `origin/feature/ranking`, `origin/fix/horarios` y `origin/experimento/blitz` (`- [deleted]         (none)     -> origin/…`) y además trae el nuevo `main`. `git branch -vv` muestra `[origin/feature/ranking: gone]`. Tras el `git pull` (fast-forward), `feature/ranking` ya está incluida en `main`, así que `git branch -d` la borra sin quejarse; `experimento/blitz` nunca se fusionó, y `-d` respondería `error: the branch 'experimento/blitz' is not fully merged`: `-D` fuerza el borrado (úsalo solo cuando estés seguro).\n\nAlternativas: `git remote prune origin` (poda sin traer nada nuevo) o `git config --global fetch.prune true` para que cada fetch pode solo. `--prune` nunca borra ramas locales: esa limpieza siempre es tuya."
+  },
+  {
+   "id": "s07-e11",
+   "title": "Push rechazado con conflicto",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "En la cafetería acordaron un nuevo horario, pero cada uno hizo su parte por separado: tú confirmaste (sin publicar) que se abre a las **07:30**, y Ana publicó que se cierra a las **19:00**. Ambos cambiaron la misma línea de `horario.md`.",
+    "Publica tu cambio en `main` del servidor. Cuando aparezca el conflicto, resuélvelo para que esa línea quede exactamente así (el resto del archivo no cambia):\n```\nLunes a viernes: 07:30 a 19:00\n```\nTermina la fusión y publica. Sin `--force`: el commit de Ana debe seguir en la historia del servidor."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/cafe.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/cafe.git ~/ana/cafe 2>/dev/null\ncd ~/ana/cafe\nprintf '# Café Andino\\nLunes a viernes: 08:00 a 18:00\\nSábados: cerrado\\n' > horario.md\ngit add horario.md\ngit commit -qm 'Publica horario'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/cafe.git ~/cafe\ncd ~/cafe\nfecha '2026-09-06 09:00'\nprintf '# Café Andino\\nLunes a viernes: 07:30 a 18:00\\nSábados: cerrado\\n' > horario.md\ngit commit -qam 'Abre más temprano de lunes a viernes'\ncd ~\ncd ~/ana/cafe\nfecha '2026-09-06 10:00'\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nprintf '# Café Andino\\nLunes a viernes: 08:00 a 19:00\\nSábados: cerrado\\n' > horario.md\ngit commit -qam 'Cierra más tarde de lunes a viernes'\ngit push -q origin main\ncd ~\nyo\nrm -rf ~/ana",
+   "cwd": "cafe",
+   "checks": [
+    {
+     "name": "Sin conflictos ni merge a medias",
+     "script": "sin_conflictos\nsin_operacion_en_curso"
+    },
+    {
+     "name": "horario.md quedó con el horario acordado",
+     "script": "h=$(contenido HEAD horario.md)\nprintf '%s\\n' \"$h\" | grep -qxF \"Lunes a viernes: 07:30 a 19:00\" || falla \"En tu último commit, horario.md no tiene la línea «Lunes a viernes: 07:30 a 19:00»\"\n[ \"$(printf '%s\\n' \"$h\" | grep -c 'Lunes')\" = 1 ] || falla \"Hay más de una línea de lunes a viernes: deja solo la acordada\"\nprintf '%s\\n' \"$h\" | grep -qxF \"Sábados: cerrado\" || falla \"Se perdió la línea «Sábados: cerrado»\"\nprintf '%s\\n' \"$h\" | grep -qxF \"# Café Andino\" || falla \"Se perdió el título «# Café Andino»\""
+    },
+    {
+     "name": "El servidor tiene tu resultado",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/cafe.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main y la del servidor no coinciden: ¿falta el push final?\""
+    },
+    {
+     "name": "Los dos commits siguen en la historia del servidor",
+     "script": "git -C ~/servidor/cafe.git log --format=%s main | grep -qxF \"Cierra más tarde de lunes a viernes\" || falla \"¡El commit de Ana ya no está en el servidor! ¿Usaste --force?\"\ngit -C ~/servidor/cafe.git log --format=%s main | grep -qxF \"Abre más temprano de lunes a viernes\" || falla \"Tu commit no está en el servidor\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git push",
+    "git pull --no-rebase",
+    "git status",
+    "cat horario.md",
+    "printf \"# Café Andino\\nLunes a viernes: 07:30 a 19:00\\nSábados: cerrado\\n\" > horario.md",
+    "git add horario.md",
+    "git commit --no-edit",
+    "git push"
+   ],
+   "hints": [
+    "Primero intenta publicar y lee el rechazo. Luego trae e integra el trabajo de Ana: el conflicto aparecerá en ese momento, igual que en s06.",
+    "`git pull --no-rebase` → edita `horario.md` (con `code horario.md`) dejando la línea acordada y sin marcadores `<<<<<<<` → `git add horario.md` → `git commit` → `git push`."
+   ],
+   "explain": "El push se rechaza (`fetch first`). `git pull --no-rebase` descarga el commit de Ana e intenta el merge: `CONFLICT (content): Merge conflict in horario.md`. El archivo muestra tu versión entre `<<<<<<< HEAD` y `=======`, y la de Ana hasta `>>>>>>> <hash>` (en un pull el marcador muestra el hash del commit que llegó). Lo resuelves escribiendo la versión acordada, marcas la resolución con `git add` y cierras el merge con `git commit`, que abre el editor con el mensaje `Merge branch 'main' of …` ya preparado (guárdalo; `git commit --no-edit` lo acepta sin abrir el editor). Ese commit contiene la historia del servidor, así que el push final se acepta.\n\nSi te enredas, `git merge --abort` vuelve al estado anterior al pull. Con `git pull --rebase` también se puede (resuelves y `git rebase --continue`, s09): la historia queda lineal y los checks también pasan."
+  },
+  {
+   "id": "s07-e12",
+   "title": "Rama publicada con nombre equivocado",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Publicaste tu rama con un error de tipeo: **`feture/login`** en vez de **`feature/login`**. Nadie más la ha tomado todavía, así que es buen momento para corregirlo en todas partes:",
+    "- Tu rama local debe llamarse `feature/login` y conservar sus commits.\n- En el servidor debe existir `feature/login` (con esos commits) y **no** debe quedar `feture/login`.\n- Tu `feature/login` debe seguir a `origin/feature/login`, y en tu repositorio no debe quedar la rama remota `origin/feture/login`.\n- `main` del servidor no se toca."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/ferreteria.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/ferreteria.git ~/ana/ferreteria 2>/dev/null\ncd ~/ana/ferreteria\ncommit_archivo README.md '# Ferretería El Tornillo' 'Crea el sitio de la ferretería'\ncommit_archivo inventario.csv 'codigo,producto,stock' 'Agrega inventario'\ngit push -q origin main\ncd ~\nyo\ngit clone -q ~/servidor/ferreteria.git ~/ferreteria\ncd ~/ferreteria\nfecha '2026-09-07 09:00'\ngit switch -q -c feture/login\ncommit_archivo login.js 'iniciarSesion()' 'Agrega formulario de inicio de sesión'\ncommit_archivo sesion.js 'cerrarSesion()' 'Agrega cierre de sesión'\ngit push -q -u origin feture/login\ncd ~\nrm -rf ~/ana",
+   "cwd": "ferreteria",
+   "checks": [
+    {
+     "name": "La rama local se llama feature/login y conserva sus commits",
+     "script": "rama_no_existe feture/login \"Todavía existe tu rama local feture/login\"\nrama_existe feature/login \"No existe la rama local feature/login\"\ngit log --format=%s feature/login | grep -qxF \"Agrega cierre de sesión\" || falla \"feature/login no tiene los commits de la rama original\""
+    },
+    {
+     "name": "El servidor tiene feature/login igual a la tuya",
+     "script": "l=$(git rev-parse -q --verify refs/heads/feature/login) || falla \"No existe la rama local feature/login\"\nr=$(git -C ~/servidor/ferreteria.git rev-parse -q --verify refs/heads/feature/login) || falla \"El servidor no tiene la rama feature/login\"\n[ \"$l\" = \"$r\" ] || falla \"La feature/login del servidor no coincide con la tuya\""
+    },
+    {
+     "name": "El servidor ya no tiene feture/login",
+     "script": "git -C ~/servidor/ferreteria.git show-ref --verify -q refs/heads/feture/login && falla \"El servidor todavía tiene la rama feture/login\"; true"
+    },
+    {
+     "name": "feature/login sigue a origin/feature/login",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'feature/login@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/feature/login\" ] || falla \"feature/login no sigue a origin/feature/login (mira git branch -vv)\""
+    },
+    {
+     "name": "No queda origin/feture/login en tu repositorio",
+     "script": "git show-ref --verify -q refs/remotes/origin/feture/login && falla \"Todavía tienes la rama remota origin/feture/login\"; true"
+    },
+    {
+     "name": "main del servidor intacta",
+     "script": "[ \"$(git -C ~/servidor/ferreteria.git log -1 --format=%s main)\" = \"Agrega inventario\" ] || falla \"main del servidor cambió y no debía tocarse\""
+    }
+   ],
+   "solution": [
+    "git branch -m feature/login",
+    "git push",
+    "git push -u origin feature/login",
+    "git push origin --delete feture/login",
+    "git branch -vv",
+    "git branch -a"
+   ],
+   "hints": [
+    "Son tres operaciones: renombrar la rama local (s05), publicarla con el nombre nuevo dejando el upstream correcto y borrar del servidor la del nombre viejo.",
+    "`git branch -m feature/login`, `git push -u origin feature/login` y `git push origin --delete feture/login`."
+   ],
+   "explain": "`git branch -m` renombra la rama local y arrastra su configuración: sigue apuntando a `origin/feture/login`. Por eso un `git push` a secas falla con `fatal: The upstream branch of your current branch does not match the name of your current branch.` (con `push.default=simple` los nombres deben coincidir). `git push -u origin feature/login` crea la rama con el nombre correcto y reemplaza el upstream. Finalmente, `git push origin --delete feture/login` borra la vieja del servidor y, de paso, tu `origin/feture/login`.\n\nVariante en un paso para el servidor: `git push origin feature/login :feture/login` (publica una y borra la otra). Si alguien ya hubiera tomado la rama vieja, tendría que hacer `git fetch --prune` y `git branch -u origin/feature/login`: por eso conviene corregir los nombres cuanto antes."
+  },
+  {
+   "id": "s07-e13",
+   "title": "Trae el nivel 2 desde el repositorio de Ana",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Ana terminó el **nivel 2** del juego en su rama `nivel-2`, pero se fue de vacaciones sin publicarla en el servidor. Por suerte su repositorio está en una carpeta compartida: `~/ana/juego`.",
+    "1. Agrega su repositorio como un remoto llamado **`ana`** y descarga sus ramas.\n2. Integra `nivel-2` de Ana en tu `main` con un merge (mientras tanto Diego publicó un arreglo en `main`, así que no será fast-forward).\n3. Publica el resultado en `main` de `origin`.\nNo modifiques el repositorio de Ana: solo lees de él."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/juego.git\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\ngit clone -q ~/servidor/juego.git ~/ana/juego 2>/dev/null\ncd ~/ana/juego\ncommit_archivo README.md '# Juego de plataformas' 'Crea el juego'\ncommit_archivo nivel1.txt 'Nivel 1: bosque' 'Agrega nivel 1'\ngit push -q origin main\ncd ~\nyo\ncd ~/ana/juego\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nfecha '2026-09-08 10:00'\ngit switch -q -c nivel-2\ncommit_archivo nivel2.txt 'Nivel 2: volcán' 'Agrega nivel 2'\nanexar nivel2.txt 'Jefe final: dragón de lava'\ngit commit -qam 'Agrega jefe del nivel 2'\ngit switch -q main\ngit clone -q ~/servidor/juego.git ~/diego-tmp\ncd ~/diego-tmp\nautor 'Diego Soto' 'diego.soto@ejemplo.com'\nfecha '2026-09-08 12:00'\ncommit_archivo fisica.js 'gravedad = 9.8' 'Corrige la gravedad del salto'\ngit push -q origin main\ncd ~\nrm -rf ~/diego-tmp\nyo\ngit clone -q ~/servidor/juego.git ~/juego",
+   "cwd": "juego",
+   "checks": [
+    {
+     "name": "Existe el remoto ana y apunta a ~/ana/juego",
+     "script": "u=$(git remote get-url ana 2>/dev/null) || falla \"No existe ningún remoto llamado ana (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/ana/juego 2>/dev/null && pwd -P)\" ] || falla \"El remoto ana no apunta a ~/ana/juego\""
+    },
+    {
+     "name": "Descargaste sus ramas: ana/nivel-2",
+     "script": "[ \"$(git rev-parse -q --verify refs/remotes/ana/nivel-2)\" = \"$(git -C ~/ana/juego rev-parse nivel-2)\" ] || falla \"No tienes ana/nivel-2 al día: falta descargar desde el remoto ana\""
+    },
+    {
+     "name": "main del servidor contiene el nivel 2 y el arreglo de Diego",
+     "script": "git -C ~/servidor/juego.git merge-base --is-ancestor \"$(git -C ~/ana/juego rev-parse nivel-2)\" main 2>/dev/null || falla \"main del servidor todavía no contiene el nivel 2 de Ana\"\ngit -C ~/servidor/juego.git log --format=%s main | grep -qxF \"Corrige la gravedad del salto\" || falla \"¡Se perdió el arreglo de Diego en el servidor!\""
+    },
+    {
+     "name": "Tu main y la del servidor son iguales, sin nada pendiente",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/juego.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main y la del servidor no coinciden: ¿falta el push?\"\nsin_operacion_en_curso\nlimpio"
+    },
+    {
+     "name": "El repositorio de Ana quedó intacto",
+     "script": "[ \"$(git -C ~/ana/juego log -1 --format=%s main)\" = \"Agrega nivel 1\" ] && [ \"$(git -C ~/ana/juego log -1 --format=%s nivel-2)\" = \"Agrega jefe del nivel 2\" ] || falla \"Modificaste el repositorio de Ana: solo había que leer de él\""
+    }
+   ],
+   "solution": [
+    "git remote add ana ~/ana/juego",
+    "git fetch ana",
+    "git branch -a",
+    "git merge ana/nivel-2",
+    "git log --oneline --graph --all",
+    "git push"
+   ],
+   "hints": [
+    "Un remoto no tiene por qué ser un servidor: cualquier repositorio sirve. Agrégalo, haz fetch de él y trabaja con sus ramas remotas (`ana/…`).",
+    "`git remote add ana ~/ana/juego`, `git fetch ana`, `git merge ana/nivel-2` y `git push`."
+   ],
+   "explain": "`git remote add ana ~/ana/juego` + `git fetch ana` crean `ana/main` y `ana/nivel-2` (`* [new branch]      nivel-2    -> ana/nivel-2`). `git merge ana/nivel-2` abre el editor con el mensaje `Merge remote-tracking branch 'ana/nivel-2'` y, al guardarlo, crea el commit de fusión (con `--no-edit` no se abre el editor). Ese commit tiene dos padres: tu `main` (que ya incluía el arreglo de Diego) y el último commit de Ana. Como ese merge contiene todo lo del servidor, `git push` es un fast-forward.\n\nAlternativa: `git pull --no-rebase ana nivel-2` (fetch + merge en un paso; sin `--no-rebase` Git pediría elegir porque las historias divergen). Trabajar con varios remotos es la base del flujo con forks de s08, donde el remoto extra suele llamarse `upstream`. Fíjate en que nunca hiciste push al repositorio de Ana: además de no corresponder, al ser un repositorio normal Git podría rechazarlo."
+  },
+  {
+   "id": "s07-e14",
+   "title": "Proyecto: un día de colaboración entre dos personas",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Vas a simular, tú solo, un día de trabajo en equipo en la **agenda del club de lectura**. Hay un servidor (`~/servidor/agenda.git`) y el clon de Ana (`~/ana/agenda`), que ya tiene configurada su identidad en ese repositorio: todo commit que hagas en esa carpeta quedará a nombre de Ana Rojas.",
+    "**Tú:** clona el servidor en `~/agenda`.",
+    "**Ana** (`cd ~/ana/agenda`): crea la rama `feature/contactos`, agrega `contactos.md` con el texto `# Contactos del club`, confírmalo con el mensaje «Agrega página de contactos» y publica la rama con upstream.",
+    "**Tú** (`cd ~/agenda`): trae la rama de Ana, revisa sus commits e intégrala en tu `main`; publica `main`. Como ya quedó integrada, borra `feature/contactos` del servidor.",
+    "**Ana:** vuelve a `main`, actualízala, elimina su rama remota obsoleta y borra su rama local `feature/contactos`.",
+    "Al final: los dos `main` iguales a la del servidor; ninguna `feature/contactos` en el servidor ni en los clones (ni local ni `origin/feature/contactos`), y todo limpio."
+   ],
+   "setup": "fecha '2026-09-10 09:00'\ngit init -q --bare ~/servidor/agenda.git\ngit clone -q ~/servidor/agenda.git ~/ana/agenda 2>/dev/null\ncd ~/ana/agenda\ngit config user.name 'Ana Rojas'\ngit config user.email 'ana.rojas@ejemplo.com'\ncommit_archivo README.md '# Agenda del club de lectura' 'Crea la agenda'\ncommit_archivo sesiones.md '# Sesiones: primer jueves de cada mes' 'Agrega calendario de sesiones'\ngit push -q origin main\ncd ~",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "Tu clon ~/agenda sigue al servidor",
+     "script": "[ -d ~/agenda/.git ] || falla \"No hay un clon en ~/agenda\"\ncd ~/agenda\nu=$(git remote get-url origin 2>/dev/null) || falla \"No existe ningún remoto llamado origin (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/servidor/agenda.git 2>/dev/null && pwd -P)\" ] || falla \"El origin de ~/agenda no apunta a ~/servidor/agenda.git\"\n[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"En ~/agenda, main no sigue a origin/main\""
+    },
+    {
+     "name": "main del servidor tiene el commit de Ana",
+     "script": "git -C ~/servidor/agenda.git log --format='%an|%s' main | grep -qxF \"Ana Rojas|Agrega página de contactos\" || falla \"main del servidor no tiene el commit «Agrega página de contactos» hecho por Ana Rojas\""
+    },
+    {
+     "name": "El servidor ya no tiene feature/contactos",
+     "script": "git -C ~/servidor/agenda.git log --all --format=%s | grep -qxF \"Agrega página de contactos\" || falla \"Todavía no existe el commit de Ana en el servidor\"\ngit -C ~/servidor/agenda.git show-ref --verify -q refs/heads/feature/contactos && falla \"El servidor todavía tiene la rama feature/contactos\"; true"
+    },
+    {
+     "name": "Tu main y la de Ana coinciden con el servidor",
+     "script": "s=$(git -C ~/servidor/agenda.git rev-parse main)\n[ \"$(git -C ~/agenda rev-parse -q --verify refs/heads/main)\" = \"$s\" ] || falla \"Tu main (~/agenda) no coincide con la del servidor\"\n[ \"$(git -C ~/ana/agenda rev-parse -q --verify refs/heads/main)\" = \"$s\" ] || falla \"La main de Ana (~/ana/agenda) no coincide con la del servidor\""
+    },
+    {
+     "name": "Ana no tiene restos de feature/contactos",
+     "script": "git -C ~/ana/agenda show-ref --verify -q refs/heads/feature/contactos && falla \"Ana todavía tiene su rama local feature/contactos\"\ngit -C ~/ana/agenda show-ref --verify -q refs/remotes/origin/feature/contactos && falla \"Ana todavía tiene la rama remota origin/feature/contactos (falta podar)\"; true"
+    },
+    {
+     "name": "Tu clon tampoco tiene restos",
+     "script": "git -C ~/agenda show-ref --verify -q refs/heads/feature/contactos && falla \"En ~/agenda quedó una rama local feature/contactos\"\ngit -C ~/agenda show-ref --verify -q refs/remotes/origin/feature/contactos && falla \"En ~/agenda quedó la rama remota origin/feature/contactos\"; true"
+    },
+    {
+     "name": "Los dos clones limpios",
+     "script": "[ -z \"$(git -C ~/agenda status --porcelain)\" ] || falla \"Hay cambios sin confirmar en ~/agenda\"\n[ -z \"$(git -C ~/ana/agenda status --porcelain)\" ] || falla \"Hay cambios sin confirmar en ~/ana/agenda\"\n[ \"$(git -C ~/ana/agenda symbolic-ref --short HEAD)\" = main ] || falla \"Ana debería terminar en su rama main\""
+    }
+   ],
+   "solution": [
+    "git clone ~/servidor/agenda.git agenda",
+    "cd ~/ana/agenda",
+    "git switch -c feature/contactos",
+    "echo \"# Contactos del club\" > contactos.md",
+    "git add contactos.md",
+    "git commit -m \"Agrega página de contactos\"",
+    "git push -u origin feature/contactos",
+    "cd ~/agenda",
+    "git fetch",
+    "git log --oneline main..origin/feature/contactos",
+    "git merge origin/feature/contactos",
+    "git push",
+    "git push origin --delete feature/contactos",
+    "cd ~/ana/agenda",
+    "git switch main",
+    "git pull",
+    "git fetch --prune",
+    "git branch -d feature/contactos",
+    "git branch -a"
+   ],
+   "hints": [
+    "Hazlo por turnos y usa `pwd` para no confundirte de carpeta. Cada persona solo ve lo que trae con `fetch`/`pull`.",
+    "Ana publica con `git push -u origin feature/contactos`. Tú: `git fetch`, `git merge origin/feature/contactos` (será fast-forward), `git push` y `git push origin --delete feature/contactos`.",
+    "Ana al final: `git switch main`, `git pull`, `git fetch --prune` y `git branch -d feature/contactos`."
+   ],
+   "explain": "Es el ciclo completo de una funcionalidad: **rama → publicar → revisar → integrar → publicar main → limpiar**. Cuando tú borras la rama con `git push origin --delete`, tu `origin/feature/contactos` desaparece al instante, pero en el clon de Ana sigue existiendo hasta que ella poda con `git fetch --prune` (o `fetch.prune=true`). Su rama local se borra con `-d` sin problema porque ya está contenida en `main`.\n\nAlternativas válidas: revisar creando una rama local con `git switch feature/contactos` antes de fusionar; fusionar con `git merge --no-ff` para dejar constancia de la rama en la historia; o que Ana haga todo en un solo `git pull --prune`. En una plataforma como GitHub, el paso «revisar e integrar» sería un pull request (s08)."
+  },
+  {
+   "id": "s07-e15",
+   "title": "Proyecto: rescata un clon desordenado",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Heredaste el computador de Diego, que se cambió de equipo. Su clon del **inventario de la ferretería** (`~/inventario`) quedó hecho un lío. Lo que sabes:",
+    "- El servidor se mudó de `~/servidor/inventario.git` a **`~/servidor/inventario-ferreteria.git`**.\n- Diego tenía un remoto `pruebas` hacia un repositorio que ya no existe.\n- En su rama `feature/stock` dejó un commit sin publicar («Valida stock negativo») y, además, la rama perdió su upstream.\n- Desde entonces el equipo avanzó `main` y borró del servidor la rama `fix/viejo`.",
+    "Deja el clon como nuevo: `origin` apuntando al servidor correcto y sin el remoto `pruebas`; sin ramas remotas obsoletas; `main` al día y siguiendo a `origin/main`; `feature/stock` siguiendo a `origin/feature/stock` y **publicada** con el commit pendiente de Diego, sin perder nada de lo que ya estaba en el servidor. Empieza por diagnosticar con `git remote -v`, `git status` y `git branch -vv`."
+   ],
+   "setup": "fecha '2026-09-01 09:00'\ngit init -q --bare ~/servidor/inventario.git\nautor 'Diego Soto' 'diego.soto@ejemplo.com'\ngit clone -q ~/servidor/inventario.git ~/inventario 2>/dev/null\ncd ~/inventario\ncommit_archivo README.md '# Inventario de la ferretería' 'Crea el inventario'\ncommit_archivo productos.csv 'codigo,nombre,stock' 'Agrega planilla de productos'\ngit push -q origin main\ngit switch -q -c feature/stock\ncommit_archivo stock.js 'actualizarStock()' 'Agrega actualización de stock'\ngit push -q -u origin feature/stock\ngit switch -q -c fix/viejo main\ncommit_archivo tmp.txt 'parche' 'Arreglo temporal'\ngit push -q -u origin fix/viejo\ngit switch -q feature/stock\ngit branch -q -D fix/viejo\nfecha '2026-09-02 09:00'\nanexar stock.js 'validarStockNegativo()'\ngit commit -qam 'Valida stock negativo'\ngit branch -q --unset-upstream\ngit remote add pruebas ~/pruebas/inventario.git\ngit clone -q ~/servidor/inventario.git ~/ana-tmp\ncd ~/ana-tmp\nautor 'Ana Rojas' 'ana.rojas@ejemplo.com'\nfecha '2026-09-03 09:00'\ncommit_archivo proveedores.csv 'rut,nombre' 'Agrega planilla de proveedores'\ngit push -q origin main\ngit push -q origin --delete fix/viejo\ncd ~\nrm -rf ~/ana-tmp\nmv ~/servidor/inventario.git ~/servidor/inventario-ferreteria.git\nyo",
+   "cwd": "inventario",
+   "checks": [
+    {
+     "name": "origin apunta al servidor nuevo y ya no existe pruebas",
+     "script": "u=$(git remote get-url origin 2>/dev/null) || falla \"No existe ningún remoto llamado origin (revisa git remote -v)\"\nu=${u#file://}\n[ \"$(cd \"$u\" 2>/dev/null && pwd -P)\" = \"$(cd ~/servidor/inventario-ferreteria.git 2>/dev/null && pwd -P)\" ] || falla \"origin no apunta a ~/servidor/inventario-ferreteria.git\"\ngit config --get remote.pruebas.url >/dev/null && falla \"Todavía existe el remoto pruebas\"; true"
+    },
+    {
+     "name": "Sin ramas remotas obsoletas",
+     "script": "git show-ref --verify -q refs/remotes/origin/fix/viejo && falla \"Todavía tienes origin/fix/viejo, que ya no existe en el servidor\"; true"
+    },
+    {
+     "name": "main al día y siguiendo a origin/main",
+     "script": "l=$(git rev-parse -q --verify refs/heads/main) || falla \"No existe tu rama main\"\nr=$(git -C ~/servidor/inventario-ferreteria.git rev-parse -q --verify refs/heads/main) || falla \"El servidor no tiene la rama main\"\n[ \"$l\" = \"$r\" ] || falla \"Tu main no coincide con la del servidor\"\n[ \"$(git rev-parse --symbolic-full-name 'main@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/main\" ] || falla \"main no sigue a origin/main\""
+    },
+    {
+     "name": "feature/stock sigue a origin/feature/stock",
+     "script": "[ \"$(git rev-parse --symbolic-full-name 'feature/stock@{upstream}' 2>/dev/null)\" = \"refs/remotes/origin/feature/stock\" ] || falla \"feature/stock no sigue a origin/feature/stock (mira git branch -vv)\""
+    },
+    {
+     "name": "El servidor tiene el commit pendiente de Diego",
+     "script": "l=$(git rev-parse -q --verify refs/heads/feature/stock) || falla \"No existe tu rama feature/stock\"\nr=$(git -C ~/servidor/inventario-ferreteria.git rev-parse -q --verify refs/heads/feature/stock) || falla \"El servidor no tiene la rama feature/stock\"\n[ \"$l\" = \"$r\" ] || falla \"La feature/stock del servidor no coincide con la tuya: ¿falta publicarla?\"\n[ \"$(git -C ~/servidor/inventario-ferreteria.git log -1 --format=%s feature/stock)\" = \"Valida stock negativo\" ] || falla \"El último commit de feature/stock en el servidor no es «Valida stock negativo»\""
+    },
+    {
+     "name": "Nada perdido en el servidor",
+     "script": "git -C ~/servidor/inventario-ferreteria.git log --format=%s main | grep -qxF \"Agrega planilla de proveedores\" || falla \"¡Se perdió el commit «Agrega planilla de proveedores» de main en el servidor!\""
+    },
+    {
+     "name": "Todo limpio y sin operaciones a medias",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git remote -v",
+    "git status",
+    "git branch -vv",
+    "git remote set-url origin ~/servidor/inventario-ferreteria.git",
+    "git remote remove pruebas",
+    "git fetch --prune",
+    "git branch -u origin/feature/stock",
+    "git status",
+    "git push",
+    "git switch main",
+    "git pull --ff-only",
+    "git branch -vv"
+   ],
+   "hints": [
+    "Ordena el trabajo: primero los remotos (sin una URL correcta no funciona nada más), después la sincronización y al final las ramas.",
+    "`git remote set-url origin …` y `git remote remove pruebas`; luego `git fetch --prune`. `git branch -vv` te dirá qué rama no tiene upstream.",
+    "En `feature/stock`: `git branch -u origin/feature/stock` y `git push`. Después `git switch main` y `git pull --ff-only`."
+   ],
+   "explain": "El diagnóstico manda. `git fetch` fallaba (`does not appear to be a git repository`) porque la URL apuntaba al servidor viejo: `set-url` lo arregla y `remove` elimina el remoto roto. `git fetch --prune` trae el `main` nuevo y poda `origin/fix/viejo`. En `feature/stock`, `git branch -u origin/feature/stock` recupera el seguimiento (`git status` pasa a decir `ahead 1`) y `git push` publica el commit pendiente como fast-forward. Por último, `main` avanza con `git pull --ff-only`.\n\nAlternativas: `git push -u origin feature/stock` publica y fija el upstream de una vez; `git remote prune origin` poda sin traer nada. Fíjate en que ningún paso necesitó `--force`: cuando la historia del servidor es antecesora de la tuya, publicar es siempre un fast-forward."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué es un remoto?",
+   "back": "Un nombre corto guardado en la configuración de tu repositorio que apunta a la URL de otro repositorio con el que te sincronizas (`git remote -v` los lista)."
+  },
+  {
+   "front": "¿`origin` tiene algo de especial?",
+   "back": "No. Es solo el nombre que `git clone` le pone por defecto al remoto del que clonaste. Se puede renombrar (`git remote rename`) o elegir otro al clonar (`git clone -o nombre`)."
+  },
+  {
+   "front": "Repositorio bare",
+   "back": "Repositorio sin directorio de trabajo: solo la base de datos de Git. Se crea con `git init --bare` o `git clone --bare`; es el formato de los servidores (nombre terminado en `.git`)."
+  },
+  {
+   "front": "¿Qué hace `git remote add origin URL`?",
+   "back": "Solo guarda en `.git/config` la URL y el refspec del remoto. No descarga ni sube nada."
+  },
+  {
+   "front": "Los 5 pasos de `git clone URL`",
+   "back": "Crea la carpeta + `git init`; agrega el remoto `origin`; fetch (crea `origin/*` y `origin/HEAD`); crea `main` desde `origin/main` con upstream; hace checkout de `main`."
+  },
+  {
+   "front": "`git remote set-url origin URL`",
+   "back": "Cambia a dónde apunta el remoto (servidor que se mudó, paso de HTTPS a SSH) sin tocar la historia ni volver a clonar."
+  },
+  {
+   "front": "`git remote rename` / `git remote remove`",
+   "back": "Renombran o borran el remoto en TU repositorio, incluidas sus ramas remotas y la configuración asociada. No tocan el servidor."
+  },
+  {
+   "front": "¿Qué es `origin/main`?",
+   "back": "Una rama remota (remote-tracking branch): referencia local de solo lectura en `refs/remotes/origin/main` que recuerda dónde estaba `main` del servidor en tu última comunicación con él."
+  },
+  {
+   "front": "Upstream de una rama",
+   "back": "La rama remota a la que sigue. Se guarda en `branch.<rama>.remote` y `branch.<rama>.merge` y la usan `git status`, `git pull` y `git push` sin argumentos."
+  },
+  {
+   "front": "`[origin/main: ahead 2, behind 1]`",
+   "back": "Tienes 2 commits que `origin/main` no tiene y `origin/main` tiene 1 que tú no. Según tu último fetch."
+  },
+  {
+   "front": "`@{u}` / `@{upstream}`",
+   "back": "El upstream de la rama actual. `git log ..@{u}` = lo que te falta; `git log @{u}..` = lo que no has publicado."
+  },
+  {
+   "front": "Crear una rama local que siga a `origin/feature/x`",
+   "back": "`git switch feature/x` (si existe en un solo remoto) o `git switch -c x --track origin/feature/x`. Forma antigua: `git checkout --track origin/feature/x`."
+  },
+  {
+   "front": "Cambiar el upstream de la rama actual",
+   "back": "`git branch -u origin/rama` (`--set-upstream-to=origin/rama`). Quitarlo: `git branch --unset-upstream`."
+  },
+  {
+   "front": "¿Qué modifica `git fetch`?",
+   "back": "Solo las ramas remotas (`refs/remotes/…`) y `FETCH_HEAD`. Nunca tus ramas locales, el index ni tus archivos."
+  },
+  {
+   "front": "`git fetch --prune`",
+   "back": "Antes de traer, elimina las ramas remotas que ya no existen en el servidor. `git config --global fetch.prune true` lo hace siempre. No borra ramas locales."
+  },
+  {
+   "front": "`[origin/feature/x: gone]` en `git branch -vv`",
+   "back": "La rama local sigue a una rama que ya no existe en el servidor (y ya se podó). Si está fusionada, bórrala con `git branch -d`."
+  },
+  {
+   "front": "`git pull` =",
+   "back": "`git fetch` + integrar el upstream en la rama actual: merge (`--no-rebase`), rebase (`--rebase`) o solo fast-forward (`--ff-only`)."
+  },
+  {
+   "front": "`fatal: Need to specify how to reconcile divergent branches.`",
+   "back": "Las historias divergen y no configuraste cómo integrar. Elige: `git pull --no-rebase` (merge), `--rebase` o `--ff-only`, o configura `pull.rebase` / `pull.ff`."
+  },
+  {
+   "front": "`git push -u origin feature/x`",
+   "back": "Publica la rama y guarda `origin/feature/x` como upstream (`-u` = `--set-upstream`). Después basta `git push` y `git pull`."
+  },
+  {
+   "front": "`push.autoSetupRemote`",
+   "back": "Desde Git 2.37: con `true`, el primer `git push` de una rama sin upstream la crea en el remoto y configura el seguimiento, sin `-u`."
+  },
+  {
+   "front": "`! [rejected] main -> main (fetch first)`",
+   "back": "El servidor tiene commits que no has descargado. Solución: `git pull` (resolver si hay conflicto) y `git push`. Nunca `--force` en una rama compartida."
+  },
+  {
+   "front": "`(non-fast-forward)` vs `(fetch first)`",
+   "back": "Ambos: tu rama no contiene la del servidor. `fetch first`: aún no descargaste esos commits. `non-fast-forward`: ya están en `origin/…`, pero no los integraste."
+  },
+  {
+   "front": "Borrar una rama del servidor",
+   "back": "`git push origin --delete feature/x` (forma antigua `git push origin :feature/x`). Borra también tu `origin/feature/x`, pero no tu rama local."
+  },
+  {
+   "front": "`git ls-remote origin`",
+   "back": "Lista las referencias que tiene el servidor ahora mismo, con sus hashes, sin descargar objetos ni tocar tus ramas remotas."
+  },
+  {
+   "front": "URLs HTTPS y SSH de GitHub",
+   "back": "HTTPS: `https://github.com/usuario/repo.git`. SSH: `git@github.com:usuario/repo.git` (o `ssh://git@github.com/usuario/repo.git`)."
+  },
+  {
+   "front": "GitHub y la contraseña de tu cuenta",
+   "back": "Desde el 13 de agosto de 2021 no se acepta para operaciones Git: usa un token personal (PAT) por HTTPS o una llave SSH."
+  },
+  {
+   "front": "Generar y probar una llave SSH para GitHub",
+   "back": "`ssh-keygen -t ed25519 -C \"correo\"`, cargarla con `ssh-add`, subir la `.pub` en Settings → SSH and GPG keys y probar con `ssh -T git@github.com`."
+  },
+  {
+   "front": "Credential helper",
+   "back": "Programa que guarda tus credenciales HTTPS de forma segura y se las entrega a Git: `osxkeychain` en macOS, Git Credential Manager en Windows (y macOS/Linux). Evita `store`: guarda en texto plano."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s07-q1",
+   "type": "single",
+   "q": "¿Qué es `origin`?",
+   "options": [
+    "El nombre por defecto que `git clone` le da al remoto desde el que clonaste",
+    "Una palabra reservada de Git que no se puede cambiar",
+    "La rama principal del servidor",
+    "El primer commit del repositorio"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`origin` es solo un nombre (un alias de la URL) que pone `git clone`. Se puede renombrar con `git remote rename` o elegir otro con `git clone -o`. No es una rama (la rama sería `origin/main`) ni un commit."
+  },
+  {
+   "id": "s07-q2",
+   "type": "single",
+   "q": "Ejecutas `git remote add origin ~/servidor/web.git` en un repositorio con 5 commits. ¿Qué se transfirió al servidor?",
+   "options": [
+    "Nada: solo se guardó la configuración del remoto",
+    "Los 5 commits de la rama actual",
+    "Todas las ramas locales",
+    "Solo el último commit"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git remote add` solo escribe la sección `[remote \"origin\"]` (URL y refspec) en `.git/config`. Para enviar commits hay que hacer `git push`."
+  },
+  {
+   "id": "s07-q3",
+   "type": "multi",
+   "q": "¿Qué hace `git clone URL`? (Selecciona TRES.)",
+   "options": [
+    "Copia la historia completa del repositorio",
+    "Configura un remoto llamado `origin` con esa URL",
+    "Crea ramas remotas `origin/*` para cada rama del servidor",
+    "Crea una rama local por cada rama del servidor",
+    "Deja el repositorio dependiendo de la red para ver el `git log`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Clonar copia todo, configura `origin` y crea `origin/*`. Solo crea UNA rama local (la por defecto, con upstream); las demás quedan como ramas remotas hasta que hagas `git switch rama`. Tras clonar, `git log` y casi todo funciona sin red."
+  },
+  {
+   "id": "s07-q4",
+   "type": "single",
+   "q": "¿Qué caracteriza a un repositorio bare?",
+   "options": [
+    "No tiene directorio de trabajo: solo la base de datos de Git",
+    "No tiene historia, solo la última versión de los archivos",
+    "No puede recibir `push`",
+    "Es un repositorio sin commits"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Un repositorio bare (`git init --bare`) es la base de datos de Git sin archivos de trabajo; por eso es el formato de los servidores y sí recibe `push`. Tiene toda la historia y puede tener muchos commits."
+  },
+  {
+   "id": "s07-q5",
+   "type": "single",
+   "q": "¿Por qué un servidor Git usa repositorios bare?",
+   "options": [
+    "Porque no hay un directorio de trabajo que quedaría desincronizado al recibir un push a la rama activa",
+    "Porque los repositorios bare ocupan la mitad del espacio",
+    "Porque son los únicos que se pueden clonar",
+    "Porque Git no permite remotos que no sean bare"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Si haces push a la rama activa de un repositorio normal, Git lo rechaza (`branch is currently checked out`, opción `receive.denyCurrentBranch`) para no desincronizar sus archivos. Los repositorios normales sí se pueden clonar y usar como remotos (para fetch)."
+  },
+  {
+   "id": "s07-q6",
+   "type": "single",
+   "q": "¿Qué hace `git fetch`?",
+   "options": [
+    "Descarga los commits nuevos y actualiza las ramas remotas (`origin/*`) sin tocar tus ramas ni tus archivos",
+    "Descarga los commits y fusiona `origin/main` en tu rama actual",
+    "Envía tus commits al servidor",
+    "Borra tus ramas locales que ya no existen en el servidor"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`fetch` solo actualiza `refs/remotes/…` y `FETCH_HEAD`. Integrar es trabajo de `merge`/`pull`; enviar, de `push`; y ni siquiera `--prune` borra ramas locales."
+  },
+  {
+   "id": "s07-q7",
+   "type": "yesno",
+   "q": "Indica si cada afirmación es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`git fetch` puede modificar los archivos de tu directorio de trabajo.",
+     "answer": false
+    },
+    {
+     "text": "`git pull` equivale a `git fetch` seguido de integrar el upstream en la rama actual.",
+     "answer": true
+    },
+    {
+     "text": "Después de un `git fetch`, `git status` puede pasar a decir que tu rama está `behind`.",
+     "answer": true
+    },
+    {
+     "text": "Un `git fetch` sin opciones elimina las ramas remotas que ya no existen en el servidor.",
+     "answer": false
+    }
+   ],
+   "explain": "`fetch` nunca toca tus archivos; solo mueve ramas remotas, por eso `status` puede descubrir que estás atrás. `pull` = fetch + merge/rebase. Para eliminar ramas remotas obsoletas hace falta `--prune` (o `fetch.prune=true`)."
+  },
+  {
+   "id": "s07-q8",
+   "type": "single",
+   "q": "`git status` dice `Your branch is up to date with 'origin/main'`, pero Ana jura que publicó hace cinco minutos. ¿Qué pasa?",
+   "options": [
+    "`status` compara con tu copia local `origin/main`, que no se actualiza hasta que hagas `git fetch`",
+    "Ana publicó en otra rama con seguridad",
+    "Git consulta al servidor en cada `status`, así que Ana se equivoca",
+    "Tu `main` no tiene upstream"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git status` no usa la red: compara con `origin/main` tal como quedó en tu último fetch/pull/push. Haz `git fetch` y vuelve a mirar. Si `main` no tuviera upstream, `status` no mencionaría `origin/main`."
+  },
+  {
+   "id": "s07-q9",
+   "type": "single",
+   "q": "`git branch -vv` muestra `* main 3f2a1b0 [origin/main: ahead 2, behind 1] Agrega FAQ`. ¿Qué significa?",
+   "options": [
+    "Tienes 2 commits que `origin/main` no tiene, y `origin/main` tiene 1 que tú no tienes",
+    "Tienes 1 commit que `origin/main` no tiene, y `origin/main` tiene 2 que tú no",
+    "Estás 2 commits por delante del servidor y puedes hacer push sin problema",
+    "El servidor rechazará cualquier push hasta que borres 2 commits"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "ahead = tus commits sin publicar (2); behind = commits del remoto que te faltan (1). Como hay divergencia, un push sería rechazado: primero integra (pull) y luego publica; no hace falta borrar nada."
+  },
+  {
+   "id": "s07-q10",
+   "type": "single",
+   "q": "Tu `git push` responde `! [rejected] main -> main (fetch first)`. ¿Qué haces?",
+   "options": [
+    "`git pull` (resolviendo conflictos si los hay) y luego `git push`",
+    "`git push --force`",
+    "Borrar el repositorio y volver a clonar",
+    "`git remote remove origin` y agregarlo de nuevo"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El servidor tiene commits que tú no: hay que integrarlos antes de publicar. `--force` borraría el trabajo de otros del servidor; volver a clonar o recrear el remoto no resuelve nada y arriesga tus commits."
+  },
+  {
+   "id": "s07-q11",
+   "type": "single",
+   "q": "¿Qué diferencia hay entre los rechazos `(fetch first)` y `(non-fast-forward)`?",
+   "options": [
+    "En `fetch first` tu repositorio aún no descargó los commits nuevos del servidor; en `non-fast-forward` ya los tienes en `origin/…`, pero tu rama no los incluye",
+    "`fetch first` ocurre solo con HTTPS y `non-fast-forward` solo con SSH",
+    "`non-fast-forward` significa que el servidor está caído",
+    "No hay diferencia: son sinónimos"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Ambos significan que tu rama no contiene la del servidor. Git elige el mensaje según si ya conoce esos commits (`non-fast-forward`) o no (`fetch first`). La solución es la misma: integrar y volver a publicar."
+  },
+  {
+   "id": "s07-q12",
+   "type": "single",
+   "q": "Creaste la rama `feature/mapa` con dos commits. ¿Qué comando la publica y deja configurado el upstream?",
+   "options": [
+    "`git push -u origin feature/mapa`",
+    "`git push origin`",
+    "`git remote add feature/mapa origin`",
+    "`git fetch -u origin feature/mapa`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`-u` (`--set-upstream`) publica y guarda el seguimiento. `git push origin` sin rama, en una rama sin upstream, falla con `has no upstream branch`. `remote add` crea remotos, no publica; y `fetch` trae, no envía."
+  },
+  {
+   "id": "s07-q13",
+   "type": "single",
+   "q": "¿Cómo borras la rama `feature/mapa` del servidor?",
+   "options": [
+    "`git push origin --delete feature/mapa`",
+    "`git branch -d origin/feature/mapa`",
+    "`git remote remove feature/mapa`",
+    "`git fetch --prune feature/mapa`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Borrar en el servidor es una operación de push: `git push origin --delete rama` (o `git push origin :rama`). `git branch -d -r` solo borraría tu copia local `origin/…`; `remote remove` elimina remotos, y `--prune` solo limpia ramas remotas que ya no existen."
+  },
+  {
+   "id": "s07-q14",
+   "type": "yesno",
+   "q": "Ejecutas `git push origin --delete feature/mapa`. Indica si cada afirmación es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "La rama desaparece del servidor.",
+     "answer": true
+    },
+    {
+     "text": "Tu rama local `feature/mapa` también se borra.",
+     "answer": false
+    },
+    {
+     "text": "Tu `origin/feature/mapa` también desaparece.",
+     "answer": true
+    },
+    {
+     "text": "Tus compañeros seguirán viendo `origin/feature/mapa` hasta que hagan `git fetch --prune`.",
+     "answer": true
+    }
+   ],
+   "explain": "El push borra la rama remota en el servidor y actualiza tu `origin/feature/mapa`. Tu rama local queda intacta (bórrala con `git branch -d`). En los otros clones la rama remota persiste hasta que poden."
+  },
+  {
+   "id": "s07-q15",
+   "type": "single",
+   "q": "Con Git 2.50 y sin ninguna configuración de `pull`, tu `main` y `origin/main` divergen y ejecutas `git pull`. ¿Qué pasa?",
+   "options": [
+    "Descarga, pero se detiene con `fatal: Need to specify how to reconcile divergent branches.`",
+    "Hace un merge automáticamente",
+    "Hace un rebase automáticamente",
+    "Sobrescribe tu `main` con `origin/main`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Desde Git 2.33.1 (2021), ante una divergencia sin configuración, `git pull` hace el fetch y luego se niega a integrar, pidiéndote elegir entre merge, rebase o solo fast-forward. Las versiones antiguas hacían merge sin preguntar. Nunca sobrescribe tus commits."
+  },
+  {
+   "id": "s07-q16",
+   "type": "single",
+   "q": "¿Qué hace `git pull --ff-only` si las historias divergen?",
+   "options": [
+    "Falla con `fatal: Not possible to fast-forward, aborting.` sin modificar tu rama",
+    "Crea un commit de merge",
+    "Reaplica tus commits encima de los del servidor",
+    "Descarta tus commits locales"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--ff-only` solo integra si es posible avanzar sin merge. Si hay divergencia, aborta y te deja decidir. Crear un merge es `--no-rebase`; reaplicar, `--rebase`; y Git nunca descarta tus commits en un pull."
+  },
+  {
+   "id": "s07-q17",
+   "type": "multi",
+   "q": "¿Qué dos formas hacen que un `git pull` con historias divergentes termine creando un commit de merge? (Selecciona DOS.)",
+   "options": [
+    "`git pull --no-rebase`",
+    "`git config pull.rebase false` y luego `git pull`",
+    "`git pull --ff-only`",
+    "`git pull --rebase`",
+    "`git fetch --prune`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`--no-rebase` (= `--rebase=false`) y `pull.rebase false` eligen merge. `--ff-only` aborta ante divergencia, `--rebase` reescribe tus commits sin merge, y `fetch --prune` ni siquiera integra."
+  },
+  {
+   "id": "s07-q18",
+   "type": "single",
+   "q": "Tienes `pull.ff only` configurado y las historias divergen. ¿Qué ocurre con `git pull --no-rebase`?",
+   "options": [
+    "Hace el merge: la opción de la línea de comandos manda sobre la configuración",
+    "Falla igual, porque `pull.ff only` no se puede saltar",
+    "Hace un rebase",
+    "Borra la configuración `pull.ff`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Las opciones `--rebase`/`--no-rebase` de la línea de comandos tienen prioridad sobre `pull.ff only`. Por eso `pull.ff only` es cómodo: los pull simples avanzan solos y, ante una divergencia, eliges en el momento."
+  },
+  {
+   "id": "s07-q19",
+   "type": "single",
+   "q": "Estás en `main`, que sigue a `origin/main`. ¿Qué muestra `git log --oneline ..@{u}`?",
+   "options": [
+    "Los commits de `origin/main` que tu `main` todavía no tiene",
+    "Los commits de tu `main` que aún no publicaste",
+    "Todos los commits del servidor",
+    "Los commits que se perdieron en el último push"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`..@{u}` es `HEAD..@{upstream}`: lo que está en el upstream y no en HEAD (lo que te falta, «behind»). Lo contrario, `@{u}..`, muestra tus commits sin publicar («ahead»)."
+  },
+  {
+   "id": "s07-q20",
+   "type": "single",
+   "q": "Tu clon no tiene la rama local `feature/pagos`, pero sí `origin/feature/pagos` (y ningún otro remoto tiene esa rama). ¿Qué hace `git switch feature/pagos`?",
+   "options": [
+    "Crea la rama local `feature/pagos` en el mismo commit que `origin/feature/pagos` y con ella como upstream",
+    "Falla: primero hay que ejecutar `git branch feature/pagos`",
+    "Te deja en HEAD separado sobre `origin/feature/pagos`",
+    "Crea `feature/pagos` desde tu `main`, sin upstream"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Es la «adivinanza» (*guess*) de `git switch`: si el nombre coincide con una rama remota de un solo remoto, crea la rama local con seguimiento. HEAD separado ocurre con `git switch --detach origin/feature/pagos`; y crear desde `main` sería `git switch -c feature/pagos`."
+  },
+  {
+   "id": "s07-q21",
+   "type": "single",
+   "q": "`git switch nivel-2` falla con `fatal: 'nivel-2' matched multiple (2) remote tracking branches`. ¿Cómo lo resuelves?",
+   "options": [
+    "`git switch --track origin/nivel-2` (indicando de qué remoto quieres la rama)",
+    "`git fetch --prune` y repetir",
+    "`git remote remove origin`",
+    "`git switch -c nivel-2` y listo, queda con seguimiento"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La rama existe en dos remotos (p. ej. `origin/nivel-2` y `ana/nivel-2`), así que Git no adivina. Dile cuál con `--track origin/nivel-2` (o configura `checkout.defaultRemote=origin`). Podar no elimina ramas que sí existen, borrar el remoto es exagerado y `-c` crearía la rama desde HEAD, sin upstream."
+  },
+  {
+   "id": "s07-q22",
+   "type": "single",
+   "q": "Por error, tu `main` sigue a `origin/develop`. ¿Qué comando lo corrige estando en `main`?",
+   "options": [
+    "`git branch -u origin/main`",
+    "`git remote set-url origin main`",
+    "`git push -u main`",
+    "`git fetch origin/main`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git branch -u` (`--set-upstream-to`) cambia el upstream de la rama actual. `set-url` cambia URLs de remotos, `git push -u main` intentaría publicar en un remoto llamado «main», y `git fetch origin/main` no es una forma válida de indicar remoto y rama."
+  },
+  {
+   "id": "s07-q23",
+   "type": "single",
+   "q": "En `git branch -vv` ves `feature/login 9ac1e2d [origin/feature/login: gone] Agrega login`. ¿Qué significa?",
+   "options": [
+    "La rama sigue a una rama del servidor que ya no existe (y cuya rama remota se podó)",
+    "La rama local fue borrada, pero quedan sus commits",
+    "El servidor está caído",
+    "Hay commits de `feature/login` que se perdieron"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`gone` indica que el upstream configurado ya no existe en tu repositorio (normalmente porque alguien borró la rama del servidor y tú podaste). Tu rama local y sus commits siguen ahí; si está fusionada, bórrala con `git branch -d`."
+  },
+  {
+   "id": "s07-q24",
+   "type": "single",
+   "q": "El servidor se mudó a una nueva dirección. ¿Qué haces para seguir trabajando con el mismo clon?",
+   "options": [
+    "`git remote set-url origin NUEVA_URL`",
+    "Borrar el clon y volver a clonar (es la única forma)",
+    "`git remote rename origin NUEVA_URL`",
+    "`git push --force NUEVA_URL`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`set-url` cambia la URL y conserva todo lo demás. Volver a clonar funciona, pero pierdes ramas y trabajo local sin publicar; `rename` cambia el nombre del remoto, no su URL; y `--force` no tiene nada que ver."
+  },
+  {
+   "id": "s07-q25",
+   "type": "yesno",
+   "q": "Sobre la administración de remotos, indica si cada afirmación es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "`git remote rename ana companera` también renombra las ramas remotas `ana/*` a `companera/*`.",
+     "answer": true
+    },
+    {
+     "text": "`git remote remove origin` borra el repositorio del servidor.",
+     "answer": false
+    },
+    {
+     "text": "Tras `git remote rename origin central`, las ramas que seguían a `origin/main` pasan a seguir a `central/main`.",
+     "answer": true
+    },
+    {
+     "text": "`git remote add origin URL` en un repositorio que ya tiene `origin` falla con `error: remote origin already exists.`",
+     "answer": true
+    }
+   ],
+   "explain": "`rename` actualiza ramas remotas y configuración (incluido el upstream de tus ramas). `remove` solo borra configuración y ramas remotas de TU repositorio; el servidor no se entera. Para cambiar la URL de un remoto existente se usa `set-url`."
+  },
+  {
+   "id": "s07-q26",
+   "type": "yesno",
+   "q": "En `.git/config` aparece `fetch = +refs/heads/*:refs/remotes/origin/*`. Indica si cada afirmación es verdadera (Sí) o falsa (No).",
+   "statements": [
+    {
+     "text": "El lado izquierdo (`refs/heads/*`) son las ramas del servidor.",
+     "answer": true
+    },
+    {
+     "text": "El lado derecho indica dónde se guardan en tu repositorio (`origin/…`).",
+     "answer": true
+    },
+    {
+     "text": "El `+` permite actualizar esas referencias aunque no sea un avance fast-forward.",
+     "answer": true
+    },
+    {
+     "text": "Este refspec hace que cada fetch mueva también tu rama local `main`.",
+     "answer": false
+    }
+   ],
+   "explain": "El refspec va de origen (servidor) a destino (tus ramas remotas). El `+` fuerza la actualización de las ramas remotas si el servidor reescribió una rama. Tus ramas locales (`refs/heads/*` de tu repo) no aparecen en el destino: fetch nunca las mueve."
+  },
+  {
+   "id": "s07-q27",
+   "type": "single",
+   "q": "¿Qué muestra `git ls-remote origin`?",
+   "options": [
+    "Las referencias que tiene el servidor en este momento, con sus hashes, sin descargar objetos",
+    "Las ramas remotas guardadas en tu repositorio desde el último fetch",
+    "La URL del remoto `origin`",
+    "Los commits que te faltan"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`ls-remote` pregunta al servidor en vivo. Las ramas remotas guardadas las listas con `git branch -r`; la URL, con `git remote get-url origin`; y lo que te falta, con `git log ..@{u}` tras un fetch."
+  },
+  {
+   "id": "s07-q28",
+   "type": "single",
+   "q": "Al hacer `git push` por HTTPS a GitHub escribiendo la contraseña de tu cuenta aparece `remote: Support for password authentication was removed on August 13, 2021.` ¿Qué haces?",
+   "options": [
+    "Crear un token personal (PAT) y usarlo en lugar de la contraseña, o pasar a SSH",
+    "Escribir la contraseña otra vez, más despacio",
+    "Poner la contraseña dentro de la URL del remoto",
+    "Usar `git push --force`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "GitHub no acepta contraseñas de cuenta para operaciones Git desde el 13 de agosto de 2021: usa un token personal (idealmente guardado por un credential helper) o una llave SSH. Poner credenciales en la URL las deja en texto plano en `.git/config`."
+  },
+  {
+   "id": "s07-q29",
+   "type": "single",
+   "q": "¿Qué protocolo usa el remoto `git@github.com:ana/tienda.git`?",
+   "options": [
+    "SSH",
+    "HTTPS",
+    "Local (file://)",
+    "Git (git://)"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`usuario@host:ruta` es la sintaxis corta de SSH (equivale a `ssh://git@github.com/ana/tienda.git`). HTTPS empieza por `https://`, el protocolo local es una ruta o `file://`, y el protocolo Git empieza por `git://`."
+  },
+  {
+   "id": "s07-q30",
+   "type": "multi",
+   "q": "Sobre la autenticación por SSH con GitHub, ¿qué afirmaciones son correctas? (Selecciona DOS.)",
+   "options": [
+    "La llave privada se queda en tu computador y nunca se comparte",
+    "En GitHub subes la llave pública (el archivo `.pub`)",
+    "En GitHub subes la llave privada para que pueda verificarte",
+    "`ssh -T git@github.com` crea un repositorio nuevo en tu cuenta"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El servidor guarda tu llave pública y comprueba que tienes la privada sin que esta viaje. Subir la privada sería regalar tu identidad. `ssh -T git@github.com` solo prueba la conexión (`Hi usuario! You've successfully authenticated…`)."
+  },
+  {
+   "id": "s07-q31",
+   "type": "single",
+   "q": "¿Para qué sirve un credential helper como `osxkeychain` o Git Credential Manager?",
+   "options": [
+    "Para guardar de forma segura tus credenciales HTTPS y entregárselas a Git sin que las escribas en cada push",
+    "Para generar llaves SSH",
+    "Para cifrar los commits del repositorio",
+    "Para elegir automáticamente entre merge y rebase"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los credential helpers almacenan el usuario y el token (en el llavero del sistema, en el almacén de Windows, en memoria…) y los entregan cuando Git los pide. Las llaves SSH se generan con `ssh-keygen`; el cifrado y el modo de pull no tienen que ver con ellos."
+  },
+  {
+   "id": "s07-q32",
+   "type": "single",
+   "q": "¿Qué efecto tiene `git config --global push.autoSetupRemote true` (Git 2.37+)?",
+   "options": [
+    "El primer `git push` de una rama sin upstream la crea en el remoto y configura el seguimiento, sin necesidad de `-u`",
+    "Hace push automáticamente después de cada commit",
+    "Crea el remoto `origin` automáticamente al hacer `git init`",
+    "Permite hacer push aunque sea rechazado"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con `push.autoSetupRemote`, `git push` a secas en una rama nueva equivale a `git push -u origin rama` (con `push.default` en `simple`, `upstream` o `current`). No hace push automático, no crea remotos y no fuerza nada."
+  },
+  {
+   "id": "s07-q33",
+   "type": "single",
+   "q": "Haces `git pull` y Git responde `error: Your local changes to the following files would be overwritten by merge:` seguido de `Please commit your changes or stash them before you merge.` ¿Qué pasó?",
+   "options": [
+    "Tienes cambios sin confirmar en archivos que el pull necesita modificar, y Git abortó sin tocar nada",
+    "Hay un conflicto que debes resolver con `git add`",
+    "El servidor rechazó tu pull",
+    "Se perdieron tus cambios locales"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git protege tu trabajo: aborta antes de integrar. Confirma tus cambios (o guárdalos con `git stash`, s10) y repite el pull. No es un conflicto (aún no hubo merge), el servidor no rechaza pulls y tus cambios siguen intactos."
+  },
+  {
+   "id": "s07-q34",
+   "type": "single",
+   "q": "Tu `main` y la del servidor divergen. Ejecutas `git pull --no-rebase` sin conflictos y luego `git log --oneline --graph`. ¿Qué verás arriba del todo?",
+   "options": [
+    "Un commit `Merge branch 'main' of …` con dos líneas que se juntan (dos padres)",
+    "Tus commits reescritos encima de los del servidor, en línea recta",
+    "Solo los commits del servidor: los tuyos se descartaron",
+    "Un commit `Merge remote-tracking branch 'origin/main'` sin bifurcación"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El pull con merge crea un commit de fusión cuyo mensaje por defecto es `Merge branch 'main' of <url>`, con dos padres (se ve la bifurcación en el grafo). La línea recta sería el resultado de `--rebase`. `Merge remote-tracking branch 'origin/main'` aparece si haces `git merge origin/main` a mano, y también tendría dos padres."
+  },
+  {
+   "id": "s07-q35",
+   "type": "single",
+   "q": "Renombraste tu rama `feture/login` a `feature/login` con `git branch -m`, pero su upstream sigue siendo `origin/feture/login`. ¿Qué pasa con un `git push` a secas (con `push.default=simple`)?",
+   "options": [
+    "Falla: el nombre del upstream no coincide con el de la rama; hay que usar `git push -u origin feature/login`",
+    "Publica en `feture/login` sin avisar",
+    "Renombra la rama también en el servidor",
+    "Borra `feture/login` del servidor"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con `simple`, `git push` exige que la rama y su upstream se llamen igual y responde `fatal: The upstream branch of your current branch does not match the name of your current branch.` Publica con `-u` usando el nombre nuevo y borra la vieja con `git push origin --delete feture/login`: Git nunca renombra ramas en el servidor por su cuenta."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-remote — documentación oficial",
+   "url": "https://git-scm.com/docs/git-remote"
+  },
+  {
+   "title": "git-clone — documentación oficial",
+   "url": "https://git-scm.com/docs/git-clone"
+  },
+  {
+   "title": "git-fetch — documentación oficial",
+   "url": "https://git-scm.com/docs/git-fetch"
+  },
+  {
+   "title": "git-pull — documentación oficial (2.50)",
+   "url": "https://git-scm.com/docs/git-pull/2.50.0"
+  },
+  {
+   "title": "git-push — documentación oficial",
+   "url": "https://git-scm.com/docs/git-push"
+  },
+  {
+   "title": "git-branch (--set-upstream-to, -vv, --track) — documentación oficial",
+   "url": "https://git-scm.com/docs/git-branch"
+  },
+  {
+   "title": "git-config (push.default, push.autoSetupRemote, fetch.prune, pull.rebase, pull.ff)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "gitrevisions (@{upstream}, @{push})",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "Pro Git 2.5 — Trabajar con remotos",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Trabajar-con-Remotos"
+  },
+  {
+   "title": "Pro Git 3.5 — Remote Branches",
+   "url": "https://git-scm.com/book/en/v2/Git-Branching-Remote-Branches"
+  },
+  {
+   "title": "Pro Git 4.1 — The Protocols",
+   "url": "https://git-scm.com/book/en/v2/Git-on-the-Server-The-Protocols"
+  },
+  {
+   "title": "Pro Git 4.2 — Getting Git on a Server (repositorios bare)",
+   "url": "https://git-scm.com/book/en/v2/Git-on-the-Server-Getting-Git-on-a-Server"
+  },
+  {
+   "title": "Pro Git 7.14 — Credential Storage",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage"
+  },
+  {
+   "title": "Git 2.33.1 release notes (git pull y ramas divergentes)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.33.1.adoc"
+  },
+  {
+   "title": "Git 2.37.0 release notes (push.autoSetupRemote)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.37.0.adoc"
+  },
+  {
+   "title": "Git 2.48.0 release notes (fetch y refs/remotes/<remoto>/HEAD)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.48.0.adoc"
+  },
+  {
+   "title": "GitHub Docs — About remote repositories",
+   "url": "https://docs.github.com/en/get-started/git-basics/about-remote-repositories"
+  },
+  {
+   "title": "GitHub Docs — Managing your personal access tokens",
+   "url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"
+  },
+  {
+   "title": "GitHub Docs — Generating a new SSH key and adding it to the ssh-agent",
+   "url": "https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent"
+  },
+  {
+   "title": "GitHub Docs — Testing your SSH connection",
+   "url": "https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection"
+  },
+  {
+   "title": "GitHub Blog — Token authentication requirements for Git operations",
+   "url": "https://github.blog/security/application-security/token-authentication-requirements-for-git-operations/"
+  },
+  {
+   "title": "GitHub Changelog — Removed unencrypted Git protocol (2022-03-15)",
+   "url": "https://github.blog/changelog/2022-03-15-removed-unencrypted-git-protocol-and-certain-ssh-keys/"
+  },
+  {
+   "title": "Git Credential Manager",
+   "url": "https://github.com/git-ecosystem/git-credential-manager"
+  },
+  {
+   "title": "GitHub CLI — gh auth login",
+   "url": "https://cli.github.com/manual/gh_auth_login"
+  }
+ ]
+}

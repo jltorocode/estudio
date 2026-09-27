@@ -1,0 +1,2683 @@
+{
+ "id": "s10",
+ "order": 10,
+ "title": "Herramientas de rescate: stash, cherry-pick y reflog",
+ "domain": "avanzado",
+ "summary": "Las herramientas que separan a quien entra en pánico de quien resuelve: `git stash` para apartar el trabajo a medias (con archivos nuevos, solo lo preparado o convertido en rama), `git cherry-pick` para copiar commits concretos entre ramas (hotfixes y backports, con rangos, `-x`, `--no-commit` y conflictos) y el reflog, `ORIG_HEAD` y `git fsck` para recuperar commits «perdidos» tras un `reset --hard`, una rama borrada, un rebase fallido o un stash eliminado. Todo practicado con desastres reales en la terminal.",
+ "goal": "Recuperar cualquier commit perdido con el reflog o fsck, apartar trabajo a medias con stash y llevar commits concretos entre ramas con cherry-pick, sin perder nada por el camino.",
+ "objectives": [
+  "Guardar, inspeccionar, aplicar y eliminar trabajo a medias con `git stash` (`push -m`, `-u`, `--staged`, `list`, `show -p`, `apply`, `pop`, `drop`, `clear`).",
+  "Resolver conflictos al aplicar un stash y crear una rama desde él con `git stash branch`.",
+  "Copiar uno o varios commits entre ramas con `git cherry-pick` (rangos, `-x`, `--no-commit`) y resolver sus conflictos.",
+  "Interpretar `git reflog` y usar `HEAD@{n}`, `rama@{n}`, `@{-n}` y `ORIG_HEAD` para volver a estados anteriores.",
+  "Recuperar commits tras `reset --hard`, ramas borradas, amends y rebases desastrosos.",
+  "Encontrar objetos colgantes con `git fsck --lost-found` y recuperar stashes eliminados y archivos solo preparados.",
+  "Explicar cuánto tiempo sobreviven los objetos perdidos (caducidad del reflog y `git gc`) y qué es irrecuperable."
+ ],
+ "lessons": [
+  {
+   "id": "s10-l1",
+   "title": "git stash: un cajón para el trabajo a medias",
+   "minutes": 18,
+   "goals": [
+    "Guardar cambios sin confirmar con `git stash push -m` y recuperarlos con `pop` o `apply`.",
+    "Distinguir qué guarda `git stash` por defecto y cuándo hacen falta `-u` o `-a`.",
+    "Consultar y ordenar la pila con `list`, `show -p`, `drop` y `clear`."
+   ],
+   "takeaways": [
+    "Un stash está formado por commits especiales guardados en `refs/stash`; la «pila» es el reflog de esa referencia (`stash@{0}` es el más reciente).",
+    "Por defecto solo se guardan archivos rastreados (modificados o preparados); los nuevos necesitan `-u` y los ignorados `-a`.",
+    "`pop` = `apply` + `drop`; si hay conflicto, el stash **no** se borra.",
+    "Ponle siempre nombre (`-m`) y no acumules stashes: son un cajón temporal, no un reemplazo de las ramas."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Estás a mitad de una funcionalidad, con archivos modificados que todavía no funcionan, y llega un bug urgente en `main`. No quieres confirmar código roto, tampoco perderlo, y si cambias de rama con esos cambios pueden viajar contigo (o Git se negará a cambiarte). Para eso existe `git stash`: guarda tus cambios sin confirmar en un lugar aparte y deja tu directorio de trabajo **como en el último commit**. Cuando vuelvas, los recuperas."
+    },
+    {
+     "type": "h",
+     "text": "El modelo mental: commits que no están en ninguna rama"
+    },
+    {
+     "type": "p",
+     "text": "Un stash no es magia: está hecho de **commits normales** que Git crea sin mover tu rama. `git stash push` crea un commit `I` con el estado del **índice** (su padre es `HEAD`) y un commit `W` con el estado del **directorio de trabajo**, cuyos padres son `HEAD` e `I` (por eso Git lo muestra como si fuera un merge). Con `-u` crea además un commit `U` con los archivos sin seguimiento, que pasa a ser el tercer padre de `W`. Después apunta la referencia `refs/stash` a `W` y deja tu copia como en `HEAD`."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hay dentro de un stash",
+     "mermaid": "flowchart RL\n  S([\"refs/stash = stash@{0}\"]) -.-> W\n  W[\"W · On main: carrito a medias (directorio de trabajo)\"] --> H[\"H · HEAD (último commit de tu rama)\"]\n  W --> I[\"I · index on main (área de preparación)\"]\n  I --> H\n  W -.-> U[\"U · untracked files (solo con -u o -a)\"]"
+    },
+    {
+     "type": "p",
+     "text": "La «pila» de stashes es el **reflog** de `refs/stash`: `stash@{0}` es el más reciente, `stash@{1}` el anterior, y así sucesivamente. Esa sintaxis `@{n}` volverá a aparecer en la lección del reflog: no es casualidad."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nanexar index.html '<button id=\"ver-carrito\">Ver carrito</button>'\nanexar precio.js 'export const DESCUENTO = 0.1;'\ngit add precio.js",
+     "cwd": "tienda",
+     "code": "git status -s\ngit stash push -m \"carrito a medias\"\ngit status -s\ngit stash list\ngit log --oneline --graph --all\ngit stash pop\ngit status -s",
+     "caption": "Guardar y recuperar. Fíjate en que precio.js estaba preparado (M en la columna izquierda) y tras el pop vuelve como no preparado."
+    },
+    {
+     "type": "p",
+     "text": "Lee la salida con calma: `Saved working directory and index state On main: carrito a medias` confirma el guardado; `git log --all` muestra los dos commits del stash colgando de tu `HEAD` (porque `refs/stash` es una referencia más), y `pop` termina con `Dropped refs/stash@{0} (<hash>)`. No lo ignores: si un día borras un stash por error, ese hash es tu salvavidas (lección 6)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Sin `--index`, `pop` y `apply` devuelven todo como **no preparado**, aunque antes estuviera en el área de preparación. Si te importa conservar esa separación, usa `git stash pop --index` (lo verás en la siguiente lección)."
+    },
+    {
+     "type": "h",
+     "text": "Qué guarda y qué no"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo de cambio",
+      "git stash",
+      "git stash -u",
+      "git stash -a"
+     ],
+     "rows": [
+      [
+       "Archivo rastreado modificado",
+       "Sí",
+       "Sí",
+       "Sí"
+      ],
+      [
+       "Cambio preparado (`git add`)",
+       "Sí",
+       "Sí",
+       "Sí"
+      ],
+      [
+       "Archivo nuevo, sin seguimiento",
+       "No",
+       "Sí",
+       "Sí"
+      ],
+      [
+       "Archivo ignorado por `.gitignore`",
+       "No",
+       "No",
+       "Sí"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nescribir .gitignore '*.log'\ngit add .gitignore\ngit commit -q -m 'Ignora los archivos de log'\nanexar index.html '<p>Despacho a todo Chile</p>'\nescribir regiones.js 'export const REGIONES = [\"Arica\", \"Santiago\", \"Punta Arenas\"];'\nescribir debug.log 'GET /despacho 200'",
+     "cwd": "tienda",
+     "code": "git status -s\ngit stash push -m \"sin -u\"\ngit status -s\ngit stash pop\ngit stash push -u -m \"con -u\"\ngit status -s\ngit stash show --include-untracked\nls\ngit stash pop",
+     "caption": "Un `git stash` a secas deja atrás los archivos nuevos; con `-u` se los lleva. El `debug.log` ignorado no se toca en ningún caso (solo `-a` lo guardaría)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`-a` (`--all`) se lleva también todo lo ignorado: `node_modules/`, carpetas de compilación, `.env`… Puede ser enorme, lento y sorprendente al restaurarlo. Casi siempre lo que quieres es `-u`."
+    },
+    {
+     "type": "h",
+     "text": "Consultar la pila y recuperar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nfecha '2026-09-01 10:00'\nanexar index.html '<footer>Síguenos en redes</footer>'\ngit stash push -q -m 'footer con redes'\nfecha '2026-09-01 11:00'\nanexar precio.js 'export const DESCUENTO = 0.1;'\ngit stash push -q -m 'descuento de bienvenida'",
+     "cwd": "tienda",
+     "code": "git stash list\ngit stash show stash@{1}\ngit stash show -p stash@{1}\ngit stash apply stash@{1}\ngit stash list\ngit status -s\ngit stash drop stash@{1}\ngit stash list",
+     "caption": "`show` muestra un resumen (o el diff completo con `-p`); `apply` aplica sin borrar; `drop` borra sin aplicar."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace",
+      "¿Borra la entrada?"
+     ],
+     "rows": [
+      [
+       "`git stash push -m \"msg\"`",
+       "Guarda índice y directorio (rastreados) y los deja como en `HEAD`",
+       "—"
+      ],
+      [
+       "`git stash list`",
+       "Lista las entradas: `stash@{0}` es la más reciente",
+       "No"
+      ],
+      [
+       "`git stash show [-p] [stash@{n}]`",
+       "Resumen de archivos, o el diff completo con `-p`",
+       "No"
+      ],
+      [
+       "`git stash apply [stash@{n}]`",
+       "Aplica la entrada sobre tu directorio actual",
+       "No"
+      ],
+      [
+       "`git stash pop [stash@{n}]`",
+       "Aplica y, si no hubo conflictos, borra",
+       "Sí (solo si aplicó sin conflictos)"
+      ],
+      [
+       "`git stash drop [stash@{n}]`",
+       "Borra una entrada sin aplicarla",
+       "Sí"
+      ],
+      [
+       "`git stash clear`",
+       "Borra **todas** las entradas",
+       "Sí, todas"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Detalles que conviene saber: `git stash` a secas equivale a `git stash push` (existe desde Git 2.13; la forma antigua `git stash save \"mensaje\"` está obsoleta desde Git 2.16). Puedes escribir solo el número (`git stash show 1` = `git stash show stash@{1}`). Al borrar una entrada, las más antiguas se **renumeran**. Y un stash no está atado a una rama: puedes guardarlo en una y aplicarlo en otra, algo muy útil cuando empezaste a programar en la rama equivocada (`git stash`, `git switch rama-correcta`, `git stash pop`)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git stash drop` y `git stash clear` no tienen papelera: la entrada desaparece de la lista y los commits del stash quedan **colgando** hasta que el recolector de basura los elimine. Se pueden rescatar con `git fsck` (lección 6), pero no cuentes con ello: revisa con `git stash show -p` antes de borrar."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: «¿Qué opción guarda también los archivos nuevos?» → `-u` (`--include-untracked`). «¿Diferencia entre `pop` y `apply`?» → `pop` borra la entrada si aplica sin conflictos; `apply` la conserva. «¿Qué es `stash@{0}`?» → el stash más reciente. «¿El stash se sube con `git push`?» → No, es local."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Stash",
+       "en": "stash",
+       "def": "Almacén temporal de cambios sin confirmar. Internamente, commits especiales apuntados por `refs/stash`."
+      },
+      {
+       "term": "WIP",
+       "en": "work in progress",
+       "def": "Trabajo en curso. Es el prefijo del mensaje automático de un stash sin `-m`: `WIP on main: …`."
+      },
+      {
+       "term": "Pila del stash",
+       "en": "stash list",
+       "def": "Lista de entradas guardadas, de la más reciente (`stash@{0}`) a la más antigua. Técnicamente, el reflog de `refs/stash`."
+      },
+      {
+       "term": "Archivo sin seguimiento",
+       "en": "untracked file",
+       "def": "Archivo que existe en tu carpeta pero Git no rastrea todavía. `git stash` lo ignora salvo con `-u`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s10-l2",
+   "title": "Stash a fondo: conflictos, guardado parcial y git stash branch",
+   "minutes": 17,
+   "goals": [
+    "Resolver un conflicto al aplicar un stash y eliminar la entrada a mano.",
+    "Guardar solo una parte de los cambios con `--staged`, `--keep-index` o rutas.",
+    "Crear una rama desde un stash con `git stash branch` cuando ya no encaja.",
+    "Elegir entre stash, commit temporal, rama o worktree según la situación."
+   ],
+   "takeaways": [
+    "Si `pop` choca, verás marcadores `Updated upstream` / `Stashed changes` y el stash seguirá en la lista: resuelve y haz `git stash drop`.",
+    "`--index` al aplicar devuelve también lo que estaba preparado; sin él, todo vuelve como no preparado.",
+    "`--staged` (Git 2.35) guarda solo lo preparado; `--keep-index` guarda todo pero deja lo preparado en su sitio; `git stash push -- ruta` guarda solo esas rutas.",
+    "`git stash branch <rama>` vuelve al commit donde creaste el stash y lo aplica allí: sin conflictos por cambios posteriores.",
+    "El stash es local y para interrupciones cortas; para trabajo largo, un commit o una rama."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Aplicar un stash es, por dentro, una **fusión de 3 vías**: Git compara el commit donde creaste el stash (la base), lo que guardaste y lo que hay ahora en tu rama. Si mientras tanto alguien cambió las mismas líneas, hay conflicto, igual que en un merge (s06)."
+    },
+    {
+     "type": "h",
+     "text": "Cuando pop choca"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nfecha '2026-09-01 10:00'\nanexar precio.js 'export const DESCUENTO = 0.1;'\ngit stash push -q -m 'descuento'\nfecha '2026-09-01 11:00'\nescribir precio.js 'export const IVA = 0.19; // vigente desde 2003'\ngit commit -q -am 'Documenta el IVA'",
+     "cwd": "tienda",
+     "code": "git stash list\ngit stash pop\ncat precio.js\ngit stash list\nprintf 'export const IVA = 0.19; // vigente desde 2003\\nexport const DESCUENTO = 0.1;\\n' > precio.js\ngit add precio.js\ngit stash drop\ngit status -s",
+     "caption": "Conflicto al aplicar: resuelves editando el archivo, lo marcas con `git add` y borras la entrada tú mismo."
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en tres cosas: los marcadores dicen `<<<<<<< Updated upstream` (lo que hay ahora en tu rama) y `>>>>>>> Stashed changes` (lo que traía el stash); Git avisa `The stash entry is kept in case you need it again.`; y el archivo queda como *unmerged* (`UU` en `git status -s`). Tras resolver, `git add` marca la resolución (si prefieres dejarlo sin preparar, `git restore --staged precio.js`) y `git stash drop` elimina la entrada que ya no necesitas."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si Git se niega a aplicar con `error: Your local changes to the following files would be overwritten by merge`, no hay conflicto todavía: tienes cambios sin confirmar en esos archivos. Confírmalos o guárdalos en otro stash antes de aplicar."
+    },
+    {
+     "type": "h",
+     "text": "Guardar solo una parte"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué va al stash",
+      "Qué queda en tu directorio"
+     ],
+     "rows": [
+      [
+       "`git stash push --staged` (`-S`, Git 2.35)",
+       "Solo lo preparado",
+       "Lo no preparado, intacto"
+      ],
+      [
+       "`git stash push --keep-index` (`-k`)",
+       "Todo (preparado y no preparado)",
+       "Lo preparado sigue preparado"
+      ],
+      [
+       "`git stash push -- ruta…`",
+       "Solo los cambios de esas rutas",
+       "Todo lo demás"
+      ],
+      [
+       "`git stash push -p`",
+       "Los fragmentos que elijas uno a uno",
+       "El resto (implica `--keep-index`)"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\ncommit_archivo despacho.js 'export const TARIFA_BASE = 3990;' 'Añade tarifas de despacho'\nanexar despacho.js 'export const TARIFA_REGIONES = 6990;'\ngit add despacho.js\nanexar index.html '<section id=\"ofertas\">Ofertas</section>'",
+     "cwd": "tienda",
+     "code": "git status -s\ngit stash push --staged -m \"tarifa regiones\"\ngit status -s\ngit stash show -p",
+     "caption": "`--staged` aparta lo preparado (despacho.js) y deja en paz tu trabajo en index.html."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\ncommit_archivo estilos.css 'body { margin: 0; }' 'Añade estilos'\nanexar estilos.css '.oferta { color: red; }'\nanexar index.html '<div class=\"oferta\">Cyber Day</div>'",
+     "cwd": "tienda",
+     "code": "git status -s\ngit stash push -m \"solo estilos\" -- estilos.css\ngit status -s\ngit stash list",
+     "caption": "Con `--` y una o más rutas, solo se guardan los cambios de esos archivos."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`--keep-index` tiene un uso profesional clásico: comprobar que **lo que vas a confirmar** funciona por sí solo. Preparas el commit, `git stash push --keep-index`, ejecutas los tests sobre exactamente eso, confirmas y luego `git stash pop`. Es lo que hacen por ti muchos hooks `pre-commit` (s13)."
+    },
+    {
+     "type": "h",
+     "text": "--index: devolver cada cosa a su área"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nanexar precio.js 'export const DESCUENTO = 0.1;'\ngit add precio.js\nanexar index.html '<p>Carrito</p>'",
+     "cwd": "tienda",
+     "code": "git status -s\ngit stash\ngit stash apply\ngit status -s\ngit reset --hard\ngit stash pop --index\ngit status -s",
+     "caption": "Con `apply` a secas precio.js vuelve sin preparar; con `--index` recupera también el área de preparación. Como `apply` no borra la entrada, pudimos descartar el intento y repetir."
+    },
+    {
+     "type": "h",
+     "text": "git stash branch: cuando el stash ya no encaja"
+    },
+    {
+     "type": "diagram",
+     "title": "git stash branch vuelve al punto donde guardaste",
+     "mermaid": "gitGraph\n  commit id: \"Crea la página\"\n  commit id: \"Añade tarifas (aquí se creó el stash)\"\n  branch feature/tarifas-extremas\n  checkout main\n  commit id: \"Actualiza tarifas (Camila)\"\n  commit id: \"Añade README\"\n  checkout feature/tarifas-extremas\n  commit id: \"Tus cambios del stash, sin confirmar\" type: HIGHLIGHT"
+    },
+    {
+     "type": "p",
+     "text": "Si `main` avanzó mucho desde que guardaste el stash, aplicarlo encima puede ser un campo minado de conflictos. `git stash branch <rama> [<stash>]` crea la rama **en el commit donde se creó el stash**, se cambia a ella y aplica el stash (índice incluido). Como el código es el mismo que tenías al guardar, no puede haber conflicto; si todo va bien, borra la entrada. Después confirmas en esa rama y la integras con calma."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\ncommit_archivo despacho.js 'export const TARIFA_REGIONES = 5990;' 'Añade tarifas de despacho'\nfecha '2026-09-01 10:00'\nescribir despacho.js 'export const TARIFA_REGIONES = 6490;'\ngit stash push -q -m 'tarifas nuevas'\nautor 'Camila Rojas' 'camila@tiendaaustral.cl'\nfecha '2026-09-01 12:00'\nescribir despacho.js 'export const TARIFA_REGIONES = 6290;'\ngit commit -q -am 'Actualiza tarifas por alza del combustible'\nyo",
+     "cwd": "tienda",
+     "code": "git stash list\ngit stash branch feature/tarifas-nuevas\ngit status -s\ngit log --oneline --graph --all\ngit stash list",
+     "caption": "La rama nace en «Añade tarifas de despacho», no en la punta de main."
+    },
+    {
+     "type": "h",
+     "text": "¿Stash, commit temporal, rama o worktree?"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación",
+      "Herramienta recomendada"
+     ],
+     "rows": [
+      [
+       "Interrupción de minutos (revisar algo, arreglar un bug)",
+       "`git stash push -m` y luego `pop`"
+      ],
+      [
+       "Trabajo de horas o días que debes dejar en pausa",
+       "Un commit «WIP» en tu rama; luego lo rehaces con `--amend` o un rebase interactivo (s09)"
+      ],
+      [
+       "Necesitas compartir el trabajo a medias",
+       "Una rama y `git push` (el stash no se publica)"
+      ],
+      [
+       "Trabajar en dos ramas a la vez sin guardar nada",
+       "`git worktree` (s14)"
+      ],
+      [
+       "`git pull` o `git merge` con cambios locales",
+       "`--autostash`: hace el stash antes y el pop después automáticamente"
+      ],
+      [
+       "Empezaste a programar en la rama equivocada",
+       "`git stash`, `git switch rama-correcta`, `git stash pop`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los stashes son **locales**: `refs/stash` no viaja con `git push` ni con `git clone`. Un stash olvidado durante semanas es una forma elegante de perder trabajo. Revisa `git stash list` de vez en cuando. (Git 2.51 añadió `git stash export` e `import` para transportarlos entre repositorios; tu Git 2.50 aún no los tiene.)"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Diferencia clásica: `--keep-index` guarda **todo** y deja lo preparado; `--staged` guarda **solo** lo preparado. Y recuerda: si `pop` tiene conflicto, el stash **no** se borra; debes hacer `git stash drop` tú."
+    }
+   ]
+  },
+  {
+   "id": "s10-l3",
+   "title": "git cherry-pick: copiar commits entre ramas",
+   "minutes": 20,
+   "goals": [
+    "Aplicar uno o varios commits de otra rama con `git cherry-pick`, incluidos rangos `A..B` y `A^..B`.",
+    "Dejar trazabilidad con `-x` y agrupar cambios con `--no-commit`.",
+    "Resolver conflictos de cherry-pick con `--continue`, `--skip` y `--abort`.",
+    "Decidir cuándo cherry-pick es adecuado y cuándo conviene un merge."
+   ],
+   "takeaways": [
+    "cherry-pick no mueve commits: crea commits **nuevos** (otro hash) con el mismo cambio, mensaje y autor.",
+    "`A..B` excluye A; para incluirlo usa `A^..B`. Los rangos se aplican del más antiguo al más nuevo.",
+    "`-x` añade «(cherry picked from commit …)»: úsalo al copiar entre ramas públicas.",
+    "En un conflicto: resuelve, `git add` y `git cherry-pick --continue`; o `--skip` / `--abort`.",
+    "Abusar de cherry-pick duplica commits; es para hotfixes y backports, no para sustituir merges."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Situación típica: en `main` arreglaste un bug de cálculo del IVA, y la versión en producción (`release/1.0`) también lo sufre. No puedes fusionar `main` en la release, porque traería funcionalidades que no están listas. Necesitas copiar **ese** commit y nada más: eso hace `git cherry-pick`."
+    },
+    {
+     "type": "diagram",
+     "title": "Copiar el arreglo F a la rama de release",
+     "mermaid": "gitGraph\n  commit id: \"A: página\"\n  commit id: \"B: precio con IVA\"\n  branch release/1.0\n  checkout main\n  commit id: \"C: carrito\"\n  commit id: \"F: corrige redondeo\"\n  commit id: \"D: cupones\"\n  checkout release/1.0\n  cherry-pick id: \"F: corrige redondeo\""
+    },
+    {
+     "type": "h",
+     "text": "Qué hace exactamente"
+    },
+    {
+     "type": "p",
+     "text": "Para cada commit que le indicas, Git calcula **el cambio que introdujo** (su diff respecto a su padre) y lo aplica sobre `HEAD` con una fusión de 3 vías, cuya base es el padre del commit original. El resultado es un commit nuevo, `F'`, con el mismo mensaje y el mismo **autor** (incluida la fecha de autoría), pero con otro padre, otra fecha de confirmación y, por tanto, **otro hash**. El commit original sigue intacto en su rama."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-19 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ncommit_archivo precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return neto * (1 + IVA);\n}' 'Añade el cálculo de precio con IVA'\ngit branch release/1.0\nfecha '2026-09-19 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Añade el carrito de compras'\nautor 'Camila Rojas' 'camila@tiendaaustral.cl'\nfecha '2026-09-19 12:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}'\ngit commit -q -am 'Corrige el redondeo del IVA'\nyo\nfecha '2026-09-19 13:00'\ncommit_archivo cupones.js 'export const CUPONES = {};' 'Añade cupones de descuento'",
+     "cwd": "tienda",
+     "code": "git log --oneline --graph --all\ngit switch release/1.0\ngit cherry-pick -x main~1\ngit log --oneline --graph --all\ngit log -1 --format=\"%h %s%n%b\"\ngit log -1 --format=\"autor: %an (%ad)%nconfirmó: %cn (%cd)\"",
+     "caption": "El commit copiado conserva a Camila como autora y su fecha; la confirmación es tuya y de ahora. -x añade la referencia al original."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Usa `-x` cuando copias entre ramas **públicas** (por ejemplo, un backport a una rama de mantenimiento): quien lea la historia sabrá de dónde viene el cambio. La documentación desaconseja usarlo al copiar desde tu rama privada, porque ese hash no le sirve a nadie. Otras opciones útiles: `-e` para editar el mensaje y `-s` para añadir `Signed-off-by`."
+    },
+    {
+     "type": "h",
+     "text": "Varios commits y rangos"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Qué aplica"
+     ],
+     "rows": [
+      [
+       "`git cherry-pick A B C`",
+       "Esos tres commits, **en el orden en que los escribes**"
+      ],
+      [
+       "`git cherry-pick A..B`",
+       "Los commits alcanzables desde B que no lo son desde A: **excluye A**"
+      ],
+      [
+       "`git cherry-pick A^..B`",
+       "De A a B, **ambos incluidos** (el `^` retrocede uno)"
+      ],
+      [
+       "`git cherry-pick main..feature`",
+       "Los commits de `feature` que no están en `main`"
+      ],
+      [
+       "`git cherry-pick -n A B`",
+       "Los cambios de A y B, sin crear commits (quedan preparados)"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-20 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit branch release/2.0\ngit switch -q -c feature/boletas\nfecha '2026-09-20 11:00'\ncommit_archivo boleta.js 'export class Boleta {}' 'Añade el modelo de boleta'\nfecha '2026-09-20 11:30'\nanexar boleta.js 'export const IVA_BOLETA = 0.19;'\ngit commit -q -am 'Calcula el IVA de la boleta'\nfecha '2026-09-20 12:00'\ncommit_archivo boleta-pdf.js 'export function generarPdf(boleta) {}' 'Genera la boleta en PDF'\nfecha '2026-09-20 12:30'\ncommit_archivo colores.css '.boleta { color: purple; }' 'WIP: experimento de colores'",
+     "cwd": "tienda",
+     "code": "git log --oneline main..feature/boletas\ngit switch release/2.0\ngit cherry-pick main..feature/boletas~1\ngit log --oneline --graph --all",
+     "caption": "Un rango trae los tres commits de boletas (del más antiguo al más nuevo) y deja fuera el experimento de la punta."
+    },
+    {
+     "type": "h",
+     "text": "--no-commit: juntar varios cambios en un solo commit"
+    },
+    {
+     "type": "p",
+     "text": "Con `-n` (`--no-commit`), Git aplica los cambios al índice y al directorio **sin confirmar**. Sirve para juntar varios commits en uno (por ejemplo, cuando la política de una rama de mantenimiento es «un commit por backport») o para revisar el resultado antes de confirmar."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-20 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit branch release/1.x\nfecha '2026-09-20 11:00'\ncommit_archivo boleta.js 'export class Boleta {}' 'Añade el modelo de boleta'\nfecha '2026-09-20 12:00'\ncommit_archivo boleta-pdf.js 'export function generarPdf(boleta) {}' 'Genera la boleta en PDF'",
+     "cwd": "tienda",
+     "code": "git switch release/1.x\ngit cherry-pick -n main~1 main\ngit status -s\ngit commit -m \"Backport: boletas electrónicas\"\ngit log --oneline --graph --all",
+     "caption": "Dos commits de main llegan a release/1.x como un único commit de backport."
+    },
+    {
+     "type": "h",
+     "text": "Conflictos: --continue, --skip, --abort"
+    },
+    {
+     "type": "p",
+     "text": "Si el cambio no encaja limpio, Git se detiene: la rama y `HEAD` se quedan en el último commit logrado, `CHERRY_PICK_HEAD` apunta al commit problemático, los archivos que sí se aplicaron quedan preparados y los que chocan llevan los marcadores `<<<<<<<` y `>>>>>>>`. Si copiabas varios commits, la lista pendiente queda en `.git/sequencer/`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-21 09:00'\ncommit_archivo precio.js 'export function conIva(neto) {\n  return neto * 1.19;\n}' 'Añade el cálculo de precio con IVA'\ngit branch release/1.0\nfecha '2026-09-21 10:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return neto * (1 + IVA);\n}'\ngit commit -q -am 'Usa una constante para el IVA'\nfecha '2026-09-21 11:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}'\ngit commit -q -am 'Corrige el redondeo del IVA'",
+     "cwd": "tienda",
+     "code": "git switch release/1.0\ngit cherry-pick main\ngit status\ncat precio.js\ngit cherry-pick --abort\ngit status -s\ngit log --oneline -1",
+     "caption": "El arreglo toca una línea que en la release es distinta: conflicto. Aquí lo cancelamos con --abort y todo vuelve a como estaba."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`git cherry-pick --continue`",
+       "Tras resolver y hacer `git add`, crea el commit y sigue con los pendientes"
+      ],
+      [
+       "`git cherry-pick --skip`",
+       "Descarta el commit actual y sigue con el siguiente"
+      ],
+      [
+       "`git cherry-pick --abort`",
+       "Cancela todo y vuelve al estado previo al cherry-pick"
+      ],
+      [
+       "`git cherry-pick --quit`",
+       "Olvida la operación en curso, pero deja la rama y los cambios como están"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si Git abre el editor al hacer `--continue`, es para que revises el mensaje: guárdalo tal cual para seguir. Detalle fino: la documentación dice que `-x` solo añade su línea en cherry-picks sin conflictos, pero en Git 2.50 comprobarás que la línea queda en `.git/MERGE_MSG` y llega al commit tras `--continue`. Revisa siempre el mensaje final con `git log -1`."
+    },
+    {
+     "type": "h",
+     "text": "Commits que ya estaban: vacíos y git cherry"
+    },
+    {
+     "type": "p",
+     "text": "Si el cambio ya existe en tu rama (alguien lo copió antes), el resultado sería un commit vacío y Git se detiene con `The previous cherry-pick is now empty, possibly due to conflict resolution.`. Decides tú: `git cherry-pick --skip` para descartarlo o `git commit --allow-empty` para conservarlo. Desde Git 2.45, `--empty=drop` los descarta automáticamente. Para saber de antemano qué falta, `git cherry -v <destino> <origen>` compara los cambios por contenido (*patch-id*): `-` significa «ya tiene un equivalente en destino» y `+` «pendiente»."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-22 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit branch release/1.0\nfecha '2026-09-22 10:00'\ncommit_archivo rut.js 'export function validarRut(rut) {}' 'Añade la validación del RUT'\nfecha '2026-09-22 11:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo del IVA'\ngit switch -q release/1.0\ngit cherry-pick main >/dev/null\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "git cherry -v release/1.0 main\ngit switch release/1.0\ngit cherry-pick main\ngit cherry-pick --skip\ngit cherry-pick main~1\ngit log --oneline",
+     "caption": "El cálculo del IVA ya estaba en la release (-): copiarlo de nuevo da un cherry-pick vacío, que saltamos. El RUT estaba pendiente (+)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un commit de **merge** no se puede copiar a la ligera: `error: commit … is a merge but no -m option was given.` Con `-m 1` le dices respecto a qué padre calcular el cambio, pero casi siempre es mejor copiar los commits individuales o hacer un merge de verdad."
+    },
+    {
+     "type": "h",
+     "text": "Cuándo sí y cuándo no"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Sí:** hotfix que debe llegar a una rama de release; backport a versiones en soporte; rescatar un commit hecho en la rama equivocada; recuperar un commit concreto de una rama abandonada.",
+      "**No:** como forma habitual de integrar ramas. Cada copia es un commit distinto con el mismo cambio: la historia se llena de duplicados, y si luego fusionas ambas ramas pueden aparecer conflictos absurdos. Si quieres **todo** lo de una rama, haz merge (s06) o rebase (s09).",
+      "**Buena práctica:** cuando el flujo lo permite, arregla en la rama más antigua que lo necesita y fusiona «hacia adelante»; reserva cherry-pick para cuando eso no sea posible."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Clásicos de entrevista: «¿cherry-pick mantiene el hash?» → No, crea un commit nuevo. «¿Qué incluye `git cherry-pick A..B`?» → Desde el hijo de A hasta B; A queda fuera. «¿Cómo cancelo un cherry-pick con conflictos?» → `git cherry-pick --abort`."
+    }
+   ]
+  },
+  {
+   "id": "s10-l4",
+   "title": "El reflog: la caja negra de Git",
+   "minutes": 17,
+   "goals": [
+    "Leer `git reflog` e identificar qué operación movió HEAD o una rama en cada entrada.",
+    "Referirte a estados anteriores con `HEAD@{n}`, `rama@{n}`, `@{-n}` y fechas.",
+    "Explicar por qué un commit «perdido» sigue existiendo y hasta cuándo se puede recuperar."
+   ],
+   "takeaways": [
+    "Casi nada se pierde en Git: un commit sigue en la base de objetos aunque ninguna rama lo apunte.",
+    "El reflog anota cada movimiento de HEAD y de cada rama: `HEAD@{0}` es ahora y `HEAD@{1}` el estado anterior.",
+    "`HEAD@{n}` cuenta movimientos de HEAD (incluidos los cambios de rama); `main@{n}` solo los de `main`.",
+    "El reflog es local, no viaja con push ni clone, y sus entradas caducan (90 días; 30 si el commit ya no es alcanzable)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hiciste `git reset --hard HEAD~3` y tres commits desaparecieron de `git log`. Respira: **siguen ahí**. `reset` solo movió la etiqueta `main` hacia atrás; los objetos del commit (su árbol, sus archivos) no se borran. Lo único que te falta es saber su hash… y Git lo apuntó."
+    },
+    {
+     "type": "diagram",
+     "title": "Tras un reset --hard, los commits quedan huérfanos pero existen",
+     "mermaid": "flowchart RL\n  E[\"E · Publica el post sobre reflog\"] --> D[\"D · Publica el post sobre stash\"]\n  D --> C[\"C · Publica el post sobre ramas\"]\n  C --> B[\"B · Publica el post sobre instalación\"]\n  B --> A[\"A · Crea el blog\"]\n  M([\"main (después de reset --hard HEAD~3)\"]) -.-> B\n  R([\"HEAD@{1} en el reflog\"]) -.-> E"
+    },
+    {
+     "type": "p",
+     "text": "El **reflog** (*reference log*) es un diario que Git escribe en tu repositorio **cada vez que una referencia cambia de valor**: cuando confirmas, haces reset, cambias de rama, fusionas, haces rebase, cherry-pick o pull. Hay un reflog para `HEAD` y otro para cada rama (en `.git/logs/`). `git log` recorre la historia a través de los padres; `git reflog` recorre **tus movimientos**, en orden cronológico inverso."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-22 09:00'\ncommit_archivo README.md '# Blog de Git' 'Crea el blog'\nfecha '2026-09-22 10:00'\ncommit_archivo posts/01-instalar.md '# Cómo instalar Git' 'Publica el post sobre instalación'\nfecha '2026-09-22 11:00'\ncommit_archivo posts/02-ramas.md '# Ramas sin miedo' 'Publica el post sobre ramas'\nfecha '2026-09-22 12:00'\ncommit_archivo posts/03-stash.md '# El cajón del stash' 'Publica el post sobre stash'\nfecha '2026-09-22 13:00'\ncommit_archivo posts/04-reflog.md '# La caja negra de Git' 'Publica el post sobre reflog'\ngit reset -q --hard HEAD~3",
+     "cwd": "blog",
+     "code": "git log --oneline --all\ngit reflog\ngit show --stat HEAD@{1}",
+     "caption": "Ni siquiera --all muestra los commits perdidos (ninguna referencia los apunta), pero el reflog sí, y HEAD@{1} permite examinarlos."
+    },
+    {
+     "type": "h",
+     "text": "Cómo leer una entrada"
+    },
+    {
+     "type": "p",
+     "text": "Cada línea tiene tres partes: `f82dc85 HEAD@{1}: commit: Publica el post sobre reflog` → el **hash** al que apuntaba la referencia después del movimiento, el **selector** para nombrar ese estado y la **acción** que lo provocó. Si hoy una rama apunta a ese commit, verás además su nombre entre paréntesis, igual que en `git log`: `fb69273 (HEAD -> main) HEAD@{0}: reset: moving to HEAD~3`. Estas son las acciones que más verás:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Acción en el reflog",
+      "Qué la produjo"
+     ],
+     "rows": [
+      [
+       "`commit: …` / `commit (initial): …`",
+       "`git commit` (el primero del repositorio lleva *initial*)"
+      ],
+      [
+       "`commit (amend): …`",
+       "`git commit --amend` (la entrada anterior es el commit original)"
+      ],
+      [
+       "`reset: moving to HEAD~3`",
+       "`git reset` (cualquier modo)"
+      ],
+      [
+       "`reset: moving to HEAD`",
+       "`git stash` al limpiar tu directorio"
+      ],
+      [
+       "`checkout: moving from main to feature`",
+       "`git switch` o `git checkout` de una rama a otra"
+      ],
+      [
+       "`merge feature: Merge made by the 'ort' strategy.`",
+       "`git merge`"
+      ],
+      [
+       "`rebase (start)` … `rebase (finish)`",
+       "`git rebase` (el reflog de la rama anota `rebase (finish): … onto …`)"
+      ],
+      [
+       "`cherry-pick: …` / `commit (cherry-pick): …`",
+       "`git cherry-pick` (la segunda, tras resolver un conflicto)"
+      ],
+      [
+       "`branch: Created from HEAD`",
+       "Creación de la rama (en el reflog de esa rama)"
+      ],
+      [
+       "`clone: from …` / `pull: …`",
+       "`git clone` / `git pull`"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "HEAD@{n} frente a rama@{n}"
+    },
+    {
+     "type": "p",
+     "text": "`HEAD@{n}` es «dónde estaba **HEAD** hace n movimientos», y HEAD se mueve cada vez que cambias de rama. `main@{n}` es «dónde estaba **main** hace n movimientos de main», y no le afecta que cambies de rama. Por eso, para deshacer algo que le pasó a una rama concreta (un reset, un rebase), `rama@{1}` suele ser más fiable que contar entradas de HEAD."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 11:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\ngit switch -q -c feature/cupones\nfecha '2026-09-01 12:00'\ncommit_archivo cupones.js 'export const CUPONES = {};' 'Añade cupones'\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "git reflog\ngit reflog show main\ngit show -s --format=%s HEAD@{1}\ngit show -s --format=%s main@{1}\ngit show -s --format=%s @{-1}\ngit reflog list",
+     "caption": "HEAD@{1} es la punta de feature/cupones (desde ahí volviste); main@{1} es el commit anterior de main; @{-1} es la rama en la que estabas antes."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Sintaxis",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "`HEAD@{n}`",
+       "Valor de HEAD hace n movimientos"
+      ],
+      [
+       "`rama@{n}`",
+       "Valor de esa rama hace n movimientos suyos (`main@{1}`: justo antes del último cambio de main)"
+      ],
+      [
+       "`@{n}`",
+       "Lo mismo, para la rama actual"
+      ],
+      [
+       "`@{-n}`",
+       "La n-ésima rama (o commit) en la que estuviste antes; `git switch -` usa `@{-1}`"
+      ],
+      [
+       "`main@{yesterday}`, `HEAD@{2.hours.ago}`",
+       "Valor de la referencia en ese momento, según **tu** reflog local"
+      ],
+      [
+       "`'main@{2026-09-01 11:30 -0300}'`",
+       "Valor en una fecha y hora concretas (usa comillas por los espacios; sin zona horaria, Git usa tu hora local)"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-01 11:00'\ncommit_archivo precio.js 'export const IVA = 0.19;' 'Añade el cálculo de precio'\nfecha '2026-09-01 12:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Añade el carrito'",
+     "cwd": "tienda",
+     "code": "git reflog --date=iso\ngit show -s --format=%s 'main@{2026-09-01 11:30 -0300}'\ngit log -g --oneline\ngit diff --stat main@{2} main",
+     "caption": "El reflog guarda cuándo ocurrió cada movimiento: puedes preguntar «¿dónde estaba main a las 11:30?». git log -g recorre el reflog con el formato de git log."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git reflog` es un atajo de `git log -g --abbrev-commit --pretty=oneline`, así que admite opciones de `git log`: `--date=iso` o `--date=relative` para ver cuándo, `-n 5` para limitar, `git log -g -p` para ver los cambios. `git reflog list` (desde Git 2.45) enumera qué referencias tienen reflog."
+    },
+    {
+     "type": "h",
+     "text": "Qué no registra y cuánto dura"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Es local.** Es tu diario, no el del equipo: no se publica con `push` y un clon nuevo empieza con una sola entrada (`clone: from …`). El servidor y cada compañero tienen el suyo.",
+      "**Registra movimientos de referencias, no ediciones.** Lo que nunca confirmaste (ni guardaste en un stash) no está en el reflog: `reset --hard`, `restore` o `clean` sobre trabajo sin confirmar no tienen vuelta atrás por esta vía.",
+      "**Al borrar una rama se borra su reflog** (`rama@{1}` deja de existir), pero el reflog de HEAD conserva los commits que hiciste en ella.",
+      "**Caduca.** Cuando corre `git gc` (Git lo lanza automáticamente de vez en cuando), las entradas de más de 90 días (`gc.reflogExpire`) se eliminan, y las que apuntan a commits que ya no son alcanzables desde la rama, a los 30 días (`gc.reflogExpireUnreachable`)."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Vida de un commit «perdido» con la configuración por defecto",
+     "mermaid": "timeline\n  title Vida de un commit perdido tras un reset --hard\n  Día 0 : La rama deja de apuntarlo : Sigue en el reflog como HEAD@{1}\n  Días 1 a 30 : Recuperable con git reflog : git gc no lo toca\n  Pasados 30 días : La entrada del reflog caduca en el siguiente git gc : El commit queda inalcanzable\n  Después : git gc elimina los objetos inalcanzables con más de 2 semanas : Ya no hay rescate"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El reflog es una red de seguridad, no una copia de respaldo: vive dentro de `.git`, así que si borras la carpeta del proyecto o el disco falla, se va con ella. El respaldo de verdad es `git push` a un remoto."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta trampa: «¿El reflog de un compañero muestra tus commits?» → No, cada repositorio tiene su propio reflog. Otra: «¿Qué es `HEAD@{0}`?» → El estado actual de HEAD. Y: «¿Por qué `HEAD@{1}` y `main@{1}` pueden ser distintos?» → Porque HEAD también se mueve al cambiar de rama."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Reflog",
+       "en": "reference log",
+       "def": "Registro local de los valores que ha tenido cada referencia (HEAD y cada rama) y de qué operación los cambió."
+      },
+      {
+       "term": "Alcanzable",
+       "en": "reachable",
+       "def": "Un commit al que se llega desde alguna referencia (rama, tag, HEAD…) siguiendo padres. Lo inalcanzable es candidato a ser eliminado por `git gc`."
+      },
+      {
+       "term": "Recolector de basura",
+       "en": "garbage collector, git gc",
+       "def": "Tarea de mantenimiento que empaqueta objetos, hace caducar entradas del reflog y borra objetos inalcanzables antiguos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s10-l5",
+   "title": "Recetas de rescate con reflog y ORIG_HEAD",
+   "minutes": 20,
+   "goals": [
+    "Recuperar commits tras `reset --hard`, `commit --amend` o un merge equivocado.",
+    "Resucitar una rama borrada con `git branch -D` a partir del reflog de HEAD.",
+    "Deshacer un rebase completo con `rama@{1}` u `ORIG_HEAD`.",
+    "Aplicar un protocolo seguro antes y durante cualquier rescate."
+   ],
+   "takeaways": [
+    "`ORIG_HEAD` guarda dónde estaba HEAD antes de `reset`, `merge`, `rebase` (y `am`): es el «deshacer» inmediato.",
+    "La forma más segura de rescatar es colgarle una rama al commit perdido: `git branch rescate HEAD@{n}`.",
+    "Al borrar una rama se va su reflog, pero el de HEAD conserva su punta (y `git branch -D` imprime el hash: «was abc1234»).",
+    "Tras un rebase, `rama@{1}` es la rama justo antes del rebase.",
+    "Antes de algo arriesgado, `git branch respaldo`: crear una rama no cuesta nada y te puede salvar el día."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "El protocolo de rescate"
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "**Para.** No encadenes comandos al azar: cada operación añade entradas al reflog y puede sobrescribir `ORIG_HEAD`.",
+      "**Protege lo que no está confirmado.** `git status`; si hay trabajo a medias, `git stash push -u`.",
+      "**Investiga.** `git reflog` (o `git reflog show <rama>`) para ubicar el último estado bueno.",
+      "**Verifica** que es el estado correcto: `git show <ref>`, `git log --oneline <ref>`.",
+      "**Rescata con la operación menos destructiva:** una rama nueva (`git branch rescate <ref>`) o, si estás seguro, `git reset --hard <ref>`.",
+      "**Comprueba el resultado** con `git log --oneline --graph --all` y recién ahí borra ramas auxiliares."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué perdiste? ¿Qué te salva?",
+     "mermaid": "flowchart TD\n  Q[\"¿Qué pasó?\"] --> R1[\"reset --hard o merge equivocado\"]\n  Q --> R2[\"Borré una rama con -D\"]\n  Q --> R3[\"Un rebase salió mal\"]\n  Q --> R4[\"Un amend pisó algo\"]\n  R1 --> S1[\"git reset --hard ORIG_HEAD (inmediato) o rama@{1}\"]\n  R2 --> S2[\"git reflog → git branch rama HEAD@{n}\"]\n  R3 --> S3[\"git reset --hard rama@{1} u ORIG_HEAD\"]\n  R4 --> S4[\"git show HEAD@{1}:archivo o git restore --source=HEAD@{1}\"]"
+    },
+    {
+     "type": "h",
+     "text": "ORIG_HEAD: el deshacer inmediato"
+    },
+    {
+     "type": "p",
+     "text": "Los comandos que mueven HEAD de forma drástica (`git reset`, `git merge`, `git rebase` y `git am`) guardan antes, en el archivo `.git/ORIG_HEAD`, dónde estaba HEAD. Así, justo después, `git reset --hard ORIG_HEAD` deshace la operación. Su punto débil: **el siguiente** de esos comandos lo sobrescribe. El reflog, en cambio, conserva todo el historial."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-22 09:00'\ncommit_archivo README.md '# Blog de Git' 'Crea el blog'\nfecha '2026-09-22 10:00'\ncommit_archivo posts/01-ramas.md '# Ramas' 'Publica el post sobre ramas'\nfecha '2026-09-22 11:00'\ncommit_archivo posts/02-stash.md '# Stash' 'Publica el post sobre stash'\ngit reset -q --hard HEAD~2",
+     "cwd": "blog",
+     "code": "git log --oneline\ngit reset --hard ORIG_HEAD\ngit log --oneline",
+     "caption": "Receta 1: deshacer un reset --hard recién hecho."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git reset --hard <ref>` descarta cualquier cambio sin confirmar de tu directorio. Antes de usarlo para rescatar, mira `git status`; si hay algo, guárdalo con `git stash push -u`. Si dudas entre varias entradas del reflog, crea ramas de rescate y compáralas: no cuesta nada."
+    },
+    {
+     "type": "h",
+     "text": "Receta 2: resucitar una rama borrada"
+    },
+    {
+     "type": "diagram",
+     "title": "La rama se borra; sus commits, no",
+     "mermaid": "gitGraph\n  commit id: \"Crea el blog\"\n  branch feature/comentarios\n  commit id: \"Añade comentarios\"\n  commit id: \"Añade moderación\"\n  checkout main\n  commit id: \"Actualiza el README\""
+    },
+    {
+     "type": "p",
+     "text": "`git branch -D feature/comentarios` quita la **etiqueta** y borra el reflog de esa rama. Los dos commits siguen ahí, y el reflog de HEAD recuerda que estuviste en ellos. Busca la entrada `checkout: moving from feature/comentarios to main`: la de **debajo** es la punta de la rama en el momento en que la dejaste."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-23 09:00'\ncommit_archivo README.md '# Blog' 'Crea el blog'\ngit switch -q -c feature/comentarios\nfecha '2026-09-23 10:00'\ncommit_archivo comentarios.js 'export function comentar() {}' 'Añade comentarios'\nfecha '2026-09-23 11:00'\ncommit_archivo moderar.js 'export function moderar() {}' 'Añade moderación'\ngit switch -q main\ngit branch -q -D feature/comentarios",
+     "cwd": "blog",
+     "code": "git branch\ngit reflog\ngit branch feature/comentarios HEAD@{1}\ngit log --oneline --graph --all",
+     "caption": "HEAD@{1} es el último commit de la rama borrada: basta con volver a crearla ahí."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Atajo: el propio borrado te dice el hash: `Deleted branch feature/comentarios (was 0b88084).` Si aún lo ves en pantalla, `git branch feature/comentarios 0b88084` y listo. Y si la rama estaba publicada, el remoto (`origin/feature/comentarios`) también la conserva."
+    },
+    {
+     "type": "h",
+     "text": "Receta 3: deshacer un rebase"
+    },
+    {
+     "type": "p",
+     "text": "Un rebase crea commits **nuevos** y mueve la rama hacia ellos; los originales quedan huérfanos, pero el reflog de la rama los recuerda: tras el rebase, `feature@{0}` es `rebase (finish)` y `feature@{1}` es la rama justo antes. `ORIG_HEAD` también apunta ahí, mientras no hagas otro reset, merge o rebase."
+    },
+    {
+     "type": "diagram",
+     "title": "Después de un rebase desastroso",
+     "mermaid": "flowchart RL\n  C1[\"Activa la caché\"] --> B0[\"Crea la configuración\"]\n  C2[\"Sube el timeout\"] --> C1\n  M1[\"Cambia puerto y timeout (main)\"] --> B0\n  F([\"feature/cache tras el rebase\"]) -.-> M1\n  O([\"feature/cache@{1} y ORIG_HEAD\"]) -.-> C2"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-24 09:00'\ncommit_archivo config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 30;' 'Crea la configuración'\ngit switch -q -c feature/cache\nfecha '2026-09-24 10:00'\nescribir config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 30;\nexport const CACHE = true;'\ngit commit -q -am 'Activa la caché'\nfecha '2026-09-24 11:00'\nescribir config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 60;\nexport const CACHE = true;'\ngit commit -q -am 'Sube el timeout para la caché'\ngit switch -q main\nfecha '2026-09-24 12:00'\nescribir config.js 'export const PUERTO = 8080;\nexport const TIMEOUT = 45;'\ngit commit -q -am 'Cambia puerto y timeout para producción'\ngit switch -q feature/cache\nfecha '2026-09-24 12:30'\ngit rebase -q -X ours main >/dev/null 2>&1",
+     "cwd": "api",
+     "code": "git log --oneline --graph --all\ncat config.js\ngit reflog show feature/cache\ngit reset --hard feature/cache@{1}\ncat config.js\ngit log --oneline --graph --all",
+     "caption": "Un `rebase -X ours` (en un rebase, ours es main) descartó tus dos commits. feature/cache@{1} devuelve la rama a su estado previo."
+    },
+    {
+     "type": "h",
+     "text": "Receta 4: un amend que pisó algo y un merge equivocado"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-25 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-25 10:00'\nescribir precios.csv 'producto,precio\npolera,9990\njockey,7990'\ngit add precios.csv\ngit commit -q -m 'Añade la lista de precios'\nfecha '2026-09-25 10:05'\nescribir precios.csv 'producto,precio'\ngit add precios.csv\ngit commit -q --amend -m 'Añade la lista de precios (formato nuevo)'",
+     "cwd": "tienda",
+     "code": "git reflog -3\ngit show HEAD@{1}:precios.csv\ngit restore --source=HEAD@{1} precios.csv\ngit status -s\ncat precios.csv",
+     "caption": "El amend reemplazó el commit, pero el original sigue como HEAD@{1}: puedes ver o restaurar cualquier archivo de ese estado."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-25 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit switch -q -c experimento\nfecha '2026-09-25 10:00'\ncommit_archivo colores.css 'body { background: hotpink; }' 'Prueba colores llamativos'\ngit switch -q main\nfecha '2026-09-25 11:00'\ncommit_archivo README.md '# Tienda' 'Añade README'",
+     "cwd": "tienda",
+     "code": "git merge --no-edit experimento\ngit log --oneline --graph\ngit reset --hard ORIG_HEAD\ngit log --oneline --graph --all",
+     "caption": "¿Fusionaste la rama equivocada (y aún no lo publicas)? ORIG_HEAD es main justo antes del merge."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación",
+      "Referencia que te salva",
+      "Comando típico"
+     ],
+     "rows": [
+      [
+       "Acabo de hacer `reset --hard`",
+       "`ORIG_HEAD` o `HEAD@{1}`",
+       "`git reset --hard ORIG_HEAD`"
+      ],
+      [
+       "Borré una rama",
+       "Entrada del reflog de HEAD",
+       "`git branch rama HEAD@{n}`"
+      ],
+      [
+       "Rebase desastroso",
+       "`rama@{1}` u `ORIG_HEAD`",
+       "`git reset --hard rama@{1}`"
+      ],
+      [
+       "Amend que pisó contenido",
+       "`HEAD@{1}` (el commit original)",
+       "`git restore --source=HEAD@{1} archivo`"
+      ],
+      [
+       "Merge equivocado, sin publicar",
+       "`ORIG_HEAD`",
+       "`git reset --hard ORIG_HEAD`"
+      ],
+      [
+       "Merge o commit equivocado **ya publicado**",
+       "Ninguna: no reescribas",
+       "`git revert` (s04; los merges, en s16)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Todas estas recetas reescriben tu historia local. Si lo que quieres deshacer ya está en el remoto y otros lo tienen, lo correcto es `git revert` (s04); reescribir exigiría `push --force-with-lease` y avisar al equipo (s09)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué comandos actualizan `ORIG_HEAD`?» → `reset`, `merge`, `rebase` y `am` (no `commit` ni `switch`). «¿Por qué `feature@{1}` falla tras `git branch -D feature`?» → Porque al borrar la rama se borra su reflog; usa el de HEAD."
+    }
+   ]
+  },
+  {
+   "id": "s10-l6",
+   "title": "Cuando el reflog no alcanza: fsck, objetos colgantes y gc",
+   "minutes": 16,
+   "goals": [
+    "Encontrar commits y blobs sin referencia con `git fsck --lost-found`, `--unreachable` y `--no-reflogs`.",
+    "Recuperar un stash eliminado con `drop` o `clear` a partir de su hash.",
+    "Rescatar un archivo que solo llegó al área de preparación.",
+    "Predecir cuándo `git gc` eliminará definitivamente un objeto."
+   ],
+   "takeaways": [
+    "`git fsck` informa de objetos **colgantes** (*dangling*): existen, pero nada los apunta; `--lost-found` los anota en `.git/lost-found/`.",
+    "Por defecto fsck cuenta los reflogs como referencias; `--no-reflogs` (y `--lost-found`) muestra también lo que solo sobrevive en ellos.",
+    "Un stash borrado no está en ningún reflog: fsck es la vía; se reconoce por el mensaje «On …» o «WIP on …» y sus dos padres.",
+    "Lo que hiciste `git add` quedó guardado como blob aunque no lo confirmaras; lo que nunca preparaste no existe para Git.",
+    "`git reflog expire --expire=now --all` seguido de `git gc --prune=now` es el punto de no retorno."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El reflog cubre los movimientos de las referencias. Hay pérdidas que no quedan registradas ahí: un stash borrado con `drop` o `clear` (se elimina justamente su entrada del reflog de `refs/stash`), un archivo que preparaste con `git add` y luego perdiste con `reset --hard` antes de confirmarlo, o un reflog que alguien hizo caducar a mano. Para eso está `git fsck` (*file system check*), que revisa la base de objetos completa."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Objeto colgante",
+       "en": "dangling object",
+       "def": "Objeto que existe en la base pero que **nada usa directamente**: ni una referencia ni otro objeto. Es la punta de lo perdido."
+      },
+      {
+       "term": "Objeto inalcanzable",
+       "en": "unreachable object",
+       "def": "Objeto al que no se llega desde ninguna referencia, ni directa ni indirectamente. Todo colgante es inalcanzable; además, los padres y árboles de un commit colgante son inalcanzables pero no colgantes."
+      },
+      {
+       "term": "lost-found",
+       "en": "lost-found",
+       "def": "Carpeta `.git/lost-found/` donde `git fsck --lost-found` anota los commits colgantes (en `commit/`) y los demás objetos (en `other/`); de los blobs escribe directamente su contenido."
+      }
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Recuperar un stash borrado"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-10 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-10 18:30'\nanexar index.html '<div class=\"oferta\">Cyber Day: 30% dcto.</div>'\ngit stash push -q -m 'Banner del Cyber Day'\ngit stash drop -q",
+     "cwd": "tienda",
+     "code": "git stash list\ngit fsck\ngit fsck --lost-found\nls .git/lost-found/commit",
+     "caption": "El commit del stash sigue en la base de objetos como «dangling commit»."
+    },
+    {
+     "type": "p",
+     "text": "Con el hash en la mano, identifícalo con `git show -s <hash>`: un stash es un commit con **dos padres** (`Merge: …`) y el mensaje `On main: Banner del Cyber Day` (o `WIP on main: …` si no tenía nombre). Después tienes tres caminos:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git show -s 9f3c2e1                               # ¿es mi stash? (Merge: … y «On main: …»)\ngit stash apply 9f3c2e1                           # aplicarlo directamente\ngit stash store -m \"Banner del Cyber Day\" 9f3c2e1 # devolverlo a git stash list\ngit branch rescate-stash 9f3c2e1                  # o colgarle una rama para no perderlo",
+     "caption": "Sustituye 9f3c2e1 por el hash que te muestre git fsck."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En una terminal normal (bash o zsh), la documentación de `git stash` propone este comando para listar todos los stashes perdidos: `git fsck --unreachable | grep commit | cut -d' ' -f3 | xargs git log --merges --no-walk --grep=WIP`. En la terminal de práctica no hay tuberías hacia `grep`, pero `git fsck --lost-found` y `git show` bastan."
+    },
+    {
+     "type": "h",
+     "text": "fsck y los reflogs"
+    },
+    {
+     "type": "p",
+     "text": "Ojo con esta sutileza: `git fsck` considera los **reflogs** como referencias. Un commit que solo sobrevive en el reflog de HEAD (por ejemplo, el de una rama borrada) no le parece colgante. Si quieres verlo, añade `--no-reflogs`. `--lost-found` también ignora los reflogs, así que muestra y guarda todo lo que no cuelga de una rama o tag."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-23 09:00'\ncommit_archivo README.md '# Blog' 'Crea el blog'\ngit switch -q -c feature/comentarios\nfecha '2026-09-23 10:00'\ncommit_archivo comentarios.js 'export function comentar() {}' 'Añade comentarios'\nfecha '2026-09-23 11:00'\ncommit_archivo moderar.js 'export function moderar() {}' 'Añade moderación'\ngit switch -q main\ngit branch -q -D feature/comentarios",
+     "cwd": "blog",
+     "code": "git fsck\ngit fsck --no-reflogs\ngit fsck --unreachable --no-reflogs",
+     "caption": "Sin --no-reflogs, fsck no dice nada: el reflog de HEAD todavía apunta a esos commits. Con --unreachable aparecen también sus árboles, blobs y el commit padre."
+    },
+    {
+     "type": "h",
+     "text": "Rescatar un archivo que solo llegaste a preparar"
+    },
+    {
+     "type": "p",
+     "text": "`git add` no solo marca un archivo: **guarda su contenido** en la base de objetos como un blob. Si después lo pierdes con `git reset --hard` sin haber confirmado, ese blob queda colgando, y `--lost-found` escribe su contenido en `.git/lost-found/other/`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-10 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-10 11:00'\nescribir notas-reunion.txt 'Acuerdos: lanzar el Cyber Day el lunes a las 00:00'\ngit add notas-reunion.txt\ngit reset -q --hard",
+     "cwd": "tienda",
+     "code": "git status -s\ngit fsck --lost-found\ncat .git/lost-found/other/*\ncat .git/lost-found/other/* > notas-reunion.txt\ngit status -s",
+     "caption": "El archivo desapareció del disco, pero su contenido estaba guardado como blob: fsck lo encuentra (el nombre original no se guarda en un blob; ese lo pones tú)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Lo que **nunca** pasó por `git add`, un commit o un stash no está en la base de objetos: si lo borras con `git reset --hard`, `git restore`, `git checkout -- archivo` o `git clean`, Git no puede devolverlo. Como último recurso, algunos editores guardan su propio historial (en VS Code, la vista *Timeline* con *Local History*)."
+    },
+    {
+     "type": "h",
+     "text": "El recolector de basura: cuándo muere un objeto"
+    },
+    {
+     "type": "p",
+     "text": "`git gc` hace limpieza: empaqueta objetos, hace caducar entradas antiguas del reflog y borra los objetos inalcanzables que ya son viejos. Git lo lanza solo (`git gc --auto`) después de algunos comandos, pero únicamente cuando hay mucho que ordenar (del orden de 6700 objetos sueltos). `git gc` «hace todo lo posible» por no borrar nada referenciado: ramas, tags, el índice, las ramas remotas y **los reflogs**."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Configuración",
+      "Valor por defecto",
+      "Qué controla"
+     ],
+     "rows": [
+      [
+       "`gc.reflogExpire`",
+       "90 días",
+       "Caducidad de las entradas del reflog"
+      ],
+      [
+       "`gc.reflogExpireUnreachable`",
+       "30 días",
+       "Caducidad de entradas que apuntan a commits ya inalcanzables desde la punta de su rama"
+      ],
+      [
+       "`gc.pruneExpire`",
+       "2 semanas",
+       "Edad mínima de un objeto inalcanzable para que `gc` lo borre"
+      ],
+      [
+       "`gc.auto`",
+       "6700",
+       "Número aproximado de objetos sueltos que dispara `git gc --auto`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-22 09:00'\ncommit_archivo README.md '# Blog' 'Crea el blog'\nfecha '2026-09-22 10:00'\ncommit_archivo post.md '# Un post que no quiero perder' 'Publica un post'\ngit reset -q --hard HEAD~1",
+     "cwd": "blog",
+     "code": "git reflog\ngit reflog expire --expire=now --all\ngit gc --prune=now\ngit reflog\ngit fsck --lost-found\ngit count-objects -v",
+     "caption": "El punto de no retorno: sin reflog y con una poda inmediata, el commit desaparece de verdad. Hazlo solo si sabes lo que haces (por ejemplo, tras purgar un secreto, s15)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git reflog expire --expire=now --all && git gc --prune=now` borra de forma irreversible todo lo inalcanzable. Tiene usos legítimos (eliminar de verdad un secreto después de reescribir la historia, s15), pero jamás lo ejecutes «para limpiar» en medio de un rescate. Desde Git 2.50, `git maintenance` también tiene una tarea para hacer caducar reflogs."
+    },
+    {
+     "type": "diagram",
+     "title": "¿Se puede recuperar?",
+     "mermaid": "flowchart TD\n  P[\"¿Qué perdiste?\"] --> A[\"Cambios que nunca preparaste ni guardaste\"]\n  P --> B[\"Cambios preparados con git add\"]\n  P --> C[\"Commits: reset, amend, rebase, rama borrada\"]\n  P --> D[\"Un stash borrado con drop o clear\"]\n  A --> A1[\"Git no los tiene: solo el historial del editor\"]\n  B --> B1[\"git fsck --lost-found: blobs en lost-found/other\"]\n  C --> C1[\"git reflog: git branch rescate HEAD@{n}\"]\n  D --> D1[\"git fsck: git stash apply hash\"]\n  C1 --> G[\"¿Pasó git gc tras caducar el reflog?\"]\n  G --> G1[\"Sí: perdido para siempre\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué diferencia hay entre *dangling* y *unreachable*?» → Todo lo colgante es inalcanzable, pero no al revés: colgante es lo que nada usa directamente. «¿Dónde deja `--lost-found` los objetos?» → En `.git/lost-found/commit/` y `.git/lost-found/other/`. «¿Borra `git gc` un commit que está en el reflog?» → No, mientras la entrada no caduque."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s10-e1",
+   "title": "Guarda el trabajo a medias con un nombre",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Trabajas en la tienda online **Tienda Austral**. Estabas programando el total del carrito: tienes cambios **sin confirmar** en `carrito.js` e `index.html`. Tu jefa te pide revisar otra cosa *ya*, y todavía no quieres hacer un commit con código a medio escribir.",
+    "Guarda todo ese trabajo en el stash con el mensaje **carrito a medias**, de modo que tu directorio de trabajo quede limpio (como en el último commit). No crees commits.",
+    "Cuando termines, comprueba el resultado con `git status` y `git stash list`."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-14 09:00'\ncommit_archivo index.html '<!doctype html>\n<h1>Tienda Austral</h1>\n<ul id=\"productos\"></ul>' 'Crea la página principal'\nfecha '2026-09-14 10:00'\ncommit_archivo carrito.js 'const carrito = [];\nexport function agregar(producto) {\n  carrito.push(producto);\n}' 'Añade el carrito básico'\nanexar carrito.js 'export function total() {\n  return carrito.reduce((suma, p) => suma + p.precio, 0);\n}'\nanexar index.html '<button id=\"ver-carrito\">Ver carrito (0)</button>'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "El directorio de trabajo quedó limpio",
+     "script": "limpio 'Todavía hay cambios sin guardar en tu directorio (revisa git status)'"
+    },
+    {
+     "name": "Hay exactamente un stash",
+     "script": "n=$(git stash list | wc -l | tr -d ' ')\n[ \"$n\" = 1 ] || falla \"Debería haber exactamente 1 entrada en git stash list (hay $n)\""
+    },
+    {
+     "name": "El stash se llama «carrito a medias»",
+     "script": "s=$(git log -1 --format=%s refs/stash 2>/dev/null)\ncase \"$s\" in\n  *\": carrito a medias\") ;;\n  *) falla \"El stash debería tener el mensaje «carrito a medias» (tiene: «${s}»). Ponle nombre con -m\" ;;\nesac"
+    },
+    {
+     "name": "El stash guarda carrito.js e index.html",
+     "script": "f=$(git diff --name-only 'stash@{0}^1' 'stash@{0}' 2>/dev/null | sort | tr '\\n' ' ')\n[ \"$f\" = \"carrito.js index.html \" ] || falla \"El stash debería contener los cambios de carrito.js e index.html (contiene: $f)\""
+    },
+    {
+     "name": "No creaste commits nuevos",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"La rama debería seguir con 2 commits: el trabajo a medias va al stash, no a un commit\""
+    }
+   ],
+   "solution": [
+    "git stash push -m \"carrito a medias\"",
+    "git stash list",
+    "git status"
+   ],
+   "hints": [
+    "El comando para apartar cambios sin confirmar es `git stash`; su forma completa es `git stash push`.",
+    "Para ponerle nombre usa la opción `-m \"mensaje\"`.",
+    "`git stash push -m \"carrito a medias\"` y luego `git stash list`."
+   ],
+   "explain": "`git stash push -m \"carrito a medias\"` crea un commit especial con el estado de tu índice y de tu directorio de trabajo, lo guarda en `refs/stash` y después deja tu copia como en `HEAD` (por eso `git status` queda limpio). En `git stash list` verás `stash@{0}: On main: carrito a medias`. Sin `-m` el mensaje sería el genérico `WIP on main: <hash> <asunto del último commit>`, que es muy difícil de distinguir cuando tienes varios. `git stash` a secas equivale a `git stash push`; la antigua forma `git stash save \"mensaje\"` está obsoleta desde Git 2.16. Para recuperar el trabajo, más adelante: `git stash pop`."
+  },
+  {
+   "id": "s10-e2",
+   "title": "Incluye los archivos nuevos en el stash",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "En la tienda estás agregando el despacho a regiones: modificaste `index.html` y creaste un archivo **nuevo**, `regiones.js`, que todavía no has agregado con `git add`. También hay un `debug.log` que el `.gitignore` ignora.",
+    "Guarda en **un único stash** llamado **despacho a regiones** tanto el cambio de `index.html` como el archivo nuevo `regiones.js`, para que `git status` quede completamente limpio. El `debug.log` ignorado debe quedarse donde está (no lo guardes).",
+    "Ojo: un `git stash` a secas no alcanza. Si te equivocas, `git stash pop` devuelve lo guardado y puedes repetir."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-14 09:00'\nescribir .gitignore '*.log'\ngit add .gitignore\ngit commit -q -m 'Ignora los archivos de log'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-14 10:00'\ncommit_archivo despacho.js 'export const TARIFA_BASE = 3990;' 'Añade la tarifa base de despacho'\nanexar index.html '<p>Despacho a todo Chile</p>'\nescribir regiones.js 'export const REGIONES = [\"Arica y Parinacota\", \"Metropolitana\", \"Magallanes\"];'\nescribir debug.log 'GET /despacho 200'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "git status quedó limpio",
+     "script": "limpio 'git status todavía muestra cambios o archivos sin seguimiento (¿quedó regiones.js fuera?)'"
+    },
+    {
+     "name": "El stash guarda el archivo nuevo regiones.js",
+     "script": "git cat-file -e 'stash@{0}^3:regiones.js' 2>/dev/null || falla \"El stash más reciente no incluye regiones.js: los archivos sin seguimiento solo se guardan con -u (--include-untracked)\""
+    },
+    {
+     "name": "El mismo stash guarda el cambio de index.html",
+     "script": "git diff --name-only 'stash@{0}^1' 'stash@{0}' 2>/dev/null | grep -qx index.html || falla \"El stash más reciente no incluye el cambio de index.html (¿hiciste dos stash? Mira git stash list)\""
+    },
+    {
+     "name": "El stash se llama «despacho a regiones»",
+     "script": "s=$(git log -1 --format=%s refs/stash 2>/dev/null)\ncase \"$s\" in\n  *\": despacho a regiones\") ;;\n  *) falla \"El stash debería llamarse «despacho a regiones» (se llama: «${s}»)\" ;;\nesac"
+    },
+    {
+     "name": "debug.log (ignorado) sigue en su lugar",
+     "script": "archivo_existe debug.log \"debug.log desapareció: -a (--all) guarda también los archivos ignorados; aquí bastaba con -u\""
+    }
+   ],
+   "solution": [
+    "git status -s",
+    "git stash push -u -m \"despacho a regiones\"",
+    "git stash show --include-untracked",
+    "git status"
+   ],
+   "hints": [
+    "Por defecto `git stash` solo guarda archivos **rastreados**. ¿Qué opción incluye los que no tienen seguimiento?",
+    "Es `-u` (`--include-untracked`). No uses `-a`: ese también se lleva los archivos ignorados.",
+    "`git stash push -u -m \"despacho a regiones\"`"
+   ],
+   "explain": "Con `-u` Git crea un tercer commit dentro del stash (el padre `^3`, «untracked files on main…») con los archivos sin seguimiento, y luego los elimina de tu directorio como haría `git clean`. `-a` (`--all`) haría lo mismo **y además** con los ignorados (`debug.log`, `node_modules/`…), casi nunca lo que quieres. Para ver qué guardaste: `git stash show --include-untracked` (o `-u`); `git stash show` a secas no muestra los archivos nuevos. Error típico: hacer primero `git stash` (se guarda solo `index.html`) y luego `git stash -u` (se guarda solo `regiones.js`): acabas con dos stashes que hay que recuperar por separado."
+  },
+  {
+   "id": "s10-e3",
+   "title": "Bug urgente: guarda, arregla y retoma",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Estás en la rama `feature/cupones` con trabajo **sin confirmar**: cambios en `cupones.js` y un archivo nuevo `cupones.test.js`. Llega un aviso urgente: en `main`, `precio.js` calcula el IVA con 18 % y en Chile es 19 %.",
+    "Haz el flujo completo de una interrupción:",
+    "1. Guarda todo tu trabajo a medias (incluido el archivo nuevo) en el stash.\n2. Cámbiate a `main` y en `precio.js` cambia `export const IVA = 0.18;` por `export const IVA = 0.19;` (usa `code precio.js`).\n3. Confirma el arreglo en `main` con el mensaje **Corrige el IVA al 19 %**. Ese commit debe tocar solo `precio.js`.\n4. Vuelve a `feature/cupones` y recupera tu trabajo tal como estaba, sin confirmarlo, y deja vacía la pila del stash."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-15 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-15 09:30'\ncommit_archivo precio.js 'export const IVA = 0.18;\nexport function conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}' 'Añade el cálculo de precio con IVA'\ngit switch -q -c feature/cupones\nfecha '2026-09-15 11:00'\ncommit_archivo cupones.js 'export const CUPONES = { BIENVENIDA: 0.1 };' 'Añade cupones de descuento'\nanexar cupones.js 'export function aplicar(total, codigo) {\n  return total * (1 - (CUPONES[codigo] ?? 0));\n}'\nescribir cupones.test.js 'import { aplicar } from \"./cupones.js\";\nconsole.assert(aplicar(1000, \"BIENVENIDA\") === 900);'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "main tiene el IVA al 19 %",
+     "script": "contenido main precio.js | grep -qF 'IVA = 0.19;' || falla \"En main, precio.js todavía no tiene confirmado IVA = 0.19\""
+    },
+    {
+     "name": "El arreglo es un commit «Corrige el IVA al 19 %»",
+     "script": "mensaje_es main 'Corrige el IVA al 19 %'\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener exactamente un commit nuevo (tiene $(num_commits main) commits)\""
+    },
+    {
+     "name": "El arreglo solo toca precio.js",
+     "script": "[ \"$(git diff --name-only main~1 main)\" = precio.js ] || falla \"El commit de main debería cambiar solo precio.js (¿se coló algo de los cupones?)\""
+    },
+    {
+     "name": "Volviste a feature/cupones",
+     "script": "en_rama feature/cupones"
+    },
+    {
+     "name": "Tu trabajo a medias volvió sin confirmar",
+     "script": "archivo_tiene cupones.js 'export function aplicar' \"cupones.js no tiene tu función aplicar: recupera el stash\"\narchivo_existe cupones.test.js \"Falta cupones.test.js: ¿lo guardaste con -u y lo recuperaste?\"\n[ \"$(num_commits feature/cupones)\" = 3 ] || falla \"No confirmes el trabajo de los cupones: debe seguir sin confirmar en feature/cupones\""
+    },
+    {
+     "name": "La pila del stash quedó vacía",
+     "script": "[ -z \"$(git stash list)\" ] || falla \"git stash list no está vacío (¿usaste apply en vez de pop? Borra la entrada con git stash drop)\""
+    }
+   ],
+   "solution": [
+    "git stash push -u -m \"cupones a medias\"",
+    "git switch main",
+    "printf 'export const IVA = 0.19;\\nexport function conIva(neto) {\\n  return Math.round(neto * (1 + IVA));\\n}\\n' > precio.js",
+    "git commit -am \"Corrige el IVA al 19 %\"",
+    "git switch feature/cupones",
+    "git stash pop",
+    "git status -s"
+   ],
+   "hints": [
+    "Hay un archivo sin seguimiento: el stash necesita `-u` para llevárselo.",
+    "Después de confirmar el arreglo en `main`, vuelve con `git switch feature/cupones` (o `git switch -`).",
+    "`git stash pop` aplica el stash más reciente y, si no hay conflictos, lo borra de la lista."
+   ],
+   "explain": "Es el uso clásico del stash: `git stash push -u -m \"cupones a medias\"` limpia tu directorio (incluido `cupones.test.js`), así puedes cambiarte a `main` sin arrastrar cambios ajenos al arreglo. Confirmas el arreglo y, al volver, `git stash pop` = `apply` + `drop`. Si hubieras usado `git stash apply`, la entrada seguiría en la lista y tendrías que borrarla con `git stash drop`. Alternativas profesionales: si la interrupción va a ser larga, un commit temporal («WIP») en tu rama que luego rehaces con `git commit --amend` o un rebase interactivo (s09), o `git worktree` para tener `main` en otra carpeta sin tocar la tuya (s14). Con cambios sin confirmar, `git switch` a veces te deja cambiar de rama llevándote los cambios: es justo lo que **no** querías aquí."
+  },
+  {
+   "id": "s10-e4",
+   "title": "Tres stashes: recupera el correcto",
+   "level": "medio",
+   "minutes": 9,
+   "prompt": [
+    "Durante la semana fuiste apartando ideas en el stash y ahora tienes **tres** entradas. Solo quieres retomar la del **validador de RUT**.",
+    "Aplica en tu directorio **solo** ese stash y elimínalo de la pila. Las otras dos entradas («prueba de colores» y «footer con redes sociales») deben seguir guardadas y sus cambios **no** deben aparecer en tu directorio. No crees commits.",
+    "Antes de actuar, mira la lista y revisa el contenido de la entrada con `git stash show -p`."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-16 09:00'\ncommit_archivo estilos.css 'body { margin: 0; }' 'Añade estilos base'\ncommit_archivo validaciones.js 'export function validarEmail(email) {\n  return email.includes(\"@\");\n}' 'Añade validación de email'\ncommit_archivo footer.html '<footer>Tienda Austral</footer>' 'Añade el pie de página'\nfecha '2026-09-16 10:00'\nanexar footer.html '<p>Síguenos en redes sociales</p>'\ngit stash push -q -m 'footer con redes sociales'\nfecha '2026-09-16 11:00'\nanexar validaciones.js 'export function validarRut(rut) {\n  return /^[0-9]{7,8}-[0-9kK]$/.test(rut);\n}'\ngit stash push -q -m 'validador de RUT'\nfecha '2026-09-16 12:00'\nescribir estilos.css 'body { margin: 0; background: hotpink; }'\ngit stash push -q -m 'prueba de colores'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "validaciones.js tiene el validador de RUT",
+     "script": "archivo_tiene validaciones.js 'validarRut' \"validaciones.js todavía no tiene validarRut: aplica el stash correcto\""
+    },
+    {
+     "name": "No se aplicaron los otros stashes",
+     "script": "git diff --quiet HEAD -- estilos.css footer.html || falla \"Se aplicaron cambios de otro stash (estilos.css o footer.html)\""
+    },
+    {
+     "name": "Quedan solo «prueba de colores» y «footer con redes sociales»",
+     "script": "l=$(git stash list --format=%s | tr '\\n' '|')\n[ \"$l\" = \"On main: prueba de colores|On main: footer con redes sociales|\" ] || falla \"La pila debería tener solo «prueba de colores» y «footer con redes sociales» (tiene: $l)\""
+    },
+    {
+     "name": "No creaste commits",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"main debería seguir con 3 commits\""
+    }
+   ],
+   "solution": [
+    "git stash list",
+    "git stash show -p stash@{1}",
+    "git stash pop stash@{1}",
+    "git stash list"
+   ],
+   "hints": [
+    "`git stash list` numera las entradas: `stash@{0}` es la más reciente.",
+    "`pop`, `apply`, `show` y `drop` aceptan una entrada concreta: `git stash show -p stash@{1}`.",
+    "`git stash pop stash@{1}` (o `git stash apply stash@{1}` seguido de `git stash drop stash@{1}`)."
+   ],
+   "explain": "La pila del stash es el reflog de `refs/stash`: `stash@{0}` es el último que guardaste, `stash@{1}` el anterior, etc. `git stash pop stash@{1}` aplica esa entrada y la elimina; también podías escribir solo el número (`git stash pop 1`). Fíjate en que al borrar `stash@{1}` las entradas se **renumeran**: el antiguo `stash@{2}` («footer…») pasa a ser `stash@{1}`. Por eso, antes de un `drop` con número, vuelve a mirar `git stash list`. Y por eso conviene nombrar siempre los stashes con `-m`."
+  },
+  {
+   "id": "s10-e5",
+   "title": "Aparta solo lo que está preparado",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Preparaste (`git add`) una nueva tarifa de despacho en `despacho.js`, pero el área comercial todavía no la aprueba. Al mismo tiempo estás trabajando en `index.html`, cambio que **no** está preparado.",
+    "Aparta en un stash llamado **tarifa regiones** únicamente lo que está en el área de preparación. Tu cambio en `index.html` debe quedarse en tu directorio, sin tocar.",
+    "Pista de versión: la opción que necesitas existe desde Git 2.35."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-17 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ncommit_archivo despacho.js 'export const TARIFA_BASE = 3990;' 'Añade la tarifa base de despacho'\nfecha '2026-09-17 10:00'\nanexar despacho.js 'export const TARIFA_REGIONES = 6990;'\ngit add despacho.js\nanexar index.html '<section id=\"ofertas\">Ofertas de la semana</section>'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Ya no queda nada preparado",
+     "script": "git diff --cached --quiet || falla \"Todavía hay cambios en el área de preparación (revisa git status)\""
+    },
+    {
+     "name": "index.html conserva tu trabajo sin confirmar",
+     "script": "archivo_tiene index.html 'id=\"ofertas\"' \"Perdiste el cambio de index.html: debía quedarse en tu directorio\""
+    },
+    {
+     "name": "despacho.js volvió a la versión confirmada",
+     "script": "git diff --quiet HEAD -- despacho.js || falla \"despacho.js todavía tiene la tarifa de regiones en tu directorio\""
+    },
+    {
+     "name": "El stash contiene solo despacho.js",
+     "script": "f=$(git diff --name-only 'stash@{0}^1' 'stash@{0}' 2>/dev/null | tr '\\n' ' ')\n[ \"$f\" = \"despacho.js \" ] || falla \"El stash más reciente debería contener solo despacho.js (contiene: $f)\""
+    },
+    {
+     "name": "El stash se llama «tarifa regiones»",
+     "script": "s=$(git log -1 --format=%s refs/stash 2>/dev/null)\ncase \"$s\" in\n  *\": tarifa regiones\") ;;\n  *) falla \"El stash debería llamarse «tarifa regiones» (se llama: «${s}»)\" ;;\nesac"
+    }
+   ],
+   "solution": [
+    "git status -s",
+    "git stash push --staged -m \"tarifa regiones\"",
+    "git status -s",
+    "git stash show -p"
+   ],
+   "hints": [
+    "`git status -s` te muestra qué está preparado (columna izquierda) y qué no (columna derecha).",
+    "Hay una opción de `git stash push` que guarda **solo** el área de preparación.",
+    "`git stash push --staged -m \"tarifa regiones\"`"
+   ],
+   "explain": "`--staged` (`-S`, desde Git 2.35) es como hacer un commit de lo preparado, pero hacia el stash en vez de hacia la rama: se lleva `despacho.js` y deja intacto lo no preparado. No la confundas con `--keep-index`, que guarda **todo** (preparado y no preparado) y además deja lo preparado en su sitio: aquí se habría llevado tu `index.html`. En este caso concreto también funcionaba limitar por ruta: `git stash push -m \"tarifa regiones\" -- despacho.js`, porque ese archivo solo tenía cambios preparados."
+  },
+  {
+   "id": "s10-e6",
+   "title": "El stash que ya no encaja: git stash branch",
+   "level": "medio",
+   "minutes": 9,
+   "prompt": [
+    "Hace un rato guardaste en el stash **tarifas extremas** un cambio en `despacho.js`. Mientras tanto, tu compañera Camila actualizó esas mismas líneas en `main` (ya tienes sus commits), así que un `git stash pop` terminaría en conflicto.",
+    "En vez de pelear con el conflicto, crea la rama **feature/tarifas-extremas** a partir del stash, de modo que:",
+    "- la rama nazca del commit donde creaste el stash,\n- tus cambios queden en tu directorio **sin confirmar**, en esa rama,\n- la pila del stash quede vacía y `main` no cambie.",
+    "Si ya probaste `git stash pop` y quedó un conflicto, primero vuelve a dejar limpio tu directorio (el stash no se borra cuando hay conflicto)."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-18 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ncommit_archivo despacho.js 'export const TARIFA_BASE = 3990;\nexport const TARIFA_REGIONES = 5990;' 'Añade tarifas de despacho'\nfecha '2026-09-18 10:00'\nescribir despacho.js 'export const TARIFA_BASE = 3990;\nexport const TARIFA_REGIONES = 6490;\nexport const TARIFA_EXTREMOS = 8990;'\ngit stash push -q -m 'tarifas extremas'\nautor 'Camila Rojas' 'camila@tiendaaustral.cl'\nfecha '2026-09-18 12:00'\nescribir despacho.js 'export const TARIFA_BASE = 4290;\nexport const TARIFA_REGIONES = 6290;'\ngit commit -q -am 'Actualiza tarifas por alza del combustible'\nfecha '2026-09-18 12:30'\ncommit_archivo README.md '# Tienda Austral' 'Añade README'\nyo",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Existe feature/tarifas-extremas y estás en ella",
+     "script": "rama_existe feature/tarifas-extremas \"No existe la rama feature/tarifas-extremas\"\nen_rama feature/tarifas-extremas"
+    },
+    {
+     "name": "La rama nace del commit donde hiciste el stash",
+     "script": "[ \"$(git merge-base feature/tarifas-extremas main)\" = \"$(git rev-parse main~2)\" ] || falla \"La rama debería partir de «Añade tarifas de despacho», el commit donde creaste el stash\""
+    },
+    {
+     "name": "Tus tarifas están en el directorio, sin conflictos",
+     "script": "sin_conflictos\narchivo_tiene despacho.js 'TARIFA_EXTREMOS = 8990' \"despacho.js no tiene tu TARIFA_EXTREMOS\"\narchivo_tiene despacho.js 'TARIFA_REGIONES = 6490' \"despacho.js debería tener tus tarifas (TARIFA_REGIONES = 6490), no las de main\""
+    },
+    {
+     "name": "La pila del stash quedó vacía",
+     "script": "[ -z \"$(git stash list)\" ] || falla \"git stash list todavía tiene entradas\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "mensaje_es main 'Añade README' \"main no debería tener commits nuevos\"\n[ \"$(num_commits main)\" = 4 ] || falla \"main debería seguir con 4 commits\""
+    }
+   ],
+   "solution": [
+    "git stash list",
+    "git stash branch feature/tarifas-extremas",
+    "git status -s",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Existe un subcomando de `git stash` que crea una rama.",
+    "`git stash branch <rama> [<stash>]` vuelve al commit donde se creó el stash, crea allí la rama y aplica el stash.",
+    "`git stash branch feature/tarifas-extremas`"
+   ],
+   "explain": "`git stash branch feature/tarifas-extremas` hace tres cosas: crea la rama en el commit donde guardaste el stash (el padre `stash@{0}^1`), se cambia a ella y aplica el stash con `--index`. Como el código de esa rama es exactamente el que tenías al guardar, **no puede haber conflicto**; si todo sale bien, además borra la entrada. Luego podrás confirmar tus tarifas y, cuando corresponda, integrar `main` resolviendo el conflicto con calma (merge o rebase). Si antes intentaste `git stash pop`: el conflicto deja el stash en la lista («The stash entry is kept in case you need it again»); limpia con `git reset --hard` (descarta ese intento fallido) y luego usa `git stash branch`."
+  },
+  {
+   "id": "s10-e7",
+   "title": "Lleva el hotfix a la rama de release",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "La versión 1.0 de la tienda (rama `release/1.0`) está en producción y cobra montos con decimales. En `main` ya existe el commit **Corrige el redondeo del IVA**, pero `main` también tiene funcionalidades que aún no deben salir (el carrito y los cupones).",
+    "Lleva **solo** ese commit a `release/1.0`, dejando constancia en el mensaje de cuál era el commit original. No traigas ningún otro commit.",
+    "Empieza por mirar la historia con `git log --oneline --graph --all`."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-19 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-19 09:30'\ncommit_archivo precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return neto * (1 + IVA);\n}' 'Añade el cálculo de precio con IVA'\ngit branch release/1.0\nfecha '2026-09-19 11:00'\ncommit_archivo carrito.js 'export const carrito = [];' 'Añade el carrito de compras'\nfecha '2026-09-19 12:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}'\ngit commit -q -am 'Corrige el redondeo del IVA'\nfecha '2026-09-19 13:00'\ncommit_archivo cupones.js 'export const CUPONES = {};' 'Añade cupones de descuento'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "release/1.0 redondea el IVA",
+     "script": "contenido release/1.0 precio.js | grep -qF 'Math.round' || falla \"release/1.0 todavía no tiene el redondeo (Math.round) en precio.js\""
+    },
+    {
+     "name": "Llegó un solo commit, con el mismo mensaje",
+     "script": "[ \"$(num_commits release/1.0)\" = 3 ] || falla \"release/1.0 debería tener exactamente 3 commits (tiene $(num_commits release/1.0))\"\nmensaje_es release/1.0 'Corrige el redondeo del IVA'"
+    },
+    {
+     "name": "No se colaron el carrito ni los cupones",
+     "script": "git cat-file -e release/1.0:carrito.js 2>/dev/null && falla \"release/1.0 tiene carrito.js: solo debía llegar el arreglo\"\ngit cat-file -e release/1.0:cupones.js 2>/dev/null && falla \"release/1.0 tiene cupones.js: solo debía llegar el arreglo\"\ntrue"
+    },
+    {
+     "name": "El mensaje cita el commit original (-x)",
+     "script": "o=$(git rev-parse main~1)\ngit log -1 --format=%B release/1.0 | grep -qF \"(cherry picked from commit $o)\" || falla \"El mensaje no incluye «(cherry picked from commit …)» con el hash del original: usa -x\""
+    },
+    {
+     "name": "Sin operaciones a medias y todo limpio",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline --graph --all",
+    "git switch release/1.0",
+    "git cherry-pick -x main~1",
+    "git log -1"
+   ],
+   "hints": [
+    "Primero cámbiate a la rama que debe **recibir** el commit.",
+    "El commit que buscas es el penúltimo de `main`: puedes nombrarlo `main~1` o por su hash.",
+    "`git switch release/1.0` y luego `git cherry-pick -x main~1`."
+   ],
+   "explain": "`git cherry-pick` calcula el cambio que introdujo ese commit (su diff respecto a su padre) y lo aplica sobre `HEAD` como un commit **nuevo**: mismo mensaje y mismo autor, pero otro hash, porque cambian el padre y la fecha de confirmación. `-x` añade al mensaje la línea `(cherry picked from commit <hash completo>)`: la documentación la recomienda cuando copias desde una rama pública, para que cualquiera pueda rastrear el origen. Usar `git merge main` aquí habría sido un error: habría traído también el carrito y los cupones."
+  },
+  {
+   "id": "s10-e8",
+   "title": "Un rango de commits con -x",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "La rama `feature/boletas` tiene cuatro commits: tres que generan boletas electrónicas y un último **WIP: experimento de colores** que no debe salir. El equipo quiere las boletas en `release/2.0`.",
+    "Aplica en `release/2.0` los **tres commits de boletas**, en su orden original y con `-x`, usando **un solo** `git cherry-pick` con un rango. No traigas el experimento ni el catálogo de `main`.",
+    "Recuerda: en un rango `A..B` el commit A **no** se incluye."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-20 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit branch release/2.0\nfecha '2026-09-20 10:00'\ncommit_archivo catalogo.js 'export const productos = [];' 'Añade el catálogo'\ngit switch -q -c feature/boletas\nfecha '2026-09-20 11:00'\ncommit_archivo boleta.js 'export class Boleta {}' 'Añade el modelo de boleta'\nfecha '2026-09-20 11:30'\nanexar boleta.js 'export const IVA_BOLETA = 0.19;'\ngit commit -q -am 'Calcula el IVA de la boleta'\nfecha '2026-09-20 12:00'\ncommit_archivo boleta-pdf.js 'export function generarPdf(boleta) {}' 'Genera la boleta en PDF'\nfecha '2026-09-20 12:30'\ncommit_archivo colores.css '.boleta { color: purple; }' 'WIP: experimento de colores'\ngit switch -q main",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "release/2.0 tiene los tres commits de boletas, en orden",
+     "script": "l=$(git log -3 --reverse --format=%s release/2.0 | tr '\\n' '|')\n[ \"$l\" = \"Añade el modelo de boleta|Calcula el IVA de la boleta|Genera la boleta en PDF|\" ] || falla \"Los 3 últimos commits de release/2.0 deberían ser los de boletas en orden (son: $l)\""
+    },
+    {
+     "name": "Llegaron exactamente tres commits",
+     "script": "[ \"$(num_commits release/2.0)\" = 4 ] || falla \"release/2.0 debería tener 4 commits (tiene $(num_commits release/2.0))\""
+    },
+    {
+     "name": "Ni el experimento ni el catálogo",
+     "script": "git cat-file -e release/2.0:colores.css 2>/dev/null && falla \"Se coló el WIP de colores en release/2.0\"\ngit cat-file -e release/2.0:catalogo.js 2>/dev/null && falla \"Se coló el catálogo de main en release/2.0\"\ntrue"
+    },
+    {
+     "name": "Los tres llevan la marca de -x",
+     "script": "n=$(git log -3 --format=%B release/2.0 | grep -c '^(cherry picked from commit ')\n[ \"$n\" = 3 ] || falla \"Solo $n de los 3 commits llevan «(cherry picked from commit …)»: usa -x\""
+    },
+    {
+     "name": "Sin operaciones a medias y todo limpio",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline main..feature/boletas",
+    "git switch release/2.0",
+    "git cherry-pick -x main..feature/boletas~1",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "`git log --oneline main..feature/boletas` muestra los commits que están en `feature/boletas` y no en `main`.",
+    "El experimento es la punta de la rama; el commit anterior es `feature/boletas~1`.",
+    "Desde `release/2.0`: `git cherry-pick -x main..feature/boletas~1`."
+   ],
+   "explain": "`main..feature/boletas~1` significa «los commits alcanzables desde `feature/boletas~1` que no lo son desde `main`»: justo los tres de boletas. cherry-pick los aplica del más antiguo al más nuevo. Otras formas válidas: `git cherry-pick -x feature/boletas~3^..feature/boletas~1` (el `^` incluye el primero del rango) o nombrarlos uno a uno en orden (`git cherry-pick -x feature/boletas~3 feature/boletas~2 feature/boletas~1`). Cuidado con `feature/boletas~3..feature/boletas~1`: excluye `feature/boletas~3` y trae solo dos commits. Si el rango hubiera incluido commits que ya estaban en `release/2.0`, habrías visto el aviso de cherry-pick vacío."
+  },
+  {
+   "id": "s10-e9",
+   "title": "Backport con conflicto",
+   "level": "dificil",
+   "minutes": 14,
+   "prompt": [
+    "En `main` hay dos commits que `release/1.0` necesita: **Corrige el redondeo del IVA** y **Añade test del redondeo** (los dos últimos). Pero `main` también tiene un refactor previo («Usa la constante IVA en conIva») que **no** debe llegar a la release, así que el primer cherry-pick va a chocar.",
+    "Desde `release/1.0`, aplica esos dos commits con `-x` en **un solo** comando. Cuando se detenga por el conflicto, deja `conIva` en la release así (conserva el estilo de la release y agrega el redondeo):",
+    "```bash\nexport const IVA = 0.19;\nexport function conIva(neto) {\n  return Math.round(neto * 1.19);\n}\n```",
+    "Termina la operación para que se aplique también el segundo commit. Al final no debe quedar ningún cherry-pick a medias."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-21 09:00'\ncommit_archivo precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return neto * 1.19;\n}' 'Añade el cálculo de precio con IVA'\ngit branch release/1.0\nfecha '2026-09-21 10:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return neto * (1 + IVA);\n}'\ngit commit -q -am 'Usa la constante IVA en conIva'\nfecha '2026-09-21 11:00'\nescribir precio.js 'export const IVA = 0.19;\nexport function conIva(neto) {\n  return Math.round(neto * (1 + IVA));\n}'\ngit commit -q -am 'Corrige el redondeo del IVA'\nfecha '2026-09-21 11:30'\ncommit_archivo precio.test.js 'import { conIva } from \"./precio.js\";\nconsole.assert(conIva(990) === 1178);' 'Añade test del redondeo'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "No hay un cherry-pick a medias",
+     "script": "sin_operacion_en_curso\nsin_conflictos"
+    },
+    {
+     "name": "release/1.0 redondea sin marcadores de conflicto",
+     "script": "c=$(contenido release/1.0 precio.js)\necho \"$c\" | grep -qE '^(<<<<<<<|>>>>>>>|=======)' && falla \"precio.js en release/1.0 quedó con marcadores de conflicto\"\necho \"$c\" | grep -qF 'Math.round(' || falla \"precio.js en release/1.0 no tiene Math.round\"\ntrue"
+    },
+    {
+     "name": "Llegaron los dos commits, en orden",
+     "script": "l=$(git log -2 --reverse --format=%s release/1.0 | tr '\\n' '|')\n[ \"$l\" = \"Corrige el redondeo del IVA|Añade test del redondeo|\" ] || falla \"Los 2 últimos commits de release/1.0 deberían ser el arreglo y el test, en ese orden (son: $l)\"\n[ \"$(num_commits release/1.0)\" = 3 ] || falla \"release/1.0 debería tener 3 commits (tiene $(num_commits release/1.0))\""
+    },
+    {
+     "name": "Ambos con -x y sin el refactor",
+     "script": "n=$(git log -2 --format=%B release/1.0 | grep -c '^(cherry picked from commit ')\n[ \"$n\" = 2 ] || falla \"Solo $n de los 2 commits llevan «(cherry picked from commit …)»\"\ngit log --format=%s release/1.0 | grep -qx 'Usa la constante IVA en conIva' && falla \"El refactor no debía llegar a release/1.0\"\ntrue"
+    },
+    {
+     "name": "El test existe en release/1.0 y todo está limpio",
+     "script": "git cat-file -e release/1.0:precio.test.js 2>/dev/null || falla \"Falta precio.test.js en release/1.0: ¿terminaste la secuencia con --continue?\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git switch release/1.0",
+    "git cherry-pick -x main~1 main",
+    "git status",
+    "printf 'export const IVA = 0.19;\\nexport function conIva(neto) {\\n  return Math.round(neto * 1.19);\\n}\\n' > precio.js",
+    "git add precio.js",
+    "git cherry-pick --continue",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Puedes pasar varios commits a cherry-pick: se aplican en el orden en que los escribes (`main~1` y luego `main`).",
+    "Durante el conflicto, `git status` dice «You are currently cherry-picking commit…». Edita `precio.js` (con `code precio.js`), quita los marcadores y deja el contenido pedido.",
+    "Marca la resolución con `git add precio.js` y sigue con `git cherry-pick --continue`: aplicará también el test. Si Git abre el editor con el mensaje, guárdalo tal cual."
+   ],
+   "explain": "El arreglo cambia la línea `return neto * (1 + IVA);`, que en la release no existe (allí es `neto * 1.19`): la fusión de 3 vías no puede decidir y marca conflicto. Mientras tanto, `HEAD` sigue en el último commit bueno, `CHERRY_PICK_HEAD` apunta al commit que choca y en `.git/sequencer/` queda la lista de lo que falta. Tras resolver y hacer `git add`, `git cherry-pick --continue` crea el commit (conservando el mensaje y la línea de `-x`) y sigue con el test. Alternativas: `--skip` salta ese commit y sigue con el resto; `--abort` vuelve todo al estado previo; `--quit` deja las cosas como están y olvida la secuencia. Un pro, antes del backport, revisaría con `git cherry -v release/1.0 main` qué commits faltan realmente."
+  },
+  {
+   "id": "s10-e10",
+   "title": "Recupera commits tras un reset --hard",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "En tu blog de Git querías deshacer un cambio sin confirmar, pero escribiste `git reset --hard HEAD~3` y `main` retrocedió tres commits: `git log` ya no muestra los posts sobre ramas, stash y reflog.",
+    "Haz que `main` vuelva a apuntar al último commit que tenía (**Publica el post sobre reflog**), con sus 5 commits y sus archivos."
+   ],
+   "setup": "nuevo_repo blog\nfecha '2026-09-22 09:00'\ncommit_archivo README.md '# Blog de Git' 'Crea el blog'\nfecha '2026-09-22 10:00'\ncommit_archivo posts/01-instalar.md '# Cómo instalar Git' 'Publica el post sobre instalación'\nfecha '2026-09-22 11:00'\ncommit_archivo posts/02-ramas.md '# Ramas sin miedo' 'Publica el post sobre ramas'\nfecha '2026-09-22 12:00'\ncommit_archivo posts/03-stash.md '# El cajón del stash' 'Publica el post sobre stash'\nfecha '2026-09-22 13:00'\ncommit_archivo posts/04-reflog.md '# La caja negra de Git' 'Publica el post sobre reflog'\nfecha '2026-09-22 13:05'\ngit reset -q --hard HEAD~3",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "main vuelve a apuntar a «Publica el post sobre reflog»",
+     "script": "en_rama main\nmensaje_es main 'Publica el post sobre reflog' \"main debería volver a apuntar a «Publica el post sobre reflog» (busca ese commit en git reflog)\""
+    },
+    {
+     "name": "La historia tiene los 5 commits",
+     "script": "[ \"$(num_commits main)\" = 5 ] || falla \"main debería tener 5 commits (tiene $(num_commits main))\""
+    },
+    {
+     "name": "Los archivos volvieron y todo está limpio",
+     "script": "archivo_existe posts/04-reflog.md \"Falta posts/04-reflog.md en tu directorio\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git reflog",
+    "git reset --hard HEAD@{1}",
+    "git log --oneline"
+   ],
+   "hints": [
+    "Los commits no se borraron: solo la rama dejó de apuntarlos. ¿Qué comando lista por dónde ha pasado HEAD?",
+    "En `git reflog`, la entrada `HEAD@{0}` es el reset; la siguiente es el estado de justo antes.",
+    "`git reset --hard HEAD@{1}` (o `git reset --hard ORIG_HEAD`)."
+   ],
+   "explain": "`git reset --hard HEAD~3` solo movió el puntero `main` (y actualizó índice y directorio); los tres commits siguen en la base de objetos. El reflog lo registró: `HEAD@{0}: reset: moving to HEAD~3` y, justo debajo, `HEAD@{1}: commit: Publica el post sobre reflog`. `git reset --hard HEAD@{1}` devuelve la rama allí. También valía `git reset --hard ORIG_HEAD` (reset guarda en `ORIG_HEAD` dónde estaba HEAD antes), `git reset --hard main@{1}` o el hash que muestra el reflog. Si no estás seguro, lo más prudente es crear primero una rama de rescate: `git branch rescate HEAD@{1}`."
+  },
+  {
+   "id": "s10-e11",
+   "title": "Resucita una rama borrada",
+   "level": "medio",
+   "minutes": 9,
+   "prompt": [
+    "Ayer limpiaste ramas y, con las prisas, borraste `feature/pagos` con `git branch -D` (¡no estaba fusionada!). Después seguiste trabajando: hiciste un commit en `main`.",
+    "Vuelve a crear `feature/pagos` apuntando exactamente al commit donde estaba (**Añade la anulación del pago**), con sus tres commits. No modifiques `main`.",
+    "Como la rama ya no existe, `feature/pagos@{1}` no te sirve: busca en el reflog de HEAD."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-23 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\ngit switch -q -c feature/pagos\nfecha '2026-09-23 10:00'\ncommit_archivo pago.js 'export function iniciarPago(monto) {}' 'Crea el módulo de pago'\nfecha '2026-09-23 11:00'\nanexar pago.js 'export function confirmarPago(token) {}'\ngit commit -q -am 'Añade la confirmación del pago'\nfecha '2026-09-23 12:00'\nanexar pago.js 'export function anularPago(token) {}'\ngit commit -q -am 'Añade la anulación del pago'\ngit switch -q main\nfecha '2026-09-23 12:10'\ngit branch -q -D feature/pagos\nfecha '2026-09-23 12:30'\ncommit_archivo README.md '# Tienda Austral' 'Añade README'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "La rama feature/pagos existe",
+     "script": "rama_existe feature/pagos \"La rama feature/pagos sigue sin existir\""
+    },
+    {
+     "name": "Apunta a «Añade la anulación del pago»",
+     "script": "mensaje_es feature/pagos 'Añade la anulación del pago' \"feature/pagos debería apuntar a «Añade la anulación del pago» (apunta a «$(mensaje feature/pagos)»)\""
+    },
+    {
+     "name": "Tiene sus tres commits propios",
+     "script": "[ \"$(git rev-list --count main..feature/pagos)\" = 3 ] || falla \"feature/pagos debería tener 3 commits que no están en main\""
+    },
+    {
+     "name": "main no cambió",
+     "script": "mensaje_es main 'Añade README' \"main no debería cambiar\"\n[ \"$(num_commits main)\" = 2 ] || falla \"main debería seguir con 2 commits\""
+    }
+   ],
+   "solution": [
+    "git reflog",
+    "git branch feature/pagos HEAD@{2}",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "En `git reflog` busca la entrada `checkout: moving from feature/pagos to main`: la entrada que está justo **debajo** es la punta de la rama cuando la dejaste.",
+    "Crear una rama en un commit concreto: `git branch <nombre> <commit>`.",
+    "`git branch feature/pagos HEAD@{2}` (compruébalo antes con `git show HEAD@{2}`)."
+   ],
+   "explain": "Al borrar una rama, Git también borra **su** reflog (por eso `feature/pagos@{1}` no existe), pero el reflog de **HEAD** conserva todo lo que hiciste mientras estabas en ella. La entrada `HEAD@{1}: checkout: moving from feature/pagos to main` indica que saliste de la rama; `HEAD@{2}` es su último commit. `git branch feature/pagos HEAD@{2}` la recrea sin tocar tu directorio. También podías usar el hash que muestra el reflog, o el que imprimió el propio borrado: `Deleted branch feature/pagos (was 1a2b3c4).`. Si la rama estaba publicada, otra vía es `origin/feature/pagos`."
+  },
+  {
+   "id": "s10-e12",
+   "title": "Deshaz un rebase desastroso",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "En la API, la rama `feature/cache` tenía dos commits tuyos («Activa la caché» y «Sube el timeout para la caché»). Para ponerla al día hiciste `git rebase -X ours main`, creyendo que *ours* era tu rama… pero **en un rebase «ours» es la rama base**. Git dijo «Successfully rebased» y tus dos commits desaparecieron: sus cambios se descartaron.",
+    "Para empeorar las cosas, después hiciste un commit nuevo encima: **Añade tests de la caché**.",
+    "Deja `feature/cache` como estaba **antes del rebase** (partiendo de «Crea la configuración», con tus dos commits) y con el commit de tests **encima**. No toques `main`."
+   ],
+   "setup": "nuevo_repo api\nfecha '2026-09-24 09:00'\ncommit_archivo config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 30;' 'Crea la configuración'\ngit switch -q -c feature/cache\nfecha '2026-09-24 10:00'\nescribir config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 30;\nexport const CACHE = true;'\ngit commit -q -am 'Activa la caché'\nfecha '2026-09-24 11:00'\nescribir config.js 'export const PUERTO = 3000;\nexport const TIMEOUT = 60;\nexport const CACHE = true;'\ngit commit -q -am 'Sube el timeout para la caché'\ngit switch -q main\nautor 'Diego Soto' 'diego@ejemplo.cl'\nfecha '2026-09-24 12:00'\nescribir config.js 'export const PUERTO = 8080;\nexport const TIMEOUT = 45;'\ngit commit -q -am 'Cambia puerto y timeout para producción'\nyo\ngit switch -q feature/cache\nfecha '2026-09-24 12:30'\ngit rebase -q -X ours main >/dev/null 2>&1\nfecha '2026-09-24 13:00'\ncommit_archivo cache.test.js 'console.assert(CACHE === true);' 'Añade tests de la caché'",
+   "cwd": "api",
+   "checks": [
+    {
+     "name": "Nada a medias y en feature/cache",
+     "script": "sin_operacion_en_curso\nen_rama feature/cache"
+    },
+    {
+     "name": "La historia de feature/cache es la original + tests",
+     "script": "l=$(git log --reverse --format=%s feature/cache | tr '\\n' '|')\n[ \"$l\" = \"Crea la configuración|Activa la caché|Sube el timeout para la caché|Añade tests de la caché|\" ] || falla \"La historia de feature/cache debería ser: Crea la configuración, Activa la caché, Sube el timeout, Añade tests (es: $l)\""
+    },
+    {
+     "name": "config.js tiene tu caché y tu timeout",
+     "script": "c=$(contenido feature/cache config.js)\necho \"$c\" | grep -qF 'CACHE = true' || falla \"config.js no tiene CACHE = true\"\necho \"$c\" | grep -qF 'TIMEOUT = 60' || falla \"config.js no tiene tu TIMEOUT = 60\"\necho \"$c\" | grep -qF 'PUERTO = 3000' || falla \"config.js debería tener el PUERTO = 3000 de antes del rebase\""
+    },
+    {
+     "name": "Los tests siguen ahí",
+     "script": "git cat-file -e feature/cache:cache.test.js 2>/dev/null || falla \"Perdiste cache.test.js: el commit de tests debe quedar encima\""
+    },
+    {
+     "name": "El rebase quedó deshecho y main intacto",
+     "script": "ancestro main feature/cache && falla \"feature/cache todavía contiene el commit de main: vuelve al estado previo al rebase\"\nmensaje_es main 'Cambia puerto y timeout para producción' \"main no debería cambiar\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git reflog show feature/cache",
+    "git reset --hard feature/cache@{2}",
+    "git cherry-pick feature/cache@{1}",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "`git reflog show feature/cache` lista solo los movimientos de esta rama. Busca la entrada `rebase (finish)`: la de **debajo** es la rama antes del rebase.",
+    "Primero devuelve la rama a ese estado con `git reset --hard …`. Luego el commit de tests aparecerá en el reflog de la rama como `feature/cache@{1}`: tráelo con cherry-pick.",
+    "`git reset --hard feature/cache@{2}` y después `git cherry-pick feature/cache@{1}`."
+   ],
+   "explain": "En un rebase los papeles se invierten: Git se sitúa en `main` y reaplica tus commits encima, así que *ours* es la base (`main`) y *theirs* son tus commits. Con `-X ours` cada choque se resolvió a favor de `main`, tus commits quedaron vacíos y Git los descartó («patch contents already upstream»). El reflog de la rama cuenta la historia: `feature/cache@{0}` el commit de tests, `@{1}` el `rebase (finish)` y `@{2}` tu último commit previo. `git reset --hard feature/cache@{2}` devuelve la rama a ese punto; tras el reset, el commit de tests es `feature/cache@{1}` y `git cherry-pick` lo copia encima. Alternativa equivalente: `git reset --hard ORIG_HEAD` (el rebase guardó ahí la punta anterior y el commit posterior no lo cambia) y `git cherry-pick HEAD@{1}`. Lección profesional: antes de un rebase delicado, `git branch respaldo`; y si luego quieres ponerte al día con `main`, repite el rebase **sin** `-X ours` y resuelve los conflictos a mano."
+  },
+  {
+   "id": "s10-e13",
+   "title": "Recupera un stash eliminado",
+   "level": "dificil",
+   "minutes": 14,
+   "prompt": [
+    "Anoche guardaste en el stash el banner del **Cyber Day** (cambios en `index.html` y `estilos.css`) y hoy, en vez de `git stash pop`, escribiste `git stash drop`. `git stash list` está vacío. Encima, más temprano habías preparado con `git add` un archivo `borrador.txt` que se perdió con un `git reset --hard`.",
+    "El reflog no te ayuda: los stashes borrados y los archivos que nunca se confirmaron no aparecen en él. Usa `git fsck` para encontrar los objetos colgantes y:",
+    "1. Vuelve a aplicar en tu directorio los cambios del stash del Cyber Day (sin confirmarlos).\n2. Recupera el contenido de `borrador.txt` en un archivo `borrador.txt` en la raíz del proyecto.",
+    "Pista: identifica cada objeto con `git show` antes de usarlo; en esta terminal puedes usar `cat` con comodines, por ejemplo `cat .git/lost-found/other/*`."
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Alumno' 'alumno@cuaderno.local'\nfecha '2026-09-10 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Primer commit'\nfecha '2026-09-10 10:00'\ncommit_archivo estilos.css 'body { margin: 0; }' 'Añade estilos base'\nfecha '2026-09-10 11:00'\nescribir borrador.txt 'Ideas para el Cyber Day: banner rojo, 30% de descuento en despacho'\ngit add borrador.txt\ngit reset -q --hard\nfecha '2026-09-10 18:30'\nescribir estilos.css 'body { margin: 0; }\n.oferta { color: red; font-weight: bold; }'\nanexar index.html '<div class=\"oferta\">Cyber Day: 30% dcto.</div>'\ngit stash push -q -m 'Banner del Cyber Day'\ngit stash drop -q\nyo",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "index.html tiene el banner del Cyber Day",
+     "script": "archivo_tiene index.html 'Cyber Day: 30% dcto.' \"index.html no tiene el banner: aplica el stash recuperado\""
+    },
+    {
+     "name": "estilos.css tiene la clase .oferta",
+     "script": "archivo_tiene estilos.css '.oferta { color: red' \"estilos.css no tiene la clase .oferta del stash\""
+    },
+    {
+     "name": "borrador.txt recuperado",
+     "script": "archivo_tiene borrador.txt 'Ideas para el Cyber Day' \"borrador.txt no existe o no tiene el texto original (búscalo entre los blobs colgantes)\""
+    },
+    {
+     "name": "Sin commits nuevos ni conflictos",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"No confirmes: main debería seguir con 2 commits\"\nsin_conflictos"
+    }
+   ],
+   "solution": [
+    "git stash list",
+    "git fsck --lost-found",
+    "git show -s 9a2ac18",
+    "git stash apply 9a2ac18",
+    "cat .git/lost-found/other/*",
+    "cat .git/lost-found/other/* > borrador.txt",
+    "git status -s"
+   ],
+   "hints": [
+    "`git fsck --lost-found` lista los objetos colgantes (`dangling commit …`, `dangling blob …`) y los anota en `.git/lost-found/`.",
+    "El commit colgante del stash tiene dos padres y el mensaje `On main: Banner del Cyber Day` (compruébalo con `git show -s <hash>`). `git stash apply` acepta ese hash.",
+    "Los blobs se guardan en `.git/lost-found/other/` con su contenido: `cat .git/lost-found/other/* > borrador.txt`."
+   ],
+   "explain": "`git stash drop` borra la entrada del reflog de `refs/stash`; el commit del stash sigue en la base de objetos, pero ya nada lo apunta: es un **commit colgante** (*dangling*). `git fsck` lo detecta, y `--lost-found` además lo anota en `.git/lost-found/commit/<hash>` (y escribe el **contenido** de cada blob colgante en `.git/lost-found/other/`). `git stash apply <hash>` aplica cualquier commit con forma de stash; otra opción es devolverlo a la lista con `git stash store -m \"Banner del Cyber Day\" <hash>`. El `borrador.txt` se salvó porque `git add` ya había guardado su contenido como blob; lo que nunca pasa por `git add` no existe para Git. Como el escenario es reproducible, tu hash es el mismo de la solución; en un repositorio real será otro. La documentación de `git stash` propone, en una terminal normal, `git fsck --unreachable | grep commit | cut -d' ' -f3 | xargs git log --merges --no-walk --grep=WIP` para listar stashes perdidos."
+  },
+  {
+   "id": "s10-e14",
+   "title": "Proyecto: rescate de un día caótico",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Son las 18:00 y repasas el desastre del día en la tienda. Estás en `feature/newsletter` con trabajo **sin confirmar** (un cambio en `newsletter.js` y un archivo nuevo `plantilla.html`). Durante el día pasó todo esto:",
+    "- Hiciste el arreglo **Corrige la validación del RUT con dígito K** en `feature/newsletter`… pero debía ir a `main`.\n- En `main` hiciste `git reset --hard HEAD~2` por error y desaparecieron **Añade la página de contacto** y **Añade el mapa de sucursales**.\n- Borraste con `git branch -D` la rama `feature/despacho`, que tenía dos commits sin fusionar.",
+    "Deja todo en orden:",
+    "1. `feature/despacho` debe volver a existir, apuntando a **Calcula el despacho a regiones**.\n2. `main` debe recuperar sus dos commits perdidos y, encima, tener el arreglo del RUT (una sola vez).\n3. `feature/newsletter` ya no debe contener el arreglo: su punta debe ser **Añade el formulario de newsletter** (la rama es local, nunca se publicó).\n4. Termina en `feature/newsletter` con tu trabajo a medias restaurado, sin confirmar, y con la pila del stash vacía.",
+    "Consejo: antes de mover nada, lee con calma `git reflog` y `git reflog show main`."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-26 09:00'\ncommit_archivo index.html '<h1>Tienda Austral</h1>' 'Crea la página principal'\nfecha '2026-09-26 09:15'\ncommit_archivo rut.js 'export function validarRut(rut) {\n  return /^[0-9]{7,8}-[0-9]$/.test(rut);\n}' 'Añade la validación del RUT'\ngit switch -q -c feature/despacho\nfecha '2026-09-26 10:00'\ncommit_archivo despacho.js 'export const TARIFA_BASE = 3990;' 'Añade tarifas de despacho'\nfecha '2026-09-26 10:30'\nanexar despacho.js 'export const TARIFA_REGIONES = 6990;'\ngit commit -q -am 'Calcula el despacho a regiones'\ngit switch -q main\nfecha '2026-09-26 11:00'\ncommit_archivo contacto.html '<h2>Contacto</h2>' 'Añade la página de contacto'\nfecha '2026-09-26 11:30'\ncommit_archivo sucursales.html '<h2>Nuestras sucursales</h2>' 'Añade el mapa de sucursales'\ngit switch -q -c feature/newsletter\nfecha '2026-09-26 12:00'\ncommit_archivo newsletter.js 'export function suscribir(email) {}' 'Añade el formulario de newsletter'\nfecha '2026-09-26 12:30'\nescribir rut.js 'export function validarRut(rut) {\n  return /^[0-9]{7,8}-[0-9kK]$/.test(rut);\n}'\ngit commit -q -am 'Corrige la validación del RUT con dígito K'\ngit switch -q main\nfecha '2026-09-26 13:00'\ngit reset -q --hard HEAD~2\ngit branch -q -D feature/despacho\ngit switch -q feature/newsletter\nfecha '2026-09-26 17:30'\nanexar newsletter.js 'export function desuscribir(email) {}'\nescribir plantilla.html '<p>¡Gracias por suscribirte a Tienda Austral!</p>'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "feature/despacho resucitó con sus dos commits",
+     "script": "rama_existe feature/despacho \"La rama feature/despacho sigue sin existir\"\nmensaje_es feature/despacho 'Calcula el despacho a regiones' \"feature/despacho debería apuntar a «Calcula el despacho a regiones»\"\ngit log --format=%s feature/despacho | grep -qx 'Añade tarifas de despacho' || falla \"feature/despacho debería incluir «Añade tarifas de despacho»\""
+    },
+    {
+     "name": "main recuperó contacto y sucursales",
+     "script": "git cat-file -e main:contacto.html 2>/dev/null || falla \"main no tiene contacto.html: recupera los commits perdidos por el reset\"\ngit cat-file -e main:sucursales.html 2>/dev/null || falla \"main no tiene sucursales.html: recupera los commits perdidos por el reset\"\ngit log --format=%s main | grep -qx 'Añade el mapa de sucursales' || falla \"main debería contener el commit «Añade el mapa de sucursales»\""
+    },
+    {
+     "name": "El arreglo del RUT está en main, una sola vez",
+     "script": "contenido main rut.js | grep -qF '[0-9kK]' || falla \"rut.js en main todavía no acepta el dígito K\"\nn=$(git log --format=%s main | grep -c '^Corrige la validación del RUT')\n[ \"$n\" = 1 ] || falla \"El arreglo del RUT debería aparecer exactamente 1 vez en main (aparece $n)\""
+    },
+    {
+     "name": "feature/newsletter ya no tiene el arreglo",
+     "script": "mensaje_es feature/newsletter 'Añade el formulario de newsletter' \"La punta de feature/newsletter debería ser «Añade el formulario de newsletter»\"\ncontenido feature/newsletter rut.js | grep -qF 'kK' && falla \"feature/newsletter todavía contiene el arreglo del RUT\"\ntrue"
+    },
+    {
+     "name": "Tu trabajo a medias volvió a feature/newsletter",
+     "script": "en_rama feature/newsletter\narchivo_tiene newsletter.js 'desuscribir' \"newsletter.js no tiene tu función desuscribir: recupera el stash\"\narchivo_existe plantilla.html \"Falta plantilla.html (¿lo guardaste con -u?)\"\ngit diff --quiet HEAD -- newsletter.js && falla \"newsletter.js debería tener cambios sin confirmar\"\n[ -z \"$(git stash list)\" ] || falla \"La pila del stash debería quedar vacía\"\ntrue"
+    },
+    {
+     "name": "Sin operaciones a medias ni conflictos",
+     "script": "sin_operacion_en_curso\nsin_conflictos"
+    }
+   ],
+   "solution": [
+    "git reflog",
+    "git branch feature/despacho HEAD@{9}",
+    "git stash push -u -m \"newsletter a medias\"",
+    "git switch main",
+    "git reflog show main",
+    "git reset --hard main@{1}",
+    "git cherry-pick -x feature/newsletter",
+    "git switch feature/newsletter",
+    "git reset --hard HEAD~1",
+    "git stash pop",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Orden sugerido: 1) rescata la rama borrada (no toca tu directorio); 2) guarda tu trabajo a medias con `git stash push -u`; 3) arregla `main`; 4) limpia `feature/newsletter`; 5) `git stash pop`.",
+    "En `git reflog`, la entrada `checkout: moving from feature/despacho to main` marca cuándo saliste de esa rama: la de debajo es su punta. Para `main`, `git reflog show main` muestra el reset como `main@{0}` y el estado previo como `main@{1}`.",
+    "Con `main` recuperado, `git cherry-pick -x feature/newsletter` trae el arreglo (es la punta de esa rama). Luego, en `feature/newsletter`, `git reset --hard HEAD~1` lo quita (es seguro porque tu trabajo está en el stash)."
+   ],
+   "explain": "Cada herramienta resuelve una parte: el **reflog de HEAD** recuerda la punta de la rama borrada (`git branch feature/despacho HEAD@{9}` en el momento de empezar; el número depende de cuántas operaciones hayas hecho antes); el **reflog de la rama** (`main@{1}`) recuerda dónde estaba `main` antes del reset, sin importar cuántas veces cambies de rama; **cherry-pick** copia el arreglo a su rama correcta, y un `reset --hard HEAD~1` lo saca de la equivocada (solo porque esa rama nunca se publicó: si ya estuviera en el servidor usarías `git revert`). El **stash** protege tu trabajo a medias durante todo el proceso: por eso se guarda primero y se recupera al final. El orden importa: si haces el `reset --hard` antes de guardar el stash, pierdes el trabajo sin confirmar, y eso ni el reflog lo recupera."
+  },
+  {
+   "id": "s10-e15",
+   "title": "Proyecto: backport de un parche de seguridad a dos versiones",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "En el módulo de pagos se detectó que `cobrar()` acepta montos negativos. En `main` ya están los dos commits del parche: **Rechaza montos no positivos** y **Añade test de montos negativos** (los dos últimos). Hay que llevarlos a las dos versiones en soporte. Estás en `main` con trabajo a medias en `reembolso.js`.",
+    "1. Guarda tu trabajo a medias antes de cambiar de rama.\n2. **release/2.x**: aplica los dos commits por separado, con `-x`, en un solo `git cherry-pick`. Habrá un conflicto porque 2.x tiene un hotfix propio que informa la moneda; resuélvelo dejando `cobro.js` así:",
+    "```bash\nexport function cobrar(monto) {\n  if (monto <= 0) throw new Error(\"Monto inválido\");\n  return { estado: \"ok\", monto, moneda: \"CLP\" };\n}\n```",
+    "3. **release/1.x**: la política del equipo es un único commit por backport. Aplica los dos cambios **sin confirmar** y crea un solo commit con el mensaje **Backport: rechaza montos no positivos**.\n4. Vuelve a `main` y recupera tu trabajo a medias; la pila del stash debe quedar vacía."
+   ],
+   "setup": "nuevo_repo pagos\nfecha '2026-09-25 09:00'\ncommit_archivo cobro.js 'export function cobrar(monto) {\n  return { estado: \"ok\", monto };\n}' 'Crea el módulo de cobro'\ngit branch release/1.x\nfecha '2026-09-25 10:00'\ncommit_archivo reembolso.js 'export function reembolsar(id) {}' 'Añade reembolsos'\ngit branch release/2.x\ngit switch -q release/2.x\nautor 'Camila Rojas' 'camila@tiendaaustral.cl'\nfecha '2026-09-25 11:00'\nescribir cobro.js 'export function cobrar(monto) {\n  return { estado: \"ok\", monto, moneda: \"CLP\" };\n}'\ngit commit -q -am 'Hotfix 2.x: informa la moneda del cobro'\nyo\ngit switch -q main\nfecha '2026-09-25 12:00'\nescribir cobro.js 'export function cobrar(monto) {\n  if (monto <= 0) throw new Error(\"Monto inválido\");\n  return { estado: \"ok\", monto };\n}'\ngit commit -q -am 'Rechaza montos no positivos'\nfecha '2026-09-25 12:30'\ncommit_archivo cobro.test.js 'import { cobrar } from \"./cobro.js\";\ntry { cobrar(-500); console.assert(false); } catch (e) { console.assert(e.message === \"Monto inválido\"); }' 'Añade test de montos negativos'\nanexar reembolso.js '// TODO: reporte mensual de reembolsos'",
+   "cwd": "pagos",
+   "checks": [
+    {
+     "name": "release/2.x recibió los dos commits con -x",
+     "script": "l=$(git log -2 --reverse --format=%s release/2.x | tr '\\n' '|')\n[ \"$l\" = \"Rechaza montos no positivos|Añade test de montos negativos|\" ] || falla \"Los 2 últimos commits de release/2.x deberían ser el parche y el test, en orden (son: $l)\"\na=$(git rev-parse main~1); b=$(git rev-parse main)\ngit log -1 --format=%B release/2.x~1 | grep -qF \"(cherry picked from commit $a)\" || falla \"El commit del parche en release/2.x no cita su original con -x\"\ngit log -1 --format=%B release/2.x | grep -qF \"(cherry picked from commit $b)\" || falla \"El commit del test en release/2.x no cita su original con -x\""
+    },
+    {
+     "name": "release/2.x valida el monto y conserva la moneda",
+     "script": "c=$(contenido release/2.x cobro.js)\necho \"$c\" | grep -qE '^(<<<<<<<|>>>>>>>)' && falla \"cobro.js en release/2.x quedó con marcadores de conflicto\"\necho \"$c\" | grep -qF 'monto <= 0' || falla \"cobro.js en release/2.x no valida el monto\"\necho \"$c\" | grep -qF 'moneda: \"CLP\"' || falla \"cobro.js en release/2.x perdió la moneda (CLP) de su hotfix\"\ntrue"
+    },
+    {
+     "name": "release/1.x tiene un único commit de backport",
+     "script": "[ \"$(num_commits release/1.x)\" = 2 ] || falla \"release/1.x debería tener exactamente un commit nuevo (tiene $(num_commits release/1.x) commits)\"\nmensaje_es release/1.x 'Backport: rechaza montos no positivos'"
+    },
+    {
+     "name": "El backport de 1.x trae validación y test, nada más",
+     "script": "contenido release/1.x cobro.js | grep -qF 'monto <= 0' || falla \"cobro.js en release/1.x no valida el monto\"\ngit cat-file -e release/1.x:cobro.test.js 2>/dev/null || falla \"Falta cobro.test.js en release/1.x\"\ngit cat-file -e release/1.x:reembolso.js 2>/dev/null && falla \"Se coló reembolso.js en release/1.x\"\ntrue"
+    },
+    {
+     "name": "De vuelta en main con tu trabajo a medias",
+     "script": "en_rama main\nmensaje_es main 'Añade test de montos negativos' \"main no debería cambiar\"\narchivo_tiene reembolso.js 'TODO: reporte mensual' \"reembolso.js no tiene tu trabajo a medias: recupera el stash\"\n[ -z \"$(git stash list)\" ] || falla \"La pila del stash debería quedar vacía\""
+    },
+    {
+     "name": "Sin operaciones a medias ni conflictos",
+     "script": "sin_operacion_en_curso\nsin_conflictos"
+    }
+   ],
+   "solution": [
+    "git stash push -m \"reporte de reembolsos a medias\"",
+    "git switch release/2.x",
+    "git cherry-pick -x main~1 main",
+    "printf 'export function cobrar(monto) {\\n  if (monto <= 0) throw new Error(\"Monto inválido\");\\n  return { estado: \"ok\", monto, moneda: \"CLP\" };\\n}\\n' > cobro.js",
+    "git add cobro.js",
+    "git cherry-pick --continue",
+    "git switch release/1.x",
+    "git cherry-pick -n main~1 main",
+    "git status -s",
+    "git commit -m \"Backport: rechaza montos no positivos\"",
+    "git switch main",
+    "git stash pop",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Paso 1: `git stash push -m \"…\"` (aquí no hay archivos nuevos, no hace falta `-u`).",
+    "En release/2.x: `git cherry-pick -x main~1 main`; resuelve `cobro.js`, `git add cobro.js` y `git cherry-pick --continue`.",
+    "En release/1.x: `git cherry-pick -n main~1 main` deja ambos cambios preparados sin confirmar; después un `git commit -m \"Backport: rechaza montos no positivos\"`."
+   ],
+   "explain": "Es un backport real en miniatura. En 2.x, `-x` deja trazabilidad commit a commit y el conflicto aparece porque el parche toca la línea contigua a la que cambió el hotfix de 2.x; la resolución combina ambas intenciones. En 1.x, `-n` (`--no-commit`) aplica los cambios de los dos commits al índice y al directorio sin crear commits, y tú los confirmas juntos (si quieres trazabilidad también ahí, menciona los hashes originales en el cuerpo del mensaje). El stash del principio es obligatorio: `reembolso.js` no existe en release/1.x y Git se negaría a cambiar de rama con ese archivo modificado. Antes de un backport, un profesional revisa con `git cherry -v release/2.x main` qué commits de `main` todavía no tienen equivalente en la release."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué hace `git stash push`?",
+   "back": "Guarda los cambios sin confirmar (índice y directorio de trabajo, archivos rastreados) como commits especiales en `refs/stash` y deja tu copia como en `HEAD`."
+  },
+  {
+   "front": "¿Qué NO guarda `git stash` por defecto?",
+   "back": "Los archivos sin seguimiento (necesitas `-u`) y los ignorados (necesitas `-a`)."
+  },
+  {
+   "front": "`git stash -u` frente a `git stash -a`",
+   "back": "`-u` (`--include-untracked`) añade los archivos sin seguimiento; `-a` (`--all`) añade además los ignorados (`node_modules/`, `.env`…)."
+  },
+  {
+   "front": "`git stash pop` frente a `git stash apply`",
+   "back": "Los dos aplican el stash; `pop` además lo borra de la lista si no hubo conflictos. `apply` lo conserva."
+  },
+  {
+   "front": "`git stash pop` termina con conflicto. ¿Qué pasa con la entrada?",
+   "back": "Se conserva («The stash entry is kept in case you need it again»). Resuelves, haces `git add` (o `git restore --staged`) y la borras con `git stash drop`."
+  },
+  {
+   "front": "¿Cómo ves el diff completo del segundo stash más reciente?",
+   "back": "`git stash show -p stash@{1}` (o `git stash show -p 1`). Sin `-p` muestra solo el resumen de archivos."
+  },
+  {
+   "front": "`--staged` frente a `--keep-index`",
+   "back": "`--staged` (Git 2.35) guarda solo lo preparado. `--keep-index` guarda todo, pero deja lo preparado en tu índice y directorio."
+  },
+  {
+   "front": "¿Para qué sirve `git stash branch <rama>`?",
+   "back": "Crea la rama en el commit donde se creó el stash, se cambia a ella y aplica el stash (con índice). Evita conflictos cuando la rama original avanzó mucho."
+  },
+  {
+   "front": "¿Qué es `stash@{2}`?",
+   "back": "La tercera entrada más reciente de la pila del stash, es decir, la entrada 2 del reflog de `refs/stash`."
+  },
+  {
+   "front": "¿Qué hace `git cherry-pick <commit>` por dentro?",
+   "back": "Calcula el cambio que introdujo el commit respecto a su padre y lo aplica sobre `HEAD` con una fusión de 3 vías, creando un commit nuevo (otro hash, mismo mensaje y autor)."
+  },
+  {
+   "front": "`git cherry-pick A..B` frente a `A^..B`",
+   "back": "`A..B` excluye A (aplica desde su hijo hasta B). `A^..B` incluye A."
+  },
+  {
+   "front": "¿Qué añade `git cherry-pick -x`?",
+   "back": "La línea `(cherry picked from commit <hash completo>)` al final del mensaje. Recomendado al copiar entre ramas públicas."
+  },
+  {
+   "front": "¿Para qué sirve `git cherry-pick -n`?",
+   "back": "`--no-commit`: aplica los cambios al índice y al directorio sin crear commits; útil para juntar varios commits en uno."
+  },
+  {
+   "front": "Conflicto en un cherry-pick: ¿cuáles son tus opciones?",
+   "back": "Resolver + `git add` + `git cherry-pick --continue`; `--skip` para saltar ese commit; `--abort` para volver al inicio; `--quit` para olvidar la secuencia dejando todo como está."
+  },
+  {
+   "front": "¿Qué muestra `git cherry -v destino origen`?",
+   "back": "Los commits de `origen` que no están en `destino`: `+` si falta su cambio y `-` si ya existe un equivalente (mismo patch-id)."
+  },
+  {
+   "front": "¿Qué es el reflog?",
+   "back": "El registro local de los valores que tuvieron HEAD y cada rama, con la operación que los cambió. Se consulta con `git reflog`."
+  },
+  {
+   "front": "`HEAD@{1}` frente a `main@{1}`",
+   "back": "`HEAD@{1}`: dónde estaba HEAD un movimiento atrás (cuenta los cambios de rama). `main@{1}`: el valor anterior de `main`, sin importar a qué rama cambies."
+  },
+  {
+   "front": "¿Qué significa `@{-1}`?",
+   "back": "La rama (o commit) en la que estabas antes de la actual. `git switch -` usa exactamente eso."
+  },
+  {
+   "front": "¿Qué es `ORIG_HEAD`?",
+   "back": "Una referencia que `reset`, `merge`, `rebase` y `am` crean con la posición de HEAD antes de actuar. `git reset --hard ORIG_HEAD` deshace la operación recién hecha."
+  },
+  {
+   "front": "Borraste una rama con `git branch -D`. ¿Cómo la recuperas?",
+   "back": "Busca en `git reflog` la entrada `checkout: moving from <rama> to …`; la de debajo es su punta: `git branch <rama> HEAD@{n}`. O usa el hash de «Deleted branch … (was abc1234)»."
+  },
+  {
+   "front": "¿Cómo deshaces un rebase que salió mal?",
+   "back": "`git reset --hard <rama>@{1}` (la rama justo antes del rebase) o `git reset --hard ORIG_HEAD` si no hiciste otro reset/merge/rebase después."
+  },
+  {
+   "front": "¿Cuánto duran las entradas del reflog?",
+   "back": "Por defecto 90 días (`gc.reflogExpire`) y 30 si apuntan a commits ya inalcanzables (`gc.reflogExpireUnreachable`). Caducan cuando corre `git gc`."
+  },
+  {
+   "front": "Objeto colgante (*dangling*) frente a inalcanzable (*unreachable*)",
+   "back": "Inalcanzable: no se llega a él desde ninguna referencia. Colgante: además, nada lo usa directamente (es la punta de lo perdido). Todo colgante es inalcanzable."
+  },
+  {
+   "front": "¿Qué hace `git fsck --lost-found`?",
+   "back": "Busca objetos colgantes (ignorando los reflogs) y los anota en `.git/lost-found/commit/` (commits) y `.git/lost-found/other/` (el resto; de cada blob escribe directamente su contenido)."
+  },
+  {
+   "front": "¿Cómo recuperas un stash borrado con `drop`?",
+   "back": "`git fsck` → busca el `dangling commit` con mensaje «On …»/«WIP on …» → `git stash apply <hash>` o `git stash store -m \"…\" <hash>`."
+  },
+  {
+   "front": "¿Qué es imposible de recuperar con Git?",
+   "back": "Los cambios que nunca pasaron por `git add`, un commit o un stash, y los objetos que `git gc` ya eliminó."
+  },
+  {
+   "front": "¿Cuál es el «punto de no retorno»?",
+   "back": "`git reflog expire --expire=now --all` seguido de `git gc --prune=now`: elimina de inmediato todo lo inalcanzable."
+  },
+  {
+   "front": "¿De qué es atajo `git reflog`?",
+   "back": "De `git log -g --abbrev-commit --pretty=oneline`; por eso admite opciones de `git log` como `--date=iso`."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s10-q1",
+   "type": "single",
+   "q": "Tienes cambios sin confirmar en `index.html` (rastreado) y un archivo nuevo `notas.txt` sin seguimiento. Ejecutas `git stash`. ¿Qué muestra después `git status -s`?",
+   "options": [
+    "Nada: el directorio queda limpio",
+    "`?? notas.txt`",
+    "` M index.html` y `?? notas.txt`",
+    "Un error: no se puede hacer stash con archivos sin seguimiento"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Por defecto `git stash` solo guarda archivos rastreados: `index.html` se guarda y vuelve a su versión de `HEAD`, pero `notas.txt` se queda donde está. Para llevártelo necesitas `git stash -u`. No hay ningún error."
+  },
+  {
+   "id": "s10-q2",
+   "type": "single",
+   "q": "¿Cuál es la diferencia entre `git stash pop` y `git stash apply`?",
+   "options": [
+    "`pop` aplica el stash más antiguo y `apply` el más reciente",
+    "`pop` aplica y además borra la entrada si no hubo conflictos; `apply` aplica y la conserva",
+    "`apply` también restaura el índice y `pop` no",
+    "Ninguna: son sinónimos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Ambos aplican por defecto `stash@{0}`, el más reciente. `pop` equivale a `apply` + `drop`, pero solo borra si la aplicación fue limpia. Ninguno restaura el índice salvo que añadas `--index`."
+  },
+  {
+   "id": "s10-q3",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre `git stash`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git stash` sin argumentos equivale a `git stash push`.",
+     "answer": true
+    },
+    {
+     "text": "Los stashes se envían al remoto con `git push`.",
+     "answer": false
+    },
+    {
+     "text": "`stash@{0}` es siempre el stash más reciente.",
+     "answer": true
+    },
+    {
+     "text": "`git stash -a` guarda también los archivos ignorados.",
+     "answer": true
+    }
+   ],
+   "explain": "`git stash` a secas es `git stash push`. `refs/stash` es local: no se publica ni se clona. La pila se numera desde el más reciente (`stash@{0}`). `-a` (`--all`) incluye los archivos ignorados; `-u` solo los sin seguimiento."
+  },
+  {
+   "id": "s10-q4",
+   "type": "single",
+   "q": "Ejecutas `git stash pop` y aparece:\n```bash\nCONFLICT (content): Merge conflict in precio.js\nThe stash entry is kept in case you need it again.\n```\n¿Qué debes hacer cuando termines de resolver el conflicto?",
+   "options": [
+    "Nada: Git borrará el stash solo al hacer `git add`",
+    "`git stash drop` para eliminar la entrada, que sigue en la lista",
+    "`git stash pop --continue`",
+    "`git merge --abort`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Si `pop` choca, la entrada se conserva. Resuelves, marcas con `git add` (o `git restore --staged` si no quieres dejarlo preparado) y la borras tú con `git stash drop`. `git stash pop --continue` no existe y no hay un merge en curso que abortar."
+  },
+  {
+   "id": "s10-q5",
+   "type": "single",
+   "q": "`git stash list` muestra tres entradas. Ejecutas `git stash drop stash@{1}`. ¿Cómo se llama ahora la entrada que antes era `stash@{2}`?",
+   "options": [
+    "`stash@{2}` (no cambia)",
+    "`stash@{1}`",
+    "`stash@{0}`",
+    "Desaparece también"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La pila es un reflog: al borrar una entrada, las más antiguas se renumeran. La que era `stash@{2}` pasa a ser `stash@{1}`. Por eso conviene volver a mirar `git stash list` antes de otro `drop` con número."
+  },
+  {
+   "id": "s10-q6",
+   "type": "single",
+   "q": "Quieres ejecutar los tests solo con lo que vas a confirmar (lo preparado), apartando temporalmente lo demás. ¿Qué comando usas?",
+   "options": [
+    "`git stash push --staged`",
+    "`git stash push --keep-index`",
+    "`git stash push -u`",
+    "`git stash push --index`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--keep-index` guarda todo en el stash pero deja lo preparado en tu índice y en tu directorio, así pruebas exactamente lo que vas a confirmar. `--staged` hace lo contrario: se lleva lo preparado. `-u` añade los archivos sin seguimiento y `--index` es una opción de `apply`/`pop`, no de `push`."
+  },
+  {
+   "id": "s10-q7",
+   "type": "single",
+   "q": "¿Qué comando guarda en el stash **solo** los cambios que están en el área de preparación?",
+   "options": [
+    "`git stash push --staged`",
+    "`git stash push --keep-index`",
+    "`git stash push -p`",
+    "`git stash save --cached`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--staged` (`-S`), disponible desde Git 2.35, guarda solo lo preparado y deja intacto lo no preparado. `--keep-index` guarda todo; `-p` te deja elegir fragmentos de forma interactiva; `save --cached` no existe (y `save` está obsoleto)."
+  },
+  {
+   "id": "s10-q8",
+   "type": "single",
+   "q": "¿Qué hace `git stash branch arreglo-tarifas`?",
+   "options": [
+    "Crea la rama en `HEAD` y guarda en ella el stash como commit",
+    "Crea la rama en el commit donde se creó el stash, se cambia a ella, aplica el stash y, si todo va bien, lo borra",
+    "Mueve el stash más reciente a una rama remota",
+    "Lista los stashes creados en esa rama"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git stash branch` vuelve al punto de partida del stash (su primer padre), así que aplicarlo no puede generar conflictos por cambios posteriores. No crea commits: los cambios quedan sin confirmar en la nueva rama. Si la aplicación funciona y el stash era de la forma `stash@{n}`, lo elimina."
+  },
+  {
+   "id": "s10-q9",
+   "type": "single",
+   "q": "¿Qué commits contiene un stash creado con `git stash -u`?",
+   "options": [
+    "Solo uno, con todos los cambios",
+    "Uno con el índice (I), uno con el directorio de trabajo (W) y uno con los archivos sin seguimiento (U)",
+    "Uno por cada archivo modificado",
+    "Ninguno: el stash guarda parches en `.git/stash/`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`W` tiene como padres `HEAD` e `I` (el estado del índice); con `-u` o `-a` se añade `U` como tercer padre. `refs/stash` apunta a `W`. Puedes verlos con `git log --oneline --graph --all`."
+  },
+  {
+   "id": "s10-q10",
+   "type": "single",
+   "q": "Estás en `release/1.0` y ejecutas `git cherry-pick a1b2c3d`, un commit de Camila en `main`. ¿Qué es cierto sobre el commit resultante?",
+   "options": [
+    "Tiene el mismo hash que `a1b2c3d`",
+    "Tiene el mismo cambio, mensaje y autora, pero otro hash",
+    "Aparece como un commit de merge con dos padres",
+    "`a1b2c3d` desaparece de `main`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "cherry-pick crea un commit nuevo sobre `HEAD`: cambian el padre y la fecha de confirmación (y quien confirma eres tú), así que el hash es otro. Se conservan el mensaje, la autora y su fecha de autoría. El original sigue intacto en `main`."
+  },
+  {
+   "id": "s10-q11",
+   "type": "single",
+   "q": "¿Qué commits aplica `git cherry-pick A..B`?",
+   "options": [
+    "A y B solamente",
+    "Desde A hasta B, ambos incluidos",
+    "Los alcanzables desde B que no lo son desde A (A queda fuera)",
+    "Los alcanzables desde A que no lo son desde B"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La notación de dos puntos significa «alcanzable desde B pero no desde A», así que A se excluye. Para incluirlo, `A^..B`. Para solo dos commits sueltos, `git cherry-pick A B`."
+  },
+  {
+   "id": "s10-q12",
+   "type": "single",
+   "q": "Quieres copiar tres commits consecutivos C1, C2 y C3 (C1 es el más antiguo), **incluido C1**. ¿Qué escribes?",
+   "options": [
+    "`git cherry-pick C1..C3`",
+    "`git cherry-pick C1^..C3`",
+    "`git cherry-pick C3..C1`",
+    "`git cherry-pick C1...C3`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`C1^..C3` empieza en el padre de C1 (excluido), así que incluye C1, C2 y C3. `C1..C3` dejaría fuera C1; `C3..C1` no aplica nada porque C1 es ancestro de C3; la notación de tres puntos es la diferencia simétrica, no lo que buscas."
+  },
+  {
+   "id": "s10-q13",
+   "type": "single",
+   "q": "¿Qué añade la opción `-x` de `git cherry-pick`?",
+   "options": [
+    "Un tag con el hash original",
+    "La línea `(cherry picked from commit <hash>)` al mensaje",
+    "Una línea `Signed-off-by:`",
+    "Excluye los archivos con conflicto"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-x` deja trazabilidad del commit de origen en el mensaje; se recomienda al copiar entre ramas públicas. `Signed-off-by` lo añade `-s`. No crea tags ni excluye archivos."
+  },
+  {
+   "id": "s10-q14",
+   "type": "single",
+   "q": "Un `git cherry-pick` se detuvo por conflicto y ya editaste el archivo para resolverlo. ¿Qué sigue?",
+   "options": [
+    "`git commit --amend`",
+    "`git add archivo` y `git cherry-pick --continue`",
+    "`git cherry-pick --skip`",
+    "`git stash pop`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Marca la resolución con `git add` y continúa con `git cherry-pick --continue`, que crea el commit y sigue con los pendientes. `--skip` descartaría ese commit; `--amend` modificaría el commit anterior; `stash pop` no tiene nada que ver."
+  },
+  {
+   "id": "s10-q15",
+   "type": "single",
+   "q": "¿Qué hace `git cherry-pick --abort` en medio de una secuencia con conflicto?",
+   "options": [
+    "Salta el commit problemático y sigue",
+    "Cancela todo y devuelve la rama al estado previo al cherry-pick",
+    "Deja los commits ya copiados y borra el estado de la operación",
+    "Borra el commit original"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--abort` deshace la operación completa. `--skip` salta el commit actual; `--quit` olvida la operación pero deja la rama como está (con lo ya copiado). Nunca se toca el commit original."
+  },
+  {
+   "id": "s10-q16",
+   "type": "multi",
+   "q": "¿En cuáles de estas situaciones es razonable usar `git cherry-pick`? (Selecciona TRES.)",
+   "options": [
+    "Llevar un hotfix de `main` a la rama `release/1.0`",
+    "Integrar cada día todos los commits de una rama de funcionalidad en `main`",
+    "Hacer backport de un parche de seguridad a una versión en mantenimiento",
+    "Rescatar un commit que hiciste en la rama equivocada",
+    "Mantener tu rama al día con `main`"
+   ],
+   "answer": [
+    0,
+    2,
+    3
+   ],
+   "explain": "cherry-pick brilla para copiar commits concretos: hotfixes, backports y rescates. Para integrar ramas completas o ponerte al día con `main` se usan merge o rebase; copiar todo con cherry-pick llena la historia de commits duplicados y provoca conflictos al fusionar después."
+  },
+  {
+   "id": "s10-q17",
+   "type": "single",
+   "q": "¿Qué produce `git cherry-pick -n A B` seguido de `git commit -m \"Backport\"`?",
+   "options": [
+    "Dos commits (A' y B') y un tercero vacío",
+    "Un único commit con los cambios de A y B",
+    "Un commit de merge",
+    "Nada: `-n` es un simulacro que no cambia archivos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-n` (`--no-commit`) aplica los cambios de A y B al índice y al directorio sin confirmar; el `git commit` posterior los guarda en un único commit. No es un simulacro: los archivos sí cambian."
+  },
+  {
+   "id": "s10-q18",
+   "type": "single",
+   "q": "Al hacer un cherry-pick aparece `The previous cherry-pick is now empty, possibly due to conflict resolution.` ¿Qué significa?",
+   "options": [
+    "Que el commit original está vacío y corrupto",
+    "Que el cambio ya existe en tu rama; puedes descartarlo con `git cherry-pick --skip` o conservarlo con `git commit --allow-empty`",
+    "Que perdiste tus cambios",
+    "Que debes ejecutar `git fsck`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Aplicar el cambio no modificaría nada porque tu rama ya lo tiene (por ejemplo, alguien lo copió antes). Git se detiene y te deja decidir. Desde Git 2.45, `--empty=drop` descarta esos commits automáticamente."
+  },
+  {
+   "id": "s10-q19",
+   "type": "single",
+   "q": "¿Qué muestra `git cherry -v release main`?",
+   "options": [
+    "Los commits de `release` que faltan en `main`",
+    "Los commits de `main` que no están en `release`, marcados con `+` si falta su cambio y con `-` si ya hay uno equivalente",
+    "Las diferencias de archivos entre ambas ramas",
+    "Los commits copiados con `-x`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git cherry` compara por contenido (*patch-id*), no por hash: detecta los commits ya copiados con cherry-pick aunque tengan otro hash. Muy útil antes de un backport."
+  },
+  {
+   "id": "s10-q20",
+   "type": "single",
+   "q": "`git reflog` muestra:\n```bash\n5c4b3a2 HEAD@{0}: reset: moving to HEAD~2\n8e7f6a1 HEAD@{1}: commit: Añade pago\n9d8e7f6 HEAD@{2}: commit: Añade cupones\n5c4b3a2 HEAD@{3}: commit: Añade carrito\n3f2a1bc HEAD@{4}: commit (initial): Crea la página\n```\n¿Qué comando devuelve la rama a donde estaba antes del reset?",
+   "options": [
+    "`git reset --hard HEAD@{2}`",
+    "`git reset --hard HEAD@{1}`",
+    "`git reset --hard HEAD~1`",
+    "`git reset --hard HEAD@{0}`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`HEAD@{1}` es el estado inmediatamente anterior al reset (el commit «Añade pago»). `HEAD@{2}` se quedaría un commit corto («Añade cupones»); `HEAD~1` es el padre del commit actual, «Crea la página» (iría aún más atrás); `HEAD@{0}` es donde ya estás. `ORIG_HEAD` también funcionaría."
+  },
+  {
+   "id": "s10-q21",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre el reflog, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El reflog se comparte con el equipo al hacer `git push`.",
+     "answer": false
+    },
+    {
+     "text": "Tras `git branch -D feature`, `feature@{1}` ya no se puede usar.",
+     "answer": true
+    },
+    {
+     "text": "`HEAD@{1}` y `main@{1}` apuntan siempre al mismo commit.",
+     "answer": false
+    },
+    {
+     "text": "`git gc` no elimina un commit mientras una entrada del reflog que lo apunta no haya caducado.",
+     "answer": true
+    }
+   ],
+   "explain": "El reflog es local. Al borrar una rama se borra su reflog (el de HEAD permanece). HEAD se mueve también al cambiar de rama, así que `HEAD@{1}` y `main@{1}` pueden diferir. `git gc` trata los reflogs como referencias: lo que apuntan no se poda hasta que la entrada caduque."
+  },
+  {
+   "id": "s10-q22",
+   "type": "single",
+   "q": "¿Qué comandos actualizan `ORIG_HEAD`?",
+   "options": [
+    "`commit`, `switch` y `stash`",
+    "`reset`, `merge`, `rebase` y `am`",
+    "Solo `reset --hard`",
+    "Todos los que escriben en el reflog"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Según la documentación, `ORIG_HEAD` lo crean los comandos que mueven HEAD de forma drástica: `git am`, `git merge`, `git rebase` y `git reset`. Un commit o un cambio de rama no lo tocan, aunque sí escriben en el reflog."
+  },
+  {
+   "id": "s10-q23",
+   "type": "single",
+   "q": "Hiciste `git rebase main` estando en `feature` y el resultado es un desastre. No has hecho nada más. ¿Qué comando lo deshace?",
+   "options": [
+    "`git rebase --abort`",
+    "`git reset --hard feature@{1}`",
+    "`git revert HEAD`",
+    "`git reset --hard main@{1}`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Tras el rebase, `feature@{1}` es la rama justo antes de empezar (también `ORIG_HEAD`). `git rebase --abort` solo sirve mientras el rebase está en curso; `git revert HEAD` solo revertiría el último commit; `main@{1}` es la historia de otra rama."
+  },
+  {
+   "id": "s10-q24",
+   "type": "single",
+   "q": "Borraste `feature/pagos` con `git branch -D` y luego hiciste un commit en `main`. `git reflog` muestra:\n```bash\na1a1a1a HEAD@{0}: commit: Añade README\nb2b2b2b HEAD@{1}: checkout: moving from feature/pagos to main\nc3c3c3c HEAD@{2}: commit: Añade la anulación del pago\n```\n¿Qué comando recrea la rama en su punta?",
+   "options": [
+    "`git branch feature/pagos HEAD@{1}`",
+    "`git branch feature/pagos HEAD@{2}`",
+    "`git branch feature/pagos feature/pagos@{1}`",
+    "`git branch feature/pagos HEAD~2`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La entrada `checkout: moving from feature/pagos to main` registra a dónde fue HEAD (la punta de `main`, `b2b2b2b`); la entrada de debajo, `HEAD@{2}`, es el último commit hecho en la rama. `feature/pagos@{1}` ya no existe (se borró con la rama) y `HEAD~2` recorre padres de `main`, no el reflog."
+  },
+  {
+   "id": "s10-q25",
+   "type": "single",
+   "q": "¿Qué significa `@{-1}`?",
+   "options": [
+    "El commit anterior a HEAD",
+    "La rama o commit en el que estabas antes del actual",
+    "La entrada más antigua del reflog",
+    "El upstream de la rama actual"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`@{-n}` es la n-ésima rama o commit en que estuviste antes; `git switch -` es un atajo de `git switch @{-1}`. El padre de HEAD es `HEAD~1` y el upstream es `@{u}`."
+  },
+  {
+   "id": "s10-q26",
+   "type": "single",
+   "q": "Con la configuración por defecto, ¿cuándo caduca una entrada del reflog que apunta a un commit que ya no es alcanzable desde la rama (por ejemplo, tras un `reset --hard`)?",
+   "options": [
+    "Nunca",
+    "A los 30 días, cuando corre `git gc`",
+    "A los 90 días",
+    "Inmediatamente"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`gc.reflogExpireUnreachable` vale 30 días; las entradas alcanzables caducan a los 90 (`gc.reflogExpire`). La caducidad se aplica cuando se ejecuta `git gc` (manual o automático), no en un momento exacto."
+  },
+  {
+   "id": "s10-q27",
+   "type": "single",
+   "q": "Ejecutaste `git stash drop` por error y `git stash list` está vacío. ¿Cómo encuentras el stash?",
+   "options": [
+    "`git reflog` lo muestra como `stash: dropped`",
+    "`git fsck` lo lista como `dangling commit`",
+    "`git log --all` lo sigue mostrando",
+    "`git stash list --all`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El `drop` elimina la entrada del reflog de `refs/stash`, así que el commit del stash queda colgando. `git fsck` (o `git fsck --lost-found`) lo encuentra; luego `git stash apply <hash>`. `git log --all` ya no lo muestra porque ninguna referencia lo apunta, y `--all` no es una opción de `stash list`."
+  },
+  {
+   "id": "s10-q28",
+   "type": "single",
+   "q": "Acabas de borrar una rama con `git branch -D` y ejecutas `git fsck`, que no muestra nada. ¿Por qué?",
+   "options": [
+    "Porque `branch -D` borra los commits de inmediato",
+    "Porque fsck considera los reflogs como referencias y el de HEAD todavía apunta a esos commits; con `--no-reflogs` aparecen",
+    "Porque fsck solo revisa blobs",
+    "Porque hace falta ejecutar antes `git gc`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Por defecto fsck usa el índice, todas las referencias y todos los reflogs como puntos de partida. Los commits de la rama borrada siguen en el reflog de HEAD, así que no son colgantes. `git fsck --no-reflogs` (o `--lost-found`) sí los muestra. Ejecutar `git gc` antes sería justo lo contrario de lo que quieres."
+  },
+  {
+   "id": "s10-q29",
+   "type": "single",
+   "q": "Hiciste `git add informe.txt` (archivo nuevo) y luego `git reset --hard` sin confirmar. ¿Se puede recuperar el contenido?",
+   "options": [
+    "No, nunca se confirmó",
+    "Sí: `git add` lo guardó como blob; `git fsck --lost-found` escribe su contenido en `.git/lost-found/other/`",
+    "Sí, con `git reflog`",
+    "Sí, con `git stash pop`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git add` guarda el contenido en la base de objetos. Tras el reset queda como blob colgante, y `--lost-found` lo escribe en `.git/lost-found/other/<hash>` (el nombre del archivo no se guarda en el blob). El reflog no registra el índice y no había ningún stash."
+  },
+  {
+   "id": "s10-q30",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre `git fsck` y `git gc`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git fsck --lost-found` escribe el contenido de los blobs colgantes en `.git/lost-found/other/`.",
+     "answer": true
+    },
+    {
+     "text": "Todo objeto inalcanzable es también un objeto colgante.",
+     "answer": false
+    },
+    {
+     "text": "Por defecto, `git gc` solo poda los objetos inalcanzables con más de 2 semanas de antigüedad.",
+     "answer": true
+    },
+    {
+     "text": "Los cambios que nunca pasaron por `git add` se pueden recuperar con `git fsck`.",
+     "answer": false
+    }
+   ],
+   "explain": "Colgante es lo que nada usa directamente; los padres de un commit colgante son inalcanzables pero no colgantes. `gc.pruneExpire` vale 2 semanas. Lo que nunca llegó a la base de objetos (sin `add`, commit ni stash) no existe para Git."
+  },
+  {
+   "id": "s10-q31",
+   "type": "multi",
+   "q": "Con `git fsck` encontraste el stash perdido `9f3c2e1`. ¿Qué comandos permiten recuperarlo? (Selecciona DOS.)",
+   "options": [
+    "`git stash apply 9f3c2e1`",
+    "`git stash store -m \"Banner\" 9f3c2e1`",
+    "`git stash pop stash@{9f3c2e1}`",
+    "`git reflog restore 9f3c2e1`",
+    "`git stash recover 9f3c2e1`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`git stash apply` acepta cualquier commit con forma de stash, y `git stash store` lo devuelve a la pila (luego `git stash pop`). `stash@{…}` espera un número o una fecha, no un hash; `git reflog restore` y `git stash recover` no existen. También valdría `git branch rescate 9f3c2e1`."
+  },
+  {
+   "id": "s10-q32",
+   "type": "single",
+   "q": "¿Qué comando elimina de inmediato y para siempre los commits que solo sobrevivían en el reflog?",
+   "options": [
+    "`git gc`",
+    "`git reflog expire --expire=now --all && git gc --prune=now`",
+    "`git fsck --no-reflogs`",
+    "`git stash clear`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Primero se vacían los reflogs y luego se podan todos los objetos inalcanzables sin esperar las 2 semanas. Un `git gc` normal respeta las caducidades; `fsck` solo inspecciona; `stash clear` solo afecta al stash."
+  },
+  {
+   "id": "s10-q33",
+   "type": "single",
+   "q": "Tu stash tenía `precio.js` preparado e `index.html` sin preparar. ¿Cómo quedan tras `git stash pop` (sin opciones)?",
+   "options": [
+    "`precio.js` preparado e `index.html` sin preparar",
+    "Ambos sin preparar",
+    "Ambos preparados",
+    "Ambos confirmados en un commit nuevo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin `--index`, Git aplica todos los cambios al directorio de trabajo y no restaura el área de preparación. Con `git stash pop --index` volverían a su área original (si no hay conflictos). El stash nunca crea commits en tu rama."
+  },
+  {
+   "id": "s10-q34",
+   "type": "multi",
+   "q": "Estás en `main` y ejecutas `git reset --hard HEAD~3`, sin hacer nada más. ¿Qué referencias apuntan al commit en el que estabas antes? (Selecciona TRES.)",
+   "options": [
+    "`ORIG_HEAD`",
+    "`HEAD@{1}`",
+    "`main@{1}`",
+    "`HEAD~3`",
+    "`HEAD@{3}`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "El reset guardó la posición anterior en `ORIG_HEAD`, y tanto el reflog de HEAD como el de `main` registran el movimiento, así que `HEAD@{1}` y `main@{1}` son el estado previo. `HEAD~3` recorre padres desde la posición actual (iría más atrás aún) y `HEAD@{3}` es tres movimientos atrás."
+  },
+  {
+   "id": "s10-q35",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre `git cherry-pick`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El commit copiado conserva al autor original.",
+     "answer": true
+    },
+    {
+     "text": "Con `git cherry-pick C B`, Git reordena y aplica B antes que C.",
+     "answer": false
+    },
+    {
+     "text": "Para copiar un commit de merge hay que indicar el padre con `-m`.",
+     "answer": true
+    },
+    {
+     "text": "`git cherry-pick --quit` deshace los commits ya copiados.",
+     "answer": false
+    }
+   ],
+   "explain": "cherry-pick conserva autor y fecha de autoría; quien confirma es quien ejecuta el comando. Con una lista explícita, los commits se aplican en el orden escrito. Un merge exige `-m <n>` («is a merge but no -m option was given»). `--quit` solo olvida la operación en curso; para deshacer está `--abort`."
+  },
+  {
+   "id": "s10-q36",
+   "type": "single",
+   "q": "Estás en `main` y el último commit de la rama `feature/newsletter` es un arreglo que también necesita `main` (el resto de la rama no). ¿Qué comando lo copia?",
+   "options": [
+    "`git cherry-pick feature/newsletter`",
+    "`git cherry-pick main..feature/newsletter`",
+    "`git merge feature/newsletter`",
+    "`git rebase feature/newsletter`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Un nombre de rama resuelve a su punta, así que `git cherry-pick feature/newsletter` copia solo ese commit. El rango `main..feature/newsletter` copiaría todos los commits de la rama que no están en `main`, y merge o rebase integrarían la rama completa."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-stash — documentación oficial",
+   "url": "https://git-scm.com/docs/git-stash"
+  },
+  {
+   "title": "git-cherry-pick — documentación oficial",
+   "url": "https://git-scm.com/docs/git-cherry-pick"
+  },
+  {
+   "title": "git-cherry — documentación oficial",
+   "url": "https://git-scm.com/docs/git-cherry"
+  },
+  {
+   "title": "git-reflog — documentación oficial",
+   "url": "https://git-scm.com/docs/git-reflog"
+  },
+  {
+   "title": "gitrevisions — @{n}, @{-n}, fechas, ORIG_HEAD y CHERRY_PICK_HEAD",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "git-fsck — documentación oficial",
+   "url": "https://git-scm.com/docs/git-fsck"
+  },
+  {
+   "title": "git-gc — documentación oficial (caducidad del reflog y poda)",
+   "url": "https://git-scm.com/docs/git-gc"
+  },
+  {
+   "title": "Pro Git (es) 7.3 · Guardado rápido y Limpieza",
+   "url": "https://git-scm.com/book/es/v2/Herramientas-de-Git-Guardado-r%C3%A1pido-y-Limpieza"
+  },
+  {
+   "title": "Pro Git (es) 7.1 · Revisión por selección (nombres cortos del reflog)",
+   "url": "https://git-scm.com/book/es/v2/Herramientas-de-Git-Revisi%C3%B3n-por-selecci%C3%B3n"
+  },
+  {
+   "title": "Pro Git (es) 5.3 · Manteniendo un proyecto (cherry-pick)",
+   "url": "https://git-scm.com/book/es/v2/Git-en-entornos-distribuidos-Manteniendo-un-proyecto"
+  },
+  {
+   "title": "Pro Git (es) 10.7 · Mantenimiento y recuperación de datos",
+   "url": "https://git-scm.com/book/es/v2/Los-entresijos-internos-de-Git-Mantenimiento-y-recuperaci%C3%B3n-de-datos"
+  },
+  {
+   "title": "Atlassian Git Tutorial · git stash",
+   "url": "https://www.atlassian.com/git/tutorials/saving-changes/git-stash"
+  },
+  {
+   "title": "Atlassian Git Tutorial · git cherry-pick",
+   "url": "https://www.atlassian.com/git/tutorials/cherry-pick"
+  },
+  {
+   "title": "Atlassian Git Tutorial · git reflog",
+   "url": "https://www.atlassian.com/git/tutorials/rewriting-history/git-reflog"
+  },
+  {
+   "title": "Notas de versión de Git 2.13 (git stash push)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.13.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.16 (git stash save obsoleto)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.16.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.35 (git stash --staged)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.35.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.45 (git reflog list, cherry-pick --empty)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.45.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.50 (git reflog drop, tarea reflog-expire de maintenance)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.50.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.51 (git stash export/import)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.51.0.adoc"
+  }
+ ]
+}

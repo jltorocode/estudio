@@ -1,0 +1,3094 @@
+{
+ "id": "s01",
+ "order": 1,
+ "title": "Primeros pasos con Python",
+ "domain": "basico",
+ "summary": "Tu punto de partida: qué es programar, qué hace especial a Python y cómo ejecuta tu código por dentro. Instalarás Python, conocerás el REPL, los scripts y esta plataforma, y dominarás `print()`, `input()`, los comentarios, la sangría, las funciones mínimas con `def` y, sobre todo, a leer los mensajes de error como un profesional.",
+ "goal": "Escribir, ejecutar y depurar programas sencillos de entrada y salida en Python 3.14, con una salida exacta y sabiendo interpretar cualquier traceback básico.",
+ "objectives": [
+  "Describir qué es programar y qué caracteriza a Python: interpretado, de muy alto nivel, multiparadigma y con «baterías incluidas».",
+  "Explicar cómo CPython ejecuta un programa: código fuente, bytecode y máquina virtual.",
+  "Instalar Python 3.14 y ejecutar código en el REPL, en scripts `.py` y en VS Code.",
+  "Producir salidas con formato exacto usando `print()` con `sep`, `end` y secuencias de escape.",
+  "Leer datos con `input()` teniendo en cuenta que siempre devuelve texto.",
+  "Estructurar el código con sangría y escribir funciones con parámetros posicionales que devuelven valores con `return`.",
+  "Clasificar errores (de sintaxis, de ejecución y de lógica) y localizar su causa leyendo un traceback."
+ ],
+ "lessons": [
+  {
+   "id": "s01-l1",
+   "title": "Qué es programar y qué es Python",
+   "minutes": 15,
+   "goals": [
+    "Explicar con tus palabras qué son un algoritmo, un programa y un lenguaje de programación.",
+    "Describir las características clave de Python: interpretado, de muy alto nivel, multiparadigma y con «baterías incluidas».",
+    "Identificar en qué campos se usa Python y qué versión es la actual.",
+    "Ejecutar tu primer programa en la plataforma y mostrar el Zen de Python con `import this`."
+   ],
+   "takeaways": [
+    "Programar es escribir instrucciones precisas, en un lenguaje que una máquina puede ejecutar, para resolver un problema.",
+    "Primero se piensa el algoritmo (los pasos); después se escribe en un lenguaje: el código fuente.",
+    "Python es interpretado, de muy alto nivel, multiparadigma, de tipado dinámico y trae una biblioteca estándar enorme.",
+    "La legibilidad es un valor central de Python: el código se lee muchas más veces de las que se escribe.",
+    "Sale una versión nueva cada octubre; este curso usa Python 3.14 (7 de octubre de 2025)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un **computador** es rapidísimo, pero no entiende intenciones: solo ejecuta instrucciones muy simples, una detrás de otra. **Programar** es escribir esas instrucciones de forma tan precisa que la máquina pueda seguirlas sin adivinar nada. Con ellas se calculan sueldos, se muestra una web, se entrena un modelo de IA o se renombran mil fotos en un segundo."
+    },
+    {
+     "type": "p",
+     "text": "Antes de escribir código hay que tener un **algoritmo**: una secuencia finita de pasos, sin ambigüedad, que lleva de los datos de entrada al resultado. Una receta de cocina es un algoritmo para personas («bate dos huevos, añade una pizca de sal…»). Cuando traduces ese algoritmo a un **lenguaje de programación** obtienes el **código fuente**, y el conjunto que resuelve un problema concreto es un **programa**."
+    },
+    {
+     "type": "diagram",
+     "title": "Del problema al programa",
+     "mermaid": "flowchart LR\n  P[\"Problema: saludar al usuario por su nombre\"] --> A[\"Algoritmo: 1) pedir el nombre 2) mostrar el saludo\"]\n  A --> C[\"Código fuente en Python\"]\n  C --> I[\"Intérprete de Python\"]\n  I --> R[\"Resultado en pantalla\"]\n  R --> V{\"¿Es lo esperado?\"}\n  V -->|\"No\"| C\n  V -->|\"Sí\"| F[\"Programa terminado\"]",
+     "caption": "Programar es un ciclo: escribir, ejecutar, comprobar y corregir. Lo repetirás miles de veces."
+    },
+    {
+     "type": "h",
+     "text": "Lenguajes de alto y de bajo nivel"
+    },
+    {
+     "type": "p",
+     "text": "El procesador solo entiende **código máquina**: secuencias binarias que representan operaciones elementales («suma estos dos registros», «salta a esta dirección»). Escribir así es lento y propenso a errores, por eso usamos lenguajes de **alto nivel**, más cercanos al lenguaje humano, y dejamos que un programa traductor haga el trabajo pesado. Hay dos grandes estrategias de traducción:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Estrategia",
+      "Cómo funciona",
+      "Ejemplos típicos"
+     ],
+     "rows": [
+      [
+       "**Compilación**",
+       "Un *compilador* traduce todo el programa a código máquina **antes** de ejecutarlo y genera un archivo ejecutable.",
+       "C, C++, Rust, Go"
+      ],
+      [
+       "**Interpretación**",
+       "Un *intérprete* lee el programa y lo ejecuta directamente, sin que tú generes un ejecutable.",
+       "Python, JavaScript, Ruby"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Python es un **lenguaje interpretado**: escribes un archivo `.py` y lo ejecutas con el intérprete, sin paso de compilación ni enlazado. En la lección 2 verás que, por dentro, el intérprete compila tu código a un formato intermedio (*bytecode*); por eso el glosario oficial reconoce que la frontera entre compilado e interpretado «puede ser difusa»."
+    },
+    {
+     "type": "h",
+     "text": "Qué tiene de especial Python"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Legible**: los bloques se marcan con sangría, no con llaves, y el código se parece al pseudocódigo. La documentación oficial lo describe como un lenguaje «de muy alto nivel», y PEP 8 recuerda por qué importa: el código se lee mucho más a menudo de lo que se escribe.",
+      "**Multiparadigma**: admite programación procedimental (pasos), orientada a objetos (clases) y funcional (funciones que se combinan). Verás las tres en este curso.",
+      "**Tipado dinámico**: no declaras el tipo de cada dato; Python lo averigua al ejecutar (lo estudiarás en s02).",
+      "**«Baterías incluidas»** (*batteries included*): trae una biblioteca estándar enorme (fechas, JSON, CSV, bases de datos SQLite, expresiones regulares, pruebas…) y, además, cientos de miles de paquetes de terceros en **PyPI**, el índice oficial de paquetes.",
+      "**Libre y portable**: el intérprete y la biblioteca estándar son gratuitos y funcionan en Windows, macOS, Linux… e incluso en el navegador, como en esta plataforma."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Su nombre no viene de la serpiente: Guido van Rossum, su creador, estaba leyendo los guiones de *Monty Python's Flying Circus*, la serie de humor de la BBC, y quería un nombre corto, único y algo misterioso."
+    },
+    {
+     "type": "diagram",
+     "title": "Dónde se usa Python",
+     "mermaid": "mindmap\n  root((\"Python\"))\n    Datos e IA\n      NumPy y pandas\n      scikit-learn y PyTorch\n    Web y APIs\n      Django y Flask\n      FastAPI\n    Automatización\n      Scripts para tareas repetitivas\n      Administración de sistemas\n    Ciencia e ingeniería\n      SciPy\n      Cuadernos Jupyter\n    Educación\n      Enseñanza de la programación\n    Herramientas\n      Aplicaciones de escritorio con Tk\n      Utilidades de línea de comandos",
+     "caption": "Python es de propósito general: el mismo lenguaje sirve para un script de diez líneas y para un servicio web con millones de usuarios."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Los bloques con el botón **▶ Ejecutar** son editables: cambia el código, ejecútalo y observa qué pasa. Si lo estropeas, **↺ Restaurar** lo devuelve a su estado original. Experimentar es la forma más rápida de aprender a programar."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"¡Hola, mundo!\")\nprint(\"Estoy aprendiendo Python\")",
+     "run": true,
+     "caption": "Tu primer programa. Cambia los textos entre comillas y vuelve a ejecutar."
+    },
+    {
+     "type": "h",
+     "text": "Una filosofía: el Zen de Python"
+    },
+    {
+     "type": "p",
+     "text": "Tim Peters, uno de los desarrolladores históricos de Python, resumió los principios de diseño del lenguaje en 19 aforismos: el **Zen de Python**, recogido en el **PEP 20**. Un **PEP** (*Python Enhancement Proposal*) es un documento de diseño con el que se proponen y documentan cambios en Python. El Zen viene escondido en el propio intérprete como «huevo de pascua»:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import this",
+     "run": true,
+     "caption": "`import` carga un módulo; lo estudiarás en s07. Aquí solo lo usamos para mostrar el Zen."
+    },
+    {
+     "type": "list",
+     "items": [
+      "*Beautiful is better than ugly*: bello es mejor que feo.",
+      "*Explicit is better than implicit*: explícito es mejor que implícito.",
+      "*Simple is better than complex*: simple es mejor que complejo.",
+      "*Readability counts*: la legibilidad cuenta.",
+      "*Errors should never pass silently*: los errores nunca deberían pasar en silencio.",
+      "*There should be one-- and preferably only one --obvious way to do it*: debería haber una forma obvia de hacerlo (y preferiblemente solo una)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Dos preguntas clásicas de cultura Python en entrevistas y exámenes: qué hace `import this` (muestra el Zen de Python, PEP 20) y qué es un PEP. Recuerda también el **PEP 8**: la guía de estilo oficial para escribir código Python."
+    },
+    {
+     "type": "h",
+     "text": "Un poco de historia y la versión actual"
+    },
+    {
+     "type": "diagram",
+     "title": "Hitos de Python",
+     "mermaid": "flowchart LR\n  A[\"1989: Guido van Rossum empieza Python en unas vacaciones de Navidad\"] --> B[\"1991: primera publicación, en febrero\"]\n  B --> C[\"2008: Python 3.0, no compatible con Python 2\"]\n  C --> D[\"2020: fin de Python 2, el 1 de enero\"]\n  D --> E[\"Desde 3.9: una versión nueva cada octubre\"]\n  E --> F[\"2025: Python 3.14, la versión de este curso\"]",
+     "caption": "Python 3.0 salió el 3 de diciembre de 2008. Desde 2020 solo se mantiene Python 3: si ves `print \"hola\"` sin paréntesis, es código antiguo de Python 2."
+    },
+    {
+     "type": "p",
+     "text": "Desde Python 3.9, cada octubre sale una versión nueva (PEP 602), y desde 3.13 cada una recibe dos años de correcciones completas y tres más de parches de seguridad. **Python 3.14** salió el 7 de octubre de 2025 y es la que usa este curso; a finales de septiembre de 2026 su última revisión es la 3.14.7, y la 3.15 está prevista para octubre de 2026 (PEP 790). Lo que aprendas aquí seguirá siendo válido: los cambios entre versiones menores añaden cosas, no rompen lo básico."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Cuidado con tutoriales antiguos: si un ejemplo usa `print \"hola\"` (sin paréntesis) o `raw_input()`, es Python 2, que ya no recibe soporte. En Python 3, `print` es una función y siempre lleva paréntesis."
+    }
+   ]
+  },
+  {
+   "id": "s01-l2",
+   "title": "Cómo ejecuta Python tu código",
+   "minutes": 15,
+   "goals": [
+    "Distinguir entre compilar e interpretar y situar a CPython en ese esquema.",
+    "Describir el recorrido de un programa en CPython: código fuente, tokens, AST, bytecode y máquina virtual.",
+    "Diferenciar errores léxicos, sintácticos y semánticos con ejemplos reales.",
+    "Identificar qué implementación de Python ejecuta esta plataforma y qué límites tiene."
+   ],
+   "takeaways": [
+    "CPython, la implementación de referencia, compila tu `.py` a bytecode y su máquina virtual lo ejecuta instrucción a instrucción.",
+    "Todo el archivo se analiza antes de ejecutar nada: un error de sintaxis impide que se ejecute incluso la primera línea.",
+    "Un error en ejecución, en cambio, deja que las líneas anteriores hagan su trabajo.",
+    "Los `.pyc` de `__pycache__` solo aceleran la carga de módulos importados, no la ejecución.",
+    "Esta plataforma usa Pyodide: el mismo CPython 3.14 compilado a WebAssembly para funcionar en el navegador."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cuando escribes `python hola.py` pasan muchas cosas en milisegundos. No necesitas dominarlas para programar, pero tener un **modelo mental** correcto te ayudará a entender los mensajes de error, el rendimiento y por qué Python se comporta como se comporta."
+    },
+    {
+     "type": "h",
+     "text": "CPython: compila a bytecode y lo interpreta"
+    },
+    {
+     "type": "p",
+     "text": "La implementación oficial de Python se llama **CPython** (está escrita en C) y es la que descargas de python.org. Aunque decimos que Python es interpretado, CPython no ejecuta tu texto letra a letra: primero lo **traduce a bytecode**, un lenguaje intermedio compacto, y después una **máquina virtual** ejecuta ese bytecode. Tú no ves este paso porque ocurre solo, cada vez que ejecutas el programa."
+    },
+    {
+     "type": "diagram",
+     "title": "El viaje de tu código dentro de CPython",
+     "mermaid": "flowchart LR\n  F[\"hola.py: código fuente\"] --> T[\"Analizador léxico: tokens\"]\n  T --> P[\"Parser: árbol de sintaxis abstracta (AST)\"]\n  P --> C[\"Compilador: bytecode\"]\n  C --> VM[\"Máquina virtual: ejecuta el bytecode\"]\n  VM --> S[\"Resultados: salida, archivos, red...\"]\n  C -.-> PYC[\"Caché .pyc en __pycache__ (solo módulos importados)\"]",
+     "caption": "Las tres primeras fases ocurren **antes** de ejecutar la primera línea. Por eso un error de sintaxis en la línea 50 impide que se ejecute la línea 1."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Código fuente",
+       "en": "source code",
+       "def": "El texto que escribes, guardado en archivos `.py` (en UTF-8 por defecto)."
+      },
+      {
+       "term": "Token",
+       "en": "token",
+       "def": "Cada pieza mínima del código: nombres, números, cadenas, operadores y signos de puntuación."
+      },
+      {
+       "term": "AST",
+       "en": "abstract syntax tree",
+       "def": "Árbol que representa la estructura gramatical del programa."
+      },
+      {
+       "term": "Bytecode",
+       "en": "bytecode",
+       "def": "Instrucciones intermedias que genera CPython. No son código máquina del procesador, sino de la máquina virtual de Python, y pueden cambiar entre versiones."
+      },
+      {
+       "term": "Máquina virtual",
+       "en": "virtual machine",
+       "def": "El bucle de CPython que lee las instrucciones de bytecode y las ejecuta una a una."
+      },
+      {
+       "term": "CPython",
+       "en": "CPython",
+       "def": "La implementación de referencia de Python, escrita en C y distribuida en python.org."
+      }
+     ]
+    },
+    {
+     "type": "p",
+     "text": "¿Quieres ver el bytecode? El módulo `dis` (de *disassembler*) lo muestra. No tienes que entenderlo todavía (lo estudiarás en s16): solo comprueba que una línea de Python se convierte en varias instrucciones más pequeñas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import dis\n\ndis.dis('print(\"hola\")')",
+     "run": true,
+     "caption": "Verás instrucciones como `LOAD_NAME` (buscar `print`), `LOAD_CONST` (el texto) y `CALL` (llamar a la función). Los nombres exactos cambian entre versiones de Python."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Un `.pyc` no es un «ejecutable compilado» ni hace tu programa más rápido: solo ahorra la compilación al **cargar** un módulo importado. El script que ejecutas directamente (`python hola.py`) se recompila siempre y no se guarda en caché. Puedes borrar `__pycache__` sin miedo: se regenera."
+    },
+    {
+     "type": "h",
+     "text": "Léxico, sintaxis y semántica"
+    },
+    {
+     "type": "p",
+     "text": "Igual que en un idioma, en un lenguaje de programación hay tres niveles de corrección. Los dos primeros se comprueban antes de ejecutar; el tercero, al ejecutar:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Nivel",
+      "Pregunta que responde",
+      "Ejemplo de fallo en Python 3.14"
+     ],
+     "rows": [
+      [
+       "**Léxico**",
+       "¿Las «palabras» (tokens) existen y están bien formadas?",
+       "`print(\"Hola)`: la cadena no se cierra → `SyntaxError: unterminated string literal`"
+      ],
+      [
+       "**Sintaxis**",
+       "¿Las palabras siguen un orden que la gramática permite?",
+       "`print \"Hola\"`: faltan los paréntesis → `SyntaxError: Missing parentheses in call to 'print'`"
+      ],
+      [
+       "**Semántica**",
+       "¿Tiene sentido lo que se pide al ejecutarlo?",
+       "`print(\"Tengo \" + 3 + \" gatos\")` es gramaticalmente correcto, pero no se puede unir texto con un número → `TypeError` al ejecutar"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El PCEP (certificación de entrada del Python Institute) pide distinguir **intérprete y compilador** y **léxico, sintaxis y semántica**. Respuesta modelo: Python se considera interpretado; CPython compila a bytecode que ejecuta su máquina virtual; los errores léxicos y sintácticos se detectan antes de ejecutar, y los semánticos aparecen durante la ejecución (o ni siquiera dan error y se convierten en fallos de lógica)."
+    },
+    {
+     "type": "h",
+     "text": "Consecuencia práctica: primero se analiza, luego se ejecuta"
+    },
+    {
+     "type": "p",
+     "text": "Como todo el archivo pasa por el analizador antes de ejecutarse, un solo error de sintaxis, aunque esté al final, hace que **no se ejecute nada**. Pruébalo: ejecuta este ejemplo tal cual y después borra el primer `#` de la segunda línea y vuelve a ejecutar. ¿Aparece «Línea 1»?"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"Línea 1\")\n# print(\"Línea 2\"      # quita el primer # y ejecuta de nuevo\nprint(\"Línea 3\")",
+     "run": true,
+     "caption": "Con la línea activada, Python responde `SyntaxError: '(' was never closed` y no imprime nada, ni siquiera la línea 1."
+    },
+    {
+     "type": "p",
+     "text": "Un error que solo aparece **al ejecutar** (una excepción) se comporta distinto: las líneas anteriores sí se ejecutan. Este programa imprime `Línea 1` y después se detiene con `ZeroDivisionError: division by zero` (no es ejecutable aquí porque falla a propósito):"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"Línea 1\")\nprint(10 / 0)\nprint(\"Esta línea nunca se ejecuta\")"
+    },
+    {
+     "type": "diagram",
+     "title": "Qué pasa al ejecutar python hola.py",
+     "mermaid": "sequenceDiagram\n  participant T as Tú (terminal)\n  participant I as Intérprete CPython\n  participant C as Compilador\n  participant VM as Máquina virtual\n  T->>I: python hola.py\n  I->>C: Lee y analiza TODO el archivo\n  alt Hay un error léxico o de sintaxis\n    C-->>T: SyntaxError y no se ejecuta ninguna línea\n  else El código es válido\n    C->>VM: Bytecode listo\n    VM->>VM: Ejecuta instrucción a instrucción\n    VM-->>T: Salida de print o traceback si algo falla\n  end"
+    },
+    {
+     "type": "h",
+     "text": "Otras implementaciones… y la de esta plataforma"
+    },
+    {
+     "type": "p",
+     "text": "Python es un lenguaje (una especificación) y CPython es su implementación de referencia, pero hay otras: **PyPy** (con un compilador JIT que a menudo la hace más rápida), **MicroPython** (para microcontroladores) o **Pyodide**, que es CPython compilado a **WebAssembly** para funcionar dentro del navegador. Esta plataforma usa Pyodide con Python 3.14: el mismo lenguaje y la misma biblioteca estándar que en tu computador, con los límites propios de un navegador (no puedes crear hilos ni procesos, ni abrir sockets, ni instalar paquetes con `pip`)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import sys\n\nprint(sys.version)               # versión exacta del intérprete\nprint(sys.implementation.name)   # 'cpython'\nprint(sys.platform)              # 'emscripten' dentro del navegador",
+     "run": true,
+     "caption": "La revisión que ves (3.14.x) es la que incluye Pyodide y puede ir algo por detrás de la última publicada en python.org. En tu computador, `sys.platform` mostraría `win32`, `darwin` (macOS) o `linux`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Python es lento? En cálculo puro, CPython es más lento que C o Rust, pero cada versión reciente mejora: Python 3.11 fue de media 1,25 veces más rápido que 3.10 gracias al intérprete especializado adaptativo (PEP 659). Además, las bibliotecas pesadas (NumPy, PyTorch…) ejecutan su núcleo en código compilado. La regla de oro: escribe primero código claro y optimiza solo lo que midas (s15)."
+    }
+   ]
+  },
+  {
+   "id": "s01-l3",
+   "title": "Python en tu computador: instalación, REPL, scripts y editor",
+   "minutes": 18,
+   "goals": [
+    "Instalar Python 3.14 en Windows, macOS o Linux (o con `uv`) y comprobar la versión desde la terminal.",
+    "Usar el intérprete interactivo (REPL) y distinguir su eco automático de lo que imprime `print()`.",
+    "Ejecutar un script `.py` desde la terminal y desde VS Code con la extensión de Python."
+   ],
+   "takeaways": [
+    "En Windows, desde 3.14 lo recomendado es el *Python install manager* (comando `py`); en macOS, el instalador de python.org o Homebrew; en Linux, el gestor de paquetes. `uv` sirve en los tres.",
+    "`python --version` (o `python3 --version`, `py --version`) te dice qué versión ejecutas.",
+    "El REPL (`>>>`) evalúa al instante y muestra el valor de cada expresión; en un script solo aparece lo que imprimes con `print()`.",
+    "Un script es un archivo de texto `.py` que ejecutas con `python archivo.py`; nunca lo llames como un módulo estándar (`random.py`, `math.py`…)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En esta plataforma no tienes que instalar nada: el intérprete vive en tu navegador. Pero para tus propios proyectos necesitarás Python en tu computador. Esta lección es de lectura y consulta: los bloques de terminal (`bash`) no se ejecutan aquí."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo instalar Python 3.14",
+     "mermaid": "flowchart TD\n  S[\"¿Qué sistema usas?\"] --> W[\"Windows\"]\n  S --> M[\"macOS\"]\n  S --> L[\"Linux\"]\n  S --> U[\"Cualquiera: uv python install 3.14\"]\n  W --> W1[\"Python install manager (Microsoft Store o python.org), comando py\"]\n  M --> M1[\"Instalador .pkg de python.org o Homebrew\"]\n  L --> L1[\"Gestor de paquetes de tu distribución\"]\n  W1 --> V[\"Comprueba la versión en una terminal nueva\"]\n  M1 --> V\n  L1 --> V\n  U --> V"
+    },
+    {
+     "type": "h",
+     "text": "Windows"
+    },
+    {
+     "type": "p",
+     "text": "Desde Python 3.14, la vía recomendada por el equipo de CPython es el **Python install manager**, disponible en la Microsoft Store y en python.org/downloads (las dos versiones son idénticas). Instala y actualiza versiones de Python y te da los comandos `python` y `py`. El instalador clásico está obsoleto desde 3.14 y no se publicará para Python 3.16 ni posteriores."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# En PowerShell\npy install 3.14      # instala Python 3.14\npy list              # muestra las versiones instaladas\npython --version     # comprueba qué versión ejecuta «python»\npy -V:3.14 hola.py   # ejecuta un script con una versión concreta"
+    },
+    {
+     "type": "h",
+     "text": "macOS"
+    },
+    {
+     "type": "p",
+     "text": "macOS trae un `python3` en `/usr/bin` que pertenece al sistema: suele ser una versión antigua e incompleta y **no debes modificarlo ni borrarlo**. Instala tu propia versión con el instalador `.pkg` de python.org (incluye IDLE, un editor sencillo; al terminar, ejecuta *Install Certificates.command*) o con Homebrew. En macOS y Linux el comando suele ser `python3`, no `python`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "brew install python@3.14\npython3 --version"
+    },
+    {
+     "type": "h",
+     "text": "Linux"
+    },
+    {
+     "type": "p",
+     "text": "La documentación oficial recuerda que Python viene preinstalado en la mayoría de distribuciones, aunque a menudo no en su última versión. Puedes usar el gestor de paquetes (`apt`, `dnf`…) o `uv` si necesitas exactamente 3.14. No sustituyas el Python del sistema: muchas herramientas de la distribución dependen de él."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "python3 --version"
+    },
+    {
+     "type": "h",
+     "text": "La alternativa moderna: uv"
+    },
+    {
+     "type": "p",
+     "text": "**uv** es una herramienta de Astral, escrita en Rust y muy rápida, que gestiona versiones de Python, entornos virtuales y paquetes. Los entornos y paquetes llegarán en s07, pero ya puedes usarla para instalar Python y ejecutar scripts:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Instalar uv en macOS / Linux\ncurl -LsSf https://astral.sh/uv/install.sh | sh\n# Instalar uv en Windows (PowerShell)\npowershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n\nuv python install 3.14            # descarga e instala Python 3.14\nuv run --python 3.14 hola.py      # ejecuta un script con esa versión"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si al escribir `python` aparece «command not found» (o Windows te sugiere la Microsoft Store), prueba `python3` (macOS/Linux) o `py` (Windows). Si nada funciona, el problema suele estar en el **PATH**, la lista de carpetas donde el sistema busca programas: cierra y abre la terminal tras instalar y, si persiste, revisa la guía de instalación de tu sistema en docs.python.org."
+    },
+    {
+     "type": "h",
+     "text": "El intérprete interactivo (REPL)"
+    },
+    {
+     "type": "p",
+     "text": "Si escribes `python` (o `python3`, o `py`) sin nada más, entras en el **REPL** (*read–eval–print loop*): lee lo que escribes, lo evalúa, muestra el resultado y vuelve a esperar. El indicador `>>>` pide una instrucción nueva y `...` indica que la instrucción continúa en varias líneas."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": ">>> 2 + 3\n5\n>>> _\n5\n>>> \"hola\"\n'hola'\n>>> print(\"hola\")\nhola",
+     "caption": "Una sesión en el REPL. Las líneas sin `>>>` son lo que responde Python."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Eco automático**: si escribes una expresión, el REPL muestra su valor; los textos aparecen entre comillas (`'hola'`). `print()` muestra el texto tal cual (`hola`).",
+      "**Último resultado**: `_` guarda el último valor mostrado; es cómodo para usar el REPL como calculadora.",
+      "**Ayuda**: `help()` abre la ayuda interactiva y `help(print)` explica una función concreta.",
+      "**Salir**: `exit` o `quit` (desde 3.13, sin paréntesis), Ctrl+D en macOS/Linux o Ctrl+Z y Enter en Windows.",
+      "**Desde 3.13** el REPL tiene colores, edición de bloques de varias líneas con historial y un modo de pegado (F3). **Desde 3.14** además resalta la sintaxis y autocompleta con el tabulador los nombres de módulos tras `import`."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No confundas el REPL con un script. Si un archivo `.py` contiene solo `2 + 3`, Python lo calcula… y no muestra nada. Muchos principiantes creen que su programa «no funciona» por esto: en un script necesitas `print(2 + 3)`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "\"Este texto no se ve\"            # una expresión suelta: se evalúa y se descarta\nprint(\"Este texto sí se ve\")     # print() lo escribe en la salida",
+     "run": true,
+     "caption": "Esta plataforma ejecuta tu código como un script, no como el REPL: la primera línea no muestra nada."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «¿Qué muestra el REPL al evaluar `'hola'` y qué muestra `print('hola')`?». El REPL enseña la *representación* del valor (`'hola'`, con comillas); `print()` muestra el texto (`hola`)."
+    },
+    {
+     "type": "h",
+     "text": "Tu primer script"
+    },
+    {
+     "type": "p",
+     "text": "Un **script** es un archivo de texto con extensión `.py`. Créalo con un editor de código (nunca con un procesador de textos como Word, que añade formato), guárdalo en UTF-8 (la codificación predeterminada de Python) y ejecútalo desde una terminal situada en su carpeta. Este sería el contenido de `hola.py`:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"¡Hola desde un script!\")\nprint(\"Python ejecuta las líneas de arriba abajo.\")",
+     "run": true,
+     "caption": "Contenido de `hola.py`. Aquí puedes ejecutarlo con el botón; en tu computador, desde la terminal."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "cd ruta/a/tu/carpeta\npython hola.py        # Windows (también: py hola.py)\npython3 hola.py       # macOS / Linux"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Nunca llames a tus archivos como módulos de la biblioteca estándar (`random.py`, `math.py`, `string.py`…): cuando algo haga `import random`, Python cargará tu archivo en lugar del módulo real y obtendrás errores desconcertantes. Desde 3.13 el mensaje de error lo detecta y te sugiere renombrarlo («consider renaming…»)."
+    },
+    {
+     "type": "h",
+     "text": "Un editor de verdad: VS Code con la extensión de Python"
+    },
+    {
+     "type": "p",
+     "text": "Para proyectos reales conviene un editor con ayudas. Una opción gratuita muy extendida es **Visual Studio Code** con la extensión **Python** de Microsoft, que instala además *Pylance* (autocompletado y detección de errores mientras escribes), *Python Debugger* (depurador) y *Python Environments* (gestión de entornos). Los pasos básicos:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Instala Python (como se explica arriba) y después VS Code.",
+      "En la vista de extensiones busca «Python» (editor: Microsoft) e instálala.",
+      "Abre una carpeta, crea `hola.py` y elige el intérprete desde la paleta de comandos (Ctrl+Mayús+P o Cmd+Mayús+P) con **Python: Select Interpreter**.",
+      "Presiona el botón ▶ (*Run Python File*) de la esquina superior derecha: se abre una terminal integrada con la salida.",
+      "Para depurar, haz clic a la izquierda de un número de línea para poner un punto de interrupción (*breakpoint*) y presiona F5. La depuración a fondo llega en s08."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Asegúrate de que la tecla Tab inserta **4 espacios** en los archivos Python (VS Code lo hace así por defecto) y, más adelante, activa un formateador como Ruff (s13). Así la sangría nunca te dará problemas."
+    }
+   ]
+  },
+  {
+   "id": "s01-l4",
+   "title": "print(): mostrar información con formato exacto",
+   "minutes": 22,
+   "goals": [
+    "Escribir cadenas con comillas simples, dobles o triples y secuencias de escape como `\\n`, `\\t` y `\\\\`.",
+    "Controlar la salida de `print()` con varios argumentos y con los parámetros `sep` y `end`.",
+    "Predecir carácter a carácter qué imprime una serie de llamadas a `print()`.",
+    "Comentar código con `#` siguiendo las recomendaciones de PEP 8."
+   ],
+   "takeaways": [
+    "`print(*objects, sep=' ', end='\\n')`: escribe los argumentos separados por `sep` y termina con `end`.",
+    "`print()` sin argumentos escribe solo `end`: una línea en blanco.",
+    "Una cadena (`str`) es texto entre comillas; `\\n` es un salto de línea, `\\t` un tabulador y `\\\\` una barra invertida.",
+    "Los argumentos con nombre (`sep=`, `end=`) van siempre después de los posicionales.",
+    "Los comentarios empiezan con `#` y Python los ignora: explican el *porqué*, no repiten el *qué*."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`print()` es una **función integrada** (*built-in function*): un bloque de código con nombre que ya viene con Python. Para usarla la **llamas**: escribes su nombre seguido de paréntesis y, dentro, los **argumentos**, que son los datos con los que trabaja. `print()` convierte cada argumento en texto y lo escribe en la **salida estándar**: la terminal o, aquí, el panel «Salida»."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"Hola\")\nprint('También con comillas simples')\nprint(42)\nprint(\"Tengo\", 3, \"gatos y\", 2, \"perros\")\nprint()\nprint(\"Después de una línea en blanco\")",
+     "run": true,
+     "caption": "Los argumentos separados por comas se imprimen separados por un espacio. Los números no llevan comillas."
+    },
+    {
+     "type": "h",
+     "text": "Cadenas: texto entre comillas"
+    },
+    {
+     "type": "p",
+     "text": "Un texto en Python es una **cadena** (*string*, tipo `str`). Se escribe entre comillas simples `'...'` o dobles `\"...\"`, que son equivalentes: elige unas y sé coherente, y usa las otras cuando el texto contenga comillas, como en `\"It's\"` o `'Dijo \"hola\"'`. Las cadenas se estudian a fondo en s02 y s05; aquí verás lo imprescindible para imprimir."
+    },
+    {
+     "type": "p",
+     "text": "Dentro de una cadena, la barra invertida `\\` inicia una **secuencia de escape**: dos caracteres en el código que representan uno especial en el texto."
+    },
+    {
+     "type": "table",
+     "head": [
+      "En el código",
+      "Significado",
+      "Ejemplo",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "`\\n`",
+       "Salto de línea (*newline*)",
+       "`print(\"uno\\ndos\")`",
+       "`uno` y `dos` en líneas distintas"
+      ],
+      [
+       "`\\t`",
+       "Tabulador",
+       "`print(\"A\\tB\")`",
+       "`A` y `B` separados por un tabulador"
+      ],
+      [
+       "`\\\\`",
+       "Una barra invertida",
+       "`print(\"C:\\\\datos\")`",
+       "`C:\\datos`"
+      ],
+      [
+       "`\\'` y `\\\"`",
+       "Una comilla que no cierra la cadena",
+       "`print('It\\'s')`",
+       "`It's`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Si el texto ocupa varias líneas, las **comillas triples** (`\"\"\"...\"\"\"` o `'''...'''`) conservan los saltos de línea tal y como los escribes:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"\"\"Menú del día\n  1. Sopa\n  2. Arroz con pollo\"\"\")\nprint(\"Ruta: C:\\\\nuevo\\\\tareas\")   # \\\\ produce una sola barra\nprint(r\"Ruta: C:\\nuevo\\tareas\")    # r\"...\": cadena cruda, la barra no escapa nada",
+     "run": true,
+     "caption": "Las cadenas crudas (`r\"...\"`) se estudian en s05; son muy útiles para rutas de Windows y expresiones regulares."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa clásica: `print(\"C:\\nuevo\\tabla.txt\")` no imprime la ruta, porque `\\n` y `\\t` se convierten en un salto de línea y un tabulador. Escribe `\\\\` o usa `r\"...\"`. Y si pones una barra seguida de un carácter que no forma un escape válido, como en `\"\\d\"`, desde Python 3.12 recibirás un aviso `SyntaxWarning`: una versión futura lo convertirá en error."
+    },
+    {
+     "type": "h",
+     "text": "sep y end: los dos ajustes que más usarás"
+    },
+    {
+     "type": "p",
+     "text": "La firma completa es `print(*objects, sep=' ', end='\\n', file=None, flush=False)`. Traducido: acepta cualquier número de objetos; entre cada dos escribe `sep` (por defecto, un espacio) y al final escribe `end` (por defecto, un salto de línea). `sep` y `end` son **argumentos con nombre** (*keyword arguments*): se escriben como `nombre=valor` y van después de los demás."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué escribe print(\"A\", \"B\", \"C\", sep=\"-\", end=\"!\\n\")",
+     "mermaid": "flowchart LR\n  A[\"'A'\"] --> S1[\"sep: '-'\"]\n  S1 --> B[\"'B'\"]\n  B --> S2[\"sep: '-'\"]\n  S2 --> C[\"'C'\"]\n  C --> E[\"end: '!' y salto de línea\"]\n  E --> R[\"Resultado: A-B-C! y el cursor pasa a la línea siguiente\"]",
+     "caption": "`sep` aparece **entre** argumentos (n argumentos → n − 1 separadores); `end` aparece **una vez**, al final de la llamada."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"2026\", \"09\", \"26\", sep=\"-\")   # 2026-09-26\nprint(\"a\", \"b\", \"c\", sep=\"\")         # abc\nprint(\"Cargando\", end=\"\")\nprint(\"...\", end=\" \")\nprint(\"listo\")                       # Cargando... listo\nprint(\"uno\", \"dos\", sep=\"\\n\")        # cada argumento en su línea",
+     "run": true,
+     "caption": "Antes de ejecutar, predice la salida de cada línea. Después cambia `sep` y `end` y vuelve a predecir."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Llamada",
+      "Salida exacta"
+     ],
+     "rows": [
+      [
+       "`print(\"A\", \"B\")`",
+       "`A B` y salto de línea"
+      ],
+      [
+       "`print(\"A\", \"B\", sep=\"\")`",
+       "`AB` y salto de línea"
+      ],
+      [
+       "`print(\"A\", \"B\", sep=\", \")`",
+       "`A, B` y salto de línea"
+      ],
+      [
+       "`print(\"A\", end=\"\")` seguido de `print(\"B\")`",
+       "`AB` en la misma línea"
+      ],
+      [
+       "`print()`",
+       "Solo un salto de línea (línea en blanco)"
+      ],
+      [
+       "`print(\"A\", \"B\", sep=\"\\n\")`",
+       "`A` y `B` en dos líneas"
+      ],
+      [
+       "`print(\"A\", sep=\"-\")`",
+       "`A`: con un solo argumento, `sep` no se usa"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`sep` y `end` deben ser cadenas (o `None`, que equivale al valor por defecto): `print(1, 2, sep=0)` lanza `TypeError: sep must be None or a string, not int`. Además, los argumentos con nombre van siempre **después** de los posicionales: `print(sep=\"-\", \"x\")` es un `SyntaxError: positional argument follows keyword argument`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para mezclar texto y números, usa las comas de `print()` y, si hace falta, `sep`: `print(\"Total:\", 3)` funciona aunque 3 sea un número, mientras que `\"Total: \" + 3` provoca un `TypeError`. En s02 aprenderás las *f-strings* (`f\"Total: {total}\"`), la forma más cómoda de componer textos."
+    },
+    {
+     "type": "p",
+     "text": "Los otros dos parámetros son más avanzados: `file` permite escribir en otro destino (por ejemplo, un archivo, en s09) y `flush=True` fuerza a vaciar el búfer de salida en ese momento, para que el texto aparezca de inmediato aunque no termine en salto de línea (útil en barras de progreso)."
+    },
+    {
+     "type": "h",
+     "text": "Comentarios"
+    },
+    {
+     "type": "p",
+     "text": "Un **comentario** empieza con `#` y llega hasta el final de la línea; Python lo ignora por completo. Un `#` dentro de una cadena no es un comentario, sino un carácter más."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# Programa: tarjeta de visita\n# Autora: Ana García\n\nprint(\"Ana García\")                # nombre completo\nprint(\"Desarrolladora Python\")\nprint(\"# Esto no es un comentario: está dentro de la cadena\")\n# print(\"Esta línea está desactivada\")",
+     "run": true,
+     "caption": "Quita el `#` de la última línea y vuelve a ejecutar: comentar líneas es una forma rápida de desactivarlas mientras pruebas."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Comentarios de bloque**: en su propia línea, con la misma sangría que el código que explican, empezando por `#` y un espacio.",
+      "**Comentarios en línea**: separados del código por al menos **dos espacios** y empezando por `#` y un espacio (PEP 8).",
+      "Comenta el **porqué** («los precios llegan en centavos desde la API»), no lo evidente (`x = x + 1  # suma 1 a x`).",
+      "Un comentario que contradice el código es peor que no tener comentario: actualízalos cuando cambies el código."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`//` y `/* ... */` son comentarios en C, Java o JavaScript, **no en Python**: `//` es la división entera (s02) y `/*` es un error de sintaxis. Y un texto entre comillas triples suelto no es un comentario de verdad, sino una cadena que se evalúa y se descarta; su uso correcto es como *docstring*, que verás en s06."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué imprime este código?» es un formato de pregunta clásico en exámenes como el PCEP. Con `print()` fíjate en tres cosas: cuántos argumentos hay (cada coma añade un `sep`), si algún `end` evita el salto de línea, y si hay llamadas sin argumentos (`print()`) que añaden líneas vacías."
+    }
+   ]
+  },
+  {
+   "id": "s01-l5",
+   "title": "input(): pedir datos al usuario",
+   "minutes": 14,
+   "goals": [
+    "Leer datos del teclado con `input()` mostrando un mensaje adecuado.",
+    "Guardar lo leído en una variable y reutilizarlo en varias llamadas a `print()`.",
+    "Explicar por qué `input()` siempre devuelve una cadena y qué error aparece si se trata como número.",
+    "Probar programas con `input()` en la plataforma usando el cuadro «Entrada»."
+   ],
+   "takeaways": [
+    "`input(mensaje)` muestra el mensaje sin salto de línea, espera una línea y la devuelve sin el salto final.",
+    "Siempre devuelve texto: `\"25\"` no es el número 25. Convertir con `int()` o `float()` se ve en s02.",
+    "`nombre = input(...)` guarda el resultado con un nombre para usarlo después; el `=` asigna, no compara.",
+    "Si ya no quedan datos que leer, `input()` lanza `EOFError`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Casi todos los programas necesitan **datos de entrada**. La forma más sencilla de pedirlos es `input()`: muestra un mensaje (el *prompt*), espera a que el usuario escriba una línea y presione Enter, y **devuelve** lo escrito para que tu programa lo use."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre = input(\"¿Cómo te llamas? \")\nprint(\"Encantado de conocerte,\", nombre)",
+     "run": true,
+     "stdin": [
+      "Ana"
+     ],
+     "caption": "Cambia el texto del cuadro «Entrada» y vuelve a ejecutar. El programa se detiene en `input()` hasta tener un dato."
+    },
+    {
+     "type": "h",
+     "text": "Guardar lo que devuelve: una primera idea de variable"
+    },
+    {
+     "type": "p",
+     "text": "La línea `nombre = input(\"¿Cómo te llamas? \")` hace dos cosas, de derecha a izquierda: primero **ejecuta** `input(...)`, que devuelve el texto escrito; después, el signo `=` le da un **nombre** a ese valor para poder usarlo más tarde. Ese nombre es una **variable**. Por ahora basta con esta idea; en s02 verás con precisión qué es una variable en Python (un nombre que apunta a un objeto) y cómo elegir buenos nombres."
+    },
+    {
+     "type": "list",
+     "items": [
+      "El `=` **asigna**, no compara: léelo como «`nombre` recibe lo que devuelve `input`».",
+      "Usa nombres descriptivos en minúsculas y con guion bajo: `nombre`, `ciudad_natal`. En este curso evitamos tildes y ñ en los nombres (Python las admite, pero dan problemas con algunos teclados y herramientas): `anio` en lugar de `año`.",
+      "Si no guardas el resultado (`input(\"Nombre: \")` a secas), el texto se lee y se pierde."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué ocurre en una llamada a input()",
+     "mermaid": "sequenceDiagram\n  participant P as Programa\n  participant U as Usuario\n  P->>U: Muestra el prompt ¿Cómo te llamas?\n  Note over P: input() espera y el programa se detiene\n  U->>P: Escribe Ana y presiona Enter\n  P->>P: input() devuelve el texto Ana sin el salto de línea\n  P->>P: nombre = ... guarda ese texto\n  P->>U: print muestra Encantado de conocerte, Ana"
+    },
+    {
+     "type": "p",
+     "text": "Un detalle del mensaje: `input()` no añade nada después del prompt. Con `input(\"Nombre:\")` el cursor queda pegado a los dos puntos; termina el prompt con un espacio (`\"Nombre: \"`). Y para componer la respuesta sin espacios de más, recuerda `sep=\"\"`:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "ciudad = input(\"¿En qué ciudad vives? \")\nlenguaje = input(\"¿Qué lenguaje aprendes? \")\nprint(\"Vives en \", ciudad, \" y aprendes \", lenguaje, \".\", sep=\"\")",
+     "run": true,
+     "stdin": [
+      "Santiago",
+      "Python"
+     ],
+     "caption": "Cada línea de «Entrada» es la respuesta a un `input()`, en orden. Con `sep=\"\"` decides tú dónde van los espacios."
+    },
+    {
+     "type": "h",
+     "text": "input() siempre devuelve texto"
+    },
+    {
+     "type": "p",
+     "text": "Da igual lo que escriba el usuario: `input()` devuelve siempre una **cadena**. Si escribe `25`, obtienes el texto `\"25\"` (dos caracteres, el 2 y el 5), no el número veinticinco. Se nota en cuanto intentas hacer cuentas. Este programa, ejecutado en una terminal, falla así:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "edad = input(\"Edad: \")      # el usuario escribe 25\nprint(edad + 1)"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Edad: 25\nTraceback (most recent call last):\n  File \"/home/ana/edad.py\", line 2, in <module>\n    print(edad + 1)\n          ~~~~~^~~\nTypeError: can only concatenate str (not \"int\") to str"
+    },
+    {
+     "type": "p",
+     "text": "El mensaje se entiende si lo lees de abajo arriba (lo practicarás en la lección 7): no se puede *concatenar* (unir) un texto con un número. La solución es **convertir** el texto en número con `int()` o `float()`, que verás en s02. Mientras tanto, si solo necesitas mostrar el dato, no hace falta convertir nada: `print(\"Tienes\", edad, \"años\")` funciona."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Más sorpresas de que todo sea texto: si el usuario presiona Enter sin escribir, obtienes una cadena vacía `\"\"` (no `None`); los espacios que escriba se conservan tal cual (`\"  Ana \"`); y dos «números» leídos con `input()` y unidos con `+` se pegan: `\"2\" + \"3\"` da `\"23\"`, no `5`."
+    },
+    {
+     "type": "h",
+     "text": "input() en esta plataforma"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Al presionar **▶ Ejecutar**, cada línea del cuadro «Entrada» es lo que devolverá una llamada a `input()`, en orden. La salida muestra el prompt y el dato como si lo hubieras tecleado en una terminal.",
+      "Si tu programa llama a `input()` más veces que líneas hay en «Entrada», se produce un `EOFError` (*End Of File*: se acabaron los datos). En tu computador pasa lo mismo si la entrada termina (Ctrl+D o Ctrl+Z).",
+      "Al presionar **✓ Comprobar**, las pruebas proporcionan sus propias entradas a tu función. El texto del prompt no forma parte de la salida que comparan: solo cuenta lo que muestras con `print()`. Lo verás en detalle en la lección siguiente."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica de examen: «el usuario escribe `2` y luego `3`; ¿qué imprime `print(input() + input())`?». Respuesta: `23`, porque `input()` devuelve cadenas y `+` entre cadenas las une."
+    }
+   ]
+  },
+  {
+   "id": "s01-l6",
+   "title": "Sangría, funciones y cómo se corrigen tus ejercicios",
+   "minutes": 22,
+   "goals": [
+    "Aplicar la regla de la sangría: una línea que termina en `:` abre un bloque cuyas líneas van sangradas 4 espacios.",
+    "Definir funciones con `def`, sin parámetros o con parámetros posicionales, y llamarlas pasando argumentos.",
+    "Distinguir parámetro de argumento, y una función que imprime (`print`) de una que devuelve un valor (`return`).",
+    "Usar el ciclo Ejecutar → Comprobar de la plataforma y la función `capturar` para probar tu código."
+   ],
+   "takeaways": [
+    "En Python la sangría no es decoración: define qué líneas pertenecen a cada bloque. Usa siempre 4 espacios.",
+    "`def nombre():` solo **define** la función; su cuerpo se ejecuta cada vez que la **llamas** con `nombre()`.",
+    "`return` entrega un valor a quien llama; `print` lo muestra en pantalla. Una función sin `return` devuelve `None`.",
+    "Parámetro: el nombre entre paréntesis en el `def`. Argumento: el valor que pasas al llamar. Los argumentos posicionales se asignan por orden.",
+    "En los ejercicios escribes funciones como `main()` y las pruebas las llaman por ti: no hace falta que las llames tú.",
+    "La salida debe coincidir carácter a carácter con lo pedido: espacios, tildes y signos incluidos."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora cada línea era una instrucción independiente. Pero los programas necesitan **agrupar** instrucciones: «estas tres líneas forman el saludo», «esto se repite», «esto solo si…». Muchos lenguajes usan llaves `{ }`; Python usa la **sangría** (*indentation*): los espacios al principio de la línea."
+    },
+    {
+     "type": "h",
+     "text": "La regla de la sangría"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Una línea que **termina en dos puntos** `:` es una *cabecera* y anuncia un bloque: `def` y, más adelante, `if`, `for`, `while`, `class`…",
+      "Las líneas del bloque van **sangradas** más que la cabecera, y todas con la **misma** sangría.",
+      "El bloque termina cuando vuelves a la sangría anterior.",
+      "PEP 8: usa **4 espacios** por nivel y no mezcles tabuladores con espacios."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def saludar():\n    print(\"Hola\")          # dentro del bloque de saludar\n    print(\"¿Qué tal?\")     # también dentro\n\nprint(\"Esto está fuera y se ejecuta primero\")\nsaludar()",
+     "run": true,
+     "caption": "Observa el orden de la salida: definir la función no ejecuta su cuerpo; eso ocurre al llamarla con `saludar()`."
+    },
+    {
+     "type": "diagram",
+     "title": "Definir no es ejecutar",
+     "mermaid": "flowchart TD\n  D[\"def saludar(): Python guarda la función, NO ejecuta su cuerpo\"] --> F[\"print de fuera: se ejecuta\"]\n  F --> L[\"saludar(): la llamada salta al cuerpo de la función\"]\n  L --> C1[\"print Hola\"]\n  C1 --> C2[\"print ¿Qué tal?\"]\n  C2 --> V[\"Al acabar el cuerpo, vuelve a la línea siguiente a la llamada\"]"
+    },
+    {
+     "type": "p",
+     "text": "¿Por qué este diseño? La FAQ de diseño oficial lo explica: como no hay llaves, no puede haber desacuerdo entre lo que ve la persona y lo que entiende el intérprete. En C, un código mal sangrado puede engañar a quien lo lee; en Python, la sangría **es** la estructura."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Error",
+      "Causa típica",
+      "Mensaje en Python 3.14"
+     ],
+     "rows": [
+      [
+       "Falta la sangría",
+       "El cuerpo de `def` no está sangrado",
+       "`IndentationError: expected an indented block after function definition on line 1`"
+      ],
+      [
+       "Sangría inesperada",
+       "Una línea sangrada sin cabecera que la justifique",
+       "`IndentationError: unexpected indent`"
+      ],
+      [
+       "Sangría que no cuadra",
+       "Al salir de un bloque, la sangría no coincide con ningún nivel anterior",
+       "`IndentationError: unindent does not match any outer indentation level`"
+      ],
+      [
+       "Tabuladores y espacios mezclados",
+       "Unas líneas con Tab y otras con espacios en el mismo bloque",
+       "`TabError: inconsistent use of tabs and spaces in indentation`"
+      ],
+      [
+       "Faltan los dos puntos",
+       "`def main()` sin `:`",
+       "`SyntaxError: expected ':'`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "`IndentationError` es una subclase de `SyntaxError`, y `TabError` lo es de `IndentationError`: todos se detectan **antes** de ejecutar nada."
+    },
+    {
+     "type": "h",
+     "text": "Funciones: bloques con nombre"
+    },
+    {
+     "type": "p",
+     "text": "Una **función** es un bloque de código con nombre que puedes ejecutar cuando quieras. Ya usas funciones de otros (`print`, `input`); con `def` creas las tuyas. Aquí verás lo esencial: funciones sin datos, funciones que devuelven un valor y funciones con parámetros simples. Lo demás (valores por defecto, `*args`, `**kwargs`, ámbito…) es el tema de s06."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def main():                  # cabecera: def + nombre + () + :\n    print(\"Primera línea\")   # cuerpo: sangrado 4 espacios\n    print(\"Segunda línea\")\n\nmain()                       # llamada: ahora sí se ejecuta el cuerpo\nmain()                       # y se puede llamar las veces que quieras",
+     "run": true
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Definir** (`def main():`) no ejecuta nada: le enseña a Python qué hacer cuando la llames.",
+      "**Llamar** (`main()`) ejecuta el cuerpo de arriba abajo y después continúa por donde ibas. Sin paréntesis (`main`) no la llamas: solo nombras la función.",
+      "Hay que definir la función **antes** de llamarla; si no, obtendrás `NameError: name 'main' is not defined`.",
+      "Si el cuerpo aún está vacío, escribe `pass`, una instrucción que no hace nada, para que la sintaxis sea válida. La verás en el código inicial de los ejercicios; bórrala cuando escribas el tuyo.",
+      "Nombres de funciones: minúsculas con guiones bajos (`mostrar_menu`), como pide PEP 8."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Devolver un valor no es lo mismo que imprimirlo"
+    },
+    {
+     "type": "p",
+     "text": "Algunas funciones **devuelven** un resultado a quien las llama, como hace `input()`. Para eso existe `return`: termina la función y entrega un valor. Es una diferencia fundamental:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def lema():\n    return \"Legibilidad ante todo\"    # devuelve el texto, no lo muestra\n\n\ndef presentar():\n    print(\"Curso de Python\")          # muestra el texto, no devuelve nada\n\n\ntexto = lema()            # no se imprime nada: el valor se guarda\nprint(texto)              # ahora sí: Legibilidad ante todo\nresultado = presentar()   # imprime «Curso de Python»\nprint(resultado)          # None: presentar() no tiene return",
+     "run": true,
+     "caption": "`None` es el valor especial que significa «nada»; lo verás en s02."
+    },
+    {
+     "type": "diagram",
+     "title": "return entrega, print muestra",
+     "mermaid": "sequenceDiagram\n  participant M as Código que llama\n  participant L as lema()\n  participant P as presentar()\n  participant S as Pantalla\n  M->>L: llama a lema()\n  L-->>M: return con el texto Legibilidad ante todo\n  M->>S: print(texto)\n  M->>P: llama a presentar()\n  P->>S: print con el texto Curso de Python\n  P-->>M: devuelve None porque no hay return"
+    },
+    {
+     "type": "h",
+     "text": "Funciones que reciben datos: parámetros"
+    },
+    {
+     "type": "p",
+     "text": "Casi todas las funciones útiles trabajan con datos que reciben al ser llamadas, igual que `print(\"Hola\")` recibe el texto que muestra. Esos datos se declaran entre los paréntesis del `def`:"
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Parámetro",
+       "en": "parameter",
+       "def": "Nombre que escribes entre los paréntesis al **definir** la función (`def saludo(nombre):`). Dentro del cuerpo funciona como una variable."
+      },
+      {
+       "term": "Argumento",
+       "en": "argument",
+       "def": "Valor concreto que pasas al **llamar** a la función (`saludo(\"Ana\")`). Python lo asigna al parámetro antes de ejecutar el cuerpo."
+      }
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def saludo(nombre):                  # nombre es un PARÁMETRO\n    return \"¡Hola, \" + nombre + \"!\"  # + une cadenas (concatenar)\n\n\nprint(saludo(\"Ana\"))                 # \"Ana\" es un ARGUMENTO\nprint(saludo(\"Joaquín\"))             # la misma función, otro argumento\nmensaje = saludo(\"Sofía\")            # el valor devuelto se puede guardar\nprint(mensaje)",
+     "run": true,
+     "caption": "Para componer el texto usamos `+` entre cadenas, que las une (*concatenar*). Solo funciona entre cadenas: recuerda el `TypeError` de la lección 5. Los operadores y las f-strings se ven a fondo en s02."
+    },
+    {
+     "type": "p",
+     "text": "Con varios parámetros, los argumentos **posicionales** se asignan **por orden**: el primero al primer parámetro, el segundo al segundo… Si cambias el orden, cambia el resultado; y si pasas más o menos argumentos de los que espera la función, Python lanza un `TypeError`."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def ficha(nombre, ciudad):\n    return nombre + \" vive en \" + ciudad\n\n\nprint(ficha(\"Ana\", \"Santiago\"))     # Ana vive en Santiago\nprint(ficha(\"Santiago\", \"Ana\"))     # ¡el orden importa! Santiago vive en Ana\n# print(ficha(\"Ana\"))             # quita el primer # y ejecuta: falta un argumento",
+     "run": true,
+     "caption": "Al activar la última línea verás `TypeError: ficha() missing 1 required positional argument: 'ciudad'`. Pasar de más también falla: `ficha() takes 2 positional arguments but 3 were given`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Error de principiante número uno: usar `print` cuando el enunciado pide **devolver**. Si escribes `def saludo(nombre): print(\"¡Hola, \" + nombre + \"!\")`, en pantalla se ve bien, pero la función devuelve `None`: no puedes guardar el texto ni usarlo después, y las pruebas, que comprueban el valor devuelto, fallan. Regla práctica: si el enunciado dice «devuelve», usa `return` y deja el `print` para quien llama."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Diseño de experto: separa **calcular** (funciones con parámetros que devuelven un valor) de **mostrar** (`main()`, que pide datos con `input()` e imprime). Así cada función se puede probar sola y reutilizar. Los valores por defecto (`def f(x=1)`), `*args`, `**kwargs` y el ámbito de las variables se estudian a fondo en s06."
+    },
+    {
+     "type": "h",
+     "text": "Cómo funciona esta plataforma"
+    },
+    {
+     "type": "p",
+     "text": "Cada ejercicio tiene un enunciado, un editor con código inicial y dos botones. Tu código se guarda automáticamente mientras escribes."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Botón",
+      "Qué hace",
+      "Cuándo usarlo"
+     ],
+     "rows": [
+      [
+       "**▶ Ejecutar** (Ctrl/⌘ + Enter)",
+       "Ejecuta tu archivo completo de arriba abajo, como `python archivo.py`, y muestra la salida. Si hay `input()`, toma los datos del cuadro «Entrada» (una línea por dato).",
+       "Para experimentar y ver qué imprime tu código."
+      ],
+      [
+       "**✓ Comprobar** (Mayús + Enter)",
+       "Ejecuta tu código en un espacio limpio y después cada prueba automática por separado. Una prueba pasa si no lanza ningún error.",
+       "Cuando creas que está resuelto. Lee el mensaje de cada prueba fallida: indica qué se esperaba sin darte la solución."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Qué pasa al presionar Comprobar",
+     "mermaid": "sequenceDiagram\n  participant A as Tú\n  participant E as Editor\n  participant PY as Python 3.14 en tu navegador\n  participant T as Pruebas\n  A->>E: Presionas Comprobar\n  E->>PY: Ejecuta tu código, que define main y tus funciones\n  alt Error de sintaxis o fallo al cargar el código\n    PY-->>A: Muestra el traceback y no ejecuta ninguna prueba\n  else El código se carga bien\n    loop Cada prueba por separado\n      T->>PY: Llama a tus funciones, por ejemplo capturar(main, entradas=[...])\n      PY-->>T: Devuelve lo impreso o el valor devuelto\n      T-->>A: Verde si coincide, rojo con un mensaje orientativo si no\n    end\n  end"
+    },
+    {
+     "type": "p",
+     "text": "Las pruebas llaman a tus funciones por ti, así que en los ejercicios **no hace falta** que escribas `main()` al final. Si quieres ver tu programa con **Ejecutar**, añade temporalmente una llamada `main()` al final, escribe los datos en «Entrada» y ejecuta. Antes de **Comprobar**, bórrala si tu `main()` usa `input()`: al comprobar no hay cuadro «Entrada» y esa llamada extra fallaría con `EOFError` antes de que empiecen las pruebas."
+    },
+    {
+     "type": "p",
+     "text": "También puedes hacer exactamente lo que hacen las pruebas con `capturar(funcion, entradas=[...])`, una función auxiliar de esta plataforma (no es parte de Python): ejecuta la función con esas entradas y **devuelve** como texto todo lo que imprimió. Así ves cada espacio y cada salto de línea:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def main():\n    nombre = input(\"Nombre: \")\n    print(\"Hola,\", nombre)\n\n\nsalida = capturar(main, entradas=[\"Ana\"])\nprint(repr(salida))   # repr() muestra las comillas y los saltos como \\n",
+     "run": true,
+     "caption": "Resultado: `'Hola, Ana\\n'`. El prompt `Nombre: ` no aparece: las pruebas solo comparan lo que imprimes con `print()`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Flujo de trabajo recomendado: 1) lee el enunciado y los ejemplos; 2) escribe una primera versión pequeña; 3) **Ejecuta** y mira la salida; 4) **Comprueba**; 5) si algo falla, lee el mensaje de la prueba y pide una pista solo cuando lleves un rato atascado. Tras resolverlo, lee «Por qué funciona»: ahí están las alternativas y la versión de experto."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Lo que imprimas debe coincidir **carácter a carácter** con lo pedido: un espacio de más, una tilde que falta o un punto final distinto hacen fallar la prueba. No es manía: en programación real, a menudo otro programa leerá tu salida, y no perdona."
+    }
+   ]
+  },
+  {
+   "id": "s01-l7",
+   "title": "Errores y tracebacks: aprender a leerlos",
+   "minutes": 20,
+   "goals": [
+    "Clasificar un error como de sintaxis, de ejecución (excepción) o de lógica.",
+    "Leer un traceback de abajo arriba para localizar el tipo de error, el mensaje, la línea y la cadena de llamadas.",
+    "Reconocer las excepciones más frecuentes del principiante: `NameError`, `TypeError`, `ValueError`, `ZeroDivisionError` y `EOFError`.",
+    "Aplicar una estrategia sistemática para corregir errores de uno en uno."
+   ],
+   "takeaways": [
+    "Error de sintaxis: el código no respeta la gramática; se detecta antes de ejecutar y no corre nada.",
+    "Excepción: el código es válido pero algo falla al ejecutarse; lo anterior sí se ejecutó.",
+    "Error de lógica: no hay mensaje, pero el resultado es incorrecto; lo detectan las pruebas.",
+    "Un traceback se lee de abajo arriba: la última línea dice qué pasó; el último `File`, dónde; los de arriba, cómo llegaste ahí.",
+    "Los mensajes de Python 3.10–3.14 son muy buenos: léelos enteros, incluidas las sugerencias «Did you mean…?»."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los errores no son un fracaso: son la forma que tiene Python de decirte qué no entiende. Un programador experto no comete menos errores al escribir; los **corrige más rápido** porque sabe leer los mensajes. Esta lección te enseña a hacerlo."
+    },
+    {
+     "type": "h",
+     "text": "Tres tipos de errores"
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué tipo de error tengo?",
+     "mermaid": "flowchart TD\n  E[\"Algo va mal\"] --> Q1{\"¿Llega a ejecutarse alguna línea?\"}\n  Q1 -->|\"No, Python protesta antes\"| S[\"Error de sintaxis: SyntaxError, IndentationError, TabError\"]\n  Q1 -->|\"Sí\"| Q2{\"¿Aparece un traceback?\"}\n  Q2 -->|\"Sí\"| X[\"Error de ejecución o excepción: NameError, TypeError, ValueError...\"]\n  Q2 -->|\"No, pero el resultado es incorrecto\"| L[\"Error de lógica: lo descubren las pruebas\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo",
+      "Cuándo aparece",
+      "Ejemplo",
+      "Pista para arreglarlo"
+     ],
+     "rows": [
+      [
+       "Sintaxis",
+       "Al analizar el archivo, antes de ejecutar",
+       "`print(\"Hola\"` → `SyntaxError: '(' was never closed`",
+       "Mira la línea indicada **y la anterior**: a menudo el fallo empieza antes."
+      ],
+      [
+       "Ejecución",
+       "Al llegar a la línea problemática",
+       "`print(nombree)` → `NameError: name 'nombree' is not defined. Did you mean: 'nombre'?`",
+       "Lee el tipo y el mensaje; ve a la línea del último `File`."
+      ],
+      [
+       "Lógica",
+       "Nunca da error",
+       "`print(\"Hola,\", \"nombre\")` imprime la palabra *nombre* en vez del valor de la variable",
+       "Compara la salida con lo esperado; las pruebas te lo señalan."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Errores de sintaxis"
+    },
+    {
+     "type": "p",
+     "text": "Python repite la línea donde **detectó** el problema y la señala con `^`. La documentación oficial advierte que ese no siempre es el lugar que hay que corregir: si falta un `:` o un paréntesis, el fallo puede estar justo antes."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "  File \"/home/ana/saludo.py\", line 1\n    print(\"Hola\"\n         ^\nSyntaxError: '(' was never closed"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`SyntaxError: unterminated string literal (detected at line 1)`: una cadena sin comilla de cierre.",
+      "`SyntaxError: expected ':'`: falta el `:` al final de una cabecera como `def main()`.",
+      "`SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?`: estilo de Python 2 (`print \"hola\"`).",
+      "`SyntaxError: invalid syntax. Did you mean 'while'?`: palabra clave mal escrita (sugerencia nueva en 3.14).",
+      "`IndentationError: unexpected indent`: sangría donde no corresponde."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Excepciones y cómo leer un traceback"
+    },
+    {
+     "type": "p",
+     "text": "Cuando el código es válido pero algo falla al ejecutarse, Python lanza una **excepción**. Si nadie la gestiona (aprenderás a hacerlo con `try`/`except` en s08), el programa se detiene y muestra un **traceback**: el rastro de las llamadas que llevaron al error. Mira este programa (`total` y `cantidad` son *parámetros*, como viste en la lección anterior) y su traceback real en Python 3.14:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "def calcular_media(total, cantidad):\n    return total / cantidad\n\n\ndef informe():\n    media = calcular_media(10, 0)\n    print(\"Media:\", media)\n\n\ninforme()",
+     "caption": "`media.py`"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Traceback (most recent call last):\n  File \"/home/ana/media.py\", line 10, in <module>\n    informe()\n    ~~~~~~~^^\n  File \"/home/ana/media.py\", line 6, in informe\n    media = calcular_media(10, 0)\n  File \"/home/ana/media.py\", line 2, in calcular_media\n    return total / cantidad\n           ~~~~~~^~~~~~~~~~\nZeroDivisionError: division by zero"
+    },
+    {
+     "type": "diagram",
+     "title": "Anatomía de un traceback",
+     "mermaid": "flowchart TB\n  A[\"Traceback (most recent call last): la llamada más reciente va al final\"] --> B[\"line 10, in module: informe() es donde empezó todo\"]\n  B --> C[\"line 6, in informe: se llamó a calcular_media(10, 0)\"]\n  C --> D[\"line 2, in calcular_media: aquí se produjo el error\"]\n  D --> E[\"ZeroDivisionError: division by zero, es decir, QUÉ pasó\"]",
+     "caption": "Lee de abajo arriba: primero **qué** (última línea), luego **dónde** (el último `File`) y después **cómo llegaste** (los `File` de arriba)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Última línea**: el tipo de excepción (`ZeroDivisionError`) y el mensaje (`division by zero`). Te dice *qué* pasó.",
+      "**El último bloque** `File`: archivo, número de línea y función donde se produjo (`line 2, in calcular_media`). Te dice *dónde*.",
+      "**Las marcas** `^` **y** `~` (desde Python 3.11) señalan la parte exacta de la línea que falló.",
+      "**Los bloques de arriba**: la cadena de llamadas, de la más antigua a la más reciente (*most recent call last*). `<module>` significa «el nivel superior del archivo», fuera de cualquier función.",
+      "**Decide dónde arreglar**: no siempre es la línea que falló. Aquí el problema real es pedir una media con `cantidad` igual a 0, en la línea 6."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En esta plataforma, los tracebacks muestran `File \"tu código\", line N` en lugar de una ruta y, en los errores de ejecución, no repiten la línea de código: ve a la línea N del editor. Durante **Comprobar**, cada prueba fallida muestra solo la última línea del error (tipo y mensaje)."
+    },
+    {
+     "type": "p",
+     "text": "Pruébalo tú: ejecuta el ejemplo, después quita el primer `#` de la tercera línea y ejecuta de nuevo. Observa que las dos primeras líneas sí se imprimen y la última ya no."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "print(\"Esta línea se ejecuta\")\nprint(\"Y esta también\")\n# print(nombre_inexistente)     # quita el primer # y ejecuta de nuevo\nprint(\"Si activas la línea anterior, esta ya no se imprimirá\")",
+     "run": true
+    },
+    {
+     "type": "table",
+     "head": [
+      "Excepción",
+      "Qué significa",
+      "Ejemplo que la provoca"
+     ],
+     "rows": [
+      [
+       "`NameError`",
+       "Usas un nombre que no existe: errata, mayúsculas distintas o variable sin definir",
+       "`Print(\"hola\")`, `print(nombree)`"
+      ],
+      [
+       "`TypeError`",
+       "Operación con un tipo de dato que no la admite",
+       "`\"Edad: \" + 3`"
+      ],
+      [
+       "`ValueError`",
+       "El tipo es correcto, pero el valor no sirve",
+       "`int(\"doce\")` (lo verás en s02)"
+      ],
+      [
+       "`ZeroDivisionError`",
+       "División entre cero",
+       "`10 / 0`"
+      ],
+      [
+       "`EOFError`",
+       "`input()` no tiene más datos que leer",
+       "Llamar a `input()` más veces que datos hay"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Distinción clásica de examen: `NameError` (el nombre no existe), `TypeError` (tipo inadecuado para la operación) y `ValueError` (tipo correcto, valor inadecuado). Recuerda también que los nombres de las excepciones integradas son identificadores normales, no palabras reservadas."
+    },
+    {
+     "type": "h",
+     "text": "Los errores de lógica: cuando Python no se queja"
+    },
+    {
+     "type": "p",
+     "text": "El error más traicionero no produce ningún mensaje: el programa hace **otra cosa** de la que querías. Aquí la primera línea imprime la palabra «nombre» porque está entre comillas, en lugar del valor de la variable:"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "nombre = \"Ana\"\nprint(\"Hola,\", \"nombre\")   # error de lógica: imprime la palabra, no la variable\nprint(\"Hola,\", nombre)     # correcto",
+     "run": true
+    },
+    {
+     "type": "p",
+     "text": "Para cazarlos, compara la salida con lo esperado (eso hacen las pruebas de los ejercicios) y, cuando no sepas qué ocurre, añade `print()` temporales para ver qué valor tiene cada cosa en cada momento. Es la técnica de depuración más antigua y sigue siendo útil (en s08 verás el depurador y `logging`):"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "ciudad = input(\"Ciudad: \")\nprint(\"DEPURACIÓN: ciudad =\", repr(ciudad))   # print temporal; bórralo al terminar\nprint(\"Vives en\", ciudad)",
+     "run": true,
+     "stdin": [
+      "  Valparaíso "
+     ],
+     "caption": "`repr()` muestra el valor con comillas, lo que deja ver espacios sobrantes. Prueba a escribir espacios antes o después de la ciudad en «Entrada»."
+    },
+    {
+     "type": "h",
+     "text": "Estrategia para corregir errores"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Lee el mensaje **completo** y sin miedo, empezando por la última línea.",
+      "Ve a la línea indicada (y a la anterior, si es un error de sintaxis).",
+      "Corrige **un error cada vez** y vuelve a ejecutar: a menudo un error provoca otros en cascada.",
+      "Si no entiendes el mensaje, búscalo tal cual (sin tus rutas ni datos privados): es muy probable que alguien lo haya tenido antes.",
+      "Si no hay mensaje pero el resultado es incorrecto, usa `print()` temporales o comenta partes del código hasta aislar la línea culpable."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "p",
+     "text": "Además, desde Python 3.10 los mensajes mejoran en cada versión: indican qué paréntesis no se cerró (3.10), sugieren nombres parecidos con `Did you mean` (3.10), señalan la parte exacta de la línea con `^` y `~` (3.11), salen en color en la terminal y avisan si tu archivo tapa un módulo estándar (3.13), y detectan palabras clave mal escritas como `whille` (3.14). Si aprendiste con tutoriales antiguos, notarás la diferencia."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No «arregles» un error cambiando cosas al azar hasta que desaparezca. Si no sabes por qué fallaba ni por qué funciona ahora, el error volverá. Entiende el mensaje primero."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Explicar el código en voz alta, línea a línea, a un objeto cualquiera (la técnica del *patito de goma*, *rubber duck debugging*) funciona sorprendentemente bien: al verbalizar qué debería hacer cada línea, descubres dónde no lo hace."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s01-e1",
+   "title": "¡Hola, mundo!",
+   "level": "facil",
+   "minutes": 5,
+   "prompt": [
+    "Es tradición que el primer programa en cualquier lenguaje salude al mundo. Completa la función `main()` para que imprima **exactamente** estas dos líneas:",
+    "```text\n¡Hola, mundo!\nEstoy aprendiendo Python 3.14.\n```",
+    "Fíjate en el signo de apertura `¡`, la coma, los espacios y el punto final: las pruebas comparan carácter a carácter."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main)",
+     "result": "'¡Hola, mundo!\\nEstoy aprendiendo Python 3.14.\\n'"
+    }
+   ],
+   "starter": "def main():\n    # Escribe aquí tus dos llamadas a print()\n    pass\n",
+   "solution": "def main():\n    print(\"¡Hola, mundo!\")\n    print(\"Estoy aprendiendo Python 3.14.\")\n",
+   "tests": [
+    {
+     "name": "Imprime exactamente las dos líneas",
+     "code": "salida = capturar(main)\nesperado = \"¡Hola, mundo!\\nEstoy aprendiendo Python 3.14.\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y tu programa imprimió {salida!r}\""
+    },
+    {
+     "name": "La primera línea es el saludo, con ¡ y !",
+     "code": "primera = capturar(main).split(\"\\n\")[0]\nassert primera == \"¡Hola, mundo!\", f\"La primera línea es {primera!r}: revisa los signos ¡ y !, la coma y las mayúsculas\""
+    },
+    {
+     "name": "Imprime exactamente dos líneas",
+     "code": "n = capturar(main).count(\"\\n\")\nassert n == 2, f\"Se esperaban 2 líneas y se imprimieron {n}. ¿Sobra o falta algún print()?\""
+    },
+    {
+     "name": "La segunda línea termina con punto",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert len(lineas) > 1 and lineas[1].endswith(\"3.14.\"), \"La segunda línea debe terminar en '3.14.' (con el punto final)\""
+    }
+   ],
+   "hints": [
+    "Cada llamada a `print()` escribe su texto y salta a la línea siguiente.",
+    "Dentro de `main()` necesitas dos líneas sangradas 4 espacios, cada una con `print(\"...\")`. Puedes borrar el `pass`: ya no hace falta."
+   ],
+   "explain": "Cada `print()` escribe su argumento seguido de `end`, que por defecto es `\"\\n\"`; por eso dos llamadas producen dos líneas. Las pruebas ejecutan `capturar(main)` y comparan el texto exacto, por eso cuenta cada signo.\n\nAlternativas equivalentes: una sola llamada con `print(\"¡Hola, mundo!\", \"Estoy aprendiendo Python 3.14.\", sep=\"\\n\")`, o con `\\n` dentro de la cadena. Producen lo mismo, pero dos `print()` es lo más legible aquí: el código se parece a la salida."
+  },
+  {
+   "id": "s01-e2",
+   "title": "Saludo personalizado",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Escribe `main()` para que pida el nombre con `input(\"¿Cómo te llamas? \")` y después imprima **una sola línea** con este formato exacto (aquí, para el nombre `Ana`):",
+    "```text\n¡Hola, Ana! Te damos la bienvenida.\n```",
+    "El nombre es el que escriba el usuario, sea cual sea. Observa que **no** hay espacio entre el nombre y el `!`."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main, entradas=[\"Ana\"])",
+     "result": "'¡Hola, Ana! Te damos la bienvenida.\\n'"
+    },
+    {
+     "call": "capturar(main, entradas=[\"José Luis\"])",
+     "result": "'¡Hola, José Luis! Te damos la bienvenida.\\n'"
+    }
+   ],
+   "starter": "def main():\n    # 1. Pide el nombre con input() y guárdalo en una variable\n    # 2. Imprime el saludo con el formato exacto del enunciado\n    pass\n",
+   "solution": "def main():\n    nombre = input(\"¿Cómo te llamas? \")\n    print(\"¡Hola, \", nombre, \"! Te damos la bienvenida.\", sep=\"\")\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "Saluda a Ana",
+     "code": "salida = capturar(main, entradas=[\"Ana\"])\nesperado = \"¡Hola, Ana! Te damos la bienvenida.\\n\"\nassert salida == esperado, f\"Con la entrada 'Ana' se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Funciona con nombres compuestos y tildes",
+     "code": "salida = capturar(main, entradas=[\"María José\"])\nesperado = \"¡Hola, María José! Te damos la bienvenida.\\n\"\nassert salida == esperado, f\"Con la entrada 'María José' se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Usa el nombre que escribe el usuario",
+     "code": "salida = capturar(main, entradas=[\"Zoë\"])\nassert \"Zoë\" in salida, f\"El saludo debe incluir el nombre que devuelve input(), no uno escrito a mano. Se imprimió {salida!r}\""
+    },
+    {
+     "name": "Sin espacio entre el nombre y el !",
+     "code": "salida = capturar(main, entradas=[\"Luis\"])\nassert \"Luis!\" in salida, f\"Entre el nombre y el '!' no debe haber espacio; se imprimió {salida!r}. Controla los espacios con sep\""
+    },
+    {
+     "name": "Pregunta una sola vez con el mensaje exacto",
+     "code": "_, prompts, _, _ = _ejecutar(main, [\"Ana\"])\nassert prompts == [\"¿Cómo te llamas? \"], f\"input() debe llamarse una vez con el mensaje '¿Cómo te llamas? ' (con un espacio final); se llamó con {prompts!r}\""
+    }
+   ],
+   "hints": [
+    "Guarda lo que devuelve `input(...)` en una variable, por ejemplo `nombre`.",
+    "Con varios argumentos, `print()` pone un espacio entre ellos. Para decidir tú dónde van los espacios, usa `sep=\"\"` y escribe los espacios dentro de las cadenas.",
+    "Piensa la línea en tres trozos: lo que va antes del nombre, el nombre y lo que va después."
+   ],
+   "explain": "`input()` devuelve el texto escrito (sin el salto de línea final) y lo guardamos en `nombre`. Como el `!` debe ir pegado al nombre, el espacio que `print()` pone por defecto estorba: con `sep=\"\"` controlamos cada espacio, que queda escrito dentro de las cadenas.\n\nAlternativas: dos llamadas encadenadas con `end` (`print(\"¡Hola,\", nombre, end=\"\")` y luego `print(\"! Te damos la bienvenida.\")`) o, cuando aprendas las f-strings en s02, `print(f\"¡Hola, {nombre}! Te damos la bienvenida.\")`, que es la forma más clara de todas."
+  },
+  {
+   "id": "s01-e3",
+   "title": "Cuenta atrás en una línea",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Una nave va a despegar. El código inicial imprime cada elemento en una línea distinta, pero queremos todo **en una sola línea**:",
+    "```text\n3... 2... 1... ¡Despegue!\n```",
+    "Mantén las **cuatro** llamadas a `print()` (una por elemento) y consigue el resultado con el parámetro `end`. No debe quedar ningún espacio al final de la línea."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main)",
+     "result": "'3... 2... 1... ¡Despegue!\\n'"
+    }
+   ],
+   "starter": "def main():\n    print(\"3...\")\n    print(\"2...\")\n    print(\"1...\")\n    print(\"¡Despegue!\")\n",
+   "solution": "def main():\n    print(\"3...\", end=\" \")\n    print(\"2...\", end=\" \")\n    print(\"1...\", end=\" \")\n    print(\"¡Despegue!\")\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "Salida exacta",
+     "code": "salida = capturar(main)\nesperado = \"3... 2... 1... ¡Despegue!\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Todo en una sola línea",
+     "code": "salida = capturar(main)\nn = salida.count(\"\\n\")\nassert n == 1 and salida.endswith(\"\\n\"), f\"Todo debe quedar en una línea que termine con un único salto; tu salida tiene {n} saltos: {salida!r}\""
+    },
+    {
+     "name": "Usa cuatro llamadas a print()",
+     "code": "_, _, llamadas, _ = _ejecutar(main)\nassert len(llamadas) == 4, f\"El enunciado pide cuatro llamadas a print() (una por elemento) y hay {len(llamadas)}\""
+    },
+    {
+     "name": "Sin espacio antes del salto final",
+     "code": "salida = capturar(main)\nassert not salida.endswith(\" \\n\"), \"Sobra un espacio al final de la línea: el último print() no necesita cambiar su end\""
+    }
+   ],
+   "hints": [
+    "Por defecto, `print()` termina con `end=\"\\n\"` (un salto de línea). ¿Qué pasa si lo cambias?",
+    "Las tres primeras llamadas deberían terminar con un espacio en lugar de un salto de línea; la última, no."
+   ],
+   "explain": "Cada `print()` escribe `end` al terminar. Con `end=\" \"` en las tres primeras llamadas, el texto siguiente continúa en la misma línea tras un espacio; la última usa el `end` por defecto, que cierra la línea. Es la base de las barras de progreso en terminal (donde además se usa `flush=True` para que cada trozo aparezca al instante).\n\nAlternativa en una sola llamada: `print(\"3...\", \"2...\", \"1...\", \"¡Despegue!\")`, ya que `sep` es un espacio por defecto. Aquí el objetivo era practicar `end`."
+  },
+  {
+   "id": "s01-e4",
+   "title": "Comentarios que no rompen",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Un compañero que viene de otro lenguaje ha escrito este programa, pero no se ejecuta: ha usado comentarios que Python no entiende. Presiona **Ejecutar** y lee el error: es un `SyntaxError`. ¿En qué línea lo detecta Python?",
+    "Convierte cada comentario en un comentario de Python **sin borrar ninguno** y sin tocar los `print()`. Cuando esté bien, `main()` debe imprimir:",
+    "```text\nMenú del día\nEntrada: sopa de verduras\nPlato principal: arroz con pollo\nPostre: flan\n```"
+   ],
+   "starter": "def main():\n    // Muestra el menú del día\n    print(\"Menú del día\")\n    print(\"Entrada: sopa de verduras\")  // plato caliente\n    print(\"Plato principal: arroz con pollo\")\n    /* postre casero */\n    print(\"Postre: flan\")\n",
+   "solution": "def main():\n    # Muestra el menú del día\n    print(\"Menú del día\")\n    print(\"Entrada: sopa de verduras\")  # plato caliente\n    print(\"Plato principal: arroz con pollo\")\n    # postre casero\n    print(\"Postre: flan\")\n",
+   "tests": [
+    {
+     "name": "Imprime el menú completo",
+     "code": "salida = capturar(main)\nesperado = \"Menú del día\\nEntrada: sopa de verduras\\nPlato principal: arroz con pollo\\nPostre: flan\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "La primera línea es el título",
+     "code": "primera = capturar(main).split(\"\\n\")[0]\nassert primera == \"Menú del día\", f\"La primera línea debería ser 'Menú del día' y es {primera!r}\""
+    },
+    {
+     "name": "Imprime cuatro líneas",
+     "code": "n = capturar(main).count(\"\\n\")\nassert n == 4, f\"Se esperaban 4 líneas y se imprimieron {n}. No borres ningún print()\""
+    }
+   ],
+   "hints": [
+    "En Python los comentarios empiezan con `#` y terminan al final de la línea.",
+    "`//` es un operador de Python (la división entera) y `/*` no significa nada: por eso el analizador protesta. Cambia cada marca de comentario por `#`."
+   ],
+   "explain": "Python solo reconoce `#` como inicio de comentario. `//` es el operador de división entera (s02), así que `// Muestra el menú` es una expresión incompleta; y `/* ... */`, el comentario de bloque de C, Java o JavaScript, no existe en Python. Al ser errores de sintaxis, Python no ejecuta nada hasta que los corriges todos, y te los muestra de uno en uno.\n\nTruco: para comentar o descomentar varias líneas a la vez, los editores tienen un atajo (Ctrl+/ o Cmd+/ en VS Code) que añade o quita `#` al principio de cada línea seleccionada."
+  },
+  {
+   "id": "s01-e16",
+   "title": "Tu primera función con parámetros",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Escribe la función `presentacion(nombre, lenguaje)`, que recibe dos cadenas y **devuelve** (con `return`, sin imprimir nada) una frase con este formato exacto:",
+    "```text\nMe llamo Ana y aprendo Python.\n```",
+    "donde `Ana` es el primer argumento y `Python` el segundo. Para formar el texto, une cadenas con `+` (concatenar), como en la lección 6.",
+    "Las pruebas llaman directamente a tu función con distintos argumentos: no uses `input()` ni `print()` dentro de ella."
+   ],
+   "examples": [
+    {
+     "call": "presentacion(\"Ana\", \"Python\")",
+     "result": "'Me llamo Ana y aprendo Python.'"
+    },
+    {
+     "call": "presentacion(\"Joaquín\", \"JavaScript\")",
+     "result": "'Me llamo Joaquín y aprendo JavaScript.'"
+    },
+    {
+     "call": "capturar(presentacion, \"Ana\", \"Python\")",
+     "result": "'' (no imprime nada)"
+    }
+   ],
+   "starter": "def presentacion(nombre, lenguaje):\n    # Devuelve (no imprimas) la frase con el formato del enunciado\n    pass\n",
+   "solution": "def presentacion(nombre, lenguaje):\n    return \"Me llamo \" + nombre + \" y aprendo \" + lenguaje + \".\"\n",
+   "tests": [
+    {
+     "name": "Devuelve la frase del ejemplo",
+     "code": "r = presentacion(\"Ana\", \"Python\")\nassert r is not None, \"presentacion() devolvió None: te falta el return (imprimir no es devolver)\"\nassert r == \"Me llamo Ana y aprendo Python.\", f\"presentacion('Ana', 'Python') devolvió {r!r} y debería devolver 'Me llamo Ana y aprendo Python.'\""
+    },
+    {
+     "name": "Funciona con otros argumentos y con tildes",
+     "code": "r = presentacion(\"Joaquín\", \"JavaScript\")\nassert r == \"Me llamo Joaquín y aprendo JavaScript.\", f\"presentacion('Joaquín', 'JavaScript') devolvió {r!r}. Usa los parámetros, no textos fijos\""
+    },
+    {
+     "name": "Usa cada parámetro en su lugar",
+     "code": "r = presentacion(\"Rust\", \"María José\")\nassert r == \"Me llamo Rust y aprendo María José.\", f\"presentacion('Rust', 'María José') devolvió {r!r}. El primer argumento es el nombre y el segundo el lenguaje, aunque los valores parezcan raros\""
+    },
+    {
+     "name": "No imprime nada",
+     "code": "salida = capturar(presentacion, \"Ana\", \"Python\")\nassert salida == \"\", f\"presentacion() no debe imprimir nada, pero imprimió {salida!r}. Usa return en lugar de print\""
+    },
+    {
+     "name": "Devuelve una cadena",
+     "code": "r = presentacion(\"Luis\", \"Go\")\nassert isinstance(r, str), f\"presentacion() debe devolver una cadena (str) y devolvió {r!r}\"\nassert r == \"Me llamo Luis y aprendo Go.\", f\"presentacion('Luis', 'Go') devolvió {r!r}. Revisa los espacios y el punto final\""
+    }
+   ],
+   "hints": [
+    "El cuerpo solo necesita una línea que empiece por `return`.",
+    "`\"Me llamo \" + nombre` une el texto fijo con el valor del parámetro. Fíjate en los espacios dentro de las comillas.",
+    "La frase tiene cinco trozos: `\"Me llamo \"`, `nombre`, `\" y aprendo \"`, `lenguaje` y `\".\"`."
+   ],
+   "explain": "Los **parámetros** `nombre` y `lenguaje` reciben, por orden, los **argumentos** de cada llamada: en `presentacion(\"Ana\", \"Python\")`, `nombre` recibe `\"Ana\"` y `lenguaje` recibe `\"Python\"`. La función arma la frase uniendo cadenas con `+` y la **devuelve** con `return`, sin imprimir nada: quien la llama decide qué hacer con ella (imprimirla, guardarla o compararla en una prueba, como hacen los tests).\n\nLa tercera prueba pasa los argumentos «al revés» a propósito: la función no sabe qué significan los valores, solo los asigna por posición. Alternativa que verás en s02, más legible con muchos trozos: una f-string, `return f\"Me llamo {nombre} y aprendo {lenguaje}.\"`."
+  },
+  {
+   "id": "s01-e5",
+   "title": "Fecha con barras",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Escribe `main()` para que pida tres datos, en este orden y con estos mensajes: `input(\"Día: \")`, `input(\"Mes: \")` e `input(\"Año: \")`. Después debe imprimir **una línea** con la fecha. Con las entradas `26`, `09` y `2026`:",
+    "```text\nFecha: 26/09/2026\n```",
+    "Condición: imprime la fecha con una llamada a `print()` que reciba **el día, el mes y el año como tres argumentos** y deje que `sep` ponga las barras. Puedes usar otra llamada antes para el texto `Fecha: ` (pista: `end`).",
+    "Los datos se imprimen tal como se escriben: si el usuario teclea `1`, sale `1`, no `01`."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main, entradas=[\"26\", \"09\", \"2026\"])",
+     "result": "'Fecha: 26/09/2026\\n'"
+    },
+    {
+     "call": "capturar(main, entradas=[\"1\", \"1\", \"2000\"])",
+     "result": "'Fecha: 1/1/2000\\n'"
+    }
+   ],
+   "starter": "def main():\n    # Pide el día, el mes y el año (en ese orden)\n\n    # Imprime \"Fecha: \" y después la fecha con barras\n    pass\n",
+   "solution": "def main():\n    dia = input(\"Día: \")\n    mes = input(\"Mes: \")\n    anio = input(\"Año: \")\n    print(\"Fecha:\", end=\" \")\n    print(dia, mes, anio, sep=\"/\")\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "Fecha del ejemplo",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"26\", \"09\", \"2026\"])\nesperado = \"Fecha: 26/09/2026\\n\"\nassert salida == esperado, f\"Con 26, 09 y 2026 se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Sin rellenar con ceros",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"1\", \"1\", \"2000\"])\nesperado = \"Fecha: 1/1/2000\\n\"\nassert salida == esperado, f\"Con 1, 1 y 2000 se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Respeta el orden día/mes/año",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"31\", \"12\", \"1999\"])\nesperado = \"Fecha: 31/12/1999\\n\"\nassert salida == esperado, f\"Con 31, 12 y 1999 se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Pide los datos con los mensajes y el orden indicados",
+     "code": "_, prompts, _, _ = _ejecutar(main, [\"26\", \"09\", \"2026\"])\nesperado = [\"Día: \", \"Mes: \", \"Año: \"]\nassert prompts == esperado, f\"Los mensajes de input() deberían ser {esperado!r} y fueron {prompts!r}\""
+    },
+    {
+     "name": "Las barras las pone sep",
+     "code": "_, _, llamadas, _ = _ejecutar(main, [\"26\", \"09\", \"2026\"])\nok = any(args == (\"26\", \"09\", \"2026\") and kwargs.get(\"sep\") == \"/\" for args, kwargs in llamadas)\nassert ok, \"Imprime la fecha con una llamada a print() que reciba el día, el mes y el año como tres argumentos, y deja que sep ponga las barras\""
+    },
+    {
+     "name": "Todo en una sola línea",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"26\", \"09\", \"2026\"])\nassert salida.count(\"\\n\") == 1, f\"La fecha debe quedar en una sola línea; se imprimió {salida!r}\""
+    }
+   ],
+   "hints": [
+    "Primero pide los tres datos con `input()` y guárdalos en tres variables, por ejemplo `dia`, `mes` y `anio`.",
+    "`print(\"Fecha:\", end=\" \")` escribe el texto sin saltar de línea: la siguiente llamada continúa en la misma línea.",
+    "En la segunda llamada pasa `dia`, `mes` y `anio` como argumentos y elige el `sep` adecuado."
+   ],
+   "explain": "`sep` se coloca **entre** argumentos y `end` **al final** de cada llamada. La primera llamada escribe `Fecha:` y, gracias a `end=\" \"`, no salta de línea; la segunda escribe `dia/mes/anio` porque `sep=\"/\"`.\n\nLos valores de `input()` son cadenas, así que se imprimen tal cual (`1`, no `01`); rellenar con ceros requiere formatear, algo que harás con f-strings (`f\"{dia:0>2}\"`) en s05. La variable se llama `anio` y no `año` porque en este curso evitamos la ñ en los identificadores."
+  },
+  {
+   "id": "s01-e6",
+   "title": "Devolver no es imprimir",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Vas a escribir **dos** funciones que colaboran:",
+    "1. `firma()` debe **devolver** (con `return`, sin imprimir nada) exactamente el texto `-- Enviado con Python 3.14`.\n2. `main()` debe imprimir tres líneas: `Hola, equipo:`, una línea en blanco y la firma. Para la firma, `main()` debe **llamar** a `firma()` en lugar de copiar el texto.",
+    "Salida esperada de `main()`:",
+    "```text\nHola, equipo:\n\n-- Enviado con Python 3.14\n```"
+   ],
+   "examples": [
+    {
+     "call": "firma()",
+     "result": "'-- Enviado con Python 3.14'"
+    },
+    {
+     "call": "capturar(firma)",
+     "result": "'' (no imprime nada)"
+    },
+    {
+     "call": "capturar(main)",
+     "result": "'Hola, equipo:\\n\\n-- Enviado con Python 3.14\\n'"
+    }
+   ],
+   "starter": "def firma():\n    # Devuelve el texto de la firma (no lo imprimas)\n    pass\n\n\ndef main():\n    # Imprime el saludo, una línea en blanco y la firma (usa firma())\n    pass\n",
+   "solution": "def firma():\n    return \"-- Enviado con Python 3.14\"\n\n\ndef main():\n    print(\"Hola, equipo:\")\n    print()\n    print(firma())\n",
+   "tests": [
+    {
+     "name": "firma() devuelve el texto exacto",
+     "code": "r = firma()\nassert r == \"-- Enviado con Python 3.14\", f\"firma() devolvió {r!r}. Si ves None, te falta el return\""
+    },
+    {
+     "name": "firma() no imprime nada",
+     "code": "salida = capturar(firma)\nassert salida == \"\", f\"firma() no debe imprimir nada, pero imprimió {salida!r}. Usa return en lugar de print\""
+    },
+    {
+     "name": "main() imprime el mensaje completo",
+     "code": "salida = capturar(main)\nesperado = \"Hola, equipo:\\n\\n-- Enviado con Python 3.14\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y main() imprimió {salida!r}\""
+    },
+    {
+     "name": "La segunda línea está vacía",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert len(lineas) > 2 and lineas[1] == \"\", f\"La segunda línea debe estar vacía; las líneas impresas son {lineas!r}\""
+    },
+    {
+     "name": "main() usa firma() en vez de copiar el texto",
+     "code": "_firma_original = firma\n\n\ndef firma():\n    return \"FIRMA DE PRUEBA\"\n\n\ntry:\n    _salida = capturar(main)\nfinally:\n    firma = _firma_original\nassert \"FIRMA DE PRUEBA\" in _salida, \"main() debe obtener la firma llamando a firma(), no escribiendo el texto a mano\""
+    }
+   ],
+   "hints": [
+    "`return valor` termina la función y entrega `valor` a quien la llamó. No muestra nada en pantalla.",
+    "`print()` sin argumentos imprime una línea en blanco.",
+    "En `main()`, `print(firma())` primero llama a `firma()` y después imprime lo que devuelve."
+   ],
+   "explain": "Las funciones que **devuelven** son reutilizables: quien las llama decide qué hacer con el resultado (imprimirlo, guardarlo, compararlo en una prueba…). Las que **imprimen** solo sirven para mostrar. Separar el cálculo (`return`) de la presentación (`print`) es un principio de diseño que retomarás en s06.\n\n`print(firma())` se evalúa de dentro afuera: primero `firma()`, que devuelve el texto, y luego `print` de ese texto. Si `firma()` usara `print` en vez de `return`, devolvería `None` y `main()` mostraría la firma… seguida de una línea con `None`. La quinta prueba sustituye `firma` por otra función para comprobar que `main()` de verdad la llama: así se detecta el texto copiado a mano."
+  },
+  {
+   "id": "s01-e7",
+   "title": "Arregla los errores de sintaxis",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Este programa tiene **tres errores de sintaxis**. Presiona **Ejecutar**: Python mostrará solo el primero que encuentre. Corrígelo, vuelve a ejecutar y repite hasta que no quede ninguno. Cuando funcione, `main()` debe imprimir:",
+    "```text\nBienvenida al curso\nLección 1: primeros pasos\nTe esperamos en la lección 2\n```",
+    "Consejo: lee la última línea del mensaje y fíjate en el número de línea. En los errores de sintaxis, el fallo real puede estar justo **antes** de donde apunta la flecha `^`. (Para ver la salida con Ejecutar, añade `main()` al final; no molesta al comprobar.)"
+   ],
+   "starter": "def main()\n    print(\"Bienvenida al curso\")\n    print(\"Lección 1: primeros pasos\"\n    print(\"Te esperamos en la lección 2)\n",
+   "solution": "def main():\n    print(\"Bienvenida al curso\")\n    print(\"Lección 1: primeros pasos\")\n    print(\"Te esperamos en la lección 2\")\n",
+   "tests": [
+    {
+     "name": "Imprime las tres líneas",
+     "code": "salida = capturar(main)\nesperado = \"Bienvenida al curso\\nLección 1: primeros pasos\\nTe esperamos en la lección 2\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Primera línea correcta",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert lineas[0] == \"Bienvenida al curso\", f\"La primera línea es {lineas[0]!r}\""
+    },
+    {
+     "name": "Segunda línea correcta",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert len(lineas) > 1 and lineas[1] == \"Lección 1: primeros pasos\", f\"La segunda línea debería ser 'Lección 1: primeros pasos'; las líneas son {lineas!r}\""
+    },
+    {
+     "name": "Tercera línea correcta",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert len(lineas) > 2 and lineas[2] == \"Te esperamos en la lección 2\", f\"La tercera línea debería ser 'Te esperamos en la lección 2'; las líneas son {lineas!r}\""
+    }
+   ],
+   "hints": [
+    "Una cabecera de bloque como `def main()` termina siempre con un carácter concreto.",
+    "Cada paréntesis que se abre debe cerrarse, y cada cadena necesita una comilla de cierre igual a la de apertura."
+   ],
+   "explain": "Los tres errores son clásicos y Python 3.14 los describe con precisión:\n\n1. `SyntaxError: unterminated string literal (detected at line 4)`: la cadena de la línea 4 no se cierra. Sale **primero** aunque esté al final porque lo detecta el analizador léxico, que trocea el texto antes de analizar la gramática.\n2. `SyntaxError: expected ':'`: falta `:` tras `def main()`.\n3. `SyntaxError: '(' was never closed`: el `print` de la línea 3 no cierra su paréntesis.\n\nPython se detiene en el primer error de sintaxis y no ejecuta nada, por eso hay que corregir de uno en uno. Un editor como VS Code con Pylance los subraya todos a la vez mientras escribes."
+  },
+  {
+   "id": "s01-e8",
+   "title": "La sangría manda",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "La receta del café está mal sangrada. Corrige **solo la sangría** (no cambies el texto de ningún `print`) para que `main()` imprima los cinco pasos, en orden:",
+    "```text\nPaso 1: calentar el agua\nPaso 2: añadir el café\nPaso 3: esperar 4 minutos\nPaso 4: servir\n¡Listo!\n```",
+    "Ojo con la última línea: ahora mismo está **fuera** de la función. Aunque el programa llegue a ejecutarse, `¡Listo!` no formaría parte de `main()`."
+   ],
+   "starter": "def main():\nprint(\"Paso 1: calentar el agua\")\n    print(\"Paso 2: añadir el café\")\n        print(\"Paso 3: esperar 4 minutos\")\n    print(\"Paso 4: servir\")\nprint(\"¡Listo!\")\n",
+   "solution": "def main():\n    print(\"Paso 1: calentar el agua\")\n    print(\"Paso 2: añadir el café\")\n    print(\"Paso 3: esperar 4 minutos\")\n    print(\"Paso 4: servir\")\n    print(\"¡Listo!\")\n",
+   "tests": [
+    {
+     "name": "Imprime los cinco pasos en orden",
+     "code": "salida = capturar(main)\nesperado = \"Paso 1: calentar el agua\\nPaso 2: añadir el café\\nPaso 3: esperar 4 minutos\\nPaso 4: servir\\n¡Listo!\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y main() imprimió {salida!r}\""
+    },
+    {
+     "name": "¡Listo! forma parte de main()",
+     "code": "lineas = capturar(main).rstrip(\"\\n\").split(\"\\n\")\nassert lineas[-1] == \"¡Listo!\", \"La última línea que imprime main() debe ser '¡Listo!': comprueba que ese print() está sangrado dentro de la función\""
+    },
+    {
+     "name": "main() imprime cinco líneas",
+     "code": "n = capturar(main).count(\"\\n\")\nassert n == 5, f\"main() debería imprimir 5 líneas e imprime {n}\""
+    },
+    {
+     "name": "El primer paso está dentro de main()",
+     "code": "primera = capturar(main).split(\"\\n\")[0]\nassert primera == \"Paso 1: calentar el agua\", f\"La primera línea debería ser el paso 1 y es {primera!r}\""
+    }
+   ],
+   "hints": [
+    "Todas las líneas del cuerpo de `main()` deben tener la **misma** sangría: 4 espacios.",
+    "Una línea sin sangría después de la función ya no pertenece a ella."
+   ],
+   "explain": "La sangría es la sintaxis que delimita el bloque. Python detecta la línea 2 sin sangría (`expected an indented block after function definition on line 1`) y la 4 con sangría de más (`unexpected indent`). La última línea es más traicionera: sin sangría no es un error de sintaxis, sino que queda **fuera** de la función; se ejecutaría una sola vez al cargar el archivo, no cada vez que llames a `main()`. Es un error de lógica: Python no protesta y solo una prueba lo delata.\n\nLos editores muestran guías verticales de sangría que ayudan a ver qué pertenece a cada bloque. Y si configuras la tecla Tab para insertar 4 espacios, estos problemas desaparecen casi por completo."
+  },
+  {
+   "id": "s01-e9",
+   "title": "Detective de tracebacks",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Este programa, guardado como `notas.py`, falla al ejecutarse (las palabras entre los paréntesis de cada `def` son sus parámetros, como viste en la lección 6):",
+    "```python\ndef calcular_media(total, cantidad):\n    return total / cantidad\n\n\ndef mostrar_informe(nombre, total, cantidad):\n    media = calcular_media(total, cantidad)\n    print(nombre, \"tiene una media de\", media)\n\n\ndef main():\n    mostrar_informe(\"Ana\", 27, 3)\n    mostrar_informe(\"Luis\", 0, 0)\n\n\nmain()\n```",
+    "Esto es lo que muestra Python 3.14 en la terminal:",
+    "```text\nAna tiene una media de 9.0\nTraceback (most recent call last):\n  File \"/home/ana/notas.py\", line 15, in <module>\n    main()\n    ~~~~^^\n  File \"/home/ana/notas.py\", line 12, in main\n    mostrar_informe(\"Luis\", 0, 0)\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^\n  File \"/home/ana/notas.py\", line 6, in mostrar_informe\n    media = calcular_media(total, cantidad)\n  File \"/home/ana/notas.py\", line 2, in calcular_media\n    return total / cantidad\n           ~~~~~~^~~~~~~~~~\nZeroDivisionError: division by zero\n```",
+    "No tienes que arreglar el programa: tienes que **leer el traceback**. Completa cada función para que **devuelva** (con `return`) la respuesta correcta:",
+    "- `tipo_de_error()`: el nombre de la excepción, como texto (por ejemplo `\"NameError\"`).\n- `mensaje_de_error()`: el mensaje que acompaña a la excepción, como texto.\n- `linea_del_fallo()`: el número de la línea donde se produjo el error, como número entero (sin comillas).\n- `funcion_del_fallo()`: el nombre de la función donde se produjo, como texto.\n- `linea_de_la_llamada_culpable()`: el número de línea, dentro de `main()`, de la llamada que desencadenó el error.\n- `persona_afectada()`: el nombre de la persona cuyo informe falló, como texto."
+   ],
+   "examples": [
+    {
+     "call": "tipo_de_error()",
+     "result": "un texto como 'NameError'"
+    },
+    {
+     "call": "linea_del_fallo()",
+     "result": "un número entero como 7 (sin comillas)"
+    }
+   ],
+   "starter": "def tipo_de_error():\n    return \"\"\n\n\ndef mensaje_de_error():\n    return \"\"\n\n\ndef linea_del_fallo():\n    return 0\n\n\ndef funcion_del_fallo():\n    return \"\"\n\n\ndef linea_de_la_llamada_culpable():\n    return 0\n\n\ndef persona_afectada():\n    return \"\"\n",
+   "solution": "def tipo_de_error():\n    return \"ZeroDivisionError\"\n\n\ndef mensaje_de_error():\n    return \"division by zero\"\n\n\ndef linea_del_fallo():\n    return 2\n\n\ndef funcion_del_fallo():\n    return \"calcular_media\"\n\n\ndef linea_de_la_llamada_culpable():\n    return 12\n\n\ndef persona_afectada():\n    return \"Luis\"\n",
+   "tests": [
+    {
+     "name": "Tipo de excepción",
+     "code": "r = tipo_de_error()\nassert r == \"ZeroDivisionError\", f\"tipo_de_error() devolvió {r!r}. Mira la ÚLTIMA línea: el tipo es la palabra que va antes de los dos puntos (respeta mayúsculas y no incluyas los dos puntos)\""
+    },
+    {
+     "name": "Mensaje de la excepción",
+     "code": "r = mensaje_de_error()\nassert r == \"division by zero\", f\"mensaje_de_error() devolvió {r!r}. El mensaje es lo que va DESPUÉS de 'Tipo: ' en la última línea, tal cual\""
+    },
+    {
+     "name": "Línea donde se produjo el error",
+     "code": "r = linea_del_fallo()\nassert not isinstance(r, str), \"Devuelve el número de línea sin comillas (por ejemplo 7, no '7')\"\nassert r == 2, f\"linea_del_fallo() devolvió {r!r}. Busca el ÚLTIMO bloque File del traceback: indica la línea donde saltó la excepción\""
+    },
+    {
+     "name": "Función donde se produjo el error",
+     "code": "r = funcion_del_fallo()\nassert r == \"calcular_media\", f\"funcion_del_fallo() devolvió {r!r}. El último bloque File termina con 'in <nombre de la función>'\""
+    },
+    {
+     "name": "Línea de la llamada culpable en main()",
+     "code": "r = linea_de_la_llamada_culpable()\nassert not isinstance(r, str), \"Devuelve el número de línea sin comillas\"\nassert r == 12, f\"linea_de_la_llamada_culpable() devolvió {r!r}. Busca el bloque File que termina en 'in main'\""
+    },
+    {
+     "name": "Persona cuyo informe falló",
+     "code": "r = persona_afectada()\nassert r == \"Luis\", f\"persona_afectada() devolvió {r!r}. ¿Qué llamada de main() aparece en el traceback? Mira sus argumentos. Pista extra: el informe de la otra persona sí se imprimió\""
+    }
+   ],
+   "hints": [
+    "La última línea del traceback tiene la forma `Tipo: mensaje`.",
+    "Los bloques `File \"...\", line N, in función` van del más antiguo (arriba) al más reciente (abajo). El último es donde saltó el error.",
+    "La llamada culpable dentro de `main()` es la que aparece en el bloque que termina en `in main`."
+   ],
+   "explain": "Se lee de abajo arriba. La última línea dice **qué**: `ZeroDivisionError: division by zero`. El último `File` dice **dónde**: línea 2, dentro de `calcular_media`. Subiendo se ve **cómo** se llegó ahí: la línea 15 (`main()`, en el nivel superior `<module>`) llamó a `main`; en la línea 12, `main` llamó a `mostrar_informe(\"Luis\", 0, 0)`; y en la línea 6, `mostrar_informe` llamó a `calcular_media`. El informe de Ana (línea 11) funcionó, por eso su línea se imprimió antes del error.\n\nMoraleja: el sitio donde **se produce** el error (línea 2) no siempre es donde hay que **arreglarlo**. Aquí el problema es pedir la media de cero notas; una corrección razonable sería comprobar `cantidad` antes de dividir (con `if`, en s03) o gestionar la excepción (s08)."
+  },
+  {
+   "id": "s01-e10",
+   "title": "Depura los errores en ejecución",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Este programa no tiene errores de sintaxis, pero falla **al ejecutarse**. Cada vez que arregles un error aparecerá el siguiente: lee cada mensaje, corrige y repite. Con la entrada `Ana`, `main()` debe imprimir:",
+    "```text\nHola, Ana\nTienes 3 mensajes nuevos\nHasta pronto, Ana\n```",
+    "No cambies el mensaje de `input()` ni el número de mensajes. Para probar con **Ejecutar**, añade temporalmente `main()` al final y escribe `Ana` en el cuadro «Entrada»; quita esa línea antes de **Comprobar**."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main, entradas=[\"Ana\"])",
+     "result": "'Hola, Ana\\nTienes 3 mensajes nuevos\\nHasta pronto, Ana\\n'"
+    }
+   ],
+   "starter": "def main():\n    nombre = input(\"¿Cómo te llamas? \")\n    print(\"Hola,\", Nombre)\n    print(\"Tienes \" + 3 + \" mensajes nuevos\")\n    imprimir(\"Hasta pronto,\", nombre)\n",
+   "solution": "def main():\n    nombre = input(\"¿Cómo te llamas? \")\n    print(\"Hola,\", nombre)\n    print(\"Tienes\", 3, \"mensajes nuevos\")\n    print(\"Hasta pronto,\", nombre)\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "Salida completa con Ana",
+     "code": "salida = capturar(main, entradas=[\"Ana\"])\nesperado = \"Hola, Ana\\nTienes 3 mensajes nuevos\\nHasta pronto, Ana\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Primera línea: saludo con el nombre",
+     "code": "lineas = capturar(main, entradas=[\"Ana\"]).split(\"\\n\")\nassert lineas[0] == \"Hola, Ana\", f\"La primera línea debería ser 'Hola, Ana' y es {lineas[0]!r}\""
+    },
+    {
+     "name": "Segunda línea: los mensajes nuevos",
+     "code": "lineas = capturar(main, entradas=[\"Ana\"]).split(\"\\n\")\nassert len(lineas) > 1 and lineas[1] == \"Tienes 3 mensajes nuevos\", f\"La segunda línea debería ser 'Tienes 3 mensajes nuevos'; las líneas son {lineas!r}\""
+    },
+    {
+     "name": "Tercera línea: la despedida",
+     "code": "lineas = capturar(main, entradas=[\"Ana\"]).split(\"\\n\")\nassert len(lineas) > 2 and lineas[2] == \"Hasta pronto, Ana\", f\"La tercera línea debería ser 'Hasta pronto, Ana'; las líneas son {lineas!r}\""
+    },
+    {
+     "name": "Funciona con otro nombre",
+     "code": "salida = capturar(main, entradas=[\"Zoë\"])\nesperado = \"Hola, Zoë\\nTienes 3 mensajes nuevos\\nHasta pronto, Zoë\\n\"\nassert salida == esperado, f\"Con la entrada 'Zoë' se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Pide el nombre una vez con el mensaje original",
+     "code": "_, prompts, _, _ = _ejecutar(main, [\"Ana\"])\nassert prompts == [\"¿Cómo te llamas? \"], f\"input() debe llamarse una sola vez con '¿Cómo te llamas? '; se llamó con {prompts!r}\""
+    }
+   ],
+   "hints": [
+    "`NameError: name 'Nombre' is not defined. Did you mean: 'nombre'?` Python distingue entre mayúsculas y minúsculas.",
+    "`TypeError: can only concatenate str (not \"int\") to str`: no se puede unir un texto y un número con `+`. ¿Y si separas con comas dentro de `print()`?",
+    "¿Existe en Python una función llamada `imprimir`?"
+   ],
+   "explain": "Tres excepciones típicas, que aparecen **de una en una** a medida que el programa avanza (la línea 4 no puede fallar hasta que la 3 funciona):\n\n1. `NameError` por la mayúscula: `Nombre` y `nombre` son nombres distintos para Python.\n2. `TypeError` por intentar unir con `+` un texto y el número `3`. Las comas de `print()` convierten cada argumento en texto automáticamente. También valdría `\"Tienes \" + \"3\" + \" mensajes nuevos\"` (tres cadenas) o, desde s02, una f-string.\n3. `NameError` porque `imprimir` no existe: la función se llama `print`.\n\nFíjate en que la sugerencia `Did you mean: 'nombre'?` te daba la solución del primero: lee siempre el mensaje completo."
+  },
+  {
+   "id": "s01-e11",
+   "title": "Un solo print para todo",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "El código inicial imprime bien este menú, pero usa cuatro llamadas a `print()`. Reescribe `main()` para que imprima exactamente lo mismo usando **una única llamada** a `print()`:",
+    "```text\n=== MENÚ ===\n1. Nueva partida\n2. Cargar partida\n3. Salir\n```",
+    "Las pruebas cuentan cuántas veces llamas a `print()` y comprueban que no aparezcan líneas en blanco de más al principio ni al final. Hay al menos tres formas de hacerlo; cuando lo consigas, intenta encontrar otra."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main)",
+     "result": "'=== MENÚ ===\\n1. Nueva partida\\n2. Cargar partida\\n3. Salir\\n'"
+    }
+   ],
+   "starter": "def main():\n    print(\"=== MENÚ ===\")\n    print(\"1. Nueva partida\")\n    print(\"2. Cargar partida\")\n    print(\"3. Salir\")\n",
+   "solution": "def main():\n    print(\"=== MENÚ ===\", \"1. Nueva partida\", \"2. Cargar partida\", \"3. Salir\", sep=\"\\n\")\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "Salida exacta",
+     "code": "salida = capturar(main)\nesperado = \"=== MENÚ ===\\n1. Nueva partida\\n2. Cargar partida\\n3. Salir\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Una única llamada a print()",
+     "code": "_, _, llamadas, _ = _ejecutar(main)\nassert len(llamadas) == 1, f\"Debe haber una sola llamada a print() y hay {len(llamadas)}\""
+    },
+    {
+     "name": "Sin línea en blanco al principio",
+     "code": "salida = capturar(main)\nassert not salida.startswith(\"\\n\"), \"La salida empieza con una línea en blanco. Con comillas triples, el salto de línea justo después de las comillas de apertura también forma parte del texto\""
+    },
+    {
+     "name": "Sin línea en blanco al final",
+     "code": "salida = capturar(main)\nassert not salida.endswith(\"\\n\\n\"), \"Sobra una línea en blanco al final: print() ya añade un salto de línea (end); no hace falta otro \\\\n al final del texto\""
+    }
+   ],
+   "hints": [
+    "Un salto de línea se puede escribir dentro de una cadena con `\\n`.",
+    "También puedes pasar las cuatro líneas como cuatro argumentos y cambiar el separador.",
+    "Con comillas triples (`\"\"\"...\"\"\"`) los saltos de línea que escribes forman parte del texto; cuidado con el primero, justo después de abrir."
+   ],
+   "explain": "Tres soluciones equivalentes:\n\n1. Cuatro argumentos con `sep=\"\\n\"` (la de referencia): cada línea es un argumento legible.\n2. Una sola cadena con `\\n` entre líneas: `print(\"=== MENÚ ===\\n1. Nueva partida\\n2. Cargar partida\\n3. Salir\")`.\n3. Comillas triples, empezando el texto justo después de las comillas de apertura (o poniendo `\\` al final de esa primera línea para anular el salto).\n\nEn todas, el salto final lo pone `end`; si añades otro `\\n` al final aparece una línea vacía de más. ¿Cuál elegir? La que se lea mejor: para textos largos, las comillas triples; para pocas líneas, `sep`. Menos llamadas no significa mejor código: aquí es un ejercicio para dominar `sep`, `\\n` y las comillas triples."
+  },
+  {
+   "id": "s01-e12",
+   "title": "Barras invertidas y comillas",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Escribe `main()` para que imprima **exactamente** estas tres líneas:",
+    "```text\nRuta: C:\\nuevo\\tareas\\readme.txt\nElla dijo: \"Hoy es un día 'redondo'\"\nNombre\tNota\n```",
+    "- La primera línea contiene **tres barras invertidas** reales.\n- La segunda contiene comillas dobles **y** simples.\n- En la tercera, entre `Nombre` y `Nota` hay un **carácter tabulador**, no espacios.",
+    "Trampa: si escribes la ruta tal cual entre comillas, `\\n`, `\\t` y `\\r` se convierten en caracteres especiales. El código inicial cae en ella: ejecútalo y mira qué sale."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main)",
+     "result": "'Ruta: C:\\\\nuevo\\\\tareas\\\\readme.txt\\nElla dijo: \"Hoy es un día \\'redondo\\'\"\\nNombre\\tNota\\n'"
+    }
+   ],
+   "starter": "def main():\n    print(\"Ruta: C:\\nuevo\\tareas\\readme.txt\")\n    # Añade las otras dos líneas\n",
+   "solution": "def main():\n    print(\"Ruta: C:\\\\nuevo\\\\tareas\\\\readme.txt\")\n    print(\"Ella dijo: \\\"Hoy es un día 'redondo'\\\"\")\n    print(\"Nombre\\tNota\")\n",
+   "tests": [
+    {
+     "name": "Primera línea: la ruta con sus barras",
+     "code": "salida = capturar(main)\nesperado = \"Ruta: C:\\\\nuevo\\\\tareas\\\\readme.txt\\n\"\nassert salida.startswith(esperado), \"La primera línea debe mostrar las barras invertidas tal cual. Dentro de una cadena, \\\\n, \\\\t y \\\\r son caracteres especiales\""
+    },
+    {
+     "name": "La ruta tiene exactamente tres barras invertidas",
+     "code": "primera = capturar(main).split(\"\\n\")[0]\nn = primera.count(\"\\\\\")\nassert n == 3, f\"La primera línea debería tener 3 barras invertidas y tiene {n}: {primera!r}\""
+    },
+    {
+     "name": "No se cuela ningún retorno de carro",
+     "code": "salida = capturar(main)\nassert \"\\r\" not in salida, \"Tu salida contiene un retorno de carro (\\\\r): aparece al escribir \\\\r dentro de una cadena, como en \\\\readme\""
+    },
+    {
+     "name": "Segunda línea: comillas dobles y simples",
+     "code": "lineas = capturar(main).split(\"\\n\")\nesperado = \"Ella dijo: \\\"Hoy es un día 'redondo'\\\"\"\nassert len(lineas) > 1 and lineas[1] == esperado, f\"La segunda línea debería ser {esperado!r}; las líneas son {lineas!r}\""
+    },
+    {
+     "name": "Tercera línea: tabulador real",
+     "code": "lineas = capturar(main).split(\"\\n\")\nassert len(lineas) > 2 and lineas[2] == \"Nombre\\tNota\", f\"La tercera línea debe ser Nombre, un tabulador (\\\\t) y Nota; es {lineas[2] if len(lineas) > 2 else None!r}\""
+    },
+    {
+     "name": "Salida completa exacta",
+     "code": "salida = capturar(main)\nesperado = \"Ruta: C:\\\\nuevo\\\\tareas\\\\readme.txt\\nElla dijo: \\\"Hoy es un día 'redondo'\\\"\\nNombre\\tNota\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    }
+   ],
+   "hints": [
+    "Dentro de una cadena normal, `\\` inicia una secuencia de escape. Para una barra de verdad escribe dos: `\\\\`.",
+    "Otra opción para rutas: una cadena cruda `r\"...\"`, en la que la barra no escapa nada.",
+    "Para la línea de las comillas: delimita la cadena con dobles y escribe las dobles internas como `\\\"`, o delimita con simples y escapa las simples con `\\'`."
+   ],
+   "explain": "En una cadena normal, `\\n` (salto de línea), `\\t` (tabulador) y `\\r` (retorno de carro) son **un solo** carácter especial cada uno: la ruta del código inicial se rompe en varias líneas y hasta «borra» parte del texto en algunas terminales. Soluciones: duplicar la barra (`\\\\`) o usar una cadena cruda `r\"Ruta: C:\\nuevo\\tareas\\readme.txt\"` (s05), muy habitual en rutas de Windows y en expresiones regulares. Ojo: una cadena cruda no puede terminar en una sola barra invertida.\n\nPara las comillas, delimita con el tipo que menos aparezca dentro y escapa el otro (`\\\"` o `\\'`), o usa comillas triples. Para el tabulador, `\\t` es la forma clara: un tabulador pegado en el editor es invisible y fácil de convertir sin querer en espacios. En programas reales, las rutas se manejan con `pathlib` (s09), que evita este problema."
+  },
+  {
+   "id": "s01-e13",
+   "title": "¿Qué imprime? Traza sep y end",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Sin ejecutarlos, predice qué imprime cada fragmento y escribe funciones que **devuelvan** esa salida exacta como una cadena. Usa `\\n` para cada salto de línea, **incluido el último**.",
+    "`salida_1()` debe devolver lo que imprime:",
+    "```python\nprint(\"A\", \"B\", sep=\"-\", end=\"|\")\nprint()\nprint(\"C\", end=\"\")\nprint(\"D\", \"E\")\nprint(\"F\", sep=\"*\")\n```",
+    "`salida_2()` debe devolver lo que imprime:",
+    "```python\nprint(\"uno\", \"dos\", sep=\"\")\nprint(\"tres\", end=\"\\n\\n\")\nprint(\"cuatro\", \"cinco\", sep=\"\\n\", end=\"!\")\nprint()\n```",
+    "`salida_3()` debe devolver lo que imprime:",
+    "```python\nprint(end=\"\")\nprint(\"x\", end=\"\")\nprint(\"y\", \"z\", sep=\"\", end=\"\")\nprint(sep=\"?\")\nprint(\"fin\")\n```",
+    "Razónalo primero en papel: es exactamente el tipo de pregunta de los exámenes. Después, si quieres, comprueba tu predicción ejecutando el fragmento."
+   ],
+   "examples": [
+    {
+     "call": "print(\"a\", end=\"?\")",
+     "result": "se representa como 'a?' (sin salto final)"
+    },
+    {
+     "call": "print(\"a\") y después print(\"b\")",
+     "result": "se representa como 'a\\nb\\n'"
+    }
+   ],
+   "starter": "def salida_1():\n    return \"\"\n\n\ndef salida_2():\n    return \"\"\n\n\ndef salida_3():\n    return \"\"\n",
+   "solution": "def salida_1():\n    return \"A-B|\\nCD E\\nF\\n\"\n\n\ndef salida_2():\n    return \"unodos\\ntres\\n\\ncuatro\\ncinco!\\n\"\n\n\ndef salida_3():\n    return \"xyz\\nfin\\n\"\n",
+   "tests": [
+    {
+     "name": "Fragmento 1 completo",
+     "code": "r = salida_1()\nassert r == \"A-B|\\nCD E\\nF\\n\", f\"salida_1() devolvió {r!r}. Recuerda: sep va entre argumentos y end al final de cada llamada; print() sin argumentos solo escribe end\""
+    },
+    {
+     "name": "Fragmento 1: termina con salto de línea",
+     "code": "r = salida_1()\nassert r.endswith(\"F\\n\"), f\"salida_1() devolvió {r!r}. El último print('F', sep='*') termina con el end por defecto: incluye el \\\\n final\""
+    },
+    {
+     "name": "Fragmento 2 completo",
+     "code": "r = salida_2()\nassert r == \"unodos\\ntres\\n\\ncuatro\\ncinco!\\n\", f\"salida_2() devolvió {r!r}. Fíjate en end='\\\\n\\\\n' (deja una línea vacía) y en que end='!' se escribe tras el último argumento\""
+    },
+    {
+     "name": "Fragmento 2: la línea vacía",
+     "code": "r = salida_2()\nassert \"tres\\n\\n\" in r, f\"salida_2() devolvió {r!r}. Con end='\\\\n\\\\n', después de 'tres' queda una línea vacía\""
+    },
+    {
+     "name": "Fragmento 3 completo",
+     "code": "r = salida_3()\nassert r == \"xyz\\nfin\\n\", f\"salida_3() devolvió {r!r}. print(end='') no escribe nada; sep solo actúa entre dos o más argumentos\""
+    },
+    {
+     "name": "Fragmento 3: número de saltos de línea",
+     "code": "r = salida_3()\nn = r.count(\"\\n\")\nassert n == 2, f\"salida_3() tiene {n} saltos de línea y deberían ser 2. ¿Qué escribe print(sep='?') sin argumentos?\""
+    }
+   ],
+   "hints": [
+    "Recorre las llamadas una a una y anota lo que añade cada una: primero los argumentos separados por `sep` y después `end`.",
+    "`print()` sin argumentos escribe solo `end`. `sep` no aparece si hay uno o ningún argumento.",
+    "`end=\"\"` hace que la siguiente llamada continúe en la misma línea."
+   ],
+   "explain": "Traza del fragmento 1: `A-B|` (sep `-` entre A y B, end `|`) · `print()` añade `\\n` · `C` sin salto · `D E\\n` (se pega a la C) · `F\\n` (sep no actúa con un solo argumento). Resultado: `\"A-B|\\nCD E\\nF\\n\"`.\n\nFragmento 2: `unodos\\n` · `tres\\n\\n` (el end doble deja una línea vacía) · `cuatro\\ncinco!` (sep entre ambos, end al final) · `\\n`. Resultado: `\"unodos\\ntres\\n\\ncuatro\\ncinco!\\n\"`.\n\nFragmento 3: `print(end=\"\")` no escribe nada · `x` · `yz` · `print(sep=\"?\")` escribe solo su end `\\n` · `fin\\n`. Resultado: `\"xyz\\nfin\\n\"`.\n\nVersión de experto para verificar: mete cada fragmento en una función y usa `repr(capturar(fragmento))`. Es exactamente lo que hacen las pruebas de la plataforma, y lo que harás con `unittest` y `pytest` en s13."
+  },
+  {
+   "id": "s01-e14",
+   "title": "Proyecto: ficha de inscripción",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Vas a programar el formulario de inscripción de un club de programación. `main()` debe pedir **cuatro datos**, en este orden y con estos mensajes exactos:",
+    "1. `input(\"Nombre: \")`\n2. `input(\"Apellidos: \")`\n3. `input(\"Ciudad: \")`\n4. `input(\"Lenguaje favorito: \")`",
+    "Después imprime la ficha. Con las entradas `Ana`, `García López`, `Santiago` y `Python` debe salir exactamente:",
+    "```text\n==============================\n  FICHA DE INSCRIPCIÓN\n==============================\nNombre:    Ana\nApellidos: García López\nCiudad:    Santiago\nLenguaje:  Python\n------------------------------\n¡Bienvenida/o, Ana!\n==============================\n```",
+    "Detalles que comprueban las pruebas:\n- Las líneas de `=` y de `-` tienen **30** caracteres.\n- El título va precedido de **dos** espacios.\n- Las etiquetas están alineadas: el valor empieza siempre en la **columna 12**.\n- En la despedida, el nombre va pegado al `!`.",
+    "Organízalo por pasos: 1) pedir los datos; 2) cabecera; 3) datos alineados; 4) pie. Como la línea de `=` se repite tres veces, crea una función `separador()` que la imprima y llámala cuando la necesites. Las pruebas solo llaman a `main()`."
+   ],
+   "examples": [
+    {
+     "call": "capturar(main, entradas=[\"Ana\", \"García López\", \"Santiago\", \"Python\"])",
+     "result": "la ficha de 10 líneas del enunciado"
+    }
+   ],
+   "starter": "def main():\n    # Paso 1: pide los cuatro datos con input() (mensajes exactos del enunciado)\n\n    # Paso 2: cabecera (línea de =, título, línea de =)\n\n    # Paso 3: datos alineados (el valor empieza en la columna 12)\n\n    # Paso 4: pie (línea de -, despedida, línea de =)\n    pass\n",
+   "solution": "def separador():\n    print(\"==============================\")\n\n\ndef main():\n    # Paso 1: datos\n    nombre = input(\"Nombre: \")\n    apellidos = input(\"Apellidos: \")\n    ciudad = input(\"Ciudad: \")\n    lenguaje = input(\"Lenguaje favorito: \")\n\n    # Paso 2: cabecera\n    separador()\n    print(\"  FICHA DE INSCRIPCIÓN\")\n    separador()\n\n    # Paso 3: datos alineados (etiqueta de 10 caracteres + el espacio de sep)\n    print(\"Nombre:   \", nombre)\n    print(\"Apellidos:\", apellidos)\n    print(\"Ciudad:   \", ciudad)\n    print(\"Lenguaje: \", lenguaje)\n\n    # Paso 4: pie\n    print(\"------------------------------\")\n    print(\"¡Bienvenida/o, \", nombre, \"!\", sep=\"\")\n    separador()\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n\ndef _ficha(nombre, apellidos, ciudad, lenguaje):\n    lineas = [\n        \"=\" * 30,\n        \"  FICHA DE INSCRIPCIÓN\",\n        \"=\" * 30,\n        \"Nombre:    \" + nombre,\n        \"Apellidos: \" + apellidos,\n        \"Ciudad:    \" + ciudad,\n        \"Lenguaje:  \" + lenguaje,\n        \"-\" * 30,\n        \"¡Bienvenida/o, \" + nombre + \"!\",\n        \"=\" * 30,\n    ]\n    return \"\\n\".join(lineas) + \"\\n\"\n",
+   "tests": [
+    {
+     "name": "Ficha completa con los datos del ejemplo",
+     "code": "datos = [\"Ana\", \"García López\", \"Santiago\", \"Python\"]\nsalida, _, _, _ = _ejecutar(main, datos)\nesperado = _ficha(*datos)\nassert salida == esperado, f\"La ficha no coincide. Se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "Pide los datos con los mensajes exactos y en orden",
+     "code": "_, prompts, _, _ = _ejecutar(main, [\"Ana\", \"García López\", \"Santiago\", \"Python\"])\nesperado = [\"Nombre: \", \"Apellidos: \", \"Ciudad: \", \"Lenguaje favorito: \"]\nassert prompts == esperado, f\"Los mensajes de input() deberían ser {esperado!r} y fueron {prompts!r}\""
+    },
+    {
+     "name": "Imprime 10 líneas",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Ana\", \"García López\", \"Santiago\", \"Python\"])\nn = salida.count(\"\\n\")\nassert n == 10, f\"La ficha tiene 10 líneas y se imprimieron {n}\""
+    },
+    {
+     "name": "Separadores de 30 caracteres",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Ana\", \"García López\", \"Santiago\", \"Python\"])\nlineas = salida.split(\"\\n\")\nok = len(lineas) > 9 and lineas[0] == lineas[2] == lineas[9] == \"=\" * 30 and lineas[7] == \"-\" * 30\nassert ok, \"Las líneas 1, 3 y 10 deben ser 30 signos '=' y la línea 8, 30 signos '-'. Cuéntalos (o copia una línea correcta)\""
+    },
+    {
+     "name": "Título con dos espacios delante",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Ana\", \"García López\", \"Santiago\", \"Python\"])\nlineas = salida.split(\"\\n\")\nassert len(lineas) > 1 and lineas[1] == \"  FICHA DE INSCRIPCIÓN\", f\"La segunda línea debe ser '  FICHA DE INSCRIPCIÓN' (dos espacios delante); es {lineas[1] if len(lineas) > 1 else None!r}\""
+    },
+    {
+     "name": "Datos alineados en la columna 12",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Luis\", \"Pérez\", \"Valparaíso\", \"Rust\"])\nlineas = salida.split(\"\\n\")\nesperadas = [\"Nombre:    Luis\", \"Apellidos: Pérez\", \"Ciudad:    Valparaíso\", \"Lenguaje:  Rust\"]\nassert lineas[3:7] == esperadas, f\"Las líneas de datos deberían ser {esperadas!r} y son {lineas[3:7]!r}. Recuerda que print() añade un espacio entre la etiqueta y el valor\""
+    },
+    {
+     "name": "Despedida con el nombre pegado a la exclamación",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Luis\", \"Pérez\", \"Valparaíso\", \"Rust\"])\nlineas = salida.split(\"\\n\")\nassert len(lineas) > 8 and lineas[8] == \"¡Bienvenida/o, Luis!\", f\"La línea 9 debería ser '¡Bienvenida/o, Luis!' y es {lineas[8] if len(lineas) > 8 else None!r}\""
+    },
+    {
+     "name": "Funciona con tildes, ñ y nombres compuestos",
+     "code": "datos = [\"María José\", \"Núñez Ibáñez\", \"Viña del Mar\", \"Python 3.14\"]\nsalida, _, _, _ = _ejecutar(main, datos)\nesperado = _ficha(*datos)\nassert salida == esperado, f\"Con {datos!r} la ficha no coincide. Se imprimió {salida!r}\""
+    },
+    {
+     "name": "Usa los datos introducidos, no valores fijos",
+     "code": "datos = [\"Zoë\", \"Smith\", \"Lima\", \"Go\"]\nsalida, _, _, _ = _ejecutar(main, datos)\nesperado = _ficha(*datos)\nassert salida == esperado, f\"Con {datos!r} la ficha no coincide: asegúrate de imprimir las variables, no textos de ejemplo. Se imprimió {salida!r}\""
+    }
+   ],
+   "hints": [
+    "Empieza por el paso 1 y comprueba con **Ejecutar** (añade `main()` al final y escribe cuatro líneas en «Entrada»). Después ve añadiendo pasos.",
+    "Para alinear, ten en cuenta que `print(\"Nombre:   \", nombre)` ya añade un espacio entre la etiqueta y el valor (el `sep` por defecto). Todas las etiquetas deben ocupar lo mismo.",
+    "Para la despedida, recuerda `sep=\"\"` o la combinación con `end` de ejercicios anteriores. Y define `separador()` **fuera** de `main()` (sin sangría), con un `print` de 30 signos `=` en su cuerpo."
+   ],
+   "explain": "La solución separa el programa en pasos y reutiliza `separador()` para no repetir la línea de 30 signos `=`: si mañana cambia el diseño, se modifica en un solo sitio. Es el principio **DRY** (*Don't Repeat Yourself*), una de las ideas más importantes del diseño de software.\n\nLa alineación se consigue a mano: cada etiqueta, rellenada con espacios hasta 10 caracteres, más el espacio que pone `sep`, deja el valor en la columna 12. Cuando aprendas la repetición de cadenas (`\"=\" * 30`, s02) y la especificación de formato de las f-strings (`f\"{'Nombre:':<11}{nombre}\"`, s05) no tendrás que contar espacios. Fíjate también en que `apellidos` puede contener espacios: `input()` devuelve la línea entera, no solo la primera palabra."
+  },
+  {
+   "id": "s01-e15",
+   "title": "Proyecto: rescate de un script roto",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Has heredado el programa de bienvenida de una biblioteca… y está lleno de errores de **sintaxis**, de **sangría**, de **ejecución** y de **lógica**. Tu misión es dejarlo funcionando **sin reescribirlo desde cero**: arregla cada error leyendo lo que dice Python y lo que dicen las pruebas.",
+    "El programa tiene cuatro funciones. Así debe comportarse cada una cuando esté arreglada:",
+    "`cabecera()` imprime:",
+    "```text\n*** Biblioteca Municipal ***\nHorario: 9:00-14:00\n```",
+    "`pedir_socio()` pide el nombre con `input(\"Nombre del socio: \")` y lo **devuelve** (no lo imprime).\n\n`despedida()` **devuelve** el texto `Gracias por venir. ¡Vuelve pronto!` (no lo imprime).\n\n`main()` muestra la cabecera, pide el socio y después imprime el resto. Con el socio `Marta`, la salida completa es:",
+    "```text\n*** Biblioteca Municipal ***\nHorario: 9:00-14:00\nBienvenida/o, Marta.\nTienes 2 libros en préstamo.\nGracias por venir. ¡Vuelve pronto!\n```",
+    "Estrategia: presiona **Comprobar** a menudo. Mientras haya errores de sintaxis no se ejecutará ninguna prueba y verás el traceback; cuando los resuelvas, cada prueba te dirá qué parte falla."
+   ],
+   "examples": [
+    {
+     "call": "capturar(cabecera)",
+     "result": "'*** Biblioteca Municipal ***\\nHorario: 9:00-14:00\\n'"
+    },
+    {
+     "call": "despedida()",
+     "result": "'Gracias por venir. ¡Vuelve pronto!'"
+    }
+   ],
+   "starter": "def cabecera():\n    print(\"*** Biblioteca Municipal ***\")\n    print(\"Horario:\", \"9:00\", \"14:00\", sep=\"-\")\n\n\ndef pedir_socio()\n    socio = input(\"Nombre del socio: \")\n    print(socio)\n\n\ndef despedida():\nreturn \"Gracias por venir. ¡Vuelve pronto!\"\n\n\ndef main():\n    cabecera()\n    socio = pedir_socio()\n    print(\"Bienvenida/o, \", socio, \".\", sep=\"\")\n    print(\"Tienes \" + 2 + \" libros en préstamo.\")\n    print(Despedida())\n",
+   "solution": "def cabecera():\n    print(\"*** Biblioteca Municipal ***\")\n    print(\"Horario: 9:00-14:00\")\n\n\ndef pedir_socio():\n    socio = input(\"Nombre del socio: \")\n    return socio\n\n\ndef despedida():\n    return \"Gracias por venir. ¡Vuelve pronto!\"\n\n\ndef main():\n    cabecera()\n    socio = pedir_socio()\n    print(\"Bienvenida/o, \", socio, \".\", sep=\"\")\n    print(\"Tienes\", 2, \"libros en préstamo.\")\n    print(despedida())\n",
+   "setup": "import builtins as _bi\nimport contextlib as _cl\nimport io as _io\n\n\ndef _ejecutar(funcion, respuestas=()):\n    \"\"\"Ejecuta funcion() y devuelve (salida, prompts, llamadas_a_print, resultado).\"\"\"\n    pendientes = [str(r) for r in respuestas]\n    prompts = []\n    llamadas = []\n    print_real = _bi.print\n    input_real = _bi.input\n\n    def _input(prompt=\"\"):\n        prompts.append(prompt)\n        if not pendientes:\n            raise EOFError(\"Tu programa llamó a input() más veces de las que pide el enunciado\")\n        return pendientes.pop(0)\n\n    def _print(*args, **kwargs):\n        llamadas.append((args, kwargs))\n        print_real(*args, **kwargs)\n\n    buffer = _io.StringIO()\n    _bi.input = _input\n    _bi.print = _print\n    try:\n        with _cl.redirect_stdout(buffer):\n            resultado = funcion()\n    finally:\n        _bi.input = input_real\n        _bi.print = print_real\n    return buffer.getvalue(), prompts, llamadas, resultado\n",
+   "tests": [
+    {
+     "name": "cabecera(): título de la biblioteca",
+     "code": "lineas = capturar(cabecera).split(\"\\n\")\nassert lineas[0] == \"*** Biblioteca Municipal ***\", f\"La primera línea de cabecera() debería ser '*** Biblioteca Municipal ***' y es {lineas[0]!r}\""
+    },
+    {
+     "name": "cabecera(): horario con un solo guion entre las horas",
+     "code": "lineas = capturar(cabecera).split(\"\\n\")\nassert len(lineas) > 1 and lineas[1] == \"Horario: 9:00-14:00\", f\"La segunda línea debería ser 'Horario: 9:00-14:00' y es {lineas[1] if len(lineas) > 1 else None!r}. ¿Dónde coloca sep sus guiones?\""
+    },
+    {
+     "name": "pedir_socio() devuelve el nombre",
+     "code": "_, _, _, resultado = _ejecutar(pedir_socio, [\"Marta\"])\nassert resultado == \"Marta\", f\"pedir_socio() devolvió {resultado!r} y debería devolver lo que escribe el usuario. ¿Tiene return?\""
+    },
+    {
+     "name": "pedir_socio() no imprime nada",
+     "code": "salida, _, _, _ = _ejecutar(pedir_socio, [\"Marta\"])\nassert salida == \"\", f\"pedir_socio() no debe imprimir nada, pero imprimió {salida!r}\""
+    },
+    {
+     "name": "pedir_socio() usa el mensaje correcto",
+     "code": "_, prompts, _, _ = _ejecutar(pedir_socio, [\"Marta\"])\nassert prompts == [\"Nombre del socio: \"], f\"input() debe llamarse una vez con 'Nombre del socio: '; se llamó con {prompts!r}\""
+    },
+    {
+     "name": "despedida() devuelve el texto sin imprimirlo",
+     "code": "salida, _, _, resultado = _ejecutar(despedida)\nassert resultado == \"Gracias por venir. ¡Vuelve pronto!\", f\"despedida() devolvió {resultado!r}\"\nassert salida == \"\", f\"despedida() no debe imprimir nada, pero imprimió {salida!r}\""
+    },
+    {
+     "name": "main() completo con Marta",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Marta\"])\nesperado = \"*** Biblioteca Municipal ***\\nHorario: 9:00-14:00\\nBienvenida/o, Marta.\\nTienes 2 libros en préstamo.\\nGracias por venir. ¡Vuelve pronto!\\n\"\nassert salida == esperado, f\"Se esperaba {esperado!r} y main() imprimió {salida!r}\""
+    },
+    {
+     "name": "main(): línea de libros en préstamo",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Marta\"])\nlineas = salida.split(\"\\n\")\nassert len(lineas) > 3 and lineas[3] == \"Tienes 2 libros en préstamo.\", f\"La cuarta línea debería ser 'Tienes 2 libros en préstamo.'; las líneas son {lineas!r}\""
+    },
+    {
+     "name": "main() con otro socio (tildes)",
+     "code": "salida, _, _, _ = _ejecutar(main, [\"Joaquín\"])\nesperado = \"*** Biblioteca Municipal ***\\nHorario: 9:00-14:00\\nBienvenida/o, Joaquín.\\nTienes 2 libros en préstamo.\\nGracias por venir. ¡Vuelve pronto!\\n\"\nassert salida == esperado, f\"Con el socio 'Joaquín' se esperaba {esperado!r} y se imprimió {salida!r}\""
+    },
+    {
+     "name": "main() pide el nombre una sola vez",
+     "code": "_, prompts, _, _ = _ejecutar(main, [\"Marta\"])\nassert len(prompts) == 1, f\"main() debe pedir el nombre una sola vez (a través de pedir_socio()); input() se llamó {len(prompts)} veces\""
+    }
+   ],
+   "hints": [
+    "Empieza por los errores de sintaxis: la cabecera de una función termina en `:` y su cuerpo va sangrado.",
+    "Cuando ya no haya errores de sintaxis, lee los mensajes de las pruebas: `NameError` y `TypeError` te dicen el motivo exacto. Si ves `Bienvenida/o, None.`, alguna función imprime en lugar de devolver.",
+    "Revisa el `sep` del horario: pone un guion entre **todos** los argumentos, también después de `Horario:`."
+   ],
+   "explain": "Seis errores de cuatro tipos:\n\n- **Sintaxis**: falta `:` en `def pedir_socio()`.\n- **Sangría**: el `return` de `despedida()` debe estar dentro de la función.\n- **Ejecución**: `TypeError` al unir con `+` texto y el número `2` (se arregla con comas en `print()`), y `NameError` por `Despedida` con mayúscula.\n- **Lógica**: `sep=\"-\"` pone un guion también tras `Horario:` (se imprime `Horario:-9:00-14:00`), y `pedir_socio()` imprime el nombre en vez de devolverlo, así que `main()` recibe `None`.\n\nLos errores de lógica son los más traicioneros porque Python no se queja: solo las pruebas (o un ojo muy atento) los detectan. Por eso en s13 aprenderás a escribir tus propias pruebas. Observa también el orden en que aparecieron: primero todos los de sintaxis (se detectan antes de ejecutar), después los de ejecución (de uno en uno, según avanza el programa) y, al final, los de lógica."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué es un algoritmo?",
+   "back": "Una secuencia finita de pasos precisos y sin ambigüedad que resuelve un problema. El programa es su traducción a un lenguaje de programación."
+  },
+  {
+   "front": "Compilador frente a intérprete",
+   "back": "El compilador traduce todo el programa a código máquina antes de ejecutarlo; el intérprete lo ejecuta directamente. Python se considera interpretado, aunque CPython compila a bytecode de forma automática."
+  },
+  {
+   "front": "¿Qué es CPython?",
+   "back": "La implementación de referencia de Python, escrita en C: la que se descarga de python.org."
+  },
+  {
+   "front": "¿Qué es el bytecode?",
+   "back": "Instrucciones intermedias que CPython genera a partir del código fuente y que ejecuta su máquina virtual. No es código máquina del procesador."
+  },
+  {
+   "front": "¿Qué contiene `__pycache__`?",
+   "back": "Archivos `.pyc` con el bytecode de los módulos importados (p. ej. `modulo.cpython-314.pyc`). Aceleran la carga, no la ejecución."
+  },
+  {
+   "front": "Léxico, sintaxis y semántica",
+   "back": "Léxico: los tokens están bien formados. Sintaxis: su orden respeta la gramática. Semántica: lo que se pide tiene sentido al ejecutarse."
+  },
+  {
+   "front": "¿Qué muestra `import this`?",
+   "back": "El Zen de Python (PEP 20): los aforismos de diseño del lenguaje escritos por Tim Peters."
+  },
+  {
+   "front": "¿Qué es un PEP?",
+   "back": "*Python Enhancement Proposal*: documento de diseño que propone o describe cambios en Python. Ejemplos: PEP 8 (guía de estilo) y PEP 20 (el Zen)."
+  },
+  {
+   "front": "¿Qué es Pyodide?",
+   "back": "CPython compilado a WebAssembly: Python real ejecutándose en el navegador. Es el motor de esta plataforma."
+  },
+  {
+   "front": "¿Qué es el REPL?",
+   "back": "*Read–eval–print loop*: el intérprete interactivo (`>>>`), que evalúa cada instrucción y muestra el valor de las expresiones."
+  },
+  {
+   "front": "Instalar Python 3.14 en Windows",
+   "back": "Con el Python install manager (Microsoft Store o python.org) y `py install 3.14`. El instalador clásico está obsoleto desde 3.14."
+  },
+  {
+   "front": "Instalar Python con uv",
+   "back": "`uv python install 3.14`; y para ejecutar un script con esa versión, `uv run --python 3.14 script.py`."
+  },
+  {
+   "front": "Firma de `print()`",
+   "back": "`print(*objects, sep=' ', end='\\n', file=None, flush=False)`"
+  },
+  {
+   "front": "¿Qué hace `sep` en `print()`?",
+   "back": "Es el texto que se escribe entre cada dos argumentos. Por defecto, un espacio. Con un solo argumento no se usa."
+  },
+  {
+   "front": "¿Qué hace `end` en `print()`?",
+   "back": "Es el texto que se escribe al final de la llamada. Por defecto `'\\n'`; con `end=\"\"` la siguiente salida continúa en la misma línea."
+  },
+  {
+   "front": "¿Qué imprime `print()` sin argumentos?",
+   "back": "Solo `end`: por defecto, una línea en blanco."
+  },
+  {
+   "front": "Secuencias de escape básicas",
+   "back": "`\\n` salto de línea, `\\t` tabulador, `\\\\` barra invertida, `\\'` y `\\\"` comillas."
+  },
+  {
+   "front": "¿Qué es una cadena cruda?",
+   "back": "`r\"...\"`: la barra invertida no forma secuencias de escape. Útil para rutas de Windows y expresiones regulares."
+  },
+  {
+   "front": "¿Qué devuelve `input()`?",
+   "back": "Siempre una cadena (`str`) con la línea escrita, sin el salto de línea final. Si el usuario no escribe nada, `\"\"`."
+  },
+  {
+   "front": "¿Qué excepción lanza `input()` si no quedan datos?",
+   "back": "`EOFError`."
+  },
+  {
+   "front": "¿Cómo se escribe un comentario en Python?",
+   "back": "Con `#`: todo lo que sigue hasta el final de la línea se ignora. Dentro de una cadena, `#` es un carácter normal."
+  },
+  {
+   "front": "Sangría según PEP 8",
+   "back": "4 espacios por nivel. No mezclar tabuladores y espacios (`TabError`)."
+  },
+  {
+   "front": "¿Qué abre un bloque en Python?",
+   "back": "Una línea de cabecera que termina en `:` (`def`, `if`, `for`…); el cuerpo va sangrado y termina al volver a la sangría anterior."
+  },
+  {
+   "front": "Definir frente a llamar una función",
+   "back": "`def f():` guarda la función sin ejecutarla; `f()` ejecuta su cuerpo. `f` sin paréntesis solo nombra la función."
+  },
+  {
+   "front": "Parámetro frente a argumento",
+   "back": "Parámetro: el nombre entre paréntesis al definir (`def saludo(nombre):`). Argumento: el valor que pasas al llamar (`saludo(\"Ana\")`)."
+  },
+  {
+   "front": "¿Cómo se asignan los argumentos posicionales?",
+   "back": "Por orden: el primer argumento va al primer parámetro, el segundo al segundo… Si faltan o sobran, Python lanza `TypeError`."
+  },
+  {
+   "front": "`return` frente a `print`",
+   "back": "`return` entrega un valor a quien llama; `print` lo muestra en pantalla. Una función sin `return` devuelve `None`."
+  },
+  {
+   "front": "¿Cómo se lee un traceback?",
+   "back": "De abajo arriba: la última línea da el tipo y el mensaje; el último `File`, la línea y la función donde ocurrió; los bloques de arriba, la cadena de llamadas."
+  },
+  {
+   "front": "¿Qué significa *most recent call last*?",
+   "back": "Que las llamadas se listan de la más antigua (arriba) a la más reciente (abajo, donde se produjo el error)."
+  },
+  {
+   "front": "¿Qué indica `in <module>` en un traceback?",
+   "back": "Que esa línea está en el nivel superior del archivo, fuera de cualquier función."
+  },
+  {
+   "front": "Error de sintaxis frente a excepción",
+   "back": "El de sintaxis se detecta antes de ejecutar y no corre nada; la excepción ocurre durante la ejecución, y lo anterior sí se ejecutó."
+  },
+  {
+   "front": "`NameError` / `TypeError` / `ValueError`",
+   "back": "NameError: el nombre no existe. TypeError: tipo inadecuado para la operación. ValueError: tipo correcto, valor inadecuado."
+  },
+  {
+   "front": "¿De qué excepción es subclase `IndentationError`?",
+   "back": "De `SyntaxError`. Y `TabError` es subclase de `IndentationError`."
+  },
+  {
+   "front": "¿Qué es un error de lógica?",
+   "back": "El programa se ejecuta sin mensajes de error pero hace algo distinto de lo que querías. Lo detectan las pruebas."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s01-q1",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"A\", \"B\", \"C\", sep=\"-\")\n```",
+   "options": [
+    "`A B C`",
+    "`A-B-C`",
+    "`-A-B-C-`",
+    "`ABC-`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`sep` se coloca entre cada dos argumentos: tres argumentos, dos separadores. Nunca va al principio ni al final."
+  },
+  {
+   "id": "s01-q2",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"Hola\", end=\"\")\nprint(\"Mundo\")\n```",
+   "options": [
+    "`Hola Mundo`",
+    "`HolaMundo`",
+    "`Hola` y `Mundo` en dos líneas",
+    "Un error, porque `end` no puede estar vacío"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `end=\"\"` la primera llamada no escribe salto de línea ni espacio, así que `Mundo` se pega a `Hola`."
+  },
+  {
+   "id": "s01-q3",
+   "type": "single",
+   "q": "¿Cuántas líneas (incluidas las vacías) imprime este código?\n```python\nprint(\"a\")\nprint()\nprint(\"b\", \"c\", sep=\"\\n\")\n```",
+   "options": [
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`a`, una línea vacía (`print()` solo escribe `end`), y después `b` y `c` en líneas distintas porque el separador es un salto de línea: 4 líneas."
+  },
+  {
+   "id": "s01-q4",
+   "type": "single",
+   "q": "El usuario escribe `42`. ¿De qué tipo es el valor que devuelve `input()`?",
+   "options": [
+    "`int`",
+    "`str`",
+    "`float`",
+    "Depende de lo que escriba el usuario"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`input()` devuelve siempre una cadena. Para obtener un número hay que convertirla con `int()` o `float()` (s02)."
+  },
+  {
+   "id": "s01-q5",
+   "type": "single",
+   "q": "El usuario escribe `2` y luego `3`. ¿Qué imprime este código?\n```python\na = input()\nb = input()\nprint(a + b)\n```",
+   "options": [
+    "`5`",
+    "`23`",
+    "`2 3`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`a` y `b` son las cadenas `\"2\"` y `\"3\"`; `+` entre cadenas las une: `\"23\"`. No hay error porque ambas son del mismo tipo."
+  },
+  {
+   "id": "s01-q6",
+   "type": "yesno",
+   "q": "Sobre cómo ejecuta CPython tu código, indica Sí o No.",
+   "statements": [
+    {
+     "text": "CPython traduce el código fuente a bytecode antes de ejecutarlo.",
+     "answer": true
+    },
+    {
+     "text": "Un archivo `.pyc` se ejecuta más rápido que el `.py` equivalente.",
+     "answer": false
+    },
+    {
+     "text": "Si hay un error de sintaxis en la última línea, las primeras líneas se ejecutan igualmente.",
+     "answer": false
+    },
+    {
+     "text": "Pyodide es CPython compilado a WebAssembly.",
+     "answer": true
+    }
+   ],
+   "explain": "El `.pyc` solo ahorra la compilación al **cargar** un módulo importado; la ejecución es igual de rápida. Todo el archivo se analiza antes de ejecutarse, así que un error de sintaxis impide que se ejecute cualquier línea. Pyodide es el mismo CPython, compilado a WebAssembly."
+  },
+  {
+   "id": "s01-q7",
+   "type": "single",
+   "q": "¿Qué ocurre al ejecutar este script?\n```python\nprint(\"Inicio\")\nprint(10 / 0)\nprint(\"Fin\")\n```",
+   "options": [
+    "No imprime nada y muestra `ZeroDivisionError`",
+    "Imprime `Inicio` y después muestra un traceback con `ZeroDivisionError`",
+    "Imprime `Inicio` y `Fin`, y avisa del error al terminar",
+    "Muestra un `SyntaxError` antes de ejecutar nada"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Dividir entre cero es un error **de ejecución**: el código es válido, así que la primera línea se ejecuta; en la segunda se lanza la excepción y el programa se detiene sin llegar a `Fin`."
+  },
+  {
+   "id": "s01-q8",
+   "type": "single",
+   "q": "¿Y este otro script?\n```python\nprint(\"Inicio\")\nprint(\"Fin\"\n```",
+   "options": [
+    "Imprime `Inicio` y luego falla",
+    "No imprime nada: `SyntaxError: '(' was never closed`",
+    "Imprime `Inicio` y `Fin`",
+    "`NameError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El paréntesis sin cerrar es un error de sintaxis y se detecta al analizar el archivo completo, antes de ejecutar ninguna línea. Por eso ni siquiera aparece `Inicio`."
+  },
+  {
+   "id": "s01-q9",
+   "type": "multi",
+   "q": "¿En cuáles de estas líneas hay un comentario válido de Python? (Selecciona DOS.)",
+   "options": [
+    "`# total de ventas`",
+    "`// total de ventas`",
+    "`/* total de ventas */`",
+    "`print(\"hola\")  # saludo`",
+    "`-- total de ventas`"
+   ],
+   "answer": [
+    0,
+    3
+   ],
+   "explain": "En Python los comentarios empiezan con `#`, al principio de la línea o detrás del código. `//` y `/* */` son comentarios de C, Java o JavaScript, y `--` lo es de SQL; en Python producen errores."
+  },
+  {
+   "id": "s01-q10",
+   "type": "single",
+   "q": "¿Qué excepción produce este código?\n```python\nnombre = \"Ana\"\nprint(Nombre)\n```",
+   "options": [
+    "`SyntaxError`",
+    "`NameError`",
+    "`TypeError`",
+    "`ValueError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Python distingue mayúsculas y minúsculas: `Nombre` no está definido. El mensaje en 3.14 es `NameError: name 'Nombre' is not defined. Did you mean: 'nombre'?`"
+  },
+  {
+   "id": "s01-q11",
+   "type": "single",
+   "q": "¿Qué excepción produce `print(\"Tengo \" + 3 + \" gatos\")`?",
+   "options": [
+    "`SyntaxError`",
+    "`NameError`",
+    "`TypeError`",
+    "`ValueError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El código es sintácticamente válido, pero no se puede unir una cadena con un número: `TypeError: can only concatenate str (not \"int\") to str`. Con comas (`print(\"Tengo\", 3, \"gatos\")`) funciona."
+  },
+  {
+   "id": "s01-q12",
+   "type": "single",
+   "q": "En un traceback, ¿dónde encuentras el tipo de excepción y su mensaje?",
+   "options": [
+    "En la primera línea, junto a `Traceback`",
+    "En la última línea",
+    "En el primer bloque `File`",
+    "En la línea marcada con `^`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La última línea tiene la forma `Tipo: mensaje`. Por eso los tracebacks se leen de abajo arriba."
+  },
+  {
+   "id": "s01-q13",
+   "type": "single",
+   "q": "Observa este traceback. ¿En qué función se produjo el error?\n```text\nCalculando...\nTraceback (most recent call last):\n  File \"/home/ana/app.py\", line 11, in <module>\n    main()\n    ~~~~^^\n  File \"/home/ana/app.py\", line 7, in main\n    total = sumar(3, \"4\")\n  File \"/home/ana/app.py\", line 2, in sumar\n    return a + b\n           ~~^~~\nTypeError: unsupported operand type(s) for +: 'int' and 'str'\n```",
+   "options": [
+    "`<module>`",
+    "`main`",
+    "`sumar`",
+    "`TypeError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El último bloque `File` (el más reciente) es `line 2, in sumar`: ahí se produjo la excepción. `<module>` es el nivel superior del archivo y `TypeError` es el tipo de la excepción, no una función."
+  },
+  {
+   "id": "s01-q14",
+   "type": "single",
+   "q": "En el mismo traceback, ¿en qué línea está la llamada, hecha desde `main`, que desencadenó el error?\n```text\nCalculando...\nTraceback (most recent call last):\n  File \"/home/ana/app.py\", line 11, in <module>\n    main()\n    ~~~~^^\n  File \"/home/ana/app.py\", line 7, in main\n    total = sumar(3, \"4\")\n  File \"/home/ana/app.py\", line 2, in sumar\n    return a + b\n           ~~^~~\nTypeError: unsupported operand type(s) for +: 'int' and 'str'\n```",
+   "options": [
+    "2",
+    "7",
+    "11",
+    "1"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El bloque `File \"/home/ana/app.py\", line 7, in main` muestra la llamada `sumar(3, \"4\")`. La línea 11 es la llamada a `main()` desde el nivel superior, y la 2 es donde se produjo el error dentro de `sumar`."
+  },
+  {
+   "id": "s01-q15",
+   "type": "yesno",
+   "q": "Sobre `print()`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`print(\"a\", \"b\", sep=\"\")` imprime `ab`.",
+     "answer": true
+    },
+    {
+     "text": "`print()` sin argumentos no imprime nada.",
+     "answer": false
+    },
+    {
+     "text": "`sep` y `end` pueden escribirse antes de los argumentos posicionales.",
+     "answer": false
+    },
+    {
+     "text": "`print(1, 2, sep=0)` lanza `TypeError`.",
+     "answer": true
+    }
+   ],
+   "explain": "`print()` sin argumentos escribe `end` (una línea en blanco). Los argumentos con nombre van siempre después de los posicionales (si no, `SyntaxError: positional argument follows keyword argument`), y `sep` debe ser una cadena o `None`."
+  },
+  {
+   "id": "s01-q16",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"Hola\" \"Mundo\")\n```",
+   "options": [
+    "`Hola Mundo`",
+    "`HolaMundo`",
+    "`SyntaxError`",
+    "`Hola` y `Mundo` en dos líneas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Dos literales de cadena escritos uno junto al otro, sin coma, se unen en uno solo al analizar el código: es **un único** argumento, `\"HolaMundo\"`. Con una coma serían dos argumentos y saldría `Hola Mundo`."
+  },
+  {
+   "id": "s01-q17",
+   "type": "single",
+   "q": "En el REPL, ¿qué se muestra al evaluar la expresión `\"hola\"` (sin `print`)?",
+   "options": [
+    "`hola`",
+    "`'hola'`",
+    "Nada",
+    "`None`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El REPL muestra la *representación* del valor, con comillas: `'hola'`. `print(\"hola\")`, en cambio, muestra `hola`."
+  },
+  {
+   "id": "s01-q18",
+   "type": "single",
+   "q": "Un script `.py` contiene solo la línea `2 + 3`. ¿Qué muestra al ejecutarlo con `python script.py`?",
+   "options": [
+    "`5`",
+    "`2 + 3`",
+    "Nada",
+    "`SyntaxError`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "En un script, una expresión suelta se evalúa y se descarta: no hay eco como en el REPL. Para ver el resultado hace falta `print(2 + 3)`."
+  },
+  {
+   "id": "s01-q19",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef saludo():\n    print(\"Hola\")\n\nprint(\"Inicio\")\n```",
+   "options": [
+    "`Hola` e `Inicio`",
+    "Solo `Inicio`",
+    "`Inicio` y `Hola`",
+    "Nada, porque la función no se llama"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`def` solo define la función; su cuerpo no se ejecuta hasta que se llama con `saludo()`, cosa que no ocurre. Solo se ejecuta `print(\"Inicio\")`."
+  },
+  {
+   "id": "s01-q20",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef f():\n    print(\"dentro\")\n\nr = f()\nprint(r)\n```",
+   "options": [
+    "`dentro`",
+    "`dentro` y después `None`",
+    "`None`",
+    "`dentro` dos veces"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Al llamar a `f()` se imprime `dentro`. Como `f` no tiene `return`, devuelve `None`, que se guarda en `r` y se imprime después."
+  },
+  {
+   "id": "s01-q21",
+   "type": "single",
+   "q": "En este código, ¿qué son `nombre` y `\"Ana\"`?\n```python\ndef saludo(nombre):\n    return \"Hola, \" + nombre\n\nprint(saludo(\"Ana\"))\n```",
+   "options": [
+    "`nombre` es un parámetro y `\"Ana\"` es un argumento",
+    "`nombre` es un argumento y `\"Ana\"` es un parámetro",
+    "Los dos son parámetros",
+    "Los dos son argumentos"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El **parámetro** es el nombre que aparece en la definición (`def saludo(nombre):`); el **argumento** es el valor concreto que se pasa en la llamada (`saludo(\"Ana\")`). Al llamar, Python asigna `\"Ana\"` al parámetro `nombre`."
+  },
+  {
+   "id": "s01-q22",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\ndef repetir(texto):\n    print(texto + texto)\n\nr = repetir(\"ja\")\nprint(r)\n```",
+   "options": [
+    "`jaja` y después `None`",
+    "`jaja` dos veces",
+    "Solo `jaja`",
+    "Solo `None`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`repetir(\"ja\")` imprime `jaja`, pero no tiene `return`, así que devuelve `None`, que se guarda en `r` y se imprime después. Si la función hiciera `return texto + texto`, no imprimiría nada por sí misma y `print(r)` mostraría `jaja` una sola vez."
+  },
+  {
+   "id": "s01-q23",
+   "type": "single",
+   "q": "¿Qué error produce este código en Python 3.14?\n```python\ndef main():\nprint(\"hola\")\n```",
+   "options": [
+    "`SyntaxError: expected ':'`",
+    "`IndentationError: expected an indented block after function definition on line 1`",
+    "`NameError`",
+    "Ninguno: imprime `hola`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El cuerpo de una función debe ir sangrado. Python lo detecta al analizar el archivo y explica exactamente qué esperaba y después de qué línea."
+  },
+  {
+   "id": "s01-q24",
+   "type": "multi",
+   "q": "¿Qué afirmaciones sobre la sangría en Python son correctas? (Selecciona DOS.)",
+   "options": [
+    "Forma parte de la sintaxis: determina qué líneas pertenecen a cada bloque",
+    "PEP 8 recomienda 2 espacios por nivel",
+    "Mezclar tabuladores y espacios de forma ambigua produce `TabError`",
+    "Es opcional si se usan llaves `{}` para delimitar los bloques",
+    "Solo importa dentro de las funciones"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "La sangría es sintaxis en Python y PEP 8 recomienda 4 espacios. Python no usa llaves para los bloques y la regla se aplica a todos los bloques (funciones, `if`, bucles, clases…)."
+  },
+  {
+   "id": "s01-q25",
+   "type": "single",
+   "q": "¿Qué imprime `print(\"C:\\nuevo\")`?",
+   "options": [
+    "`C:\\nuevo`",
+    "`C:` en una línea y `uevo` en la siguiente",
+    "Un `SyntaxError`",
+    "`C:nuevo`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`\\n` dentro de una cadena es un salto de línea. Para imprimir la barra hay que escribir `\"C:\\\\nuevo\"` o usar una cadena cruda `r\"C:\\nuevo\"`."
+  },
+  {
+   "id": "s01-q26",
+   "type": "single",
+   "q": "¿Qué comando instala Python 3.14 con el Python install manager en Windows?",
+   "options": [
+    "`py install 3.14`",
+    "`pip install python==3.14`",
+    "`python --install 3.14`",
+    "`python3 -m install 3.14`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El Python install manager, recomendado desde 3.14, ofrece `py install`, `py list` y `py uninstall`. `pip` instala paquetes, no intérpretes."
+  },
+  {
+   "id": "s01-q27",
+   "type": "single",
+   "q": "¿Qué hace `uv python install 3.14`?",
+   "options": [
+    "Instala un paquete llamado `python` desde PyPI",
+    "Descarga e instala el intérprete de Python 3.14 gestionado por uv",
+    "Actualiza el Python del sistema operativo",
+    "Crea un entorno virtual llamado `3.14`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`uv python install` descarga intérpretes de Python y los gestiona por su cuenta, sin tocar el Python del sistema."
+  },
+  {
+   "id": "s01-q28",
+   "type": "single",
+   "q": "¿Qué es un PEP?",
+   "options": [
+    "Un módulo de la biblioteca estándar",
+    "Un documento de diseño que propone o describe cambios en Python",
+    "El gestor oficial de paquetes",
+    "Un tipo de excepción"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "*Python Enhancement Proposal*. Por ejemplo, PEP 8 es la guía de estilo, PEP 20 el Zen de Python y PEP 602 el calendario anual de versiones."
+  },
+  {
+   "id": "s01-q29",
+   "type": "multi",
+   "q": "¿Qué características describen a Python? (Selecciona TRES.)",
+   "options": [
+    "Es interpretado",
+    "Es multiparadigma",
+    "Exige declarar el tipo de cada variable",
+    "Tiene una biblioteca estándar amplia («baterías incluidas»)",
+    "Solo sirve para ciencia de datos"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "Python es interpretado, admite programación procedimental, orientada a objetos y funcional, y trae «baterías incluidas». Su tipado es dinámico (no se declaran tipos) y es de propósito general."
+  },
+  {
+   "id": "s01-q30",
+   "type": "yesno",
+   "q": "Sobre `input()`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`input(\"Nombre: \")` escribe el mensaje y después un salto de línea antes de leer.",
+     "answer": false
+    },
+    {
+     "text": "El valor devuelto no incluye el salto de línea final.",
+     "answer": true
+    },
+    {
+     "text": "Si el usuario presiona Enter sin escribir nada, `input()` devuelve `None`.",
+     "answer": false
+    },
+    {
+     "text": "Si se acaba la entrada, `input()` lanza `EOFError`.",
+     "answer": true
+    }
+   ],
+   "explain": "El prompt se escribe **sin** salto de línea final; por eso conviene terminarlo con un espacio. Una línea vacía devuelve la cadena vacía `\"\"`, no `None`."
+  },
+  {
+   "id": "s01-q31",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"x\", \"y\", sep=\"\", end=\"!\")\nprint(\"z\")\n```",
+   "options": [
+    "`xy!z`",
+    "`x y!z`",
+    "`xy!` y `z` en dos líneas",
+    "`x y !z`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Primera llamada: `x` y `y` sin separador, y `!` en lugar del salto de línea: `xy!`. La segunda continúa en la misma línea: `xy!z`."
+  },
+  {
+   "id": "s01-q32",
+   "type": "single",
+   "q": "¿Qué muestra Python 3.14 al ejecutar `pritn(\"hola\")`?",
+   "options": [
+    "`SyntaxError: invalid syntax`",
+    "`NameError: name 'pritn' is not defined. Did you mean: 'print'?`",
+    "`TypeError`",
+    "Imprime `hola`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sintácticamente es una llamada válida a algo llamado `pritn`; al ejecutarla, ese nombre no existe. Desde 3.10, Python sugiere el nombre más parecido."
+  },
+  {
+   "id": "s01-q33",
+   "type": "single",
+   "q": "`print(\"Hola\" + 5)` es gramaticalmente correcto, pero falla al ejecutarse. ¿Qué nivel de error es?",
+   "options": [
+    "Léxico",
+    "Sintáctico",
+    "Semántico",
+    "No es un error"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Los tokens y la gramática son correctos (no hay error léxico ni sintáctico); lo que falla es el significado de la operación al ejecutarla: un error semántico que se manifiesta como `TypeError`."
+  },
+  {
+   "id": "s01-q34",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"a\", \"b\", sep=\"\\n\", end=\"\")\nprint(\"c\")\n```",
+   "options": [
+    "`a`, `b` y `c` en tres líneas",
+    "`a` en una línea y `bc` en la siguiente",
+    "`abc`",
+    "`a b c`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La primera llamada escribe `a`, un salto de línea (el `sep`) y `b`, sin salto final. La segunda continúa tras la `b`: `bc`."
+  },
+  {
+   "id": "s01-q35",
+   "type": "single",
+   "q": "¿Con qué versión de Python trabaja este curso y cuándo se publicó?",
+   "options": [
+    "3.12, octubre de 2023",
+    "3.13, octubre de 2024",
+    "3.14, octubre de 2025",
+    "4.0, enero de 2026"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Python 3.14 salió el 7 de octubre de 2025. Desde 3.9 sale una versión nueva cada octubre (PEP 602). La opción «4.0» es inventada."
+  },
+  {
+   "id": "s01-q36",
+   "type": "single",
+   "q": "¿Por qué no debes llamar `random.py` a tu script?",
+   "options": [
+    "Porque los nombres de archivo no pueden ser palabras inglesas",
+    "Porque, al hacer `import random`, Python cargaría tu archivo en lugar del módulo estándar",
+    "Porque la extensión `.py` está reservada para la biblioteca estándar",
+    "No pasa nada: Python siempre prioriza la biblioteca estándar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Python busca primero en la carpeta del script, así que tu `random.py` «tapa» al módulo estándar. Desde 3.13 el mensaje de error lo detecta y sugiere renombrar el archivo."
+  },
+  {
+   "id": "s01-q37",
+   "type": "yesno",
+   "q": "Sobre las funciones con `def`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`def main():` ejecuta inmediatamente el cuerpo de la función.",
+     "answer": false
+    },
+    {
+     "text": "Una función sin `return` devuelve `None`.",
+     "answer": true
+    },
+    {
+     "text": "`return` muestra el valor en pantalla.",
+     "answer": false
+    },
+    {
+     "text": "Hay que definir una función antes de llamarla.",
+     "answer": true
+    }
+   ],
+   "explain": "`def` solo define; el cuerpo se ejecuta al llamar. `return` entrega el valor a quien llama, sin mostrarlo. Llamar a una función antes de definirla produce `NameError`."
+  },
+  {
+   "id": "s01-q38",
+   "type": "single",
+   "q": "¿Qué imprime este código?\n```python\nprint(\"Total:\", \"$\", 3, sep=\"\")\n```",
+   "options": [
+    "`Total: $ 3`",
+    "`Total:$3`",
+    "`Total: $3`",
+    "`TypeError`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `sep=\"\"` no se añade nada entre los argumentos. `print()` convierte el número 3 en texto por sí mismo, así que no hay error."
+  },
+  {
+   "id": "s01-q39",
+   "type": "multi",
+   "q": "¿Qué dos llamadas imprimen exactamente `2026-09-26`? (Selecciona DOS.)",
+   "options": [
+    "`print(\"2026\", \"09\", \"26\", sep=\"-\")`",
+    "`print(\"2026\", \"09\", \"26\", end=\"-\")`",
+    "`print(\"2026-09-26\")`",
+    "`print(\"2026\", \"-09\", \"-26\")`",
+    "`print(\"2026\" \"-\" \"09\", \"-\", \"26\")`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Con `end=\"-\"` sale `2026 09 26-`. En la cuarta, el `sep` por defecto añade espacios: `2026 -09 -26`. En la última, los literales juntos forman `\"2026-09\"` y el `sep` añade espacios: `2026-09 - 26`."
+  },
+  {
+   "id": "s01-q40",
+   "type": "single",
+   "q": "Al leer un traceback, ¿qué indica `in <module>`?",
+   "options": [
+    "Que el error está dentro de un módulo de la biblioteca estándar",
+    "Que esa línea está en el nivel superior del archivo, fuera de cualquier función",
+    "Que falta importar un módulo",
+    "Que es un error de sintaxis"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`<module>` es el nombre que usa Python para el código del nivel superior de un archivo. Las líneas dentro de funciones muestran el nombre de la función (`in main`, `in sumar`…)."
+  },
+  {
+   "id": "s01-q41",
+   "type": "single",
+   "q": "¿Qué término describe mejor un programa que se ejecuta sin mostrar ningún error pero produce un resultado incorrecto?",
+   "options": [
+    "Error de sintaxis",
+    "Excepción",
+    "Error de lógica",
+    "Advertencia (`SyntaxWarning`)"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un error de lógica no produce mensajes: el programa hace otra cosa de la que querías. Se detecta comparando la salida con lo esperado, que es lo que hacen las pruebas."
+  }
+ ],
+ "sources": [
+  {
+   "title": "The Python Tutorial — Whetting Your Appetite",
+   "url": "https://docs.python.org/3/tutorial/appetite.html"
+  },
+  {
+   "title": "The Python Tutorial — Using the Python Interpreter",
+   "url": "https://docs.python.org/3/tutorial/interpreter.html"
+  },
+  {
+   "title": "The Python Tutorial — An Informal Introduction to Python (cadenas, _ en modo interactivo)",
+   "url": "https://docs.python.org/3/tutorial/introduction.html"
+  },
+  {
+   "title": "The Python Tutorial — Errors and Exceptions",
+   "url": "https://docs.python.org/3/tutorial/errors.html"
+  },
+  {
+   "title": "The Python Tutorial — Modules: «Compiled» Python files",
+   "url": "https://docs.python.org/3/tutorial/modules.html"
+  },
+  {
+   "title": "Built-in Functions — print() e input()",
+   "url": "https://docs.python.org/3/library/functions.html"
+  },
+  {
+   "title": "Language Reference — Lexical analysis (comentarios, sangría, palabras clave)",
+   "url": "https://docs.python.org/3/reference/lexical_analysis.html"
+  },
+  {
+   "title": "Glossary (bytecode, CPython, interpreted, REPL…)",
+   "url": "https://docs.python.org/3/glossary.html"
+  },
+  {
+   "title": "General Python FAQ",
+   "url": "https://docs.python.org/3/faq/general.html"
+  },
+  {
+   "title": "Design and History FAQ — ¿Por qué Python usa la sangría?",
+   "url": "https://docs.python.org/3/faq/design.html"
+  },
+  {
+   "title": "Python on Windows (Python install manager)",
+   "url": "https://docs.python.org/3/using/windows.html"
+  },
+  {
+   "title": "Using Python on macOS",
+   "url": "https://docs.python.org/3/using/mac.html"
+  },
+  {
+   "title": "Using Python on Unix platforms",
+   "url": "https://docs.python.org/3/using/unix.html"
+  },
+  {
+   "title": "What's New in Python 3.10 (mensajes de error mejorados)",
+   "url": "https://docs.python.org/3/whatsnew/3.10.html"
+  },
+  {
+   "title": "What's New in Python 3.11 (ubicación precisa de errores, PEP 657; rendimiento)",
+   "url": "https://docs.python.org/3/whatsnew/3.11.html"
+  },
+  {
+   "title": "What's New in Python 3.12 (SyntaxWarning en escapes no válidos)",
+   "url": "https://docs.python.org/3/whatsnew/3.12.html"
+  },
+  {
+   "title": "What's New in Python 3.13 (nuevo REPL, tracebacks en color)",
+   "url": "https://docs.python.org/3/whatsnew/3.13.html"
+  },
+  {
+   "title": "What's New in Python 3.14",
+   "url": "https://docs.python.org/3/whatsnew/3.14.html"
+  },
+  {
+   "title": "PEP 8 — Style Guide for Python Code",
+   "url": "https://peps.python.org/pep-0008/"
+  },
+  {
+   "title": "PEP 20 — The Zen of Python",
+   "url": "https://peps.python.org/pep-0020/"
+  },
+  {
+   "title": "PEP 602 — Annual Release Cycle for Python",
+   "url": "https://peps.python.org/pep-0602/"
+  },
+  {
+   "title": "PEP 361 — Python 2.6 and 3.0 Release Schedule",
+   "url": "https://peps.python.org/pep-0361/"
+  },
+  {
+   "title": "PEP 790 — Python 3.15 Release Schedule",
+   "url": "https://peps.python.org/pep-0790/"
+  },
+  {
+   "title": "CPython InternalDocs — Compiler design",
+   "url": "https://github.com/python/cpython/blob/main/InternalDocs/compiler.md"
+  },
+  {
+   "title": "python.org — Download Python (versiones activas)",
+   "url": "https://www.python.org/downloads/"
+  },
+  {
+   "title": "python.org — Sunsetting Python 2",
+   "url": "https://www.python.org/doc/sunset-python-2/"
+  },
+  {
+   "title": "python.org — Applications for Python",
+   "url": "https://www.python.org/about/apps/"
+  },
+  {
+   "title": "python.org — What is Python? Executive Summary",
+   "url": "https://www.python.org/doc/essays/blurb/"
+  },
+  {
+   "title": "uv — documentación",
+   "url": "https://docs.astral.sh/uv/"
+  },
+  {
+   "title": "uv — Installing uv",
+   "url": "https://docs.astral.sh/uv/getting-started/installation/"
+  },
+  {
+   "title": "uv — Installing Python",
+   "url": "https://docs.astral.sh/uv/guides/install-python/"
+  },
+  {
+   "title": "uv — Running scripts",
+   "url": "https://docs.astral.sh/uv/guides/scripts/"
+  },
+  {
+   "title": "Homebrew — python@3.14",
+   "url": "https://formulae.brew.sh/formula/python@3.14"
+  },
+  {
+   "title": "VS Code — Getting Started with Python",
+   "url": "https://code.visualstudio.com/docs/python/python-tutorial"
+  },
+  {
+   "title": "VS Code Marketplace — Python extension",
+   "url": "https://marketplace.visualstudio.com/items?itemName=ms-python.python"
+  },
+  {
+   "title": "Pyodide",
+   "url": "https://pyodide.org/en/stable/"
+  },
+  {
+   "title": "PyPy",
+   "url": "https://pypy.org/"
+  },
+  {
+   "title": "MicroPython",
+   "url": "https://micropython.org/"
+  },
+  {
+   "title": "Python Institute — PCEP-30-0x Exam Syllabus",
+   "url": "https://pythoninstitute.org/pcep-exam-syllabus"
+  }
+ ]
+}

@@ -1,0 +1,3044 @@
+{
+ "id": "s01",
+ "order": 1,
+ "title": "Control de versiones, Git y la terminal",
+ "domain": "fundamentos",
+ "summary": "Por qué existe el control de versiones y cómo piensa Git por dentro (instantáneas, hashes, tres áreas). Instalas Git, aprendes a usar la terminal desde cero y dejas Git configurado como un profesional: identidad, rama main, editor y niveles de configuración.",
+ "goal": "Dejar Git instalado y configurado (identidad, rama main y editor) y moverte con soltura por la terminal creando, leyendo y organizando archivos y carpetas.",
+ "objectives": [
+  "Explicar qué problema resuelve el control de versiones y comparar los sistemas locales, centralizados y distribuidos.",
+  "Describir el modelo de Git: instantáneas, operaciones locales, integridad por hash y las tres áreas.",
+  "Instalar Git en Windows, macOS o Linux, comprobar su versión y consultar su ayuda.",
+  "Navegar por el sistema de archivos con pwd, ls y cd usando rutas absolutas y relativas.",
+  "Crear, leer, copiar, mover y borrar archivos y carpetas desde la terminal.",
+  "Configurar la identidad, la rama inicial y el editor de Git con git config.",
+  "Averiguar el valor y el origen de cualquier opción de configuración y predecir qué nivel gana."
+ ],
+ "lessons": [
+  {
+   "id": "s01-l1",
+   "title": "Control de versiones: el problema, los tipos y el origen de Git",
+   "minutes": 18,
+   "goals": [
+    "Explicar con un ejemplo cotidiano qué problema resuelve un sistema de control de versiones.",
+    "Comparar los sistemas locales, centralizados y distribuidos según dónde guardan la historia y qué riesgos tienen.",
+    "Resumir cómo y por qué nació Git en 2005 y cuáles fueron sus objetivos de diseño.",
+    "Diferenciar Git (la herramienta) de GitHub, GitLab o Bitbucket (plataformas que alojan repositorios)."
+   ],
+   "takeaways": [
+    "Un sistema de control de versiones registra cada versión de un proyecto con quién, cuándo y por qué cambió, y permite volver atrás, comparar y trabajar en paralelo.",
+    "En un sistema centralizado la historia vive solo en el servidor; en uno distribuido, como Git, cada copia (clon) tiene la historia completa.",
+    "Git nació en abril de 2005, creado por Linus Torvalds para el kernel de Linux cuando el proyecto perdió el uso gratuito de BitKeeper.",
+    "Git es un programa que funciona en tu computador sin internet; GitHub es un servicio web que aloja repositorios Git y agrega herramientas de colaboración."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Seguro te ha pasado: una carpeta llena de `tesis_final.docx`, `tesis_final_v2.docx`, `tesis_final_v2_corregida_profe.docx` y el infaltable `tesis_DEFINITIVA_la_buena.docx`. Nadie recuerda qué cambió entre una y otra, cuál es la buena ni quién agregó ese párrafo raro. Ahora imagina a diez personas editando cientos de archivos de código al mismo tiempo: sin una herramienta, es el caos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p caos\nfor f in tesis.docx tesis_final.docx tesis_final_v2.docx tesis_final_v2_corregida_profe.docx tesis_final_v2_ahora_si.docx tesis_DEFINITIVA_la_buena.docx; do escribir \"caos/$f\" \"(borrador)\"; done\nnuevo_repo tesis\nfecha '2026-03-02 10:00'\ncommit_archivo tesis.md '# Energía solar en Antofagasta' 'Crea la estructura de la tesis'\nfecha '2026-04-15 18:30'\nanexar tesis.md '## Introducción'\ngit add tesis.md && git commit -q -m 'Escribe la introducción'\nfecha '2026-05-20 11:00'\nautor 'Marcela Díaz' 'mdiaz@universidad.ejemplo.cl'\nanexar tesis.md '> Comentario de la profesora: citar el informe de la CNE'\ngit add tesis.md && git commit -q -m 'Agrega observaciones de la profesora guía'\nyo\nfecha '2026-06-03 22:10'\nanexar tesis.md '## Metodología'\ngit add tesis.md && git commit -q -m 'Incorpora la metodología'\nfecha '2026-07-28 09:45'\nanexar tesis.md '## Conclusiones'\ngit add tesis.md && git commit -q -m 'Redacta las conclusiones'",
+     "cwd": "",
+     "code": "ls caos\ncd tesis\nls\ngit log --oneline\ngit log --format=\"%h | %an | %ad | %s\" --date=short",
+     "caption": "En `caos` hay seis copias sin contexto. En `tesis`, gestionada con Git, hay **un solo archivo** y una historia: cada versión tiene un identificador, un autor, una fecha y un mensaje que explica el cambio (incluido el aporte de la profesora guía). Presiona «▶ Probar en la terminal» y avanza paso a paso."
+    },
+    {
+     "type": "p",
+     "text": "Un **sistema de control de versiones** (VCS, *version control system*) es un programa que registra los cambios de un conjunto de archivos a lo largo del tiempo, para que puedas recuperar versiones concretas más adelante. Se usa sobre todo con código, pero sirve igual para documentación, configuración, sitios web o una tesis escrita en texto plano. Lo que te da:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Historia completa**: cada versión guardada con autor, fecha y un mensaje que explica el porqué.",
+      "**Volver atrás** un archivo o el proyecto entero a cualquier punto anterior.",
+      "**Comparar** dos versiones y ver exactamente qué líneas cambiaron.",
+      "**Trabajar en paralelo**: varias personas (o varias ideas tuyas) avanzan a la vez y después se integran.",
+      "**Responsabilidad y respaldo**: saber quién introdujo un error y cuándo, y no perder trabajo."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Tres generaciones de control de versiones"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo",
+      "Cómo funciona",
+      "Ejemplos",
+      "Punto débil"
+     ],
+     "rows": [
+      [
+       "**Local**",
+       "Una base de datos de versiones en tu propio computador; guarda las diferencias (parches) entre versiones de cada archivo.",
+       "RCS",
+       "No sirve para colaborar y, si el disco falla, pierdes toda la historia."
+      ],
+      [
+       "**Centralizado** (CVCS)",
+       "Un servidor guarda la historia; cada persona descarga solo la última versión de los archivos y envía sus cambios al servidor.",
+       "CVS, Subversion (SVN), Perforce",
+       "El servidor es un punto único de falla: si se cae, nadie puede guardar versiones ni ver la historia; si su disco se daña sin respaldo, se pierde todo."
+      ],
+      [
+       "**Distribuido** (DVCS)",
+       "Cada persona tiene una copia completa del repositorio, **con toda la historia**, y las copias se sincronizan entre sí.",
+       "Git, Mercurial",
+       "Hay que aprender a sincronizar copias (fetch, pull, push). A cambio, cada clon es un respaldo completo."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Centralizado frente a distribuido",
+     "mermaid": "flowchart LR\n  subgraph C[\"Centralizado\"]\n    direction TB\n    S1[(\"Servidor: TODA la historia\")]\n    A1[\"Ana: solo la última versión\"] <--> S1\n    B1[\"Diego: solo la última versión\"] <--> S1\n  end\n  subgraph D[\"Distribuido: Git\"]\n    direction TB\n    S2[(\"Servidor: una copia completa más\")]\n    A2[(\"Ana: historia completa\")] <--> S2\n    B2[(\"Diego: historia completa\")] <--> S2\n    A2 <-.-> B2\n  end",
+     "caption": "En Git el servidor (GitHub, GitLab o uno propio) es solo una copia más que el equipo acuerda usar como punto de encuentro. Ana y Diego podrían incluso sincronizarse directamente entre ellos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-01 10:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega la receta de empanadas'\nfecha '2026-09-02 12:00'\ncommit_archivo sopaipillas.md '# Sopaipillas pasadas' 'Agrega la receta de sopaipillas'\nfecha '2026-09-03 19:00'\ncommit_archivo pebre.md '# Pebre' 'Agrega la receta de pebre'\ncd ~\nmkdir -p servidor\ngit clone -q --bare recetario servidor/recetario.git\nrm -rf recetario",
+     "cwd": "",
+     "code": "git clone ~/servidor/recetario.git mi-copia\ncd mi-copia\ngit log --oneline\nrm -rf ~/servidor\nls ~\ngit log --oneline",
+     "caption": "Clonas el repositorio del «servidor» (aquí es una carpeta; los remotos llegan en s07), **borras el servidor** y… la historia completa sigue en tu copia. Eso significa «distribuido»: cada clon es un respaldo completo. (`origin/main` es el recuerdo que tu copia guarda de la rama del servidor; lo verás en s07.)"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica de entrevista: «¿por qué se dice que Git es distribuido?». Respuesta: porque cada clon contiene la historia completa del proyecto; por eso casi todas las operaciones son locales y cualquier copia puede restaurar a las demás. En un sistema centralizado la historia solo vive en el servidor."
+    },
+    {
+     "type": "h",
+     "text": "Cómo nació Git"
+    },
+    {
+     "type": "p",
+     "text": "Entre 1991 y 2002, el kernel de Linux se mantuvo intercambiando parches y archivos comprimidos. En 2002 el proyecto empezó a usar **BitKeeper**, un sistema distribuido comercial que su empresa dejaba usar gratis a la comunidad. En abril de 2005 esa relación se rompió y se revocó la licencia gratuita. Linus Torvalds, el creador de Linux, decidió escribir su propia herramienta aprovechando lo aprendido con BitKeeper."
+    },
+    {
+     "type": "diagram",
+     "title": "Git en el tiempo",
+     "mermaid": "timeline\n  title Hitos de Git\n  2002 : El kernel de Linux adopta BitKeeper\n  2005 : Abril - se revoca la licencia gratuita de BitKeeper\n       : 3 de abril - Linus empieza a escribir Git\n       : 16 de junio - Linux 2.6.12 se publica gestionado con Git\n       : 26 de julio - Junio Hamano pasa a ser el mantenedor\n       : 21 de diciembre - Git 1.0\n  2008 : Nace GitHub\n  2018 : Microsoft compra GitHub\n  2020 : Git 2.28 agrega init.defaultBranch\n  2024 : Git 2.46 agrega los subcomandos de git config",
+     "caption": "El 7 de abril, apenas cuatro días después de empezar, Git ya se gestionaba a sí mismo; a mediados de junio administraba una versión completa del kernel."
+    },
+    {
+     "type": "p",
+     "text": "Linus se fijó objetivos muy concretos, y todavía explican por qué Git es como es:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Velocidad**: operaciones instantáneas incluso en proyectos enormes.",
+      "**Diseño simple**: un modelo de datos pequeño que conocerás por dentro en s12.",
+      "**Desarrollo no lineal**: miles de ramas en paralelo; crearlas y fusionarlas debe ser barato.",
+      "**Totalmente distribuido**: nadie depende de un servidor central.",
+      "**Escalar a proyectos grandes** como el kernel de Linux, en velocidad y en tamaño de datos."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Desde julio de 2005 el mantenedor de Git es **Junio Hamano**, y Git se convirtió en el estándar de la industria: en la encuesta de Stack Overflow de 2022, el 93,9 % de quienes respondieron usaba Git."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Y el nombre? En el inglés británico, *git* es un insulto suave («tonto», «pesado»). Linus bromeó con que les pone su nombre a todos sus proyectos: «primero Linux, ahora git». El código original describía a Git como «the information manager from hell»."
+    },
+    {
+     "type": "h",
+     "text": "Git no es GitHub"
+    },
+    {
+     "type": "p",
+     "text": "Es la confusión número uno de quien empieza. **Git** es un programa libre (licencia GPLv2) que instalas en tu computador y que funciona sin internet y sin cuenta en ningún sitio. **GitHub** es una empresa y un servicio web (lanzado en abril de 2008 y de Microsoft desde 2018) que **aloja** repositorios Git y agrega herramientas de colaboración: pull requests, revisión de código, issues, automatización con GitHub Actions…"
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "Git",
+      "GitHub, GitLab, Bitbucket…"
+     ],
+     "rows": [
+      [
+       "Qué es",
+       "Un programa de control de versiones",
+       "Plataformas web que alojan repositorios Git"
+      ],
+      [
+       "Dónde funciona",
+       "En tu computador (terminal, editor, etc.)",
+       "En la nube o en un servidor de tu empresa"
+      ],
+      [
+       "¿Necesita internet?",
+       "No, salvo para sincronizar con otra copia",
+       "Sí"
+      ],
+      [
+       "Qué aporta",
+       "Historia, ramas, fusiones, deshacer…",
+       "Colaboración: pull requests, revisiones, issues, CI/CD, permisos"
+      ],
+      [
+       "Ejemplos",
+       "Git (proyecto oficial en git-scm.com)",
+       "GitHub, GitLab, Bitbucket, Azure Repos, Codeberg"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No necesitas GitHub para usar Git, y aprender a usar GitHub no es aprender Git. En este curso trabajarás con Git puro; las plataformas aparecen en s07 y s08, cuando ya sepas qué hacen por debajo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En entrevistas y en la certificación GitHub Foundations es habitual la pregunta «¿qué diferencia hay entre Git y GitHub?». Respuesta corta: Git es el sistema de control de versiones (local y distribuido); GitHub es un servicio que aloja repositorios Git y agrega colaboración."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Control de versiones",
+       "en": "version control system (VCS)",
+       "def": "Sistema que registra los cambios de archivos en el tiempo para recuperar versiones, compararlas y colaborar."
+      },
+      {
+       "term": "Repositorio",
+       "en": "repository",
+       "def": "El proyecto más toda su historia de versiones. En Git vive en la carpeta oculta `.git`."
+      },
+      {
+       "term": "Commit",
+       "en": "commit",
+       "def": "Una versión guardada del proyecto, con autor, fecha, mensaje y un identificador único (hash). Lo verás a fondo en s02."
+      },
+      {
+       "term": "Clon",
+       "en": "clone",
+       "def": "Copia completa de un repositorio, incluida toda su historia."
+      },
+      {
+       "term": "Plataforma de alojamiento",
+       "en": "forge / hosting",
+       "def": "Servicio que aloja repositorios Git y agrega colaboración: GitHub, GitLab, Bitbucket."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s01-l2",
+   "title": "Cómo piensa Git: instantáneas, hashes y tres áreas",
+   "minutes": 20,
+   "goals": [
+    "Contrastar el almacenamiento por diferencias con el modelo de instantáneas de Git.",
+    "Calcular el hash de un contenido con `git hash-object` y explicar cómo garantiza la integridad.",
+    "Nombrar las tres áreas de Git y el comando que mueve los cambios de una a otra.",
+    "Justificar por qué casi todas las operaciones de Git son locales y rápidas."
+   ],
+   "takeaways": [
+    "Cada commit es una instantánea completa del proyecto; los archivos que no cambian no se copian: se reutiliza el contenido ya guardado.",
+    "Todo en Git se identifica por un hash calculado a partir de su contenido: mismo contenido, mismo hash; un cambio mínimo, un hash totalmente distinto.",
+    "Como la historia completa está en tu disco, ver la historia, comparar y confirmar no necesitan red.",
+    "Git casi solo agrega datos: lo confirmado es muy difícil de perder; lo que nunca confirmaste, sí se puede perder.",
+    "Flujo básico: modificas en el directorio de trabajo, preparas con `git add` y confirmas con `git commit`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Antes de aprender comandos conviene saber cómo piensa Git. Casi toda la confusión de quienes empiezan viene de imaginarlo como «un programa que guarda copias con cambios». Git es algo más simple y más potente: una base de datos de **instantáneas** identificadas por **hashes**."
+    },
+    {
+     "type": "h",
+     "text": "Instantáneas, no diferencias"
+    },
+    {
+     "type": "p",
+     "text": "Sistemas como CVS o Subversion guardan cada archivo como una versión inicial más una lista de cambios (*deltas*). Git, en cambio, en cada commit toma una **foto de cómo están todos los archivos del proyecto** y guarda una referencia a esa instantánea. Para ser eficiente, si un archivo no cambió no lo vuelve a guardar: la nueva instantánea apunta al mismo contenido que ya tenía."
+    },
+    {
+     "type": "diagram",
+     "title": "Git guarda instantáneas del proyecto completo",
+     "mermaid": "flowchart LR\n  subgraph V1[\"Commit 1\"]\n    a1[\"index.html: versión A\"]\n    b1[\"estilos.css: versión B\"]\n  end\n  subgraph V2[\"Commit 2\"]\n    a2[\"index.html: versión A2 (cambió)\"]\n    b2[\"estilos.css: B, se reutiliza\"]\n  end\n  subgraph V3[\"Commit 3\"]\n    a3[\"index.html: A2, se reutiliza\"]\n    b3[\"estilos.css: versión B2 (cambió)\"]\n  end\n  V1 --> V2 --> V3",
+     "caption": "Cada commit describe el proyecto completo. Lo que no cambió se comparte con el commit anterior (mismo contenido, mismo hash), así que las instantáneas no ocupan el doble."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo web\nfecha '2026-09-10 10:00'\nescribir index.html '<h1>Feria de Temuco</h1>'\nescribir estilos.css 'body { color: #333; }'\ngit add . && git commit -q -m 'Crea la página inicial'\nfecha '2026-09-11 10:00'\nescribir index.html '<h1>Feria de Temuco</h1><p>Abierta de martes a domingo</p>'\ngit add . && git commit -q -m 'Agrega el horario'\nfecha '2026-09-12 10:00'\nescribir estilos.css 'body { color: #222; font-family: sans-serif; }'\ngit add . && git commit -q -m 'Mejora la tipografía'",
+     "cwd": "web",
+     "code": "git log --oneline\ngit ls-tree HEAD~2\ngit ls-tree HEAD~1\ngit ls-tree HEAD",
+     "caption": "`git ls-tree` muestra la instantánea de un commit: cada archivo con el hash de su contenido. `HEAD` es el commit actual, `HEAD~1` el anterior y `HEAD~2` el de antes (lo verás en s03). `blob` es el nombre que Git le da al contenido de un archivo. Fíjate en que `estilos.css` tiene **el mismo hash** en los dos primeros commits, e `index.html` en los dos últimos: Git reutilizó ese contenido. Es un comando interno (*plumbing*) que estudiarás en s12."
+    },
+    {
+     "type": "h",
+     "text": "Integridad: todo tiene un hash"
+    },
+    {
+     "type": "p",
+     "text": "Antes de guardar cualquier cosa, Git calcula su **hash**, una huella digital de 40 caracteres hexadecimales (0-9 y a-f) como `24b9da6552252987aa493b52f8696cd6d3b00373`. Git guarda todo en su base de datos **por el hash de su contenido**, no por el nombre del archivo. Por defecto usa el algoritmo **SHA-1**."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Mismo contenido, mismo hash**, en cualquier computador del mundo.",
+      "**Un cambio mínimo** (una mayúscula, un espacio) produce **un hash completamente distinto**.",
+      "El hash de un commit depende de su instantánea, su mensaje, su autor, su fecha y el hash de su commit padre. Por eso no se puede alterar la historia en silencio: cambiar algo antiguo cambia todos los hashes que vienen después."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "echo \"test content\" | git hash-object --stdin\necho \"test content\" | git hash-object --stdin\necho \"Test content\" | git hash-object --stdin\necho \"test content\" > nota.txt\ngit hash-object nota.txt",
+     "caption": "`git hash-object` calcula el hash que Git le daría a un contenido. Las dos primeras líneas dan `d670460b4b4aece5915caf5c68d12f560a9fe3e4`, el mismo valor que aparece en el libro Pro Git y en cualquier computador. Con solo cambiar la T a mayúscula, el hash no se parece en nada. El nombre del archivo no importa: `nota.txt` da el mismo hash porque tiene el mismo contenido."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Datos que se preguntan: un hash SHA-1 tiene **40 caracteres hexadecimales** (160 bits); en el día a día se muestran solo los primeros (normalmente **7**, más si el repositorio es muy grande), por ejemplo `d670460`. Desde Git 2.13 (2017), Git usa una variante de SHA-1 que detecta los ataques de colisión conocidos (como SHAttered). Git ya admite repositorios **SHA-256** (`git init --object-format=sha256`, hashes de 64 caracteres) y Git 3.0, aún sin fecha oficial, planea usar SHA-256 por defecto en los repositorios nuevos."
+    },
+    {
+     "type": "h",
+     "text": "Casi todo es local"
+    },
+    {
+     "type": "p",
+     "text": "Como tienes la historia completa en tu disco, ver la historia de hace tres años, comparar versiones, crear ramas o confirmar cambios **no necesita red**: es instantáneo y funciona en un avión, en el metro o sin VPN. Solo unos pocos comandos hablan con otras copias, sobre todo `git clone`, `git fetch`, `git pull` y `git push` (s07)."
+    },
+    {
+     "type": "h",
+     "text": "Git casi solo agrega datos"
+    },
+    {
+     "type": "p",
+     "text": "Casi todas las acciones de Git **agregan** información a su base de datos; es difícil lograr que borre algo de forma irreversible. Una vez que confirmas una instantánea (haces un commit) es muy difícil perderla, sobre todo si además la subes a otro repositorio. Incluso hay herramientas para rescatar commits «perdidos» (el reflog, en s10)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "La red de seguridad solo cubre lo **confirmado**. Si editas un archivo y descartas o sobrescribes esos cambios antes de hacer commit (por ejemplo con `git restore` o `git reset --hard`, que verás en s04), Git no tiene ninguna copia de ese contenido. Regla práctica: haz commits pequeños y frecuentes."
+    },
+    {
+     "type": "h",
+     "text": "Las tres áreas"
+    },
+    {
+     "type": "p",
+     "text": "Un proyecto con Git tiene tres zonas, y casi todo lo que harás en este curso consiste en mover cambios entre ellas:"
+    },
+    {
+     "type": "diagram",
+     "title": "Las tres áreas de Git",
+     "mermaid": "flowchart LR\n  WD[\"1. Directorio de trabajo (working tree): los archivos que ves y editas\"]\n  IX[\"2. Área de preparación (staging area o index): lo que irá en el próximo commit\"]\n  RP[(\"3. Repositorio (.git): la historia de commits\")]\n  WD -- \"git add\" --> IX\n  IX -- \"git commit\" --> RP\n  RP -- \"git switch / git restore\" --> WD",
+     "caption": "El área de preparación es una de las grandes ideas de Git: te deja elegir qué cambios van en cada commit, en vez de guardar todo lo que tocaste."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Estado del cambio",
+      "Dónde está",
+      "Cómo llega ahí"
+     ],
+     "rows": [
+      [
+       "**Modificado** (*modified*)",
+       "Directorio de trabajo",
+       "Editas un archivo que Git ya conocía"
+      ],
+      [
+       "**Preparado** (*staged*)",
+       "Área de preparación",
+       "`git add archivo`"
+      ],
+      [
+       "**Confirmado** (*committed*)",
+       "Repositorio",
+       "`git commit -m \"mensaje\"`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Además, un archivo nuevo que Git nunca ha registrado está **sin seguimiento** (*untracked*) hasta que lo agregas con `git add`. En s02 recorrerás este ciclo con calma; por ahora obsérvalo en acción:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-05 11:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega la receta de empanadas'",
+     "cwd": "recetario",
+     "code": "git status\necho \"- 1 kg de harina\" >> empanadas.md\ngit status\ngit add empanadas.md\ngit status\ngit commit -m \"Agrega la harina a las empanadas\"\ngit log --oneline",
+     "caption": "Mira cómo `git status` describe cada paso: primero *nothing to commit, working tree clean*; luego *Changes not staged for commit* (modificado); después *Changes to be committed* (preparado) y, tras el commit, aparece un nuevo punto en el gráfico. En los ejercicios verás además el panel de las tres áreas actualizándose en vivo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Hábito profesional: ejecuta `git status` antes y después de cada comando que cambie algo. No modifica nada y te dice en qué área está cada cambio."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Instantánea",
+       "en": "snapshot",
+       "def": "Foto del estado de todos los archivos del proyecto en un commit."
+      },
+      {
+       "term": "Hash",
+       "en": "hash / object ID",
+       "def": "Identificador de 40 caracteres hexadecimales (SHA-1) calculado a partir del contenido. Garantiza la integridad."
+      },
+      {
+       "term": "Directorio de trabajo",
+       "en": "working tree",
+       "def": "Los archivos del proyecto que ves y editas en tu carpeta."
+      },
+      {
+       "term": "Área de preparación",
+       "en": "staging area / index",
+       "def": "Donde armas el próximo commit con `git add`."
+      },
+      {
+       "term": "Repositorio (directorio de Git)",
+       "en": "Git directory",
+       "def": "La carpeta `.git`: guarda los objetos (contenidos, árboles, commits) y los metadatos del proyecto."
+      },
+      {
+       "term": "Plumbing y porcelain",
+       "en": "plumbing / porcelain",
+       "def": "Comandos internos de bajo nivel (como `git hash-object` o `git ls-tree`) frente a los comandos de uso diario (como `git status` o `git commit`)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s01-l3",
+   "title": "Instalar Git y pedir ayuda",
+   "minutes": 15,
+   "goals": [
+    "Instalar Git en Windows, macOS o Linux con el método recomendado para cada sistema.",
+    "Comprobar la versión instalada con `git --version` y decidir si conviene actualizarla.",
+    "Consultar la ayuda de cualquier comando con `git help`, `git <comando> --help` y `git <comando> -h`."
+   ],
+   "takeaways": [
+    "Windows: Git for Windows (instalador de git-scm.com o `winget`) incluye Git Bash, la terminal que usamos como referencia.",
+    "macOS: el Git de Apple llega con las Command Line Tools de Xcode; con Homebrew (`brew install git`) tienes la última versión.",
+    "Linux: usa el gestor de paquetes de tu distribución (`apt`, `dnf`, `pacman`…).",
+    "`git --version` confirma la instalación; `git <comando> -h` da un resumen rápido y `git help <comando>` abre el manual completo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Git es un programa que se instala una vez en tu computador. La plataforma de este curso usa **el Git de tu propio computador** (la versión 2.50.1), así que lo que practiques aquí es exactamente lo que verás en tu trabajo. A septiembre de 2026, la última versión publicada en git-scm.com es la 2.55; cualquier Git 2.x reciente sirve para este curso, y cuando algo dependa de una versión concreta te lo diremos («desde Git 2.X»)."
+    },
+    {
+     "type": "h",
+     "text": "Windows: Git for Windows"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Descarga el instalador oficial desde https://git-scm.com/install/windows (x64 o ARM64). Si usas `winget`, también puedes instalarlo desde PowerShell con `winget install --id Git.Git -e --source winget`.",
+      "El paquete se llama **Git for Windows**, un proyecto aparte que adapta Git a Windows. Incluye **Git Bash** (una terminal con bash y los comandos de Linux: `ls`, `cat`, `touch`…), Git GUI y el administrador de credenciales **Git Credential Manager**.",
+      "Después de instalar, abre **Git Bash** desde el menú Inicio, o haz clic derecho en una carpeta y elige *Open Git Bash here* (en Windows 11, dentro de *Mostrar más opciones*)."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "El instalador hace muchas preguntas. Estas son las que importan (los nombres aparecen en inglés, tal como en el instalador):"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Pantalla del instalador",
+      "Qué te recomendamos",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "*Choosing the default editor used by Git*",
+       "*Use Visual Studio Code as Git's default editor* (si tienes VS Code) o Nano",
+       "El valor por defecto es Vim, difícil si nunca lo usaste. Se puede cambiar después con `core.editor`."
+      ],
+      [
+       "*Adjusting the name of the initial branch in new repositories*",
+       "*Override the default branch name for new repositories* y escribe `main`",
+       "Es el nombre que usan GitHub y GitLab; equivale a `init.defaultBranch main`."
+      ],
+      [
+       "*Adjusting your PATH environment*",
+       "*Git from the command line and also from 3rd-party software* (la recomendada)",
+       "Así Git funciona en Git Bash, PowerShell, CMD y en editores como VS Code."
+      ],
+      [
+       "*Configuring the line ending conversions*",
+       "*Checkout Windows-style, commit Unix-style line endings*",
+       "La recomendada en Windows para proyectos multiplataforma (activa `core.autocrlf=true`; lo verás en s13)."
+      ],
+      [
+       "*Choose a credential helper*",
+       "*Git Credential Manager*",
+       "Guarda de forma segura tu acceso a GitHub u otras plataformas (s07)."
+      ],
+      [
+       "El resto de las pantallas",
+       "Deja las opciones por defecto",
+       "Las entenderás a lo largo del curso."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "macOS"
+    },
+    {
+     "type": "list",
+     "items": [
+      "La forma más simple: abre la app Terminal y escribe `git --version`. Si no tienes Git, macOS te ofrecerá instalar las **Command Line Tools** de Xcode (también puedes pedirlas con `xcode-select --install`). Es el Git que distribuye Apple: verás algo como `git version 2.50.1 (Apple Git-155)`.",
+      "Para tener la última versión, instala Homebrew (https://brew.sh) y ejecuta `brew install git`. Abre una terminal nueva: `git --version` ya no dirá «Apple Git».",
+      "Si después de instalar con Homebrew sigues viendo la versión de Apple, revisa con `which git` cuál se está usando: debería ser `/opt/homebrew/bin/git` (Mac con chip Apple) o `/usr/local/bin/git` (Mac con Intel)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Linux"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "# Debian, Ubuntu y derivadas\nsudo apt install git\n# Fedora\nsudo dnf install git\n# Arch Linux\nsudo pacman -S git"
+    },
+    {
+     "type": "p",
+     "text": "Las distribuciones estables a veces traen una versión algo antigua. En Ubuntu puedes usar el PPA oficial `ppa:git-core/ppa` para tener la última versión estable."
+    },
+    {
+     "type": "h",
+     "text": "Comprobar la instalación"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "git --version\ngit version\ngit version --build-options",
+     "caption": "Las dos primeras formas son equivalentes. `--build-options` da detalles de cómo se compiló tu Git; fíjate en la línea `SHA-1:` (en el Git de Apple aparece `SHA1_DC`, la variante con detección de colisiones de la lección anterior). Si tu versión es anterior a 2.28 no tendrás `init.defaultBranch`, y si es anterior a 2.23 te faltarán `git switch` y `git restore`: actualiza."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si `git --version` responde `command not found` (macOS o Linux) o «no se reconoce como un comando interno o externo» (Windows), Git no está instalado o la terminal no lo encuentra en el PATH. Cierra y vuelve a abrir la terminal después de instalar; en Windows, reinstala eligiendo la opción de PATH recomendada."
+    },
+    {
+     "type": "h",
+     "text": "Pedir ayuda"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué muestra"
+     ],
+     "rows": [
+      [
+       "`git help`",
+       "Los comandos más comunes, agrupados por tarea."
+      ],
+      [
+       "`git help <comando>` o `git <comando> --help`",
+       "El manual completo del comando. En macOS y Linux se abre en la terminal (sales con `q`); en Git for Windows, en el navegador."
+      ],
+      [
+       "`git <comando> -h`",
+       "Un resumen breve de uso y opciones, directo en la terminal. Ideal para recordar una opción."
+      ],
+      [
+       "`git help -g`",
+       "Las guías conceptuales: tutorial, glosario, flujos de trabajo…"
+      ],
+      [
+       "`git help -a`",
+       "Todos los comandos disponibles."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "git help\ngit config -h\ngit help -g",
+     "caption": "En la terminal de práctica, `git help <comando>` muestra el manual con un formato extraño (letras duplicadas), porque no hay un visor de manuales; aquí usa `-h`. En tu computador, `git help config` se ve perfecto."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "La documentación oficial está en https://git-scm.com/docs y el libro **Pro Git** es gratuito y está en español en https://git-scm.com/book/es/v2. Son las fuentes más confiables: muchas respuestas de foros están desactualizadas (por ejemplo, usan `git checkout` para todo, cuando hoy existen `git switch` y `git restore`)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Tres formas equivalentes de abrir el manual de un comando: `git help config`, `git config --help` y `man git-config`. La opción `-h` (un solo guion) muestra solo el resumen de uso."
+    }
+   ]
+  },
+  {
+   "id": "s01-l4",
+   "title": "La terminal desde cero: dónde estoy y cómo moverme",
+   "minutes": 22,
+   "goals": [
+    "Abrir una terminal en tu sistema e identificar el prompt.",
+    "Averiguar la carpeta actual con `pwd` y listar su contenido con `ls`, `ls -a` y `ls -l`.",
+    "Navegar entre carpetas con `cd` usando rutas absolutas, rutas relativas, `..` y `~`.",
+    "Mostrar archivos y carpetas ocultos, como `.git` y `.gitconfig`."
+   ],
+   "takeaways": [
+    "La terminal es una interfaz de texto: escribes una orden, presionas Enter y lees la respuesta.",
+    "Siempre estás «dentro» de una carpeta (el directorio actual); `pwd` te dice cuál.",
+    "Una ruta absoluta empieza en la raíz `/` (o en `~`, un atajo a tu carpeta personal); una relativa parte de donde estás. `..` es la carpeta de arriba y `.` la actual.",
+    "Los nombres que empiezan con punto están ocultos y `ls -a` los muestra. La carpeta `.git` es el repositorio: no se toca a mano."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La **terminal** (o consola) es una ventana donde le das órdenes al computador escribiendo texto. El programa que interpreta esas órdenes se llama **shell**: *bash* en Linux y en Git Bash, *zsh* en macOS (desde Catalina), *PowerShell* en Windows. Puede parecer anticuada, pero es como trabajan los profesionales con Git: tienes acceso a todas sus opciones, funciona igual en cualquier sistema (también en servidores sin pantalla) y toda la documentación está escrita pensando en ella."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Sistema",
+      "Cómo abrirla",
+      "Recomendación para este curso"
+     ],
+     "rows": [
+      [
+       "Windows",
+       "Menú Inicio → *Git Bash*, o clic derecho en una carpeta → *Open Git Bash here*",
+       "Usa **Git Bash**: acepta los mismos comandos que macOS y Linux. PowerShell y CMD usan otros (por ejemplo, no tienen `touch`)."
+      ],
+      [
+       "macOS",
+       "Cmd + Espacio, escribe *Terminal* y presiona Enter (o Aplicaciones → Utilidades → Terminal)",
+       "La app Terminal con zsh funciona perfecto."
+      ],
+      [
+       "Linux",
+       "Ctrl + Alt + T en Ubuntu y muchas otras distribuciones",
+       "La terminal de tu distribución (bash)."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Al abrirla verás el **prompt**, el texto que indica que la terminal espera una orden. Cambia según el sistema:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "ana@notebook ~ %          ← macOS (zsh)\nana@PC-ANA MINGW64 ~      ← Windows (Git Bash); el $ aparece en la línea siguiente\n$\nana@ubuntu:~$             ← Linux (bash)"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "En documentación y tutoriales los comandos suelen aparecer precedidos de `$`, por ejemplo `$ git --version`. Ese `$` representa el prompt: **no lo escribas**. En este curso los comandos se muestran sin `$`."
+    },
+    {
+     "type": "h",
+     "text": "Tus archivos forman un árbol"
+    },
+    {
+     "type": "p",
+     "text": "Las carpetas (también llamadas *directorios*) están unas dentro de otras y forman un árbol que empieza en la **raíz**, `/`. Cada usuario tiene su **carpeta personal** (*home*), que la terminal abrevia como `~`:"
+    },
+    {
+     "type": "diagram",
+     "title": "El sistema de archivos es un árbol",
+     "mermaid": "flowchart TD\n  R[\"/ (raíz)\"] --> U[\"Users (en Linux: home)\"]\n  U --> A[\"ana: tu carpeta personal, ~\"]\n  A --> D[\"Documentos\"]\n  A --> DL[\"Descargas\"]\n  A --> P[\"proyectos\"]\n  P --> RC[\"recetario\"]\n  P --> T[\"tienda\"]\n  RC --> RD[\"README.md\"]\n  RC --> RE[\"recetas\"]\n  RE --> E[\"empanadas.md\"]",
+     "caption": "La ruta absoluta de `empanadas.md` es `/Users/ana/proyectos/recetario/recetas/empanadas.md` en macOS, o `~/proyectos/recetario/recetas/empanadas.md` con el atajo `~`. En Linux la carpeta personal está en `/home/ana`, y en Windows en `C:\\Users\\ana` (que Git Bash muestra como `/c/Users/ana`)."
+    },
+    {
+     "type": "h",
+     "text": "`pwd` y `ls`: dónde estoy y qué hay aquí"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace",
+      "Viene de"
+     ],
+     "rows": [
+      [
+       "`pwd`",
+       "Muestra la carpeta en la que estás",
+       "*print working directory*"
+      ],
+      [
+       "`ls`",
+       "Lista los archivos y carpetas del lugar actual",
+       "*list*"
+      ],
+      [
+       "`ls carpeta`",
+       "Lista el contenido de otra carpeta sin entrar en ella",
+       ""
+      ],
+      [
+       "`ls -a`",
+       "Incluye los ocultos (los que empiezan con punto) y las entradas `.` y `..`",
+       "*all*"
+      ],
+      [
+       "`ls -l`",
+       "Formato largo: una línea por archivo con permisos, tamaño y fecha",
+       "*long*"
+      ],
+      [
+       "`ls -la`",
+       "Las dos opciones juntas",
+       ""
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p Documentos Descargas proyectos/recetario/recetas proyectos/tienda\nescribir Descargas/boleta-luz-agosto.pdf '(pdf)'\nescribir proyectos/recetario/README.md '# Recetario de la familia'\nescribir proyectos/recetario/recetas/empanadas.md '# Empanadas de pino'\nescribir proyectos/recetario/recetas/charquican.md '# Charquicán'\nescribir proyectos/tienda/index.html '<h1>Tienda</h1>'\nescribir .notas-secretas.txt 'Comprar pan amasado'",
+     "cwd": "",
+     "code": "pwd\nls\nls proyectos\nls -a\nls -l",
+     "caption": "En la terminal de práctica, `pwd` (y cualquier salida que mencione tu carpeta de práctica) muestra las rutas empezando con `~`, porque tu carpeta personal es una carpeta aislada; en tu computador verás la ruta completa, como `/Users/ana`. Aquí las carpetas aparecen con `/` al final y `ls -l` usa un formato simplificado (tipo, si es ejecutable y tamaño). Fíjate en `.notas-secretas.txt`: solo aparece con `ls -a`."
+    },
+    {
+     "type": "h",
+     "text": "`cd`: moverse"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escribes",
+      "Te lleva a",
+      "Tipo de ruta"
+     ],
+     "rows": [
+      [
+       "`cd proyectos`",
+       "La carpeta `proyectos` que está dentro de la actual",
+       "Relativa"
+      ],
+      [
+       "`cd proyectos/recetario/recetas`",
+       "Varias carpetas hacia abajo de una vez",
+       "Relativa"
+      ],
+      [
+       "`cd ..`",
+       "La carpeta de arriba (la que contiene a la actual)",
+       "Relativa"
+      ],
+      [
+       "`cd ../..`",
+       "Dos niveles hacia arriba",
+       "Relativa"
+      ],
+      [
+       "`cd ../tienda`",
+       "Subes uno y entras a la carpeta vecina `tienda`",
+       "Relativa"
+      ],
+      [
+       "`cd ~/proyectos` o `cd /Users/ana/proyectos`",
+       "Esa carpeta, estés donde estés",
+       "Absoluta"
+      ],
+      [
+       "`cd` (solo) o `cd ~`",
+       "Tu carpeta personal",
+       "Absoluta"
+      ],
+      [
+       "`cd -`",
+       "La carpeta donde estabas antes (en tu terminal; la de práctica no lo admite)",
+       "—"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "La regla: una ruta es **absoluta** si empieza con `/` (o con `~`, que la terminal reemplaza por la ruta absoluta de tu carpeta personal); si no, es **relativa** a la carpeta donde estás. `.` significa «aquí» y `..`, «la carpeta de arriba»."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p Documentos Descargas proyectos/recetario/recetas proyectos/tienda\nescribir Descargas/boleta-luz-agosto.pdf '(pdf)'\nescribir proyectos/recetario/README.md '# Recetario de la familia'\nescribir proyectos/recetario/recetas/empanadas.md '# Empanadas de pino'\nescribir proyectos/recetario/recetas/charquican.md '# Charquicán'\nescribir proyectos/tienda/index.html '<h1>Tienda</h1>'\nescribir .notas-secretas.txt 'Comprar pan amasado'",
+     "cwd": "",
+     "code": "cd proyectos\npwd\ncd recetario/recetas\npwd\nls\ncd ..\npwd\ncd ../tienda\npwd\ncd ~/proyectos/recetario/recetas\npwd\ncd\npwd",
+     "caption": "Sigue el recorrido en el árbol del diagrama. `cd ../tienda` sube un nivel y entra a la carpeta vecina en un solo paso; `cd` sin nada te devuelve a casa."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Trucos que ahorran horas en tu terminal: **Tab** autocompleta nombres de archivos y carpetas (presiónalo dos veces para ver las opciones); la **flecha arriba** recupera los comandos anteriores (también en la terminal de práctica); puedes **arrastrar una carpeta** desde el explorador de archivos a la terminal para pegar su ruta. Si un nombre tiene espacios, ponlo entre comillas: `cd \"Mis documentos\"`."
+    },
+    {
+     "type": "h",
+     "text": "Archivos ocultos"
+    },
+    {
+     "type": "p",
+     "text": "En macOS y Linux, un archivo o carpeta cuyo nombre empieza con punto (`.gitconfig`, `.git`, `.gitignore`) está **oculto**: `ls` no lo muestra, pero `ls -a` sí. Git usa mucho esta convención: tu configuración personal vive en `~/.gitconfig` y cada repositorio guarda toda su historia en una carpeta oculta llamada `.git`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-05 11:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega la receta de empanadas'",
+     "cwd": "recetario",
+     "code": "ls\nls -a\nls .git\ncat ~/.gitconfig",
+     "caption": "La carpeta `.git` **es** el repositorio: ahí están los objetos con los contenidos y los commits (`objects`), las ramas (`refs`), la rama actual (`HEAD`) y la configuración local (`config`). La conocerás por dentro en s12; por ahora basta con saber que existe y que **no se edita a mano**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos errores clásicos: (1) borrar la carpeta `.git` borra **toda** la historia del proyecto (los archivos que ves quedan, los commits no); (2) ejecutar `git init` por error en tu carpeta personal `~` convierte todo tu usuario en un repositorio gigante. Antes de `git init`, ejecuta `pwd` y revisa dónde estás."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Terminal o consola",
+       "en": "terminal",
+       "def": "Ventana de texto donde escribes órdenes para el computador."
+      },
+      {
+       "term": "Shell",
+       "en": "shell",
+       "def": "Programa que interpreta lo que escribes en la terminal: bash, zsh, PowerShell."
+      },
+      {
+       "term": "Prompt",
+       "en": "prompt",
+       "def": "Texto que indica que la terminal espera una orden (suele terminar en `$` o `%`)."
+      },
+      {
+       "term": "Directorio actual",
+       "en": "current working directory",
+       "def": "La carpeta en la que estás; la muestra `pwd`."
+      },
+      {
+       "term": "Ruta absoluta",
+       "en": "absolute path",
+       "def": "Ruta completa desde la raíz `/` (o desde `~`). Funciona estés donde estés."
+      },
+      {
+       "term": "Ruta relativa",
+       "en": "relative path",
+       "def": "Ruta que parte de la carpeta actual, por ejemplo `../tienda`."
+      },
+      {
+       "term": "Carpeta personal",
+       "en": "home directory",
+       "def": "Tu carpeta de usuario; se abrevia `~`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s01-l5",
+   "title": "La terminal desde cero: crear, ver y organizar archivos",
+   "minutes": 22,
+   "goals": [
+    "Crear carpetas, incluso anidadas, con `mkdir` y `mkdir -p`.",
+    "Crear archivos con `touch` y escribir o agregar texto con `echo … >` y `echo … >>`.",
+    "Leer archivos con `cat`, `head` y `tail`.",
+    "Copiar, mover, renombrar y borrar con `cp`, `mv` y `rm`, anticipando sus riesgos."
+   ],
+   "takeaways": [
+    "`mkdir -p a/b/c` crea todas las carpetas que falten y no reclama si ya existen.",
+    "`>` reemplaza el contenido de un archivo y `>>` agrega al final: confundirlos borra texto.",
+    "`mv` sirve tanto para mover como para renombrar; `cp -r` copia carpetas completas.",
+    "`rm` no usa papelera: lo borrado no se recupera (salvo que Git lo tenga en un commit).",
+    "`&&` encadena comandos y solo continúa si el anterior funcionó."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Con pocas órdenes más podrás preparar cualquier proyecto sin tocar el mouse. Son las mismas en macOS, Linux y Git Bash, y las usarás en todos los ejercicios del curso."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`mkdir carpeta`",
+       "Crea una carpeta (*make directory*)",
+       "`mkdir notas`"
+      ],
+      [
+       "`mkdir -p a/b/c`",
+       "Crea la ruta completa, con las carpetas intermedias que falten",
+       "`mkdir -p web/css web/js`"
+      ],
+      [
+       "`touch archivo`",
+       "Crea un archivo vacío (si ya existe, solo actualiza su fecha)",
+       "`touch index.html`"
+      ],
+      [
+       "`echo \"texto\" > archivo`",
+       "Escribe el texto en el archivo, **reemplazando** lo que tenía",
+       "`echo \"# Mi web\" > README.md`"
+      ],
+      [
+       "`echo \"texto\" >> archivo`",
+       "**Agrega** el texto al final",
+       "`echo \"- pan\" >> lista.txt`"
+      ],
+      [
+       "`cat archivo`",
+       "Muestra el contenido",
+       "`cat README.md`"
+      ],
+      [
+       "`head -n 5 archivo` / `tail -n 5 archivo`",
+       "Las primeras / últimas líneas",
+       "`tail -n 3 lista.txt`"
+      ],
+      [
+       "`cp origen destino`",
+       "Copia un archivo (`cp -r` para carpetas)",
+       "`cp README.md README.bak`"
+      ],
+      [
+       "`mv origen destino`",
+       "Mueve o renombra",
+       "`mv borrador.md final.md`"
+      ],
+      [
+       "`rm archivo`",
+       "Borra un archivo (`rm -r` para carpetas)",
+       "`rm basura.tmp`"
+      ],
+      [
+       "`tree`",
+       "Dibuja el árbol de carpetas (no viene instalado en todos los sistemas; en la terminal de práctica sí está)",
+       "`tree`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "mkdir proyectos\nmkdir -p proyectos/sopaipillas/css proyectos/sopaipillas/js\ncd proyectos/sopaipillas\ntouch index.html css/estilos.css js/app.js\ntree",
+     "caption": "Sin `-p`, `mkdir proyectos/sopaipillas/css` fallaría en tu terminal si `proyectos/sopaipillas` todavía no existe (*No such file or directory*). `touch` acepta varios archivos a la vez."
+    },
+    {
+     "type": "h",
+     "text": "Escribir en archivos: `>` y `>>`"
+    },
+    {
+     "type": "p",
+     "text": "El símbolo `>` **redirige** lo que un comando mostraría en pantalla hacia un archivo. Con `echo` es la forma más rápida de escribir una línea. Ojo con la diferencia:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p sopaipillas",
+     "cwd": "sopaipillas",
+     "code": "echo \"# Sopaipillas Don Pepe\" > README.md\ncat README.md\necho \"Venta de sopaipillas pasadas\" >> README.md\necho \"Horario: todos los días de 17:00 a 21:00\" >> README.md\ncat README.md\nhead -n 1 README.md\ntail -n 1 README.md\necho \"Ups\" > README.md\ncat README.md",
+     "caption": "Los dos `>>` agregan líneas; el último `>` borró todo y dejó solo «Ups». Es uno de los errores más comunes en la terminal."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`>` no pregunta nada: si el archivo existe, lo **vacía** y escribe encima. Cuando quieras agregar, usa `>>`. Si el archivo estaba en un commit de Git podrás recuperarlo (s04); si no, se perdió."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`echo` sirve para una línea. Para textos largos usa un editor: en tu computador, `code archivo` abre VS Code (si instalaste el comando `code`) y `nano archivo` abre un editor sencillo dentro de la terminal. En la terminal de práctica, `code archivo` abre el editor de la plataforma."
+    },
+    {
+     "type": "h",
+     "text": "Copiar, mover, renombrar y borrar"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p sopaipillas\nescribir sopaipillas/README.md '# Sopaipillas Don Pepe'\nescribir sopaipillas/precios.txt 'Sopaipilla: $300'",
+     "cwd": "sopaipillas",
+     "code": "ls\ncp README.md README.bak\nmv README.bak notas.txt\nmkdir docs\nmv notas.txt docs/\nls docs\ncp -r docs docs-respaldo\nrm docs/notas.txt\nrm -r docs-respaldo\ntree",
+     "caption": "`mv` renombra si el destino es un nombre nuevo y mueve si el destino es una carpeta. `cp -r` y `rm -r` actúan sobre carpetas completas (*recursive*)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`rm` no manda nada a la papelera: lo borrado desaparece. Y `rm -rf carpeta` (recursivo y forzado) borra sin preguntar todo lo que haya dentro. Antes de usarlo, revisa con `pwd` y `ls` dónde estás y qué vas a borrar, y nunca ejecutes un `rm -rf` copiado de internet sin entenderlo."
+    },
+    {
+     "type": "h",
+     "text": "Encadenar comandos"
+    },
+    {
+     "type": "p",
+     "text": "`comando1 && comando2` ejecuta el segundo **solo si el primero funcionó**; `comando1 || comando2`, solo si el primero **falló**; y `comando1 ; comando2` ejecuta ambos pase lo que pase."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "mkdir -p blog/posts && cd blog && echo \"# Mi blog\" > README.md\npwd\ncat README.md\ngit status || echo \"Aquí todavía no hay un repositorio\"",
+     "caption": "`fatal: not a git repository (or any of the parent directories): .git` es el error que verás cada vez que ejecutes un comando de Git fuera de un repositorio: Git buscó una carpeta `.git` aquí y en todas las carpetas de arriba, y no la encontró. Como `git status` falló, `||` ejecutó el `echo`."
+    },
+    {
+     "type": "h",
+     "text": "Nombres de archivos: buenas prácticas"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Usa minúsculas y sin espacios: `pastel-de-choclo.md` mejor que `Pastel de Choclo.md`. Los espacios obligan a usar comillas en la terminal.",
+      "Evita tildes y ñ en nombres de archivos de código: Git las maneja, pero algunos sistemas y herramientas las codifican de forma distinta.",
+      "Separa palabras con guiones (`-`) o guiones bajos (`_`) y mantén un mismo estilo en todo el proyecto.",
+      "Cuidado con mayúsculas y minúsculas: en Linux `Foto.png` y `foto.png` son archivos distintos; en Windows y macOS (con su configuración por defecto) son el mismo. Mezclarlos da problemas en equipos con sistemas distintos."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas de entrevista para un primer trabajo: «¿qué diferencia hay entre `>` y `>>`?», «¿cómo creas varias carpetas anidadas de una vez?» (`mkdir -p`) y «¿qué hace `rm -rf`?» (borra de forma recursiva y sin preguntar)."
+    }
+   ]
+  },
+  {
+   "id": "s01-l6",
+   "title": "Configurar Git por primera vez",
+   "minutes": 25,
+   "goals": [
+    "Configurar tu identidad (`user.name` y `user.email`) a nivel global y comprobarla.",
+    "Establecer `main` como rama inicial y un editor adecuado con `init.defaultBranch` y `core.editor`.",
+    "Averiguar de qué archivo y de qué nivel sale cada opción con `--list`, `--show-origin` y `--show-scope`.",
+    "Predecir qué valor gana cuando una opción está definida en los niveles system, global y local."
+   ],
+   "takeaways": [
+    "Configura una vez por computador: `git config --global user.name \"Nombre Apellido\"` y `git config --global user.email correo`.",
+    "Tu nombre y tu correo quedan grabados en cada commit y no se cambian sin reescribir la historia: configúralos antes del primer commit.",
+    "Niveles: system (todo el computador), global (tu usuario, `~/.gitconfig`) y local (un repositorio, `.git/config`). El más específico gana: local > global > system.",
+    "`git config --list --show-origin` (o `--show-scope`) responde «¿de dónde sale este valor?».",
+    "Usa comillas en los valores con espacios y revisa los nombres de las claves: Git acepta cualquier clave, incluso mal escrita."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Recién instalado, Git necesita saber tres cosas de ti. Se configuran **una sola vez por computador** con `git config` y quedan guardadas en un archivo de texto de tu carpeta personal."
+    },
+    {
+     "type": "h",
+     "text": "1. Tu identidad"
+    },
+    {
+     "type": "p",
+     "text": "Cada commit registra el **nombre** y el **correo** de quien lo creó. Esos datos quedan grabados en la historia (cambiarlos después obliga a reescribir commits) y plataformas como GitHub los usan para asociar tus commits a tu cuenta: el correo debe coincidir con uno de los registrados en tu perfil."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git config --global user.name \"Camila Rojas\"\ngit config --global user.email \"camila.rojas@ejemplo.com\""
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git config --global --unset user.name\ngit config --global --unset user.email",
+     "cwd": "",
+     "code": "git config --global user.name\ngit config --global user.name \"Camila Rojas\"\ngit config --global user.email \"camila.rojas@ejemplo.com\"\ngit config --global user.name\ngit config --global user.email\ncat ~/.gitconfig",
+     "caption": "El primer comando no muestra nada (y termina con código de error 1) porque todavía no hay nombre. Con un valor, `git config` **escribe**; sin valor, **lee**. Al final ves `~/.gitconfig`: texto plano con secciones entre corchetes."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Comillas obligatorias si el valor tiene espacios. Si escribes `git config --global user.name Camila Rojas`, la terminal le entrega a Git dos palabras separadas: Git guarda solo `Camila` y toma `Rojas` como otro parámetro (un patrón de valor). No aparece ningún error, así que puedes pasar semanas firmando commits solo con tu nombre de pila."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Git acepta **cualquier** nombre de clave, aunque esté mal escrito. `git config --global user.mail …` (sin la *e*) se guarda sin quejarse, pero Git nunca lo usa: la clave correcta es `user.email`. Si algo no funciona, revisa `git config --global --list`."
+    },
+    {
+     "type": "p",
+     "text": "¿Y si no configuras nada? Depende del sistema. A veces Git adivina un nombre y un correo a partir de tu usuario y del nombre del computador, hace el commit igual y te avisa:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": " Committer: camila <camila@MacBook-Pro-de-Camila.local>\nYour name and email address were configured automatically based\non your username and hostname. Please check that they are accurate."
+    },
+    {
+     "type": "p",
+     "text": "Otras veces se niega a hacer el commit:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Author identity unknown\n\n*** Please tell me who you are.\n\nRun\n\n  git config --global user.email \"you@example.com\"\n  git config --global user.name \"Your Name\"\n\nto set your account's default identity.\nOmit --global to set the identity only in this repository.\n\nfatal: unable to auto-detect email address (got 'camila@PC-CAMILA.(none)')"
+    },
+    {
+     "type": "p",
+     "text": "El primer caso es peor de lo que parece: el commit queda firmado con un correo inventado que no coincide con tu cuenta de GitHub. Por eso conviene configurar la identidad **antes** del primer commit."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Consejos pro: (1) si quieres que Git nunca adivine tu identidad, activa `git config --global user.useConfigOnly true`; (2) si no quieres publicar tu correo real, GitHub te ofrece una dirección *noreply* en *Settings → Emails* que puedes usar en `user.email`; (3) si usas otro correo en el trabajo, configúralo **solo en esos repositorios** (nivel local, más abajo)."
+    },
+    {
+     "type": "h",
+     "text": "2. La rama inicial: main"
+    },
+    {
+     "type": "p",
+     "text": "Cuando creas un repositorio, Git crea una primera rama. Históricamente se llamaba `master`; hoy GitHub (desde el 1 de octubre de 2020), GitLab y la mayoría de los equipos usan `main`. Desde **Git 2.28** puedes elegir el nombre con `init.defaultBranch`. Si no lo configuras, `git init` usa `master` y muestra este aviso:"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "hint: Using 'master' as the name for the initial branch. This default branch name\nhint: is subject to change. To configure the initial branch name to use in all\nhint: of your new repositories, which will suppress this warning, call:\nhint:\nhint: \tgit config --global init.defaultBranch <name>"
+    },
+    {
+     "type": "p",
+     "text": "Git 3.0 (anunciado, todavía sin fecha oficial) usará `main` por defecto. Mientras tanto, configúralo tú:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git config --global init.defaultBranch master",
+     "cwd": "",
+     "code": "git init viejo\ncd viejo && git status\ncd ~\ngit config --global init.defaultBranch main\ngit init nuevo\ncd nuevo && git status",
+     "caption": "`git init` confirma dónde creó el repositorio: aquí verás `~/viejo/.git/`; en tu computador, la ruta completa (por ejemplo `/Users/ana/viejo/.git/`). La opción solo afecta a los repositorios **nuevos**: `viejo` sigue en `master` (se puede renombrar con `git branch -m main`, lo verás en s05)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si usas el Git de Apple, puede que ya veas `main` sin haber configurado nada: Apple incluye `init.defaultbranch=main` en una configuración propia de Xcode. Configúralo igual a nivel global para no depender de eso."
+    },
+    {
+     "type": "h",
+     "text": "3. Tu editor"
+    },
+    {
+     "type": "p",
+     "text": "Algunos comandos abren un editor de texto para que escribas: `git commit` sin `-m` (para el mensaje), `git rebase -i`, `git merge` sin `--no-edit`… Si no configuras nada, en la mayoría de los sistemas se abre **vi** (normalmente Vim), que desconcierta a cualquiera que no lo conozca (para salir sin guardar: `Esc`, luego `:q!` y Enter). Mejor elige uno que domines:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Editor",
+      "Cómo configurarlo"
+     ],
+     "rows": [
+      [
+       "Visual Studio Code",
+       "`git config --global core.editor \"code --wait\"`"
+      ],
+      [
+       "Nano (dentro de la terminal)",
+       "`git config --global core.editor nano`"
+      ],
+      [
+       "Sublime Text (macOS y Linux)",
+       "`git config --global core.editor \"subl -n -w\"`"
+      ],
+      [
+       "Notepad++ (Windows)",
+       "`git config --global core.editor \"'C:/Program Files/Notepad++/notepad++.exe' -multiInst -notabbar -nosession -noPlugin\"`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "El `--wait` de VS Code es imprescindible: le pide a `code` que no termine hasta que cierres la pestaña. Sin él, Git recibe el archivo al instante, sin tu mensaje, y cancela el commit (*Aborting commit due to empty commit message.*). Además, el comando `code` debe estar en el PATH: en macOS, abre VS Code, presiona Cmd+Shift+P y elige *Shell Command: Install 'code' command in PATH*."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "git config --global core.editor \"code --wait\"\ngit config --global core.editor\ngit config --global --edit\ncat ~/.gitconfig",
+     "caption": "`git config --global --edit` abre `~/.gitconfig` en el editor (aquí, el de la plataforma: revisa el archivo y presiona «Guardar y cerrar»). Es una forma cómoda de corregir varias claves a la vez."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué editor usa Git? Busca en este orden y usa el primero que encuentre: la variable de entorno `GIT_EDITOR`, la opción `core.editor`, las variables `VISUAL` y `EDITOR` y, por último, el editor elegido al compilar Git (normalmente `vi`). La terminal de práctica define `GIT_EDITOR` para abrir su editor integrado; por eso aquí siempre verás ese editor aunque configures `core.editor`."
+    },
+    {
+     "type": "h",
+     "text": "Los tres niveles de configuración"
+    },
+    {
+     "type": "p",
+     "text": "Git lee la configuración de varios archivos, de lo más general a lo más específico. Si una opción aparece en varios, **gana el último que se lee**, es decir, el más específico:"
+    },
+    {
+     "type": "diagram",
+     "title": "Orden de lectura: el último gana",
+     "mermaid": "flowchart LR\n  S[\"system: todos los usuarios del computador (git config --system)\"] --> G[\"global: tu usuario, ~/.gitconfig (git config --global)\"]\n  G --> L[\"local: un solo repositorio, .git/config (git config --local)\"]\n  L --> V[\"Valor final: gana el nivel más específico\"]",
+     "caption": "Si `user.email` está en global y también en el `.git/config` de un repositorio, dentro de ese repositorio se usa el local; en todos los demás, el global."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Nivel",
+      "Opción",
+      "Archivo",
+      "Uso típico"
+     ],
+     "rows": [
+      [
+       "system",
+       "`--system`",
+       "`/etc/gitconfig` (la ruta exacta depende de la instalación)",
+       "Lo que fija el instalador o quien administra el computador. Requiere permisos de administrador."
+      ],
+      [
+       "global",
+       "`--global`",
+       "`~/.gitconfig` (o `~/.config/git/config`)",
+       "Lo tuyo: identidad, editor, alias."
+      ],
+      [
+       "local",
+       "`--local` (o nada, si estás dentro de un repositorio)",
+       "`.git/config` del repositorio",
+       "Excepciones de un proyecto: el correo del trabajo, los remotos."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Existe un cuarto nivel, *worktree*, que verás en s13 junto con configuraciones más avanzadas (por ejemplo, cambiar de identidad automáticamente según la carpeta con `includeIf`)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Sin `--global`, `git config clave valor` escribe en el repositorio **donde estás** (nivel local), y fuera de un repositorio falla con `fatal: not in a git directory`. Al revés también hay trampa: si configuras tu identidad solo con `--local` creyendo que es para siempre, en tu próximo proyecto Git no sabrá quién eres."
+    },
+    {
+     "type": "h",
+     "text": "Consultar la configuración"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué muestra"
+     ],
+     "rows": [
+      [
+       "`git config user.name`",
+       "El valor que se aplica aquí, después de combinar todos los niveles"
+      ],
+      [
+       "`git config --global user.name`",
+       "Solo el valor del nivel global"
+      ],
+      [
+       "`git config --list`",
+       "Todas las opciones de todos los niveles, en orden de lectura (pueden repetirse: se usa la última)"
+      ],
+      [
+       "`git config --list --show-origin`",
+       "Lo mismo, con el archivo de donde sale cada línea"
+      ],
+      [
+       "`git config --list --show-scope`",
+       "Lo mismo, con el nivel: system, global, local…"
+      ],
+      [
+       "`git config --show-origin --show-scope user.email`",
+       "Nivel y archivo de un valor concreto"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git config --global user.name 'Camila Rojas'\ngit config --global user.email 'camila.rojas@ejemplo.com'\nnuevo_repo trabajo\ngit config user.email 'camila.rojas@fintech.ejemplo.com'",
+     "cwd": "trabajo",
+     "code": "git config --list --show-scope\ngit config user.email\ngit config --show-origin --show-scope user.email\ncd ~\ngit config user.email\ngit config --show-origin --show-scope user.email",
+     "caption": "En el repositorio `trabajo` el correo local tapa al global; fuera de él, se aplica el global. En la terminal de práctica verás también líneas de nivel *system* que pone la plataforma (`color.ui`, `core.pager`, `log.decorate`) y, si usas el Git de Apple, algunas de nivel *unknown* que vienen de la configuración de Xcode."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: «Configuraste `user.email` con `--global` y también con `--local` en un repositorio. ¿Cuál usa Git ahí?» → el local. «¿Dónde se guarda la configuración global?» → en `~/.gitconfig`. «¿Qué opción muestra de qué archivo viene cada valor?» → `--show-origin`."
+    },
+    {
+     "type": "h",
+     "text": "La sintaxis nueva (desde Git 2.46)"
+    },
+    {
+     "type": "p",
+     "text": "Desde Git 2.46 (2024), `git config` tiene subcomandos más claros. La sintaxis clásica sigue funcionando y es la que verás en casi todos los tutoriales, así que en este curso usaremos las dos:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Clásica",
+      "Nueva (desde 2.46)"
+     ],
+     "rows": [
+      [
+       "`git config --global user.name \"Camila Rojas\"`",
+       "`git config set --global user.name \"Camila Rojas\"`"
+      ],
+      [
+       "`git config user.name`",
+       "`git config get user.name`"
+      ],
+      [
+       "`git config --list`",
+       "`git config list`"
+      ],
+      [
+       "`git config --global --unset user.mail`",
+       "`git config unset --global user.mail`"
+      ],
+      [
+       "`git config --global --edit`",
+       "`git config edit --global`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Así se ve `~/.gitconfig` después de configurar todo:"
+    },
+    {
+     "type": "code",
+     "lang": "ini",
+     "code": "[user]\n\tname = Camila Rojas\n\temail = camila.rojas@ejemplo.com\n[init]\n\tdefaultBranch = main\n[core]\n\teditor = code --wait"
+    },
+    {
+     "type": "p",
+     "text": "Las secciones van entre corchetes y en la terminal cada opción se escribe `sección.clave` (`user.name`, `core.editor`). Los nombres de sección y de clave no distinguen mayúsculas de minúsculas; por eso `--list` muestra `init.defaultbranch` todo en minúsculas."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Identidad",
+       "en": "user.name / user.email",
+       "def": "Nombre y correo que Git graba en cada commit."
+      },
+      {
+       "term": "Rama inicial",
+       "en": "init.defaultBranch",
+       "def": "Nombre de la primera rama de los repositorios nuevos (desde Git 2.28)."
+      },
+      {
+       "term": "Editor de Git",
+       "en": "core.editor",
+       "def": "Programa que Git abre cuando necesita que escribas un texto (mensaje de commit, rebase interactivo…)."
+      },
+      {
+       "term": "Configuración global",
+       "en": "global config",
+       "def": "Tus preferencias para todos tus repositorios, en `~/.gitconfig`."
+      },
+      {
+       "term": "Configuración local",
+       "en": "local config",
+       "def": "Opciones de un solo repositorio, en `.git/config`. Tapan a las globales."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s01-l7",
+   "title": "Tu terminal de práctica y cómo trabajar en este curso",
+   "minutes": 14,
+   "goals": [
+    "Usar la terminal de práctica distinguiendo las órdenes que admite de las que no.",
+    "Editar archivos con `code archivo` y completar un comando de Git que abre el editor.",
+    "Relacionar el gráfico de commits y el panel de las tres áreas con la salida de `git log` y `git status`.",
+    "Resolver un ejercicio con el ciclo leer, explorar, resolver, comprobar y usar pistas."
+   ],
+   "takeaways": [
+    "La terminal de práctica ejecuta el Git real de tu computador en una carpeta aislada: puedes equivocarte sin miedo y reiniciar el escenario.",
+    "Admite Git, las órdenes básicas de archivos y `&&`, `||`, `;`, `>` y `>>`; no admite tuberías (salvo `echo … | git …`), `$(…)` ni variables.",
+    "`code archivo` abre el editor de la plataforma; cuando Git necesita un editor, la plataforma te lo muestra y Git espera a que guardes.",
+    "Los ejercicios comprueban el resultado (tus archivos, tu repositorio, tu configuración), no los comandos que escribiste: cualquier camino correcto sirve."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Todas las prácticas de este curso se hacen en una **terminal de práctica** que ejecuta el **Git real de tu computador** dentro de una carpeta aislada. Esa carpeta es tu `~` durante el ejercicio: tiene su propio `~/.gitconfig` (con la identidad `Alumno <alumno@cuaderno.local>` y la rama inicial `main` ya configuradas) y **nada de lo que hagas afecta a tus repositorios ni a tu configuración reales**."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Qué admite",
+      "Detalle"
+     ],
+     "rows": [
+      [
+       "`git …`",
+       "Cualquier subcomando. Sin red: los «servidores» son carpetas locales como `~/servidor/proyecto.git`."
+      ],
+      [
+       "Archivos y carpetas",
+       "`ls [-a] [-l]`, `cd`, `pwd`, `cat`, `echo`, `printf`, `touch`, `mkdir [-p]`, `rm [-r] [-f]`, `mv`, `cp [-r]`, `chmod +x`, `head` y `tail -n N`, `wc -l`, `grep [-n] [-i]`, `tree`"
+      ],
+      [
+       "Utilidades",
+       "`help` (lista de órdenes), `clear` (limpia la pantalla; también Ctrl+L) y las flechas arriba y abajo para repetir comandos"
+      ],
+      [
+       "Editor",
+       "`code archivo` (también `edit`, `nano` o `vim`) abre el editor de la plataforma"
+      ],
+      [
+       "Operadores",
+       "`&&`, `||`, `;`, redirección `>` y `>>` (solo con `echo`, `printf` y `cat`) y tuberías del tipo `echo … | git …` o `printf … | git …`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No es un bash completo. No admite otras tuberías (`git log | head`), sustitución de comandos (`$(…)`), variables (salvo `~` y `$HOME`), `<`, `&` ni scripts propios (salvo los que ejecute Git, como los hooks). Casi siempre hay una opción de Git que lo reemplaza: en vez de `git log | head -n 3`, usa `git log -n 3`. Además, las rutas de tu carpeta de práctica se muestran con `~` (en `pwd` y también en la salida de Git), `ls -l` usa un formato simplificado y `cd -` no existe."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "help\npwd\nls -a\ncat .gitconfig",
+     "caption": "Así empieza cualquier ejercicio: una carpeta personal aislada con tu `.gitconfig` de práctica. Escribe `help` cuando no recuerdes qué órdenes hay."
+    },
+    {
+     "type": "h",
+     "text": "Editar archivos y el editor de Git"
+    },
+    {
+     "type": "p",
+     "text": "Para escribir más de una línea usa `code archivo`: se abre el editor de la plataforma y, al presionar «Guardar y cerrar», el archivo queda escrito en tu carpeta de práctica (si no existía, se crea)."
+    },
+    {
+     "type": "p",
+     "text": "Cuando es **Git** el que necesita un editor (por ejemplo, `git commit` sin `-m` para pedirte el mensaje), la plataforma te muestra el archivo que Git abrió. Escribe, presiona «Guardar y cerrar» y Git continúa. Si eliges «Cerrar sin guardar», Git entiende que el editor falló y cancela el comando. Así practicarás de verdad los comandos que abren el editor, incluido el rebase interactivo (s09)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo diario\nfecha '2026-09-26 21:00'\ncommit_archivo dia-1.md '# Día 1: instalé Git' 'Agrega la entrada del día 1'\nescribir dia-2.md '# Día 2: configuré mi identidad'\ngit add dia-2.md",
+     "cwd": "diario",
+     "code": "git status\ngit commit\ngit log --oneline",
+     "caption": "Al ejecutar `git commit` se abrirá el editor con un texto cuyas líneas empiezan con `#` (comentarios que Git ignora). Escribe un mensaje en la primera línea, por ejemplo «Agrega la entrada del día 2», y presiona «Guardar y cerrar». Si guardas sin escribir nada, Git cancela el commit con *Aborting commit due to empty commit message.*"
+    },
+    {
+     "type": "h",
+     "text": "El gráfico de commits y las tres áreas"
+    },
+    {
+     "type": "p",
+     "text": "Junto a la terminal verás el **gráfico de commits** (en las demostraciones y en los ejercicios) y el panel de **las tres áreas** (en los ejercicios y en el Laboratorio): directorio de trabajo, área de preparación y repositorio, actualizados después de cada comando. Compara siempre lo que dice la terminal con lo que ves en los paneles: es la forma más rápida de construir el modelo mental."
+    },
+    {
+     "type": "diagram",
+     "title": "Una historia con una rama y una fusión",
+     "mermaid": "gitGraph\n  commit id: \"Crea la carta\"\n  commit id: \"Agrega precios\"\n  branch delivery\n  commit id: \"Agrega formulario de pedidos\"\n  checkout main\n  commit id: \"Agrega el horario de atención\"\n  merge delivery id: \"Integra la rama delivery\"",
+     "caption": "Es la historia de la demostración siguiente. Cada círculo es un commit y las líneas unen cada commit con su padre. La rama `delivery` se separó de `main` y después se integró. No te preocupes por las ramas todavía: llegan en s05 y s06."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-10 09:00'\nautor 'Valentina Muñoz' 'valentina@ejemplo.com'\ncommit_archivo carta.md '# Carta de la cafetería' 'Crea la carta'\nfecha '2026-09-10 12:30'\nanexar carta.md '- Café cortado: $2.500'\ngit add carta.md && git commit -q -m 'Agrega precios'\ngit switch -q -c delivery\nfecha '2026-09-11 10:15'\nautor 'Diego Soto' 'diego@ejemplo.com'\ncommit_archivo pedidos.html '<form>Pedido a domicilio</form>' 'Agrega formulario de pedidos'\ngit switch -q main\nfecha '2026-09-11 16:40'\nautor 'Valentina Muñoz' 'valentina@ejemplo.com'\ncommit_archivo horario.txt 'Lunes a sábado, de 8:00 a 20:00' 'Agrega el horario de atención'\nfecha '2026-09-12 09:05'\ngit merge -q --no-ff delivery -m 'Integra la rama delivery'\nyo",
+     "cwd": "cafeteria",
+     "code": "git log --oneline --graph --all\ngit log --format=\"%h %an: %s\"\ngit status",
+     "caption": "`git log --oneline --graph --all` dibuja en texto lo mismo que el gráfico de la plataforma: compáralos. El gráfico es una ayuda visual; en tu trabajo usarás este comando."
+    },
+    {
+     "type": "h",
+     "text": "Cómo funcionan los ejercicios"
+    },
+    {
+     "type": "diagram",
+     "title": "El ciclo de un ejercicio",
+     "mermaid": "flowchart LR\n  A[\"Lee el enunciado\"] --> B[\"Explora: pwd, ls, git status, git log\"]\n  B --> C[\"Resuelve en la terminal\"]\n  C --> D{\"Comprobar\"}\n  D -- \"Falla\" --> E[\"Lee el mensaje y pide una pista\"]\n  E --> C\n  D -- \"Pasa\" --> F[\"Lee la explicación y las alternativas\"]"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Cada ejercicio prepara un escenario (archivos, repositorios, compañeros que hicieron commits, un «servidor») y te deja en la carpeta indicada.",
+      "«✓ Comprobar» revisa el **resultado**: si existe una carpeta, qué contiene un commit, qué dice tu configuración… No importa qué comandos usaste; cualquier camino correcto sirve.",
+      "Si una comprobación falla, su mensaje te orienta. Las pistas van de suaves a concretas y la solución de referencia está disponible; si la miras, después hazlo tú en la terminal.",
+      "«↺ Reiniciar» vuelve a preparar el escenario desde cero. Equivocarse aquí es gratis.",
+      "En el **Laboratorio** tienes una terminal libre para experimentar sin ejercicio."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Una rutina de profesional que conviene adoptar desde hoy: antes de un comando que cambia algo, `pwd` y `git status`; después, `git status` y `git log --oneline`. Y lee los mensajes de Git aunque estén en inglés: casi siempre te dicen qué hacer a continuación."
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s01-e1",
+   "title": "La estructura del recetario",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Tu tía Rosa quiere guardar las recetas de la familia en un proyecto ordenado. Desde tu carpeta personal (`~`, donde empieza la terminal), crea esta estructura:",
+    "```bash\nproyectos/\n└── recetario/\n    ├── README.md            ← con la línea: # Recetario de la familia\n    ├── fotos/\n    └── recetas/\n        ├── empanadas.md\n        └── pastel-de-choclo.md\n```",
+    "Los dos archivos de recetas pueden quedar vacíos. La primera línea de `README.md` debe ser exactamente `# Recetario de la familia`. Al terminar, revisa el resultado con `tree`."
+   ],
+   "setup": "",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "Existe la carpeta proyectos/recetario",
+     "script": "[ -d proyectos/recetario ] || falla \"No encuentro la carpeta ~/proyectos/recetario. Revisa con tree o ls dónde creaste las carpetas.\""
+    },
+    {
+     "name": "Tiene las subcarpetas fotos y recetas",
+     "script": "for d in fotos recetas; do [ -d \"proyectos/recetario/$d\" ] || falla \"Falta la carpeta proyectos/recetario/$d\"; done"
+    },
+    {
+     "name": "README.md con el título correcto",
+     "script": "f=proyectos/recetario/README.md\n[ -f \"$f\" ] || falla \"Falta el archivo proyectos/recetario/README.md\"\n[ \"$(head -n 1 \"$f\")\" = \"# Recetario de la familia\" ] || falla \"La primera línea de README.md debería ser exactamente «# Recetario de la familia» (ahora es «$(head -n 1 \"$f\")»)\""
+    },
+    {
+     "name": "Las dos recetas están dentro de recetas/",
+     "script": "for f in empanadas.md pastel-de-choclo.md; do [ -f \"proyectos/recetario/recetas/$f\" ] || falla \"Falta proyectos/recetario/recetas/$f (¿lo creaste en otra carpeta?)\"; done"
+    }
+   ],
+   "solution": [
+    "mkdir -p proyectos/recetario/fotos proyectos/recetario/recetas",
+    "cd proyectos/recetario",
+    "echo \"# Recetario de la familia\" > README.md",
+    "touch recetas/empanadas.md recetas/pastel-de-choclo.md",
+    "tree"
+   ],
+   "hints": [
+    "Con `mkdir -p` puedes crear una ruta completa de carpetas de una vez, e incluso varias rutas en el mismo comando.",
+    "Para el README usa `echo \"texto\" > archivo` (el `#` va dentro de las comillas). Para crear archivos vacíos, `touch`.",
+    "```bash\nmkdir -p proyectos/recetario/fotos proyectos/recetario/recetas\ncd proyectos/recetario\n```\nY desde ahí, `echo` para el README y `touch` para las dos recetas."
+   ],
+   "explain": "`mkdir -p` crea todas las carpetas intermedias que falten (`proyectos` y `recetario`) y no reclama si alguna ya existe; por eso con un solo comando armas las dos ramas del árbol. Luego `cd` te deja dentro del proyecto para usar rutas relativas cortas: `echo \"…\" > README.md` crea el archivo con su primera línea y `touch` crea los archivos vacíos (acepta varios a la vez). Alternativas igual de válidas: crear carpeta por carpeta con `mkdir` y `cd`, o no entrar nunca y usar rutas completas (`touch proyectos/recetario/recetas/empanadas.md`). La comprobación mira el resultado, no el camino. Detalle para más adelante: Git no registra carpetas vacías, así que cuando este proyecto sea un repositorio, `fotos/` no aparecerá en los commits hasta que tenga algún archivo."
+  },
+  {
+   "id": "s01-e2",
+   "title": "La lista de la feria: > y >>",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En `~/feria` hay un archivo `lista.txt` con la lista de compras de la semana pasada. Antes de tocarlo, haz un respaldo: cópialo como `lista-anterior.txt` en la misma carpeta.",
+    "Después deja `lista.txt` con **exactamente** estas tres líneas, en este orden (sin nada de la lista antigua):",
+    "```bash\npaltas\nmarraquetas\ntomates\n```",
+    "Hazlo con `echo` y redirecciones, y revisa el resultado con `cat`."
+   ],
+   "setup": "mkdir -p feria\nprintf 'porotos\\nlechuga\\n' > feria/lista.txt",
+   "cwd": "feria",
+   "checks": [
+    {
+     "name": "Existe el respaldo con la lista antigua",
+     "script": "[ -f lista-anterior.txt ] || falla \"Falta lista-anterior.txt, el respaldo de la lista antigua\"\ngrep -qx \"porotos\" lista-anterior.txt && grep -qx \"lechuga\" lista-anterior.txt || falla \"lista-anterior.txt debería tener el contenido ORIGINAL de lista.txt (porotos y lechuga). ¿Lo copiaste antes de escribir encima?\""
+    },
+    {
+     "name": "lista.txt tiene exactamente las tres líneas nuevas",
+     "script": "[ -f lista.txt ] || falla \"Falta lista.txt\"\ngrep -q \"porotos\" lista.txt && falla \"lista.txt todavía tiene la lista antigua: la primera línea nueva debe REEMPLAZAR el contenido\"\n[ \"$(grep -c . lista.txt)\" -eq 1 ] && grep -qx \"tomates\" lista.txt && falla \"Solo quedó «tomates»: parece que usaste > (reemplazar) donde tocaba >> (agregar)\"\n[ \"$(cat lista.txt)\" = \"$(printf 'paltas\\nmarraquetas\\ntomates')\" ] || falla \"lista.txt debe tener exactamente 3 líneas, en este orden: paltas, marraquetas, tomates\""
+    }
+   ],
+   "solution": [
+    "cat lista.txt",
+    "cp lista.txt lista-anterior.txt",
+    "echo paltas > lista.txt",
+    "echo marraquetas >> lista.txt",
+    "echo tomates >> lista.txt",
+    "cat lista.txt"
+   ],
+   "hints": [
+    "Primero el respaldo: `cp origen destino`.",
+    "Una redirección **reemplaza** el contenido y la otra **agrega** al final. ¿Cuál necesitas para la primera línea y cuál para las demás?",
+    "```bash\necho paltas > lista.txt\necho marraquetas >> lista.txt\n```"
+   ],
+   "explain": "`cp lista.txt lista-anterior.txt` deja una copia intacta antes de modificar nada (buen hábito, aunque con Git tendrás algo mejor: los commits). Luego, el primer `echo paltas > lista.txt` **vacía** el archivo y escribe la primera línea, borrando la lista antigua; los siguientes usan `>>` para **agregar** al final. El error típico es usar `>` en las tres líneas: cada una borra la anterior y queda solo «tomates». Alternativa en un solo comando: `printf \"paltas\\nmarraquetas\\ntomates\\n\" > lista.txt` (`printf` interpreta `\\n` como salto de línea). También podrías editar el archivo con `code lista.txt`."
+  },
+  {
+   "id": "s01-e3",
+   "title": "La pista oculta",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Tus sobrinos armaron un juego de búsqueda del tesoro en `~/buscatesoros`. Lee las instrucciones del juego, explora las carpetas y encuentra el **código secreto**.",
+    "Cuando lo tengas, guárdalo en un archivo nuevo `respuesta.txt` dentro de `~/buscatesoros` (no dentro de las subcarpetas). No muevas ni borres nada del juego: solo mira y lee."
+   ],
+   "setup": "mkdir -p buscatesoros/playa buscatesoros/bosque buscatesoros/cerro\nescribir buscatesoros/LEEME.txt '¡Bienvenidos al juego! El tesoro está en un archivo OCULTO dentro de la carpeta cerro.'\nescribir buscatesoros/playa/conchitas.txt 'Aquí solo hay conchitas. Sigue buscando.'\nescribir buscatesoros/bosque/araucaria.txt 'Una araucaria milenaria. Nada más.'\nescribir buscatesoros/cerro/mirador.txt 'Linda vista, pero el tesoro no está aquí.'\nescribir buscatesoros/cerro/.tesoro '¡Lo encontraste! El código es: CONDOR-2026'",
+   "cwd": "buscatesoros",
+   "checks": [
+    {
+     "name": "Existe ~/buscatesoros/respuesta.txt",
+     "script": "[ -f respuesta.txt ] || falla \"Falta respuesta.txt en ~/buscatesoros (¿lo creaste dentro de otra carpeta?)\""
+    },
+    {
+     "name": "respuesta.txt tiene el código secreto",
+     "script": "grep -q \"CONDOR-2026\" respuesta.txt 2>/dev/null || falla \"respuesta.txt no tiene el código correcto. Recuerda que ls, sin opciones, no muestra todo.\""
+    },
+    {
+     "name": "El tesoro sigue en su lugar",
+     "script": "[ -f cerro/.tesoro ] || falla \"El archivo del tesoro ya no está en cerro: solo había que leerlo, no moverlo ni borrarlo\""
+    }
+   ],
+   "solution": [
+    "cat LEEME.txt",
+    "cd cerro",
+    "ls",
+    "ls -a",
+    "cat .tesoro",
+    "cd ..",
+    "echo CONDOR-2026 > respuesta.txt",
+    "cat respuesta.txt"
+   ],
+   "hints": [
+    "Empieza por leer `LEEME.txt` con `cat`.",
+    "Los archivos cuyo nombre empieza con punto no aparecen con `ls`. ¿Qué opción los muestra?",
+    "Entra a `cerro`, usa `ls -a` y lee el archivo oculto con `cat`. Después vuelve con `cd ..` y escribe el código con `echo … > respuesta.txt`."
+   ],
+   "explain": "`ls` oculta los nombres que empiezan con punto; `ls -a` los muestra (junto con `.` y `..`). En Git esto importa mucho: la carpeta `.git`, el archivo `.gitignore` y tu `~/.gitconfig` son «ocultos», y si no usas `ls -a` parecerá que no existen. También podías leer el tesoro sin entrar a la carpeta, con una ruta relativa: `cat cerro/.tesoro`, y escribir la respuesta desde donde estuvieras usando una ruta absoluta: `echo CONDOR-2026 > ~/buscatesoros/respuesta.txt`."
+  },
+  {
+   "id": "s01-e4",
+   "title": "Ordena la carpeta de descargas",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Te pasaron los archivos del sitio web de una feria y quedaron todos revueltos en `~/descargas`. Organízalos en un proyecto nuevo, `~/sitio-feria`, con esta estructura:",
+    "```bash\nsitio-feria/\n├── index.html\n├── css/estilos.css\n├── js/app.js\n└── img/\n    ├── logo.png\n    └── foto-portada.jpg\n```",
+    "Los archivos deben **moverse** (no copiarse). Borra los temporales (`.tmp`) y deja `LEEME.txt` donde está: al final, en `~/descargas` solo debe quedar `LEEME.txt`."
+   ],
+   "setup": "mkdir -p descargas\nescribir descargas/index.html '<h1>Feria de las pulgas de Valdivia</h1>'\nescribir descargas/estilos.css 'h1 { color: darkgreen; }'\nescribir descargas/app.js 'console.log(\"Bienvenidos a la feria\");'\nescribir descargas/logo.png '(imagen del logo)'\nescribir descargas/foto-portada.jpg '(foto de la portada)'\nescribir descargas/borrador.tmp 'temporal'\nescribir descargas/cache.tmp 'temporal'\nescribir descargas/LEEME.txt 'Archivos del sitio de la feria. Ordénalos en ~/sitio-feria.'",
+   "cwd": "descargas",
+   "checks": [
+    {
+     "name": "Existen las carpetas css, js e img en ~/sitio-feria",
+     "script": "for d in css js img; do [ -d \"$HOME/sitio-feria/$d\" ] || falla \"Falta la carpeta ~/sitio-feria/$d\"; done"
+    },
+    {
+     "name": "Cada archivo está en su lugar",
+     "script": "S=\"$HOME/sitio-feria\"\ngrep -q \"Feria de las pulgas\" \"$S/index.html\" 2>/dev/null || falla \"index.html debería estar en la raíz de ~/sitio-feria\"\ngrep -q \"darkgreen\" \"$S/css/estilos.css\" 2>/dev/null || falla \"estilos.css debería estar en ~/sitio-feria/css\"\ngrep -q \"Bienvenidos\" \"$S/js/app.js\" 2>/dev/null || falla \"app.js debería estar en ~/sitio-feria/js\"\n[ -f \"$S/img/logo.png\" ] && [ -f \"$S/img/foto-portada.jpg\" ] || falla \"logo.png y foto-portada.jpg deberían estar en ~/sitio-feria/img\""
+    },
+    {
+     "name": "No quedan archivos temporales",
+     "script": "[ -z \"$(find \"$HOME/descargas\" \"$HOME/sitio-feria\" -name '*.tmp' 2>/dev/null)\" ] || falla \"Todavía quedan archivos .tmp (en descargas o en el sitio)\""
+    },
+    {
+     "name": "Se movieron (no copiaron) y LEEME.txt sigue en descargas",
+     "script": "grep -q \"Ordénalos\" \"$HOME/descargas/LEEME.txt\" 2>/dev/null || falla \"LEEME.txt debe quedarse en ~/descargas, sin cambios\"\n[ \"$(ls \"$HOME/descargas\")\" = \"LEEME.txt\" ] || falla \"En ~/descargas solo debería quedar LEEME.txt (¿copiaste en vez de mover?). Ahora hay: $(ls \"$HOME/descargas\" | tr '\\n' ' ')\""
+    }
+   ],
+   "solution": [
+    "ls",
+    "mkdir -p ../sitio-feria/css ../sitio-feria/js ../sitio-feria/img",
+    "mv index.html ../sitio-feria/",
+    "mv estilos.css ../sitio-feria/css/",
+    "mv app.js ../sitio-feria/js/",
+    "mv logo.png foto-portada.jpg ../sitio-feria/img/",
+    "rm *.tmp",
+    "ls",
+    "cd ../sitio-feria",
+    "tree"
+   ],
+   "hints": [
+    "Estás en `~/descargas`, así que `~/sitio-feria` es `../sitio-feria` en ruta relativa (o usa la ruta con `~`).",
+    "`mkdir -p` crea `sitio-feria` y sus tres subcarpetas en un solo comando. Para mover, `mv origen destino`; si el destino es una carpeta, el archivo entra en ella conservando su nombre.",
+    "`mv` acepta varios archivos si el último argumento es una carpeta: `mv logo.png foto-portada.jpg ../sitio-feria/img/`. Y `rm *.tmp` borra todos los que terminan en `.tmp`."
+   ],
+   "explain": "`mkdir -p ../sitio-feria/css ../sitio-feria/js ../sitio-feria/img` crea el proyecto y sus subcarpetas de una vez. `mv` mueve cada archivo a su carpeta (con varios orígenes, el destino tiene que ser una carpeta). El comodín `*.tmp` lo expande la terminal a «todos los archivos que terminan en .tmp» antes de ejecutar `rm`: úsalo con cuidado y, si tienes dudas, prueba primero con `ls *.tmp` para ver qué va a borrar. Si hubieras usado `cp`, los originales seguirían en descargas y tendrías el doble de archivos: por eso la comprobación revisa que en `~/descargas` solo quede `LEEME.txt`. Con rutas absolutas (`~/sitio-feria/css/`) funciona igual."
+  },
+  {
+   "id": "s01-e5",
+   "title": "Rutas relativas: el informe de octubre",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Trabajas en la carpeta compartida de una empresa. La terminal empieza en `~/empresa/ventas/2026/septiembre` y la estructura es esta:",
+    "```bash\nempresa/\n├── plantillas/\n│   └── informe.md\n├── marketing/\n│   └── redes/\n└── ventas/\n    └── 2026/\n        ├── septiembre/\n        │   └── cifras.txt      ← estás aquí\n        └── octubre/\n```",
+    "Sin salir de `septiembre` (practica con `..` y rutas relativas; la comprobación solo mira el resultado):",
+    "1. Copia la plantilla `plantillas/informe.md` en `ventas/2026/octubre/` con el nombre `informe-octubre.md`. La plantilla original debe quedar intacta.\n2. Agrega al final de `informe-octubre.md` la línea `Periodo: octubre 2026`.\n3. Deja una **copia** de `cifras.txt` (con el mismo nombre) en `marketing/redes/`.\n4. Renombra el `cifras.txt` de septiembre a `cifras-septiembre.txt`."
+   ],
+   "setup": "mkdir -p empresa/plantillas empresa/ventas/2026/septiembre empresa/ventas/2026/octubre empresa/marketing/redes\nescribir empresa/plantillas/informe.md '# Informe mensual de ventas'\nescribir empresa/ventas/2026/septiembre/cifras.txt 'Septiembre 2026: 1.250 unidades vendidas'",
+   "cwd": "empresa/ventas/2026/septiembre",
+   "checks": [
+    {
+     "name": "informe-octubre.md se creó a partir de la plantilla",
+     "script": "f=\"$HOME/empresa/ventas/2026/octubre/informe-octubre.md\"\n[ -f \"$f\" ] || falla \"Falta ventas/2026/octubre/informe-octubre.md\"\n[ \"$(head -n 1 \"$f\")\" = \"# Informe mensual de ventas\" ] || falla \"informe-octubre.md debería empezar con el contenido de la plantilla\""
+    },
+    {
+     "name": "El informe termina con el periodo",
+     "script": "f=\"$HOME/empresa/ventas/2026/octubre/informe-octubre.md\"\n[ \"$(tail -n 1 \"$f\" 2>/dev/null)\" = \"Periodo: octubre 2026\" ] || falla \"La última línea de informe-octubre.md debería ser «Periodo: octubre 2026»\"\n[ \"$(grep -c . \"$f\")\" -eq 2 ] || falla \"informe-octubre.md debería tener 2 líneas: la de la plantilla y la del periodo\""
+    },
+    {
+     "name": "La plantilla original está intacta",
+     "script": "[ \"$(cat \"$HOME/empresa/plantillas/informe.md\" 2>/dev/null)\" = \"# Informe mensual de ventas\" ] || falla \"La plantilla original cambió o desapareció: había que copiarla, no moverla ni editarla\""
+    },
+    {
+     "name": "Hay una copia de cifras.txt en marketing/redes",
+     "script": "grep -q \"1.250 unidades\" \"$HOME/empresa/marketing/redes/cifras.txt\" 2>/dev/null || falla \"Falta la copia de cifras.txt en marketing/redes\""
+    },
+    {
+     "name": "En septiembre, cifras.txt pasó a llamarse cifras-septiembre.txt",
+     "script": "d=\"$HOME/empresa/ventas/2026/septiembre\"\n[ -f \"$d/cifras-septiembre.txt\" ] || falla \"Falta ventas/2026/septiembre/cifras-septiembre.txt\"\n[ ! -e \"$d/cifras.txt\" ] || falla \"En septiembre todavía existe cifras.txt: había que renombrarlo\""
+    }
+   ],
+   "solution": [
+    "pwd",
+    "cp ../../../plantillas/informe.md ../octubre/informe-octubre.md",
+    "echo \"Periodo: octubre 2026\" >> ../octubre/informe-octubre.md",
+    "cat ../octubre/informe-octubre.md",
+    "cp cifras.txt ../../../marketing/redes/",
+    "mv cifras.txt cifras-septiembre.txt",
+    "ls",
+    "ls ../../../marketing/redes"
+   ],
+   "hints": [
+    "Cuenta los niveles: desde `septiembre`, `..` es `2026`, `../..` es `ventas` y `../../..` es `empresa`.",
+    "Entonces la plantilla es `../../../plantillas/informe.md` y la carpeta de octubre es `../octubre/`. `cp` puede copiar y dar un nombre nuevo a la vez.",
+    "Para agregar la línea usa `>>` (no `>`, que borraría la plantilla copiada). El orden importa: copia `cifras.txt` a marketing **antes** de renombrarlo."
+   ],
+   "explain": "Desde `septiembre`, `..` sube a `2026`, `../..` a `ventas` y `../../..` a `empresa`, así que `cp ../../../plantillas/informe.md ../octubre/informe-octubre.md` copia y renombra en un paso (si el destino no es una carpeta existente, `cp` lo usa como nombre del archivo nuevo). `>>` agrega el periodo sin borrar lo copiado. `cp cifras.txt ../../../marketing/redes/` deja la copia con el mismo nombre porque el destino es una carpeta, y `mv cifras.txt cifras-septiembre.txt` renombra dentro de la misma carpeta. Si renombras antes de copiar, la copia en marketing se llamará `cifras-septiembre.txt`. Con rutas absolutas (`~/empresa/plantillas/informe.md`) también funciona y a veces es más legible; lo importante es saber leer y escribir las dos, porque Git muestra casi siempre rutas relativas a la raíz del repositorio."
+  },
+  {
+   "id": "s01-e6",
+   "title": "Preséntate ante Git",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Acabas de instalar Git en un computador nuevo y todavía no sabe quién eres: borramos la identidad de tu configuración global de práctica.",
+    "Configura tu **nombre completo** (nombre y apellido) y tu **correo** para **todos** tus repositorios, y después pídele a Git ambos valores para comprobarlo. Si prefieres no usar tus datos, usa `Camila Rojas` y `camila.rojas@ejemplo.com`."
+   ],
+   "setup": "git config --global --unset user.name\ngit config --global --unset user.email",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "user.name global configurado",
+     "script": "n=\"$(git config --global user.name)\"\n[ -n \"$n\" ] || falla \"Git todavía no tiene tu nombre en la configuración global (~/.gitconfig)\"\n[ \"$(git config --global --get-all user.name | grep -c .)\" -eq 1 ] || falla \"user.name tiene más de un valor en la configuración global\""
+    },
+    {
+     "name": "El nombre es completo (nombre y apellido)",
+     "script": "n=\"$(git config --global user.name)\"\n[ -n \"$n\" ] || falla \"Todavía no hay user.name en la configuración global\"\ncase \"$n\" in *\" \"*) ;; *) falla \"user.name vale «${n}»: parece que falta el apellido. ¿Pusiste el nombre completo entre comillas?\";; esac"
+    },
+    {
+     "name": "user.email global con formato de correo",
+     "script": "e=\"$(git config --global user.email)\"\n[ -n \"$e\" ] || falla \"Git todavía no tiene tu correo en la configuración global (¿escribiste bien la clave user.email?)\"\necho \"$e\" | grep -Eq '^[^@ ]+@[^@ ]+\\.[^@ ]+$' || falla \"user.email vale «${e}», que no parece un correo\""
+    }
+   ],
+   "solution": [
+    "git config --global user.name \"Camila Rojas\"",
+    "git config --global user.email \"camila.rojas@ejemplo.com\"",
+    "git config --global user.name",
+    "git config --global user.email"
+   ],
+   "hints": [
+    "Es `git config` con la opción que escribe en tu configuración personal (la que se aplica a todos tus repositorios).",
+    "Las claves son `user.name` y `user.email`. Si el valor tiene espacios, va entre comillas.",
+    "```bash\ngit config --global user.name \"Tu Nombre\"\n```\nPara leer un valor, el mismo comando sin el valor."
+   ],
+   "explain": "`git config --global clave valor` escribe en `~/.gitconfig`, el archivo de tu usuario, así que se aplica a todos tus repositorios en este computador; con la misma orden sin valor, Git te muestra lo guardado. Las comillas son clave: `git config --global user.name Camila Rojas` guardaría solo «Camila» sin avisar. Con la sintaxis nueva (desde Git 2.46) sería `git config set --global user.name \"Camila Rojas\"` y `git config get --global user.name`. Puedes revisar el archivo con `cat ~/.gitconfig` o `git config --global --list`."
+  },
+  {
+   "id": "s01-e7",
+   "title": "Author identity unknown",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Don Lucho, dueño del almacén del barrio, te pidió actualizar su lista de precios. El cambio ya está preparado en `~/almacen-don-lucho`, pero cuando intentas confirmarlo con `git commit -m \"Actualiza precios de septiembre\"`, Git responde:",
+    "```bash\nAuthor identity unknown\n\n*** Please tell me who you are.\n\nRun\n\n  git config --global user.email \"you@example.com\"\n  git config --global user.name \"Your Name\"\n\nto set your account's default identity.\nOmit --global to set the identity only in this repository.\n\nfatal: no email was given and auto-detection is disabled\n```",
+    "Configura tu identidad para **todos** tus repositorios (no solo este) y luego crea el commit con exactamente ese comando: `git commit -m \"Actualiza precios de septiembre\"` (los commits los verás a fondo en s02)."
+   ],
+   "setup": "git config --global --unset user.name\ngit config --global --unset user.email\ngit config --global user.useConfigOnly true\nnuevo_repo almacen-don-lucho\nfecha '2026-09-20 09:00'\nautor 'Luis Pérez' 'lucho@almacen.ejemplo.com'\ncommit_archivo precios.txt 'pan amasado: 2200 el kilo\nleche: 1150 el litro' 'Lista de precios inicial'\nyo\nescribir precios.txt 'pan amasado: 2400 el kilo\nleche: 1190 el litro\nhuevos: 350 la unidad'\ngit add precios.txt",
+   "cwd": "almacen-don-lucho",
+   "checks": [
+    {
+     "name": "Tu identidad está en la configuración global",
+     "script": "[ -n \"$(git config --global user.name)\" ] || falla \"Todavía no hay user.name en tu configuración global\"\n[ -n \"$(git config --global user.email)\" ] || falla \"Todavía no hay user.email en tu configuración global\""
+    },
+    {
+     "name": "No quedó una identidad solo local",
+     "script": "[ -z \"$(git config --local user.name)$(git config --local user.email)\" ] || falla \"Configuraste la identidad solo en este repositorio (nivel local). Debe estar en la configuración global para servir en todos tus proyectos (una clave local se borra con git config --unset)\""
+    },
+    {
+     "name": "Se creó el commit «Actualiza precios de septiembre»",
+     "script": "[ \"$(num_commits)\" -eq 2 ] || falla \"Debería haber 2 commits (el de don Lucho y el tuyo); hay $(num_commits)\"\nmensaje_es HEAD \"Actualiza precios de septiembre\""
+    },
+    {
+     "name": "El commit lleva tu identidad",
+     "script": "[ \"$(git log -1 --format=%an)\" = \"$(git config --global user.name)\" ] && [ \"$(git log -1 --format=%ae)\" = \"$(git config --global user.email)\" ] || falla \"El último commit no lleva la identidad de tu configuración global\""
+    },
+    {
+     "name": "No quedan cambios sin confirmar",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git config --global user.name \"Camila Rojas\"",
+    "git config --global user.email \"camila.rojas@ejemplo.com\"",
+    "git commit -m \"Actualiza precios de septiembre\"",
+    "git log --format=\"%h %an <%ae> %s\""
+   ],
+   "hints": [
+    "Lee el mensaje de Git: te dice exactamente qué comandos ejecutar. Solo tienes que poner tus datos.",
+    "Usa `--global` (el enunciado pide que sirva para todos tus repositorios) y comillas en el nombre.",
+    "Después de configurar `user.name` y `user.email`, repite el `git commit -m \"Actualiza precios de septiembre\"`."
+   ],
+   "explain": "Git necesita un nombre y un correo para firmar cada commit. En este escenario activamos `user.useConfigOnly`, así que Git no intenta adivinarlos y se detiene con *Author identity unknown* (en muchos computadores con Linux o Windows verás lo mismo, con `unable to auto-detect email address`). La solución es la que sugiere el propio mensaje: `git config --global user.email …` y `git config --global user.name …`. Si omites `--global`, la identidad queda solo en `.git/config` de este repositorio y el próximo proyecto volverá a fallar; por eso la comprobación lo rechaza. Fíjate en `git log --format=\"%h %an <%ae> %s\"`: el primer commit es de don Lucho y el segundo es tuyo."
+  },
+  {
+   "id": "s01-e8",
+   "title": "Rama main y un editor que espera",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Heredaste la configuración de Git de un computador viejo: los repositorios nuevos empiezan en la rama `master` y el editor configurado es Vim, que no sabes usar.",
+    "1. Haz que **todos** tus repositorios nuevos empiecen en la rama `main`.\n2. Configura Visual Studio Code como editor de Git, de forma que Git **espere** a que cierres el archivo.\n3. La terminal está en `~/apuntes`, una carpeta con tus apuntes que todavía no es un repositorio. Conviértela en uno con `git init` (lo verás a fondo en s02) y comprueba con `git status` en qué rama empieza."
+   ],
+   "setup": "git config --global init.defaultBranch master\ngit config --global core.editor vim\nmkdir -p apuntes\nescribir apuntes/clase-01.md '# Clase 1: control de versiones'",
+   "cwd": "apuntes",
+   "checks": [
+    {
+     "name": "init.defaultBranch global es main",
+     "script": "v=\"$(git config --global init.defaultBranch)\"\n[ \"$v\" = main ] || falla \"init.defaultBranch global vale «${v}»; debería ser main\""
+    },
+    {
+     "name": "core.editor global es VS Code esperando",
+     "script": "v=\"$(git config --global core.editor)\"\n[ \"$v\" = \"code --wait\" ] || falla \"core.editor global vale «${v}»; revisa el comando de VS Code y la opción que hace que Git espere\""
+    },
+    {
+     "name": "~/apuntes es un repositorio",
+     "script": "[ -d .git ] || falla \"La carpeta apuntes todavía no es un repositorio\""
+    },
+    {
+     "name": "El repositorio empieza en main",
+     "script": "[ -d .git ] || falla \"Todavía no hay repositorio en apuntes\"\nb=\"$(git symbolic-ref --short HEAD 2>/dev/null)\"\n[ \"$b\" = main ] || falla \"El repositorio empezó en la rama «${b}». ¿Ejecutaste git init antes de cambiar init.defaultBranch? Puedes renombrarla con git branch -m main\""
+    }
+   ],
+   "solution": [
+    "git config --global init.defaultBranch main",
+    "git config --global core.editor \"code --wait\"",
+    "git config --global --list",
+    "git init",
+    "git status"
+   ],
+   "hints": [
+    "Son dos opciones de configuración global: una en la sección `init` y otra en la sección `core`.",
+    "Las claves son `init.defaultBranch` y `core.editor`. Para VS Code, el valor lleva un espacio (y por eso comillas).",
+    "El orden importa: configura `init.defaultBranch` **antes** de `git init`, porque solo afecta a los repositorios que se crean después."
+   ],
+   "explain": "`init.defaultBranch` (desde Git 2.28) define el nombre de la primera rama que crea `git init`; `core.editor` define el programa que Git abre para escribir mensajes. El valor `code --wait` es clave: sin `--wait`, `code` devuelve el control al instante y Git recibiría el mensaje vacío. Si ejecutaste `git init` antes de cambiar la opción, el repositorio ya nació en `master`: `git branch -m main` lo renombra (s05). En la terminal de práctica, Git abre igual el editor de la plataforma porque la variable `GIT_EDITOR` tiene prioridad sobre `core.editor`; en tu computador se abriría VS Code. Alternativa: `git config --global --edit` y corregir el archivo a mano."
+  },
+  {
+   "id": "s01-e9",
+   "title": "El correo del trabajo, solo donde corresponde",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Tu identidad global es la personal (`Camila Rojas <camila.rojas@ejemplo.com>`). Empezaste a trabajar en una fintech y sus commits deben llevar tu correo corporativo, **solo** en el repositorio de la empresa.",
+    "Tienes dos repositorios: `~/trabajo/app-banco` (de la empresa) y `~/personal/blog` (tuyo). Haz que en `app-banco` Git use el correo `camila.rojas@fintech.ejemplo.com`, sin cambiar tu configuración global ni tu blog. El nombre sigue siendo el mismo. Comprueba en ambos repositorios qué correo usa Git y de dónde sale."
+   ],
+   "setup": "git config --global user.name 'Camila Rojas'\ngit config --global user.email 'camila.rojas@ejemplo.com'\nnuevo_repo trabajo/app-banco\nfecha '2026-09-15 09:30'\nautor 'Diego Soto' 'diego.soto@fintech.ejemplo.com'\ncommit_archivo README.md '# App del Banco Austral' 'Crea el proyecto'\nyo\ncd ~\nnuevo_repo personal/blog\nfecha '2026-09-14 21:00'\nautor 'Camila Rojas' 'camila.rojas@ejemplo.com'\ncommit_archivo index.md '# Mi blog de fotografía' 'Primera entrada'\nyo",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "app-banco usa el correo de la empresa",
+     "script": "v=\"$(git -C trabajo/app-banco config user.email)\"\n[ \"$v\" = \"camila.rojas@fintech.ejemplo.com\" ] || falla \"En app-banco, Git usa el correo «${v}»\""
+    },
+    {
+     "name": "El correo de la empresa está en el nivel local de app-banco",
+     "script": "[ \"$(git -C trabajo/app-banco config --local user.email)\" = \"camila.rojas@fintech.ejemplo.com\" ] || falla \"El correo de la empresa debería estar en la configuración local de app-banco (.git/config)\""
+    },
+    {
+     "name": "Tu correo global sigue siendo el personal",
+     "script": "v=\"$(git config --global user.email)\"\n[ \"$v\" = \"camila.rojas@ejemplo.com\" ] || falla \"Cambiaste el correo global (ahora «${v}»): todos tus repositorios usarían ese correo\""
+    },
+    {
+     "name": "El blog sigue usando tu correo personal",
+     "script": "v=\"$(git -C personal/blog config user.email)\"\n[ \"$v\" = \"camila.rojas@ejemplo.com\" ] || falla \"En el blog, Git usa «${v}» en vez de tu correo personal\""
+    }
+   ],
+   "solution": [
+    "cd trabajo/app-banco",
+    "git config user.email \"camila.rojas@fintech.ejemplo.com\"",
+    "git config --show-origin --show-scope user.email",
+    "cd ~/personal/blog",
+    "git config --show-origin --show-scope user.email"
+   ],
+   "hints": [
+    "¿Qué nivel de configuración afecta a un solo repositorio? Para usarlo tienes que estar dentro de ese repositorio.",
+    "Entra a `trabajo/app-banco` y usa `git config` **sin** `--global` (o con `--local`).",
+    "Para comprobar de dónde sale el valor: `git config --show-origin --show-scope user.email`."
+   ],
+   "explain": "Dentro de un repositorio, `git config clave valor` (o con `--local`) escribe en su `.git/config`, que se lee después de `~/.gitconfig` y por eso tiene prioridad. Así, en `app-banco` el correo corporativo tapa al personal, y en el blog (y en cualquier otro repositorio) se sigue usando el global. `--show-scope` confirma el nivel (`local` o `global`) y `--show-origin`, el archivo. Si tienes muchos repositorios del trabajo, en s13 verás `includeIf`, que aplica una configuración según la carpeta donde está el repositorio. Un error común es usar `--global` «para probar» y olvidarse: desde ese momento todos tus proyectos personales firmarían con el correo de la empresa."
+  },
+  {
+   "id": "s01-e10",
+   "title": "Detective de configuración",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Te prestaron el computador de la universidad para revisar la tesis que está en `~/tesis`. Antes de hacer commits quieres saber con qué datos va a firmar Git. **No cambies ninguna configuración**: solo investiga.",
+    "Crea el archivo `~/respuestas.txt` (en tu carpeta personal, no en la tesis) con tres líneas:",
+    "1. El correo que usará Git para los commits **dentro de** `~/tesis`.\n2. El nivel de donde sale ese correo: `system`, `global` o `local`.\n3. El valor de `core.editor` que se aplica **fuera** de `~/tesis` (por ejemplo, en tu carpeta personal)."
+   ],
+   "setup": "git config --global user.name 'Camila Rojas'\ngit config --global user.email 'camila.rojas@ejemplo.com'\ngit config --global core.editor nano\nnuevo_repo tesis\ngit config user.email 'c.rojas@universidad.ejemplo.cl'\ngit config core.editor 'code --wait'\nfecha '2026-09-01 10:00'\nautor 'Camila Rojas' 'c.rojas@universidad.ejemplo.cl'\ncommit_archivo tesis.md '# Energía solar en el norte de Chile' 'Crea el documento de la tesis'\nyo",
+   "cwd": "tesis",
+   "checks": [
+    {
+     "name": "Existe ~/respuestas.txt con 3 líneas",
+     "script": "f=\"$HOME/respuestas.txt\"\n[ -f \"$f\" ] || falla \"Falta el archivo ~/respuestas.txt (debe quedar en tu carpeta personal)\"\n[ \"$(grep -c . \"$f\")\" -ge 3 ] || falla \"respuestas.txt debe tener 3 líneas (tiene $(grep -c . \"$f\"))\""
+    },
+    {
+     "name": "Línea 1: el correo que Git usa en la tesis",
+     "script": "v=\"$(sed -n 1p \"$HOME/respuestas.txt\" 2>/dev/null | tr -d '[:space:]')\"\n[ \"$v\" = \"c.rojas@universidad.ejemplo.cl\" ] || falla \"La línea 1 no es el correo que Git usa dentro de ~/tesis. Pregúntaselo a git config estando en la tesis.\""
+    },
+    {
+     "name": "Línea 2: el nivel de ese correo",
+     "script": "v=\"$(sed -n 2p \"$HOME/respuestas.txt\" 2>/dev/null | tr -d '[:space:]' | tr 'A-Z' 'a-z')\"\n[ \"$v\" = \"local\" ] || falla \"La línea 2 no es el nivel correcto. ¿Qué opción de git config muestra el nivel (scope) de un valor?\""
+    },
+    {
+     "name": "Línea 3: el editor fuera de la tesis",
+     "script": "v=\"$(sed -n 3p \"$HOME/respuestas.txt\" 2>/dev/null | sed 's/^ *//;s/ *$//')\"\n[ \"$v\" = \"nano\" ] || falla \"La línea 3 no es el editor que se aplica fuera de ~/tesis. Prueba git config core.editor en tu carpeta personal.\""
+    },
+    {
+     "name": "No cambiaste la configuración",
+     "script": "[ \"$(git config --local user.email)\" = \"c.rojas@universidad.ejemplo.cl\" ] && [ \"$(git config --local core.editor)\" = \"code --wait\" ] && [ \"$(git config --global user.email)\" = \"camila.rojas@ejemplo.com\" ] && [ \"$(git config --global core.editor)\" = \"nano\" ] || falla \"La configuración cambió: en este ejercicio solo había que investigar, no modificar\""
+    }
+   ],
+   "solution": [
+    "git config user.email",
+    "git config --show-scope --show-origin user.email",
+    "cd ~",
+    "git config core.editor",
+    "echo \"c.rojas@universidad.ejemplo.cl\" > ~/respuestas.txt",
+    "echo local >> ~/respuestas.txt",
+    "echo nano >> ~/respuestas.txt",
+    "cat ~/respuestas.txt"
+   ],
+   "hints": [
+    "`git config clave` (sin valor) te dice el valor que se aplica **donde estás**, después de combinar todos los niveles.",
+    "`--show-scope` agrega el nivel de cada valor y `--show-origin`, el archivo.",
+    "Para la tercera pregunta, sal del repositorio (`cd ~`) y pregunta por `core.editor`. Escribe las respuestas con `echo … > ~/respuestas.txt` y `>>`."
+   ],
+   "explain": "Dentro de `~/tesis`, `git config user.email` devuelve `c.rojas@universidad.ejemplo.cl` porque el `.git/config` del repositorio (nivel local) se lee después de `~/.gitconfig` (global) y lo tapa; `git config --show-scope --show-origin user.email` lo confirma con `local  file:.git/config`. Fuera de un repositorio no existe nivel local, así que `git config core.editor` devuelve el global: `nano`. Otra forma de verlo todo junto es `git config --list --show-scope`: las claves pueden aparecer varias veces y se usa la última. Moraleja: antes de hacer commits en un computador ajeno o en un repositorio heredado, revisa con `--show-origin` de dónde salen tus datos."
+  },
+  {
+   "id": "s01-e11",
+   "title": "Configuración con errores de tipeo",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Una compañera configuró Git con apuro en tu computador y ahora nada funciona como debería. Revisa tu configuración **global** y déjala exactamente así:",
+    "- `user.name` = `Camila Rojas` (un **único** valor)\n- `user.email` = `camila.rojas@ejemplo.com`\n- `init.defaultBranch` = `main`\n- `core.editor` = `code --wait`",
+    "Y elimina cualquier clave mal escrita que Git no use."
+   ],
+   "setup": "git config --global --unset user.name\ngit config --global --unset user.email\ngit config --global user.name 'Camila'\ngit config --global --add user.name 'C. Rojas'\ngit config --global user.mail 'camila.rojas@ejemplo.com'\ngit config --global init.defaultBranch mian\ngit config --global core.editor code",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "user.name tiene un único valor: Camila Rojas",
+     "script": "n=\"$(git config --global --get-all user.name | grep -c .)\"\n[ \"$n\" -eq 1 ] || falla \"user.name tiene $n valores en la configuración global; debe tener uno solo\"\n[ \"$(git config --global user.name)\" = \"Camila Rojas\" ] || falla \"user.name vale «$(git config --global user.name)»; debería ser Camila Rojas\""
+    },
+    {
+     "name": "user.email es camila.rojas@ejemplo.com",
+     "script": "v=\"$(git config --global user.email)\"\n[ \"$v\" = \"camila.rojas@ejemplo.com\" ] || falla \"user.email global no es el esperado (ahora: «${v}»)\""
+    },
+    {
+     "name": "No queda la clave mal escrita user.mail",
+     "script": "git config --global --get-all user.mail >/dev/null && falla \"Todavía existe la clave user.mail (mal escrita): Git no la usa, elimínala\"\ntrue"
+    },
+    {
+     "name": "init.defaultBranch es main",
+     "script": "v=\"$(git config --global init.defaultBranch)\"\n[ \"$v\" = main ] || falla \"init.defaultBranch vale «${v}»; debería ser main\""
+    },
+    {
+     "name": "core.editor es code --wait",
+     "script": "v=\"$(git config --global core.editor)\"\n[ \"$v\" = \"code --wait\" ] || falla \"core.editor vale «${v}»; a Git le falta algo para esperar a que cierres el archivo\""
+    }
+   ],
+   "solution": [
+    "git config --global --list",
+    "git config --global user.name \"Camila Rojas\"",
+    "git config --global --replace-all user.name \"Camila Rojas\"",
+    "git config --global --unset user.mail",
+    "git config --global user.email \"camila.rojas@ejemplo.com\"",
+    "git config --global init.defaultBranch main",
+    "git config --global core.editor \"code --wait\"",
+    "git config --global --list"
+   ],
+   "hints": [
+    "Empieza por mirar qué hay: `git config --global --list` (o `cat ~/.gitconfig`). Busca claves repetidas, mal escritas y valores con errores.",
+    "Si intentas cambiar `user.name` normalmente, Git se queja de que tiene varios valores. Revisa `git config -h`: hay una opción para **reemplazar todos** los valores y otra para **eliminar** una clave.",
+    "`--replace-all` reemplaza todos los valores de una clave y `--unset` borra una clave. Otra vía: `git config --global --edit` y corregir el archivo a mano."
+   ],
+   "explain": "Había cuatro problemas: (1) `user.name` tenía dos valores (alguien usó `--add`); en ese caso `git config --global user.name \"…\"` falla con *warning: user.name has multiple values* y *error: cannot overwrite multiple values with a single value*, así que se usa `--replace-all` (o `--unset-all` y luego se configura de nuevo; con la sintaxis nueva, `git config set --global --all user.name \"Camila Rojas\"`). (2) `user.mail` es una clave inventada: Git la guarda, pero nunca la usa, así que había que eliminarla con `--unset` y configurar la correcta, `user.email`. (3) `init.defaultBranch` tenía un error de tipeo en el **valor** (`mian`): Git no valida valores, habría creado ramas llamadas `mian`. (4) `core.editor` era `code` sin `--wait`, así que Git no esperaría a que cerraras el archivo. La vía más rápida en la vida real suele ser `git config --global --edit` (en la plataforma abre el editor integrado) y corregir todo de una vez. En la solución, el primer `git config --global user.name` falla a propósito, para que veas el mensaje."
+  },
+  {
+   "id": "s01-e12",
+   "title": "¿Por qué mis commits salen con otro nombre?",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Estás en el laboratorio de computación de la universidad, en `~/taller-web`. Tu identidad global es la correcta (`Camila Rojas <camila.rojas@ejemplo.com>`), pero los commits que hiciste en este repositorio aparecen firmados por «PC Laboratorio 3». Revisa la historia con:",
+    "```bash\ngit log --format=\"%h %an <%ae> %s\"\n```",
+    "Averigua por qué pasa y corrígelo **sin tocar tu configuración global** y **sin volver a escribir tu identidad en este repositorio**: el repositorio debe usar la identidad global. Después confirma el cambio que ya está preparado con `git commit -m \"Agrega formulario de contacto\"`. (Los commits antiguos quedan como están; corregirlos exige reescribir la historia, s04 y s09.)"
+   ],
+   "setup": "git config --global user.name 'Camila Rojas'\ngit config --global user.email 'camila.rojas@ejemplo.com'\nnuevo_repo taller-web\ngit config user.name 'PC Laboratorio 3'\ngit config user.email 'lab3@universidad.ejemplo.cl'\nfecha '2026-09-22 15:00'\ncommit_archivo index.html '<h1>Taller de desarrollo web</h1>' 'Crea la portada'\nfecha '2026-09-22 15:30'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Agrega estilos base'\nescribir contacto.html '<form>Nombre, correo y mensaje</form>'\ngit add contacto.html",
+   "cwd": "taller-web",
+   "checks": [
+    {
+     "name": "El repositorio ya no tiene identidad local",
+     "script": "[ -z \"$(git config --local --get-all user.name)\" ] || falla \"El repositorio todavía tiene un user.name local («$(git config --local user.name)») que tapa al global\"\n[ -z \"$(git config --local --get-all user.email)\" ] || falla \"El repositorio todavía tiene un user.email local que tapa al global\""
+    },
+    {
+     "name": "Tu identidad global sigue intacta",
+     "script": "[ \"$(git config --global user.name)\" = \"Camila Rojas\" ] && [ \"$(git config --global user.email)\" = \"camila.rojas@ejemplo.com\" ] || falla \"Tu identidad global cambió; debe seguir siendo Camila Rojas <camila.rojas@ejemplo.com>\""
+    },
+    {
+     "name": "Se creó el commit «Agrega formulario de contacto»",
+     "script": "[ \"$(num_commits)\" -eq 3 ] || falla \"Debería haber 3 commits; hay $(num_commits)\"\nmensaje_es HEAD \"Agrega formulario de contacto\""
+    },
+    {
+     "name": "El nuevo commit lleva tu identidad global",
+     "script": "v=\"$(git log -1 --format='%an <%ae>')\"\n[ \"$v\" = \"Camila Rojas <camila.rojas@ejemplo.com>\" ] || falla \"El último commit lo firma «${v}», no tu identidad global\""
+    },
+    {
+     "name": "No quedan cambios sin confirmar",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git log --format=\"%h %an <%ae> %s\"",
+    "git config --list --show-scope",
+    "git config --show-origin --show-scope user.name",
+    "git config --unset user.name",
+    "git config --unset user.email",
+    "git config --show-origin --show-scope user.name",
+    "git commit -m \"Agrega formulario de contacto\"",
+    "git log --format=\"%h %an <%ae> %s\""
+   ],
+   "hints": [
+    "Pregúntale a Git de dónde sale el nombre que usa aquí: hay una opción que muestra el nivel y el archivo.",
+    "Verás que hay un `user.name` y un `user.email` en el nivel **local**, que tapan a los globales. No hay que cambiarlos: hay que **quitarlos**.",
+    "Dentro del repositorio, `git config --unset clave` borra una clave del nivel local (también `git config --local --remove-section user`)."
+   ],
+   "explain": "`git config --show-origin --show-scope user.name` revela el problema: `local  file:.git/config  PC Laboratorio 3`. Alguien configuró la identidad en el repositorio (sin `--global`) y el nivel local gana. Sobrescribirlo con tus datos «funcionaría», pero dejaría una copia que se desincroniza si algún día cambias tu identidad global; lo limpio es eliminar las claves locales con `git config --unset user.name` y `git config --unset user.email` (o `git config --local --remove-section user`, o con la sintaxis nueva `git config unset user.name`). Después, Git usa la identidad global y el nuevo commit sale a tu nombre. Los dos commits anteriores siguen firmados por «PC Laboratorio 3»: el autor forma parte del hash del commit, así que cambiarlo implica reescribir la historia (`git commit --amend`, `git rebase`), algo que verás en s04 y s09."
+  },
+  {
+   "id": "s01-e13",
+   "title": "Proyecto: deja tu computador listo para el curso",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "Simulamos un computador recién formateado: Git no tiene identidad (y no la adivinará), crea los repositorios en `master` y no tiene editor configurado. Déjalo listo para el resto del curso:",
+    "1. Configura tu identidad global con tu nombre completo y tu correo (o `Camila Rojas` y `camila.rojas@ejemplo.com`).\n2. Haz que los repositorios nuevos empiecen en `main`.\n3. Configura VS Code como editor de Git, esperando a que cierres el archivo.\n4. Crea la carpeta `~/cursos/git` con dos subcarpetas, `apuntes` y `practicas`, y un `README.md` con exactamente estas dos líneas: `# Curso de Git` y `Inicio: 2026-09-27`.\n5. Convierte `~/cursos/git` en un repositorio con `git init` y confirma el README con estos dos comandos (los verás a fondo en s02): `git add README.md` y `git commit -m \"Primer commit: README del curso\"`.\n6. Revisa el resultado con `git config --list --show-scope` y `git log`."
+   ],
+   "setup": "git config --global --unset user.name\ngit config --global --unset user.email\ngit config --global user.useConfigOnly true\ngit config --global init.defaultBranch master",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "Identidad global completa",
+     "script": "n=\"$(git config --global user.name)\"; e=\"$(git config --global user.email)\"\n[ -n \"$n\" ] || falla \"Falta user.name en la configuración global\"\ncase \"$n\" in *\" \"*) ;; *) falla \"user.name vale «${n}»: falta el apellido (¿olvidaste las comillas?)\";; esac\necho \"$e\" | grep -Eq '^[^@ ]+@[^@ ]+\\.[^@ ]+$' || falla \"user.email global falta o no parece un correo («${e}»)\""
+    },
+    {
+     "name": "Rama inicial main y editor VS Code con espera",
+     "script": "[ \"$(git config --global init.defaultBranch)\" = main ] || falla \"init.defaultBranch global debería ser main\"\n[ \"$(git config --global core.editor)\" = \"code --wait\" ] || falla \"core.editor global debería ser exactamente: code --wait\""
+    },
+    {
+     "name": "Estructura de ~/cursos/git y README",
+     "script": "for d in apuntes practicas; do [ -d \"cursos/git/$d\" ] || falla \"Falta la carpeta ~/cursos/git/$d\"; done\nf=cursos/git/README.md\n[ -f \"$f\" ] || falla \"Falta ~/cursos/git/README.md\"\n[ \"$(cat \"$f\")\" = \"$(printf '# Curso de Git\\nInicio: 2026-09-27')\" ] || falla \"README.md debe tener exactamente 2 líneas: «# Curso de Git» y «Inicio: 2026-09-27»\""
+    },
+    {
+     "name": "~/cursos/git es un repositorio en la rama main",
+     "script": "[ -d cursos/git/.git ] || falla \"~/cursos/git todavía no es un repositorio\"\nb=\"$(git -C cursos/git symbolic-ref --short HEAD 2>/dev/null)\"\n[ \"$b\" = main ] || falla \"El repositorio está en la rama «${b}». ¿Hiciste git init antes de configurar init.defaultBranch? Renómbrala con git branch -m main\""
+    },
+    {
+     "name": "Primer commit con el README",
+     "script": "[ \"$(git -C cursos/git rev-list --count HEAD 2>/dev/null)\" = 1 ] || falla \"El repositorio debería tener exactamente 1 commit\"\n[ \"$(git -C cursos/git log -1 --format=%s)\" = \"Primer commit: README del curso\" ] || falla \"El mensaje del commit debería ser «Primer commit: README del curso»\"\ngit -C cursos/git cat-file -e HEAD:README.md 2>/dev/null || falla \"README.md no está dentro del commit\""
+    },
+    {
+     "name": "El commit lleva tu identidad global (sin identidad local)",
+     "script": "[ -z \"$(git -C cursos/git config --local user.name)$(git -C cursos/git config --local user.email)\" ] || falla \"Hay una identidad local en ~/cursos/git: configúrala solo a nivel global\"\n[ \"$(git -C cursos/git log -1 --format='%an <%ae>')\" = \"$(git config --global user.name) <$(git config --global user.email)>\" ] || falla \"El commit no está firmado con tu identidad global\""
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "[ -z \"$(git -C cursos/git status --porcelain)\" ] || falla \"En ~/cursos/git hay cambios sin confirmar (revisa git status)\""
+    }
+   ],
+   "solution": [
+    "git config --global user.name \"Camila Rojas\"",
+    "git config --global user.email \"camila.rojas@ejemplo.com\"",
+    "git config --global init.defaultBranch main",
+    "git config --global core.editor \"code --wait\"",
+    "mkdir -p cursos/git/apuntes cursos/git/practicas",
+    "cd cursos/git",
+    "echo \"# Curso de Git\" > README.md",
+    "echo \"Inicio: 2026-09-27\" >> README.md",
+    "git init",
+    "git add README.md",
+    "git commit -m \"Primer commit: README del curso\"",
+    "git config --list --show-scope",
+    "git log"
+   ],
+   "hints": [
+    "Haz primero toda la configuración (pasos 1 a 3) y después crea el repositorio: `init.defaultBranch` solo afecta a los repositorios que se crean después.",
+    "Para las carpetas, `mkdir -p` con dos rutas. Para el README, un `echo … >` y un `echo … >>`.",
+    "Entra a `~/cursos/git` antes de `git init`. Si el commit falla con *Author identity unknown*, te falta algo del paso 1."
+   ],
+   "explain": "El orden es lo más importante: si ejecutas `git init` antes de configurar `init.defaultBranch main`, el repositorio nace en `master` (arreglable con `git branch -m main`), y si intentas el commit antes de configurar la identidad, Git se niega (*Author identity unknown*) porque en este escenario `user.useConfigOnly` le impide adivinar. `echo … >` crea el README con la primera línea y `echo … >>` agrega la segunda. Fíjate en algo que verás en s02: después del commit, `git status` dice que todo está limpio aunque existen `apuntes/` y `practicas/`. Git no registra carpetas vacías, solo archivos; cuando pongas algo dentro, aparecerán. Revisa con `git config --list --show-scope` que tus opciones son de nivel `global`: servirán para todos los repositorios de este computador."
+  },
+  {
+   "id": "s01-e14",
+   "title": "Proyecto: primer día en la agencia",
+   "level": "proyecto",
+   "minutes": 20,
+   "prompt": [
+    "Hoy empiezas en Pixel Austral, una agencia de diseño web. Tu configuración global ya tiene tu identidad personal (`Camila Rojas <camila.rojas@ejemplo.com>`). La terminal está en `~/agencia`: ahí hay un archivo `bienvenida.txt` con las tareas de tu primer día, un `manual-marca.txt` y el repositorio `sitio-cafeteria` en el que trabajarás.",
+    "Lee `bienvenida.txt` y cumple todas sus tareas. Al final, el último commit de `sitio-cafeteria` debe estar firmado como `Camila Rojas <camila.rojas@pixelaustral.ejemplo.com>`, y tu configuración global no debe cambiar."
+   ],
+   "setup": "git config --global user.name 'Camila Rojas'\ngit config --global user.email 'camila.rojas@ejemplo.com'\nmkdir -p agencia\nescribir agencia/bienvenida.txt '¡Bienvenida a Pixel Austral! Tareas de tu primer día:\n1. En el repositorio sitio-cafeteria usa tu correo de la agencia, camila.rojas@pixelaustral.ejemplo.com (solo en ese repositorio).\n2. Alguien dejó configurado el nombre «Practicante» en ese repositorio: haz que se use tu nombre de siempre.\n3. Mueve manual-marca.txt a una carpeta docs dentro de sitio-cafeteria.\n4. Confírmalo con: git add docs   y luego   git commit -m \"Agrega manual de marca\"'\nescribir agencia/manual-marca.txt 'Colores: café #6F4E37 y crema #FFFDD0. Tipografía: Poppins.'\ncd agencia\nnuevo_repo sitio-cafeteria\ngit config user.name 'Practicante'\nfecha '2026-09-21 10:00'\nautor 'Valentina Muñoz' 'valentina.munoz@pixelaustral.ejemplo.com'\ncommit_archivo index.html '<h1>Cafetería El Puerto</h1>' 'Crea la portada'\nfecha '2026-09-22 16:20'\ncommit_archivo menu.html '<ul><li>Cortado</li><li>Kuchen de murta</li></ul>' 'Agrega el menú'\nyo",
+   "cwd": "agencia",
+   "checks": [
+    {
+     "name": "sitio-cafeteria usa el correo de la agencia (nivel local)",
+     "script": "[ \"$(git -C sitio-cafeteria config --local user.email)\" = \"camila.rojas@pixelaustral.ejemplo.com\" ] || falla \"El correo de la agencia debería estar en la configuración local de sitio-cafeteria\""
+    },
+    {
+     "name": "Ya no se usa el nombre «Practicante»",
+     "script": "[ -z \"$(git -C sitio-cafeteria config --local --get-all user.name)\" ] || falla \"sitio-cafeteria todavía tiene un user.name local («$(git -C sitio-cafeteria config --local user.name)»): elimínalo para que se use tu nombre global\"\n[ \"$(git -C sitio-cafeteria config user.name)\" = \"Camila Rojas\" ] || falla \"En sitio-cafeteria, Git no usa tu nombre global\""
+    },
+    {
+     "name": "Tu configuración global no cambió",
+     "script": "[ \"$(git config --global user.name)\" = \"Camila Rojas\" ] && [ \"$(git config --global user.email)\" = \"camila.rojas@ejemplo.com\" ] || falla \"Tu identidad global cambió; debe seguir siendo la personal\""
+    },
+    {
+     "name": "manual-marca.txt se movió a sitio-cafeteria/docs",
+     "script": "[ -f sitio-cafeteria/docs/manual-marca.txt ] || falla \"Falta sitio-cafeteria/docs/manual-marca.txt\"\n[ ! -e manual-marca.txt ] || falla \"manual-marca.txt sigue en ~/agencia: había que moverlo, no copiarlo\"\ngrep -q \"Poppins\" sitio-cafeteria/docs/manual-marca.txt || falla \"El contenido de manual-marca.txt cambió\""
+    },
+    {
+     "name": "Commit «Agrega manual de marca» con el manual",
+     "script": "[ \"$(git -C sitio-cafeteria rev-list --count HEAD)\" -eq 3 ] || falla \"sitio-cafeteria debería tener 3 commits (los 2 de Valentina y el tuyo)\"\n[ \"$(git -C sitio-cafeteria log -1 --format=%s)\" = \"Agrega manual de marca\" ] || falla \"El último commit debería llamarse «Agrega manual de marca»\"\ngit -C sitio-cafeteria cat-file -e HEAD:docs/manual-marca.txt 2>/dev/null || falla \"docs/manual-marca.txt no está dentro del último commit\""
+    },
+    {
+     "name": "El commit va firmado con tu nombre y el correo de la agencia",
+     "script": "v=\"$(git -C sitio-cafeteria log -1 --format='%an <%ae>')\"\n[ \"$v\" = \"Camila Rojas <camila.rojas@pixelaustral.ejemplo.com>\" ] || falla \"El último commit lo firma «${v}»\""
+    },
+    {
+     "name": "sitio-cafeteria sin cambios pendientes",
+     "script": "[ -z \"$(git -C sitio-cafeteria status --porcelain)\" ] || falla \"En sitio-cafeteria hay cambios sin confirmar (revisa git status)\""
+    }
+   ],
+   "solution": [
+    "cat bienvenida.txt",
+    "cd sitio-cafeteria",
+    "git config --list --show-scope",
+    "git config --unset user.name",
+    "git config user.email \"camila.rojas@pixelaustral.ejemplo.com\"",
+    "git config --show-origin --show-scope user.name",
+    "mkdir docs",
+    "mv ../manual-marca.txt docs/",
+    "git add docs",
+    "git commit -m \"Agrega manual de marca\"",
+    "git log --format=\"%h %an <%ae> %s\"",
+    "git status"
+   ],
+   "hints": [
+    "Antes de cambiar nada, mira qué hay configurado en el repositorio: `git config --list --show-scope` dentro de `sitio-cafeteria`.",
+    "Tarea 1: `git config` sin `--global`, dentro del repositorio. Tarea 2: no escribas tu nombre en el repositorio; quita el que dejaron para que se aplique el global.",
+    "Tarea 3: estando en `sitio-cafeteria`, el manual está en `../manual-marca.txt`. Crea `docs` y usa `mv`. Luego ejecuta los dos comandos de la tarea 4."
+   ],
+   "explain": "Este proyecto junta todo lo de la sección. En el repositorio había un `user.name` local («Practicante») que tapaba tu nombre global: lo correcto es eliminarlo con `git config --unset user.name` (no sobrescribirlo), y agregar solo el correo de la agencia a nivel local con `git config user.email …`. Así cada commit en `sitio-cafeteria` combina el nombre global con el correo local: `Camila Rojas <camila.rojas@pixelaustral.ejemplo.com>`, mientras tus proyectos personales siguen usando tu correo personal. `--show-origin --show-scope` te deja comprobarlo antes de confirmar. Luego, `mkdir docs` y `mv ../manual-marca.txt docs/` mueven el archivo al proyecto, y `git add docs` + `git commit` lo registran (s02). Fíjate en que los commits de Valentina salieron con su identidad aunque el repositorio decía «Practicante»: en el escenario se usaron variables de entorno (`GIT_AUTHOR_NAME`…), que tienen prioridad incluso sobre la configuración local."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué es un sistema de control de versiones (VCS)?",
+   "back": "Un programa que registra los cambios de un conjunto de archivos a lo largo del tiempo para recuperar versiones, compararlas y colaborar."
+  },
+  {
+   "front": "VCS centralizado frente a distribuido",
+   "back": "Centralizado (CVS, Subversion): la historia vive solo en el servidor. Distribuido (Git, Mercurial): cada clon tiene la historia completa."
+  },
+  {
+   "front": "¿Quién creó Git, cuándo y por qué?",
+   "back": "Linus Torvalds, en abril de 2005, para el kernel de Linux, cuando se revocó el uso gratuito de BitKeeper."
+  },
+  {
+   "front": "¿Quién mantiene Git desde julio de 2005?",
+   "back": "Junio Hamano."
+  },
+  {
+   "front": "Git frente a GitHub",
+   "back": "Git: programa de control de versiones que funciona en tu computador, sin internet. GitHub: servicio web que aloja repositorios Git y agrega colaboración (pull requests, issues, Actions)."
+  },
+  {
+   "front": "¿Git guarda diferencias o instantáneas?",
+   "back": "Instantáneas del proyecto completo en cada commit; los archivos que no cambian se reutilizan (mismo contenido, mismo hash)."
+  },
+  {
+   "front": "¿Qué es el hash de un objeto en Git?",
+   "back": "Una huella de 40 caracteres hexadecimales (SHA-1) calculada a partir del contenido. Identifica cada objeto y garantiza la integridad."
+  },
+  {
+   "front": "Comando para calcular el hash de un contenido",
+   "back": "`git hash-object archivo` o `echo \"texto\" | git hash-object --stdin`."
+  },
+  {
+   "front": "Las tres áreas de Git",
+   "back": "Directorio de trabajo (working tree), área de preparación (staging area o index) y repositorio (.git)."
+  },
+  {
+   "front": "¿Qué comando lleva cambios al área de preparación y cuál al repositorio?",
+   "back": "`git add` (del directorio de trabajo al área de preparación) y `git commit` (del área de preparación al repositorio)."
+  },
+  {
+   "front": "¿Por qué Git es tan rápido?",
+   "back": "Porque casi todas las operaciones son locales: la historia completa está en tu disco."
+  },
+  {
+   "front": "¿Qué comandos de Git se comunican con otro repositorio?",
+   "back": "Principalmente `git clone`, `git fetch`, `git pull` y `git push`. Casi todo lo demás es local."
+  },
+  {
+   "front": "¿Cómo compruebas la versión de Git instalada?",
+   "back": "`git --version` (o `git version`)."
+  },
+  {
+   "front": "Tres formas de abrir el manual de git config",
+   "back": "`git help config`, `git config --help` y `man git-config`."
+  },
+  {
+   "front": "¿Qué muestra `git config -h`?",
+   "back": "Un resumen breve de uso y opciones, directamente en la terminal."
+  },
+  {
+   "front": "`pwd`",
+   "back": "Muestra la ruta de la carpeta en la que estás (print working directory)."
+  },
+  {
+   "front": "`ls -a`",
+   "back": "Lista también los archivos y carpetas ocultos (los que empiezan con punto, como `.git`)."
+  },
+  {
+   "front": "`cd ..`, `cd ~` y `cd` a secas",
+   "back": "`cd ..` sube un nivel; `cd ~` y `cd` sin argumentos te llevan a tu carpeta personal."
+  },
+  {
+   "front": "Ruta absoluta frente a relativa",
+   "back": "Absoluta: empieza en la raíz `/` (o en `~`). Relativa: parte de la carpeta actual, por ejemplo `../tienda`."
+  },
+  {
+   "front": "`mkdir -p a/b/c`",
+   "back": "Crea la ruta completa, incluidas las carpetas intermedias que falten, y no falla si ya existen."
+  },
+  {
+   "front": "`echo \"x\" > archivo` frente a `echo \"x\" >> archivo`",
+   "back": "`>` reemplaza todo el contenido; `>>` agrega al final."
+  },
+  {
+   "front": "`mv viejo.txt nuevo.txt`",
+   "back": "Renombra el archivo. Si el destino es una carpeta, lo mueve dentro de ella."
+  },
+  {
+   "front": "¿`rm` manda los archivos a la papelera?",
+   "back": "No. El borrado es definitivo. `rm -r` borra carpetas completas."
+  },
+  {
+   "front": "Configurar tu identidad para todos tus repositorios",
+   "back": "`git config --global user.name \"Nombre Apellido\"` y `git config --global user.email correo@ejemplo.com`."
+  },
+  {
+   "front": "¿Qué pasa con `git config --global user.name Camila Rojas` sin comillas?",
+   "back": "Git guarda solo «Camila»: la terminal separa las palabras y «Rojas» se toma como otro parámetro. No hay error."
+  },
+  {
+   "front": "Hacer que los repositorios nuevos empiecen en main",
+   "back": "`git config --global init.defaultBranch main` (disponible desde Git 2.28)."
+  },
+  {
+   "front": "VS Code como editor de Git",
+   "back": "`git config --global core.editor \"code --wait\"`. `--wait` hace que Git espere a que cierres la pestaña."
+  },
+  {
+   "front": "Niveles de configuración y cuál gana",
+   "back": "system (todo el computador) < global (`~/.gitconfig`) < local (`.git/config`). Gana el más específico: local."
+  },
+  {
+   "front": "¿Cómo averiguas de dónde sale un valor de configuración?",
+   "back": "`git config --show-origin --show-scope clave` (o `git config --list --show-origin`)."
+  },
+  {
+   "front": "Orden en que Git elige el editor",
+   "back": "`GIT_EDITOR`, `core.editor`, `VISUAL`, `EDITOR` y, por último, el de compilación (normalmente `vi`)."
+  },
+  {
+   "front": "Sintaxis nueva de git config (Git 2.46)",
+   "back": "`git config set`, `get`, `list`, `unset` y `edit`. La sintaxis clásica sigue funcionando."
+  },
+  {
+   "front": "`fatal: not a git repository (or any of the parent directories): .git`",
+   "back": "Ejecutaste un comando de Git fuera de un repositorio: no hay `.git` ni aquí ni en las carpetas de arriba."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s01-q1",
+   "type": "single",
+   "q": "¿Cuál es el problema principal que resuelve un sistema de control de versiones?",
+   "options": [
+    "Comprimir los archivos para que ocupen menos espacio.",
+    "Registrar cada versión de un proyecto con autor, fecha y motivo, para volver atrás, comparar y colaborar.",
+    "Publicar sitios web en internet.",
+    "Hacer respaldos automáticos de todo el disco en la nube."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un VCS guarda la historia de cambios con su contexto (quién, cuándo, por qué) y permite recuperar, comparar y trabajar en paralelo. No comprime por objetivo, no publica sitios (eso es un hosting) ni respalda el disco completo."
+  },
+  {
+   "id": "s01-q2",
+   "type": "single",
+   "q": "Tu equipo usa Subversion (un VCS centralizado) y el servidor se cae durante una hora. ¿Qué ocurre?",
+   "options": [
+    "Cada persona sigue confirmando versiones localmente y sincroniza después.",
+    "Durante esa hora nadie puede guardar versiones en el servidor ni consultar su historia.",
+    "Los clientes se convierten automáticamente en servidores.",
+    "Nada, porque cada cliente tiene la historia completa."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En un sistema centralizado la historia vive solo en el servidor: es un punto único de falla. Confirmar localmente y tener la historia completa en cada cliente son características de los sistemas distribuidos como Git."
+  },
+  {
+   "id": "s01-q3",
+   "type": "multi",
+   "q": "¿Cuáles de estos son sistemas de control de versiones **distribuidos**? (Selecciona DOS.)",
+   "options": [
+    "Git",
+    "Subversion",
+    "Mercurial",
+    "CVS",
+    "Perforce"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Git y Mercurial son distribuidos: cada clon tiene la historia completa. CVS, Subversion y Perforce son centralizados."
+  },
+  {
+   "id": "s01-q4",
+   "type": "yesno",
+   "q": "Sobre la historia de Git, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Linus Torvalds empezó a escribir Git en abril de 2005.",
+     "answer": true
+    },
+    {
+     "text": "Git nació porque el kernel de Linux perdió el uso gratuito de BitKeeper.",
+     "answer": true
+    },
+    {
+     "text": "Linus Torvalds fundó GitHub para alojar el kernel de Linux.",
+     "answer": false
+    },
+    {
+     "text": "Junio Hamano es el mantenedor de Git desde julio de 2005.",
+     "answer": true
+    }
+   ],
+   "explain": "Git nació en abril de 2005 tras la ruptura con BitKeeper, y en julio de 2005 Linus traspasó el mantenimiento a Junio Hamano. GitHub es una empresa distinta, lanzada en 2008 (de Microsoft desde 2018); Linus no la fundó."
+  },
+  {
+   "id": "s01-q5",
+   "type": "single",
+   "q": "¿Cuál de estas afirmaciones sobre Git y GitHub es correcta?",
+   "options": [
+    "GitHub es la versión de pago de Git.",
+    "Git necesita una cuenta de GitHub para funcionar.",
+    "Git es un programa que funciona en tu computador sin internet; GitHub es un servicio que aloja repositorios Git y agrega colaboración.",
+    "Git y GitHub son dos nombres del mismo producto de Microsoft."
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Git es software libre e independiente: funciona sin internet y sin cuenta. GitHub (como GitLab o Bitbucket) es una plataforma que aloja repositorios Git; no es «Git de pago» ni lo necesita Git para funcionar."
+  },
+  {
+   "id": "s01-q6",
+   "type": "single",
+   "q": "¿Cómo guarda Git las versiones de un proyecto?",
+   "options": [
+    "Una copia nueva de cada archivo en cada commit, aunque no haya cambiado.",
+    "Instantáneas del proyecto completo; si un archivo no cambió, la nueva instantánea apunta al contenido ya guardado.",
+    "Solo las diferencias de cada archivo respecto de su versión anterior.",
+    "Solo el último estado del proyecto, sin historia."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git piensa en instantáneas completas, pero no duplica: el contenido idéntico tiene el mismo hash y se reutiliza. Guardar solo diferencias es el modelo de CVS o Subversion (Git usa deltas solo al empaquetar, como optimización interna que verás en s12)."
+  },
+  {
+   "id": "s01-q7",
+   "type": "single",
+   "q": "¿Qué muestran estos dos comandos, ejecutados uno tras otro?\n```bash\necho \"hola\" | git hash-object --stdin\necho \"hola\" | git hash-object --stdin\n```",
+   "options": [
+    "Dos hashes distintos, porque cada ejecución genera uno aleatorio.",
+    "El mismo hash dos veces.",
+    "Un error, porque `git hash-object` solo funciona dentro de un repositorio.",
+    "El mismo hash, pero solo si se ejecutan en el mismo computador."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El hash depende solo del contenido: el mismo contenido produce el mismo hash en cualquier computador. Sin `-w`, `git hash-object` solo calcula el hash y funciona también fuera de un repositorio."
+  },
+  {
+   "id": "s01-q8",
+   "type": "single",
+   "q": "¿Cuántos caracteres hexadecimales tiene un hash SHA-1 completo en Git?",
+   "options": [
+    "7",
+    "32",
+    "40",
+    "64"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "SHA-1 produce 160 bits, que se escriben como 40 caracteres hexadecimales. 7 es la longitud típica del hash corto que ves en `git log --oneline`; 64 es la longitud de un hash SHA-256."
+  },
+  {
+   "id": "s01-q9",
+   "type": "multi",
+   "q": "¿Qué influye en el hash de un commit? (Selecciona TRES.)",
+   "options": [
+    "La instantánea de los archivos que contiene.",
+    "El hash de su commit padre.",
+    "El autor, la fecha y el mensaje.",
+    "El nombre de la carpeta donde está el proyecto en tu disco.",
+    "La hora en que alguien ejecuta `git log`."
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Un commit guarda su instantánea, sus padres, autor, confirmador, fechas y mensaje; todo eso entra en su hash. Por eso cambiar algo antiguo cambia todos los hashes posteriores. La carpeta del proyecto en tu disco y el momento en que miras la historia no forman parte del commit."
+  },
+  {
+   "id": "s01-q10",
+   "type": "single",
+   "q": "Estás en un avión, sin internet. ¿Cuál de estos comandos **no** podrás completar?",
+   "options": [
+    "`git log`",
+    "`git commit`",
+    "`git status`",
+    "`git push`"
+   ],
+   "answer": [
+    3
+   ],
+   "explain": "La historia completa está en tu disco, así que `git log`, `git commit` y `git status` son locales. `git push` necesita comunicarse con otro repositorio (el remoto)."
+  },
+  {
+   "id": "s01-q11",
+   "type": "yesno",
+   "q": "Sobre las tres áreas de Git, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`git add` lleva cambios del directorio de trabajo al área de preparación.",
+     "answer": true
+    },
+    {
+     "text": "`git commit` guarda en el repositorio lo que está en el área de preparación.",
+     "answer": true
+    },
+    {
+     "text": "El área de preparación también se llama *index* o *staging area*.",
+     "answer": true
+    },
+    {
+     "text": "Un cambio que está en el directorio de trabajo pero no se preparó entra igual en el próximo commit.",
+     "answer": false
+    }
+   ],
+   "explain": "El commit se arma con lo que está en el área de preparación (el index). Lo que modificaste pero no preparaste con `git add` se queda fuera del commit y sigue como «modificado»."
+  },
+  {
+   "id": "s01-q12",
+   "type": "single",
+   "q": "Vas a instalar Git en Windows. ¿Cuál es la opción oficial recomendada?",
+   "options": [
+    "GitHub Desktop, porque es la única forma de usar Git en Windows.",
+    "Git for Windows (instalador de git-scm.com o `winget`), que incluye Git Bash.",
+    "Ninguna: Git viene instalado en Windows 11.",
+    "Solo se puede usar Git en Windows a través de WSL."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git for Windows es la distribución oficial para Windows e incluye Git Bash, Git GUI y Git Credential Manager. GitHub Desktop es una aplicación gráfica opcional, Windows no trae Git preinstalado y WSL es una alternativa, no un requisito."
+  },
+  {
+   "id": "s01-q13",
+   "type": "single",
+   "q": "En un Mac, `git --version` responde `git version 2.50.1 (Apple Git-155)`. ¿Qué significa?",
+   "options": [
+    "Que estás usando el Git que Apple distribuye con las Command Line Tools de Xcode.",
+    "Que instalaste Git con Homebrew.",
+    "Que Git no está instalado y macOS muestra una versión de demostración.",
+    "Que es una versión modificada que no sirve para trabajar con GitHub."
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El sufijo «Apple Git» identifica el Git incluido en las Command Line Tools. Funciona perfectamente, aunque suele ir algunas versiones atrás; con Homebrew (`brew install git`) obtienes la última y el sufijo desaparece."
+  },
+  {
+   "id": "s01-q14",
+   "type": "single",
+   "q": "Quieres recordar rápidamente las opciones de `git status` sin abrir el manual completo. ¿Qué escribes?",
+   "options": [
+    "`git help status`",
+    "`git status -h`",
+    "`man status`",
+    "`git status --version`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-h` muestra un resumen breve de uso directamente en la terminal. `git help status` (igual que `git status --help`) abre el manual completo; `man status` busca un manual que no es el de Git (el correcto sería `man git-status`), y `--version` no es una opción de `git status`."
+  },
+  {
+   "id": "s01-q15",
+   "type": "single",
+   "q": "Estás en `/Users/ana/proyectos/tienda` y ejecutas `cd ../recetario/recetas`. Si la carpeta existe, ¿dónde quedas?",
+   "options": [
+    "`/Users/ana/recetario/recetas`",
+    "`/Users/ana/proyectos/recetario/recetas`",
+    "`/Users/ana/proyectos/tienda/recetario/recetas`",
+    "En ningún lado: `cd` no admite `..` combinado con otras carpetas."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`..` sube de `tienda` a `proyectos`; desde ahí entras a `recetario/recetas`. Las rutas relativas pueden combinar `..` con nombres de carpetas sin problema."
+  },
+  {
+   "id": "s01-q16",
+   "type": "multi",
+   "q": "¿Cuáles de estas rutas son **absolutas**? (Selecciona TRES.)",
+   "options": [
+    "`/Users/ana/notas`",
+    "`~/proyectos`",
+    "`proyectos/web`",
+    "`../web`",
+    "`/etc/gitconfig`"
+   ],
+   "answer": [
+    0,
+    1,
+    4
+   ],
+   "explain": "Las que empiezan con `/` son absolutas, y `~` es un atajo que la terminal reemplaza por la ruta absoluta de tu carpeta personal. `proyectos/web` y `../web` son relativas: dependen de dónde estés."
+  },
+  {
+   "id": "s01-q17",
+   "type": "single",
+   "q": "Estás dentro de un repositorio y `ls` no muestra la carpeta `.git`. ¿Qué comando la muestra?",
+   "options": [
+    "`ls`",
+    "`ls -a`",
+    "`ls -l`",
+    "`pwd -a`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los nombres que empiezan con punto están ocultos; `ls -a` (all) los incluye. `ls -l` solo cambia el formato y `pwd` no lista archivos."
+  },
+  {
+   "id": "s01-q18",
+   "type": "single",
+   "q": "¿Qué muestra el último comando?\n```bash\necho \"uno\" > lista.txt\necho \"dos\" >> lista.txt\necho \"tres\" > lista.txt\ncat lista.txt\n```",
+   "options": [
+    "`uno`, `dos` y `tres`, una por línea",
+    "Solo `tres`",
+    "`uno` y `tres`",
+    "`uno` y `dos`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El primer `>` crea el archivo con «uno», `>>` agrega «dos» y el último `>` reemplaza todo el contenido por «tres»."
+  },
+  {
+   "id": "s01-q19",
+   "type": "single",
+   "q": "Quieres crear `web/css` y `web/js`, pero la carpeta `web` todavía no existe. ¿Qué comando funciona?",
+   "options": [
+    "`mkdir web/css web/js`",
+    "`mkdir -p web/css web/js`",
+    "`touch web/css web/js`",
+    "`cd web && mkdir css js`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`mkdir -p` crea también las carpetas intermedias que falten. Sin `-p`, `mkdir` falla porque `web` no existe; `touch` crea archivos, no carpetas; y `cd web` falla por la misma razón (y con `&&` ya no se ejecuta el `mkdir`)."
+  },
+  {
+   "id": "s01-q20",
+   "type": "yesno",
+   "q": "Sobre comandos de la terminal, indica Sí o No.",
+   "statements": [
+    {
+     "text": "`mv informe.txt final.txt` renombra el archivo.",
+     "answer": true
+    },
+    {
+     "text": "`rm` envía los archivos a la papelera.",
+     "answer": false
+    },
+    {
+     "text": "`cp -r` copia una carpeta con todo su contenido.",
+     "answer": true
+    },
+    {
+     "text": "`touch archivo` borra el contenido de un archivo que ya existe.",
+     "answer": false
+    }
+   ],
+   "explain": "`mv` mueve o renombra; `cp -r` copia de forma recursiva. `rm` borra de forma definitiva, sin papelera. `touch` crea un archivo vacío si no existe y, si existe, solo actualiza su fecha de modificación: no toca el contenido."
+  },
+  {
+   "id": "s01-q21",
+   "type": "single",
+   "q": "Ejecutas `mkdir blog && cd blog`, pero la carpeta `blog` ya existía. ¿Qué pasa?",
+   "options": [
+    "`mkdir` falla y, por el `&&`, `cd blog` no se ejecuta.",
+    "Se ejecutan los dos comandos y terminas dentro de `blog`.",
+    "`mkdir` borra la carpeta y la crea de nuevo, vacía.",
+    "Es un error de sintaxis: `&&` no existe en la terminal."
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`&&` solo ejecuta el segundo comando si el primero terminó bien. `mkdir` falla (*File exists*) y la cadena se detiene. Con `;` se habría ejecutado `cd` de todas formas; con `mkdir -p`, que no falla si la carpeta existe, también."
+  },
+  {
+   "id": "s01-q22",
+   "type": "single",
+   "q": "¿Qué comando configura tu nombre para **todos** tus repositorios?",
+   "options": [
+    "`git config user.name \"Camila Rojas\"`",
+    "`git config --global user.name \"Camila Rojas\"`",
+    "`git config --global user.name Camila Rojas`",
+    "`git config --system username \"Camila Rojas\"`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--global` escribe en `~/.gitconfig`, que se aplica a todos tus repositorios. Sin `--global` se configura solo el repositorio actual; sin comillas se guarda solo «Camila»; y `username` no es una clave que Git use (además, `--system` afecta a todos los usuarios del computador)."
+  },
+  {
+   "id": "s01-q23",
+   "type": "single",
+   "q": "Ejecutas `git config --global user.name Camila Rojas` (sin comillas). ¿Qué queda guardado?",
+   "options": [
+    "Nada: Git muestra un error y no guarda.",
+    "`Camila Rojas`",
+    "Solo `Camila`, sin ningún aviso.",
+    "Solo `Rojas`."
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La terminal separa los argumentos por espacios: Git recibe `user.name`, `Camila` y `Rojas`. Guarda `Camila` y toma `Rojas` como un patrón de valor opcional. No hay error, por eso es tan traicionero. Los valores con espacios van entre comillas."
+  },
+  {
+   "id": "s01-q24",
+   "type": "single",
+   "q": "Escribiste `git config --global user.mail camila@ejemplo.com`. ¿Qué pasa en tu próximo commit?",
+   "options": [
+    "Git corrige la clave y usa ese correo.",
+    "Git rechazó el comando por ser una clave desconocida, así que no cambió nada.",
+    "La clave queda guardada, pero Git no la usa: el commit no llevará ese correo (Git lo tomará de `user.email` o intentará adivinarlo).",
+    "Git usa ese correo solo para los commits de este repositorio."
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Git acepta cualquier clave con formato `sección.clave`, aunque no exista, y no corrige errores de tipeo. La clave que usa para el correo es `user.email`. Revisa tu configuración con `git config --global --list`."
+  },
+  {
+   "id": "s01-q25",
+   "type": "yesno",
+   "q": "Sobre los niveles de configuración, indica Sí o No.",
+   "statements": [
+    {
+     "text": "La configuración global se guarda en `~/.gitconfig`.",
+     "answer": true
+    },
+    {
+     "text": "Si `user.email` está en el nivel global y en el local de un repositorio, dentro de ese repositorio gana el local.",
+     "answer": true
+    },
+    {
+     "text": "`git config user.email x@ejemplo.com`, ejecutado fuera de un repositorio, escribe en la configuración global.",
+     "answer": false
+    },
+    {
+     "text": "El nivel system afecta a todos los usuarios del computador.",
+     "answer": true
+    }
+   ],
+   "explain": "Sin `--global` (o `--system`), `git config` escribe en el nivel local, y fuera de un repositorio falla con `fatal: not in a git directory`. Git lee system, luego global y luego local: gana el último, el más específico."
+  },
+  {
+   "id": "s01-q26",
+   "type": "single",
+   "q": "¿Qué comando muestra, junto a cada opción, el archivo del que sale?",
+   "options": [
+    "`git config --list --show-origin`",
+    "`git config --list --verbose`",
+    "`git config --where`",
+    "`git status --config`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--show-origin` agrega el origen (por ejemplo `file:.git/config`) y `--show-scope`, el nivel. Las otras opciones no existen en `git config` ni en `git status`."
+  },
+  {
+   "id": "s01-q27",
+   "type": "single",
+   "q": "Dentro de un repositorio, `git config --list --show-scope` muestra, entre otras, estas líneas:\n```bash\nglobal\tuser.email=camila.rojas@ejemplo.com\nlocal\tuser.email=c.rojas@universidad.ejemplo.cl\n```\n¿Qué correo llevará un commit hecho en ese repositorio?",
+   "options": [
+    "`camila.rojas@ejemplo.com`",
+    "`c.rojas@universidad.ejemplo.cl`",
+    "Los dos, separados por una coma.",
+    "Ninguno: Git mostrará un error por la clave duplicada."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Que una clave aparezca en varios niveles es normal. Git las lee en orden (system, global, local) y usa la última: el valor local."
+  },
+  {
+   "id": "s01-q28",
+   "type": "single",
+   "q": "¿Para qué sirve `--wait` en `git config --global core.editor \"code --wait\"`?",
+   "options": [
+    "Para que VS Code se abra más rápido.",
+    "Para que Git espere a que cierres la pestaña del archivo antes de continuar.",
+    "Para que Git espere a tener conexión a internet.",
+    "Es obligatorio solo en Windows."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin `--wait`, el comando `code` abre el archivo y termina al instante; Git lee el archivo sin tu mensaje y cancela el commit. Con `--wait`, `code` no termina hasta que cierras la pestaña. Es necesario en todos los sistemas."
+  },
+  {
+   "id": "s01-q29",
+   "type": "single",
+   "q": "Tienes `core.editor = code --wait` en tu configuración y además la variable de entorno `GIT_EDITOR=nano`. ¿Qué editor abre `git commit`?",
+   "options": [
+    "nano",
+    "VS Code",
+    "vi",
+    "Ninguno: Git muestra un error por el conflicto"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git busca en este orden: `GIT_EDITOR`, `core.editor`, `VISUAL`, `EDITOR` y el editor de compilación (normalmente `vi`). La variable `GIT_EDITOR` gana. Así logra la terminal de práctica abrir siempre su editor integrado."
+  },
+  {
+   "id": "s01-q30",
+   "type": "single",
+   "q": "¿Desde qué versión de Git existe la opción `init.defaultBranch`?",
+   "options": [
+    "2.23",
+    "2.28",
+    "2.34",
+    "2.46"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git 2.28 (2020) agregó `init.defaultBranch`. La 2.23 trajo `git switch` y `git restore`, la 2.34 hizo de `ort` la estrategia de fusión por defecto y la 2.46 agregó los subcomandos de `git config`."
+  },
+  {
+   "id": "s01-q31",
+   "type": "multi",
+   "q": "En un computador nuevo, ¿qué necesita Git **obligatoriamente** para firmar tu primer commit con tus datos? (Selecciona DOS.)",
+   "options": [
+    "`user.name`",
+    "`user.email`",
+    "`core.editor`",
+    "`init.defaultBranch`",
+    "Una cuenta de GitHub"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Cada commit registra nombre y correo; sin ellos Git los adivina (con datos que no son los tuyos) o se niega. El editor y la rama inicial son muy recomendables, pero no obligatorios (puedes usar `git commit -m` y Git usa `master` por defecto). GitHub no es necesario para usar Git."
+  },
+  {
+   "id": "s01-q32",
+   "type": "single",
+   "q": "Ejecutas `git status` y aparece `fatal: not a git repository (or any of the parent directories): .git`. ¿Qué significa?",
+   "options": [
+    "Que el repositorio está dañado y hay que clonarlo de nuevo.",
+    "Que estás en una carpeta que no está dentro de ningún repositorio.",
+    "Que no tienes internet.",
+    "Que no configuraste tu identidad."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git buscó una carpeta `.git` en la carpeta actual y en todas las superiores, y no la encontró. Revisa con `pwd` dónde estás y entra al repositorio con `cd` (o créalo con `git init` si corresponde)."
+  },
+  {
+   "id": "s01-q33",
+   "type": "yesno",
+   "q": "Sobre la terminal de práctica de la plataforma, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Puedo usar `git log | head -n 3`.",
+     "answer": false
+    },
+    {
+     "text": "`echo \"texto\" | git hash-object --stdin` funciona.",
+     "answer": true
+    },
+    {
+     "text": "`code archivo` abre el editor de la plataforma.",
+     "answer": true
+    },
+    {
+     "text": "Lo que configuro con `git config --global` en la práctica modifica el `~/.gitconfig` real de mi computador.",
+     "answer": false
+    }
+   ],
+   "explain": "La terminal de práctica solo admite tuberías del tipo `echo … | git …` o `printf … | git …` (en vez de `| head`, usa `git log -n 3`). `code` abre el editor integrado. Cada ejercicio usa una carpeta aislada con su propio `~/.gitconfig`, así que tu configuración real no cambia."
+  },
+  {
+   "id": "s01-q34",
+   "type": "single",
+   "q": "¿Cuál es el equivalente con la sintaxis nueva (Git 2.46 o posterior) de `git config --global --unset user.mail`?",
+   "options": [
+    "`git config unset --global user.mail`",
+    "`git config remove user.mail`",
+    "`git config --delete user.mail`",
+    "`git unset config user.mail`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Los subcomandos nuevos son `list`, `get`, `set`, `unset`, `rename-section`, `remove-section` y `edit`, y las opciones de nivel (`--global`) van después del subcomando. Las otras formas no existen."
+  },
+  {
+   "id": "s01-q35",
+   "type": "single",
+   "q": "¿Qué afirmación sobre SHA-1 y SHA-256 en Git es correcta?",
+   "options": [
+    "Git ya no admite SHA-1.",
+    "Git admite repositorios SHA-256 (`git init --object-format=sha256`) y Git 3.0 planea usarlo por defecto en los repositorios nuevos.",
+    "Con SHA-256 los hashes siguen teniendo 40 caracteres.",
+    "SHA-256 solo existe en GitHub, no en Git."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "SHA-1 sigue siendo el valor por defecto (con detección de colisiones desde Git 2.13) y no hay planes de eliminarlo. Git ya puede crear repositorios SHA-256, cuyos hashes tienen 64 caracteres, y Git 3.0 (aún sin fecha oficial) planea usarlo por defecto en los repositorios nuevos."
+  },
+  {
+   "id": "s01-q36",
+   "type": "single",
+   "q": "¿Qué hay en la carpeta `.git` de un proyecto?",
+   "options": [
+    "Una copia de seguridad del último archivo que editaste.",
+    "El repositorio: los commits con sus contenidos, las ramas y la configuración local.",
+    "Solo tu configuración global.",
+    "Archivos temporales que se pueden borrar sin problema."
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`.git` es el repositorio: base de datos de objetos, referencias (ramas), `HEAD` y `.git/config`. Borrarla elimina toda la historia. La configuración global está en `~/.gitconfig`, no ahí."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Pro Git (2.ª ed.) — 1.1 Acerca del control de versiones",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-About-Version-Control"
+  },
+  {
+   "title": "Pro Git — 1.2 Una breve historia de Git",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-A-Short-History-of-Git"
+  },
+  {
+   "title": "Pro Git — 1.3 ¿Qué es Git?",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-What-is-Git%3F"
+  },
+  {
+   "title": "Pro Git — 1.5 Instalación de Git",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-Installing-Git"
+  },
+  {
+   "title": "Pro Git — 1.6 Configurando Git por primera vez",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-First-Time-Git-Setup"
+  },
+  {
+   "title": "Pro Git — 1.7 Cómo obtener ayuda",
+   "url": "https://git-scm.com/book/en/v2/Getting-Started-Getting-Help"
+  },
+  {
+   "title": "Pro Git en español",
+   "url": "https://git-scm.com/book/es/v2"
+  },
+  {
+   "title": "git-config (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-config"
+  },
+  {
+   "title": "git-help (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-help"
+  },
+  {
+   "title": "git-var: orden de preferencia de GIT_EDITOR",
+   "url": "https://git-scm.com/docs/git-var"
+  },
+  {
+   "title": "git-hash-object (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-hash-object"
+  },
+  {
+   "title": "git-init (documentación oficial)",
+   "url": "https://git-scm.com/docs/git-init"
+  },
+  {
+   "title": "Git 3.0: cambios incompatibles previstos (BreakingChanges)",
+   "url": "https://git-scm.com/docs/BreakingChanges"
+  },
+  {
+   "title": "Transición de SHA-1 a SHA-256",
+   "url": "https://git-scm.com/docs/hash-function-transition"
+  },
+  {
+   "title": "Instalar Git en Windows",
+   "url": "https://git-scm.com/install/windows"
+  },
+  {
+   "title": "Instalar Git en macOS",
+   "url": "https://git-scm.com/install/mac"
+  },
+  {
+   "title": "Instalar Git en Linux",
+   "url": "https://git-scm.com/install/linux"
+  },
+  {
+   "title": "Git for Windows",
+   "url": "https://gitforwindows.org/"
+  },
+  {
+   "title": "Instalador de Git for Windows (pantallas y opciones, install.iss)",
+   "url": "https://github.com/git-for-windows/build-extra/blob/main/installer/install.iss"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.28 (init.defaultBranch)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-28/"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.46 (subcomandos de git config)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-46/"
+  },
+  {
+   "title": "GitHub Changelog — La rama por defecto de los repositorios nuevos es main (1-oct-2020)",
+   "url": "https://github.blog/changelog/2020-10-01-the-default-branch-for-newly-created-repositories-is-now-main/"
+  },
+  {
+   "title": "GitHub Blog — SHA-1 collision detection on GitHub.com",
+   "url": "https://github.blog/news-insights/company-news/sha-1-collision-detection-on-github-com/"
+  },
+  {
+   "title": "GitHub Docs — Associating text editors with Git",
+   "url": "https://docs.github.com/en/get-started/git-basics/associating-text-editors-with-git"
+  },
+  {
+   "title": "GitHub Docs — Setting your commit email address",
+   "url": "https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address"
+  },
+  {
+   "title": "VS Code — Launching from the command line (macOS)",
+   "url": "https://code.visualstudio.com/docs/setup/mac"
+  },
+  {
+   "title": "MDN — Command line crash course",
+   "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Getting_started/Environment_setup/Command_line"
+  },
+  {
+   "title": "Wikipedia — Git (historia y fechas)",
+   "url": "https://en.wikipedia.org/wiki/Git"
+  }
+ ]
+}

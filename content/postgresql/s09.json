@@ -1,0 +1,2602 @@
+{
+  "id": "s09",
+  "order": 9,
+  "title": "Subconsultas, CTE y operaciones de conjuntos",
+  "domain": "consultas",
+  "summary": "Aprende a escribir consultas dentro de consultas: subconsultas que devuelven un valor, una lista o una tabla, y CTE con WITH que dividen un problema en pasos con nombre. Recorrerás jerarquías de cualquier profundidad con WITH RECURSIVE (organigramas, árboles de categorías, la red de Metro), moverás filas entre tablas con CTE que modifican datos en una sola sentencia atómica y combinarás resultados con UNION, INTERSECT, EXCEPT y VALUES.",
+  "goal": "Resolver preguntas de varios pasos en una sola sentencia SQL —con subconsultas, CTE encadenadas, CTE recursivas, CTE que modifican datos y operaciones de conjuntos— prediciendo su resultado cuando hay NULL, conjuntos vacíos o ciclos.",
+  "objectives": [
+    "Clasificar una subconsulta como escalar, de lista, de existencia o de tabla y usarla en el lugar correcto de la consulta.",
+    "Filtrar con IN, ANY, ALL y EXISTS, prediciendo su resultado frente a NULL y a subconsultas vacías (incluida la trampa de NOT IN).",
+    "Distinguir subconsultas correlacionadas de no correlacionadas y reconocer en EXPLAIN un InitPlan, un SubPlan y un semi-join.",
+    "Reescribir consultas anidadas como CTE encadenadas y controlar su materialización con MATERIALIZED y NOT MATERIALIZED.",
+    "Recorrer jerarquías y grafos con WITH RECURSIVE, calculando nivel y ruta, ordenando con SEARCH y deteniendo ciclos con CYCLE.",
+    "Encadenar INSERT, UPDATE y DELETE en una sola sentencia con CTE y RETURNING, explicando qué ve cada parte por la instantánea común.",
+    "Combinar resultados con UNION, UNION ALL, INTERSECT y EXCEPT (y sus variantes ALL) y usar VALUES como tabla literal."
+  ],
+  "lessons": [
+    {
+      "id": "s09-l1",
+      "title": "Subconsultas: una consulta dentro de otra",
+      "minutes": 25,
+      "goals": [
+        "Clasificar una subconsulta como escalar, de lista, de existencia o de tabla según lo que devuelve y el lugar donde se usa.",
+        "Filtrar filas con IN, ANY, ALL y EXISTS, prediciendo el resultado cuando la subconsulta está vacía o contiene NULL.",
+        "Distinguir una subconsulta correlacionada de una no correlacionada y escribir ambas.",
+        "Calcular agregados sobre resultados ya agregados usando una tabla derivada en el FROM."
+      ],
+      "takeaways": [
+        "Una subconsulta es un SELECT entre paréntesis; lo que decide dónde puede ir es su forma: un valor (escalar), una columna de valores (lista), una tabla, o solo «¿hay filas?» (EXISTS).",
+        "Una subconsulta escalar sin filas vale NULL; con más de una fila falla en tiempo de ejecución con `more than one row returned by a subquery used as an expression`.",
+        "`IN` equivale a `= ANY` y `NOT IN` a `<> ALL`; si la lista contiene un NULL, `NOT IN` nunca es verdadero. Contra una lista vacía, `ALL` es verdadero y `ANY` es falso.",
+        "EXISTS solo pregunta si hay al menos una fila: nunca devuelve NULL y no le importan las columnas, por eso `NOT EXISTS` no tiene la trampa de `NOT IN`.",
+        "Una subconsulta correlacionada usa columnas de la consulta externa y se evalúa, conceptualmente, una vez por fila externa; el planificador suele convertir EXISTS e IN en un semi-join."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Pregunta de negocio: ¿qué productos cuestan más que el promedio del catálogo? Con lo que sabes, harías dos consultas: primero `SELECT avg(precio) FROM productos` (da unos $47.510) y luego copiarías ese número en un `WHERE precio > 47510`. Funciona hoy, pero mañana cambia un precio y el número copiado queda obsoleto. Una **subconsulta** resuelve las dos preguntas en una sola sentencia: escribes la consulta auxiliar entre paréntesis justo donde necesitas su resultado."
+        },
+        {
+          "type": "p",
+          "text": "El modelo mental: PostgreSQL trata la subconsulta como una pregunta auxiliar cuya **respuesta tiene una forma**. Lo que decide dónde puedes usarla no es lo que calcula, sino esa forma: ¿es un solo valor, una columna de valores, una tabla completa, o solo te interesa saber si hay filas?"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Forma",
+            "Qué devuelve",
+            "Dónde se usa",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "Escalar",
+              "1 fila × 1 columna (0 filas = NULL)",
+              "Donde iría un valor: SELECT, WHERE, HAVING, ORDER BY…",
+              "`(SELECT avg(precio) FROM productos)`"
+            ],
+            [
+              "Lista",
+              "N filas × 1 columna",
+              "A la derecha de `IN`, `NOT IN`, `= ANY`, `> ALL`…",
+              "`id IN (SELECT cliente_id FROM pedidos)`"
+            ],
+            [
+              "Existencia",
+              "Da igual: solo importa si hay al menos una fila",
+              "`EXISTS` / `NOT EXISTS`",
+              "`EXISTS (SELECT 1 FROM pedidos p WHERE …)`"
+            ],
+            [
+              "Tabla",
+              "N filas × M columnas",
+              "En el FROM (tabla derivada)",
+              "`FROM (SELECT …) AS t`"
+            ]
+          ]
+        },
+        {
+          "type": "diagram",
+          "title": "Cuatro formas de subconsulta y dónde encaja cada una",
+          "mermaid": "flowchart LR\n  S[\"Subconsulta<br/>(SELECT …)\"] --> E[\"Escalar<br/>1 fila × 1 columna\"]\n  S --> L[\"Lista<br/>N filas × 1 columna\"]\n  S --> X[\"Existencia<br/>solo importa si hay filas\"]\n  S --> T[\"Tabla<br/>N filas × M columnas\"]\n  E --> E2[\"Donde va un valor:<br/>SELECT, WHERE, HAVING\"]\n  L --> L2[\"IN, NOT IN,<br/>= ANY, > ALL\"]\n  X --> X2[\"EXISTS, NOT EXISTS\"]\n  T --> T2[\"FROM: tabla derivada\"]",
+          "caption": "La misma consulta auxiliar puede servir en varios lugares; lo que cambia es la forma que el lugar exige."
+        },
+        {
+          "type": "h",
+          "text": "Subconsultas escalares: un valor calculado al vuelo"
+        },
+        {
+          "type": "p",
+          "text": "Una subconsulta escalar devuelve exactamente un valor y puede ir en cualquier lugar donde escribirías un número o un texto. Si no depende de la fila externa, PostgreSQL la calcula **una sola vez** antes de recorrer la tabla (en el plan aparece como `InitPlan`) y reutiliza el valor."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT round(avg(precio)) AS promedio FROM productos;\n\nSELECT sku, nombre, precio,\n       precio - (SELECT round(avg(precio)) FROM productos) AS sobre_promedio\nFROM productos\nWHERE precio > (SELECT avg(precio) FROM productos)\nORDER BY precio DESC, sku;"
+        },
+        {
+          "type": "p",
+          "text": "La misma subconsulta aparece dos veces con papeles distintos: en el WHERE filtra y en el SELECT calcula una columna. Si mañana cambia un precio, la consulta sigue correcta sin tocarla. Fíjate en que el WHERE compara contra el promedio **sin redondear**: redondear solo sirve para mostrar."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Una subconsulta escalar **debe** devolver a lo más una fila y una columna. Lo de las columnas se detecta al analizar la consulta; lo de las filas, recién al ejecutarla: una consulta que hoy funciona puede fallar mañana si los datos cambian y la subconsulta empieza a devolver dos filas. Si devuelve **cero** filas no hay error: el valor es NULL."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "\\pset null '(nulo)'\n-- Cero filas: el valor es NULL, sin error\nSELECT (SELECT nombre FROM productos WHERE precio > 1000000) AS producto_millonario;\n\n-- Varias filas donde se esperaba un valor\nSELECT sku, nombre\nFROM productos\nWHERE precio = (SELECT precio FROM productos WHERE categoria_id = 3);\n\n-- Dos columnas donde se esperaba una\nSELECT nombre\nFROM categorias\nWHERE id = (SELECT id, nombre FROM categorias WHERE nombre = 'Audio');"
+        },
+        {
+          "type": "p",
+          "text": "Lee bien los mensajes: `more than one row returned by a subquery used as an expression` significa «pediste un valor y te llegaron varios» (Audio tiene 5 productos). Hay tres arreglos según lo que quieras decir: comparar contra **cualquiera** de ellos (`IN` o `= ANY`), contra **todos** (`ALL`), o reducirlos a uno con un agregado (`max`, `min`) o con una condición que garantice una sola fila (una clave primaria o una columna `UNIQUE`). El segundo error, `subquery must return only one column`, se detecta antes de ejecutar: por eso psql marca la posición con `^`."
+        },
+        {
+          "type": "h",
+          "text": "Subconsultas de lista: IN y la trampa de NOT IN"
+        },
+        {
+          "type": "p",
+          "text": "`expresión IN (subconsulta)` es verdadero si la expresión es igual a **alguna** fila de la subconsulta, que debe devolver una sola columna. Las subconsultas se pueden anidar: abajo, primero se buscan los proyectos en curso (sin fecha de fin), luego las asignaciones a esos proyectos y al final los empleados."
+        },
+        {
+          "type": "p",
+          "text": "Si necesitas comparar varias columnas a la vez, compara **tuplas**: `(a, b) IN (SELECT x, y …)`. En el segundo ejemplo, la tupla (departamento, sueldo) de cada empleado se busca entre los pares (departamento, sueldo máximo sin contar a los gerentes): así aparece quien gana más en cada departamento, fuera de la gerencia."
+        },
+        {
+          "type": "p",
+          "text": "`NOT IN` parece el opuesto natural de `IN`, pero con NULL se rompe. Las dos últimas consultas preguntan cuántos empleados **no son jefes de nadie**, es decir, cuyo id no aparece en la columna `jefe_id`. Predice el resultado antes de ejecutar."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT count(*) AS en_proyectos_en_curso\nFROM empleados\nWHERE id IN (SELECT empleado_id\n             FROM asignaciones\n             WHERE proyecto_id IN (SELECT id FROM proyectos WHERE fin IS NULL));\n\nSELECT departamento_id, nombre, apellido, cargo, sueldo\nFROM empleados\nWHERE (departamento_id, sueldo) IN (SELECT departamento_id, max(sueldo)\n                                    FROM empleados\n                                    WHERE cargo NOT LIKE 'Gerente%'\n                                    GROUP BY departamento_id)\nORDER BY departamento_id;\n\n-- ¿Cuántos empleados no son jefes de nadie?\nSELECT count(*) AS no_jefes_con_not_in\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados);\n\nSELECT count(*) AS no_jefes_sin_nulls\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados WHERE jefe_id IS NOT NULL);"
+        },
+        {
+          "type": "p",
+          "text": "Un detalle fino: la practicante no tiene departamento, así que la subconsulta produce el par (NULL, 500000), pero ella no aparece. Comparar tuplas con NULL da NULL, no verdadero: ni siquiera (NULL, 500000) es «igual» a (NULL, 500000)."
+        },
+        {
+          "type": "p",
+          "text": "¿Y `NOT IN`? ¡Cero empleados! El gerente general no tiene jefe: su `jefe_id` es NULL, así que la lista contiene un NULL. `x NOT IN (a, b, NULL)` significa `x <> a AND x <> b AND x <> NULL`, y `x <> NULL` es desconocido (NULL): el AND completo nunca llega a ser verdadero y ninguna fila pasa el filtro. Filtrando los NULL aparecen los 39 empleados sin subordinados."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Regla práctica: no uses `NOT IN (subconsulta)` si la columna de la subconsulta admite NULL. Prefiere `NOT EXISTS` (en seguida lo verás), que no tiene esta trampa. Es el mismo anti-join de la sección 8, visto ahora desde las subconsultas."
+        },
+        {
+          "type": "h",
+          "text": "ANY y ALL: comparar contra una lista con cualquier operador"
+        },
+        {
+          "type": "p",
+          "text": "`IN` solo compara por igualdad. `ANY` y `ALL` generalizan la idea a cualquier operador (`=`, `<>`, `<`, `>`, `<=`, `>=`): `precio > ANY (subconsulta)` es verdadero si el precio supera **a alguno** de los valores; `precio > ALL (subconsulta)`, si supera **a todos**. `SOME` es sinónimo de `ANY`."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Expresión",
+            "Equivale a",
+            "Es verdadera cuando…"
+          ],
+          "rows": [
+            [
+              "`x = ANY (sub)`",
+              "`x IN (sub)`",
+              "x es igual a algún valor"
+            ],
+            [
+              "`x <> ALL (sub)`",
+              "`x NOT IN (sub)`",
+              "x es distinto de todos (¡misma trampa con NULL!)"
+            ],
+            [
+              "`x > ALL (sub)`",
+              "`x > (SELECT max(…))`",
+              "x supera al mayor (pero con lista vacía ALL es verdadero y max da NULL)"
+            ],
+            [
+              "`x > ANY (sub)`",
+              "`x > (SELECT min(…))`",
+              "x supera al menor (con lista vacía, ANY es falso)"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "-- Más caros que TODOS los productos de Audio (categoría 3)\nSELECT sku, nombre, precio\nFROM productos\nWHERE precio > ALL (SELECT precio FROM productos WHERE categoria_id = 3)\nORDER BY precio DESC;\n\n-- ¿Y contra una lista vacía? (no existe la categoría 99)\nSELECT count(*) FILTER (WHERE precio > ALL (SELECT precio FROM productos WHERE categoria_id = 99)) AS mayor_que_todos,\n       count(*) FILTER (WHERE precio > ANY (SELECT precio FROM productos WHERE categoria_id = 99)) AS mayor_que_alguno\nFROM productos;"
+        },
+        {
+          "type": "p",
+          "text": "El producto más caro de Audio cuesta $149.990, y solo el notebook y la bicicleta lo superan. Contra una lista vacía, `ALL` es verdadero para los 49 productos (no hay ningún valor que lo contradiga: es la «verdad vacía» de la lógica) y `ANY` es falso para todos (no hay ninguno que lo cumpla). Si el id de la categoría estuviera mal escrito, `> ALL` devolvería **todo el catálogo** sin avisar."
+        },
+        {
+          "type": "h",
+          "text": "EXISTS y las subconsultas correlacionadas"
+        },
+        {
+          "type": "p",
+          "text": "`EXISTS (subconsulta)` responde una sola pregunta: ¿la subconsulta devuelve **al menos una fila**? Da `true` o `false` (nunca NULL), no le importan las columnas —por eso la convención es escribir `SELECT 1`— y deja de buscar en cuanto encuentra la primera fila."
+        },
+        {
+          "type": "p",
+          "text": "Casi siempre va **correlacionada**: la subconsulta usa columnas de la consulta externa (`s.jefe_id = e.id`). Una subconsulta correlacionada no se puede calcular de antemano porque su resultado depende de cada fila externa: conceptualmente se evalúa una vez **por cada fila** de afuera, usando los valores de esa fila como si fueran constantes. Como un garzón que, mesa por mesa, pregunta en la cocina si hay pedidos pendientes para esa mesa."
+        },
+        {
+          "type": "diagram",
+          "title": "Una subconsulta correlacionada se evalúa por cada fila externa",
+          "mermaid": "sequenceDiagram\n  participant E as Consulta externa (empleados e)\n  participant S as Subconsulta (cuenta subordinados)\n  E->>S: fila con e.id = 1\n  S-->>E: 5 subordinados directos\n  E->>S: fila con e.id = 2\n  S-->>E: 2 subordinados directos\n  E->>S: fila con e.id = 3\n  S-->>E: 3 subordinados directos\n  Note over E,S: … y así con cada fila externa",
+          "caption": "Conceptualmente, la subconsulta recibe el valor de e.id de cada fila. En la práctica, el planificador puede reescribirla como un join."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "-- Jefaturas: empleados con al menos un subordinado,\n-- y cuántos subordinados directos tiene cada uno\nSELECT e.id, e.nombre, e.apellido, e.cargo,\n       (SELECT count(*) FROM empleados s WHERE s.jefe_id = e.id) AS directos\nFROM empleados e\nWHERE EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id)\nORDER BY directos DESC, e.id;\n\n-- Y los que no son jefes de nadie, ahora sin trampa\nSELECT count(*) AS no_jefes_con_not_exists\nFROM empleados e\nWHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id);"
+        },
+        {
+          "type": "p",
+          "text": "Las dos subconsultas de la primera consulta son correlacionadas (usan `e.id`): la del SELECT es escalar y produce un número por fila; la del WHERE es de existencia. El jefe de Desarrollo tiene 8 subordinados directos (7 desarrolladores y la practicante). Y `NOT EXISTS` da los 39 que `NOT IN` perdía: el NULL de `jefe_id` simplemente no calza con ningún id, sin contaminar el resultado."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "No correlacionada",
+            "Correlacionada"
+          ],
+          "rows": [
+            [
+              "¿Usa columnas de afuera?",
+              "No",
+              "Sí (`s.jefe_id = e.id`)"
+            ],
+            [
+              "¿Se puede ejecutar sola?",
+              "Sí: cópiala y ejecútala",
+              "No: falla porque `e` no existe fuera"
+            ],
+            [
+              "¿Cuántas veces se evalúa?",
+              "Una vez (`InitPlan` en el plan)",
+              "Conceptualmente una por fila externa (`SubPlan`), salvo que el planificador la convierta en un join"
+            ],
+            [
+              "Ejemplo típico",
+              "`precio > (SELECT avg(precio) …)`",
+              "`EXISTS (SELECT 1 … WHERE p.cliente_id = c.id)`"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "«Correlacionada» no significa «lenta». PostgreSQL reescribe `EXISTS` e `IN (subconsulta)` como un **semi-join** (en EXPLAIN verás `Hash Semi Join`), que recorre cada tabla una sola vez. La que sí se ejecuta fila a fila es la subconsulta escalar correlacionada del SELECT (`SubPlan`): con tablas grandes, a veces conviene reemplazarla por un JOIN con GROUP BY. Lo medirás con EXPLAIN en la sección 15."
+        },
+        {
+          "type": "h",
+          "text": "Tablas derivadas: subconsultas en el FROM"
+        },
+        {
+          "type": "p",
+          "text": "El resultado de un SELECT es una tabla, así que puedes ponerlo en el FROM y consultarlo como a cualquier otra: es una **tabla derivada**. Es la solución cuando necesitas agregar sobre algo ya agregado. Ejemplo: el ticket promedio (el total promedio de un pedido). Primero hay que sumar los ítems de cada pedido y después promediar esos totales. Anidar los agregados directamente no se puede:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT avg(sum(cantidad * precio_unitario))\nFROM pedido_items\nGROUP BY pedido_id;\n\nSELECT count(*)          AS pedidos,\n       round(avg(total)) AS ticket_promedio,\n       max(total)        AS ticket_maximo\nFROM (\n  SELECT pedido_id, sum(cantidad * precio_unitario) AS total\n  FROM pedido_items\n  GROUP BY pedido_id\n) AS t;"
+        },
+        {
+          "type": "p",
+          "text": "La consulta interna produce una fila por pedido con su `total` (420 filas); la externa la trata como la tabla `t`. Las columnas de una tabla derivada son las del SELECT interno con sus alias: por eso el alias `total` importa (sin él, la columna se llamaría `sum`)."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Desde PostgreSQL 16, el alias de una subconsulta en el FROM es **opcional**: `FROM (SELECT …)` a secas funciona. El estándar SQL, las versiones anteriores y otros motores lo exigen, así que ponle siempre un alias; además, hace legible la consulta."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: (1) qué pasa si una subconsulta escalar devuelve 0 filas (NULL) o varias (error); (2) por qué `NOT IN` con un NULL no devuelve nada y cómo lo resuelve `NOT EXISTS`; (3) la diferencia entre correlacionada y no correlacionada; (4) qué da `ALL` contra un conjunto vacío (verdadero) y `ANY` (falso)."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Subconsulta",
+              "en": "subquery",
+              "def": "Un SELECT entre paréntesis dentro de otra sentencia."
+            },
+            {
+              "term": "Subconsulta escalar",
+              "en": "scalar subquery",
+              "def": "La que devuelve una fila y una columna; se usa como un valor."
+            },
+            {
+              "term": "Subconsulta correlacionada",
+              "en": "correlated subquery",
+              "def": "La que usa columnas de la consulta externa; su resultado depende de cada fila externa."
+            },
+            {
+              "term": "Tabla derivada",
+              "en": "derived table",
+              "def": "Una subconsulta en el FROM, que se consulta como si fuera una tabla."
+            },
+            {
+              "term": "Semi-join",
+              "en": "semi-join",
+              "def": "Unión que solo verifica si existe al menos una fila coincidente, sin duplicar filas. Así ejecuta PostgreSQL `EXISTS` e `IN`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s09-l2",
+      "title": "WITH: consultas por partes con nombre (CTE)",
+      "minutes": 20,
+      "goals": [
+        "Reescribir una consulta con subconsultas anidadas como una secuencia de CTE con nombre que se lee de arriba hacia abajo.",
+        "Encadenar varias CTE en una sola sentencia, usando en cada una los resultados de las anteriores.",
+        "Forzar o impedir la materialización de una CTE con MATERIALIZED y NOT MATERIALIZED, y verificar el efecto con EXPLAIN (COSTS OFF)."
+      ],
+      "takeaways": [
+        "Una CTE (`WITH nombre AS (…)`) es un resultado con nombre que existe solo mientras dura la sentencia que la define.",
+        "Cada CTE puede usar las que aparecen antes que ella; la consulta principal puede usarlas todas, incluso varias veces.",
+        "Por defecto (desde PostgreSQL 12), una CTE que es un SELECT sin funciones volátiles y se usa una sola vez se integra en la consulta principal; si se usa dos o más veces, se calcula una vez y se guarda (se materializa).",
+        "`MATERIALIZED` obliga a calcularla aparte (los filtros de afuera no entran); `NOT MATERIALIZED` obliga a integrarla, aunque se repita trabajo.",
+        "Una CTE no cambia el resultado respecto de la subconsulta equivalente: su valor está en la legibilidad y en poder reutilizar un paso."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Las subconsultas se anidan como muñecas rusas y se leen de adentro hacia afuera. Cuando la lógica tiene tres o cuatro pasos, eso se vuelve ilegible. La cláusula `WITH` permite escribir los pasos **en orden**, cada uno con un nombre, como las hojas auxiliares de una planilla: primero calculas «ventas por cliente», después «segmento de cada cliente» y al final el resumen. Cada paso se llama **CTE** (*Common Table Expression*, expresión de tabla común)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "WITH nombre1 [(columna, …)] AS [ [ NOT ] MATERIALIZED ] (\n       consulta1\n     ),\n     nombre2 AS (\n       consulta2          -- puede usar nombre1\n     )\nSELECT …                  -- puede usar nombre1 y nombre2\nFROM nombre1 JOIN nombre2 …;"
+        },
+        {
+          "type": "p",
+          "text": "Una sola palabra `WITH` al comienzo; las CTE se separan con comas; la lista de columnas es opcional (sin ella se usan los nombres del SELECT interno). Después de la última CTE viene la sentencia principal: un SELECT o, como verás en la lección 4, un INSERT, UPDATE o DELETE."
+        },
+        {
+          "type": "h",
+          "text": "Tu primera CTE: un resultado que se usa dos veces"
+        },
+        {
+          "type": "p",
+          "text": "¿Qué clientes compraron más del doble del promedio? Hay que calcular el gasto de cada cliente y **usarlo dos veces**: fila a fila y para sacar el promedio. Con subconsultas repetirías la agregación completa; con una CTE la escribes una vez:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT p.cliente_id, sum(i.cantidad * i.precio_unitario) AS total\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado <> 'cancelado'\n  GROUP BY p.cliente_id\n)\nSELECT cliente_id, total\nFROM ventas\nWHERE total > (SELECT 2 * avg(total) FROM ventas)\nORDER BY total DESC;"
+        },
+        {
+          "type": "p",
+          "text": "`ventas` se usa dos veces: en el FROM y dentro de la subconsulta escalar. Se lee como una receta: «primero calculo las ventas de cada cliente; después me quedo con los que superan el doble del promedio» (el promedio es de unos $562.000 por cliente, y 4 clientes superan el doble)."
+        },
+        {
+          "type": "h",
+          "text": "Reglas de alcance"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Una CTE existe **solo** dentro de su sentencia: al terminar el `;` desaparece. No es una tabla ni una vista.",
+            "Cada CTE ve a las anteriores, no a las posteriores (salvo con `WITH RECURSIVE`, que permite cualquier orden).",
+            "Si una CTE se llama igual que una tabla, dentro de esa sentencia **gana la CTE**: la tabla queda oculta.",
+            "Los nombres de las CTE de un mismo WITH no se pueden repetir (`WITH query name \"x\" specified more than once`)."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "WITH caros AS (\n  SELECT * FROM productos WHERE precio > 100000\n)\nSELECT count(*) FROM caros;\n\nSELECT count(*) FROM caros;\n\nWITH resumen AS (SELECT count(*) AS n FROM base),\n     base    AS (SELECT * FROM productos WHERE activo)\nSELECT n FROM resumen;"
+        },
+        {
+          "type": "p",
+          "text": "La segunda sentencia ya no ve a `caros`: murió con el `;` anterior. El tercer error trae un `DETAIL` y un `HINT` muy claros: `base` existe, pero se definió **después** de `resumen`; reordena las CTE para que cada una use solo las anteriores (o usa `WITH RECURSIVE`, que acepta referencias hacia adelante; lo verás en la próxima lección)."
+        },
+        {
+          "type": "h",
+          "text": "Varias CTE encadenadas"
+        },
+        {
+          "type": "p",
+          "text": "El verdadero poder aparece al encadenar pasos. Segmentemos a los clientes según lo que han comprado: «oro» desde $1.000.000, «plata» desde $500.000 y «bronce» el resto; y resumamos cada segmento."
+        },
+        {
+          "type": "diagram",
+          "title": "Una consulta en tres pasos con nombre",
+          "mermaid": "flowchart LR\n  T[\"pedidos +<br/>pedido_items\"] --> V[\"ventas<br/>1 fila por cliente<br/>con su total\"]\n  V --> S[\"segmentos<br/>agrega oro, plata<br/>o bronce\"]\n  S --> R[\"SELECT final<br/>1 fila por segmento\"]",
+          "caption": "Cada CTE toma el resultado de la anterior. Puedes probar cada paso por separado: basta cambiar el SELECT final por SELECT * FROM el_paso."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH ventas AS (\n  SELECT p.cliente_id, sum(i.cantidad * i.precio_unitario) AS total\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado <> 'cancelado'\n  GROUP BY p.cliente_id\n),\nsegmentos AS (\n  SELECT cliente_id, total,\n         CASE WHEN total >= 1000000 THEN 'oro'\n              WHEN total >= 500000  THEN 'plata'\n              ELSE 'bronce'\n         END AS segmento\n  FROM ventas\n)\nSELECT segmento,\n       count(*)          AS clientes,\n       sum(total)        AS ventas,\n       round(avg(total)) AS promedio\nFROM segmentos\nGROUP BY segmento\nORDER BY ventas DESC;"
+        },
+        {
+          "type": "p",
+          "text": "Los 6 clientes «oro» compran más ($8.877.920) que los 25 «bronce» juntos ($6.467.510). Para depurar una cadena así, cambia el SELECT final por `SELECT * FROM segmentos` y revisa el paso intermedio: es la gran ventaja de tener pasos con nombre."
+        },
+        {
+          "type": "table",
+          "head": [
+            "",
+            "CTE (WITH)",
+            "Subconsulta en el FROM",
+            "Vista (sección 12)"
+          ],
+          "rows": [
+            [
+              "¿Dónde vive?",
+              "Solo durante la sentencia",
+              "Solo dentro de esa consulta",
+              "En la base de datos, hasta que la borres"
+            ],
+            [
+              "¿Se puede usar varias veces?",
+              "Sí, en toda la sentencia",
+              "No: hay que repetirla",
+              "Sí, en cualquier consulta"
+            ],
+            [
+              "¿Cómo se lee?",
+              "De arriba hacia abajo, con nombres",
+              "De adentro hacia afuera",
+              "Como una tabla más"
+            ],
+            [
+              "¿Puede contener INSERT, UPDATE o DELETE?",
+              "Sí (lección 4)",
+              "No",
+              "No"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "¿Se calcula aparte o se integra? MATERIALIZED y NOT MATERIALIZED"
+        },
+        {
+          "type": "p",
+          "text": "Una CTE se puede ejecutar de dos maneras. **Materializada**: PostgreSQL la calcula una vez, guarda el resultado en un almacenamiento temporal y la consulta principal lee de ahí. **Integrada** (*inline*): PostgreSQL mete su texto dentro de la consulta principal, como si fuera una subconsulta, y optimiza todo junto; por ejemplo, puede empujar un `WHERE id = 42` hacia adentro y usar un índice."
+        },
+        {
+          "type": "p",
+          "text": "La regla por defecto (desde PostgreSQL 12): una CTE que es un SELECT sin funciones volátiles y **se usa una sola vez** se integra; si se usa **dos o más veces**, se materializa. Antes de la versión 12 siempre se materializaban, y por eso textos antiguos hablan de las CTE como «barreras de optimización». Puedes forzar el comportamiento con `AS MATERIALIZED (…)` o `AS NOT MATERIALIZED (…)`. Míralo con `EXPLAIN (COSTS OFF)`, un adelanto de la sección 15: muestra cómo piensa ejecutar la consulta, sin las cifras de costo."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "EXPLAIN (COSTS OFF)\nWITH p AS (SELECT * FROM pedidos)\nSELECT * FROM p WHERE id = 42;\n\nEXPLAIN (COSTS OFF)\nWITH p AS MATERIALIZED (SELECT * FROM pedidos)\nSELECT * FROM p WHERE id = 42;"
+        },
+        {
+          "type": "p",
+          "text": "En el primer plan la CTE desapareció: el filtro llegó hasta la tabla y PostgreSQL usó el índice de la clave primaria (`Index Scan using pedidos_pkey`). En el segundo, `MATERIALIZED` obliga a leer los 420 pedidos completos (`Seq Scan on pedidos`), guardarlos y recién después filtrar sobre esa copia (`CTE Scan on p` con `Filter`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "EXPLAIN (COSTS OFF)\nWITH p AS (SELECT * FROM pedidos)\nSELECT * FROM p a JOIN p b ON a.id = b.id + 1\nWHERE a.id = 42;\n\nEXPLAIN (COSTS OFF)\nWITH p AS NOT MATERIALIZED (SELECT * FROM pedidos)\nSELECT * FROM p a JOIN p b ON a.id = b.id + 1\nWHERE a.id = 42;"
+        },
+        {
+          "type": "p",
+          "text": "Usada dos veces, la CTE se materializa por defecto: un solo cálculo (`CTE p`) y dos lecturas (`CTE Scan on p a` y `CTE Scan on p b`). Con `NOT MATERIALIZED` se integra en ambos lugares: aparecen dos lecturas de `pedidos` y el índice vuelve a servir para `a.id = 42`."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "¿Cuándo forzar? `MATERIALIZED` conviene cuando quieres que un cálculo caro se haga una sola vez o cuando no quieres que el planificador mezcle esa parte con el resto; `NOT MATERIALIZED`, cuando la CTE se usa varias veces pero cada uso filtra pocas filas por un índice. Sin medir, no fuerces nada: el comportamiento por defecto suele ser el correcto."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Una CTE con funciones volátiles (`random()`, `clock_timestamp()`…) **nunca** se integra, ni siquiera con `NOT MATERIALIZED` (que en ese caso se ignora): se calcula una sola vez. Es justo lo que quieres si, por ejemplo, sorteas un ganador y lo usas en dos partes de la consulta; con una subconsulta repetida sortearías dos veces."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: qué es una CTE y cuánto vive; si una CTE se materializa por defecto (desde la versión 12: usada una vez, se integra; usada varias veces, se materializa); para qué sirven `MATERIALIZED` y `NOT MATERIALIZED`; y en qué se diferencia una CTE de una vista."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "CTE",
+              "en": "Common Table Expression",
+              "def": "Consulta auxiliar con nombre definida en un `WITH`, visible solo durante esa sentencia."
+            },
+            {
+              "term": "Materializar",
+              "en": "materialize",
+              "def": "Calcular la CTE una vez y guardar su resultado para leerlo cuantas veces haga falta."
+            },
+            {
+              "term": "Integrar",
+              "en": "inline",
+              "def": "Copiar la CTE dentro de la consulta principal para optimizarlas juntas."
+            },
+            {
+              "term": "Barrera de optimización",
+              "en": "optimization fence",
+              "def": "Parte de una consulta que el planificador optimiza por separado; una CTE materializada lo es."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s09-l3",
+      "title": "WITH RECURSIVE: jerarquías, árboles y series",
+      "minutes": 25,
+      "goals": [
+        "Escribir una CTE recursiva con término ancla y término recursivo, y trazar a mano sus vueltas.",
+        "Recorrer jerarquías (organigrama, árbol de categorías) hacia abajo y hacia arriba, calculando nivel y ruta.",
+        "Ordenar el recorrido con SEARCH DEPTH FIRST o BREADTH FIRST y detener ciclos con CYCLE o con un arreglo de camino."
+      ],
+      "takeaways": [
+        "Una CTE recursiva es «ancla UNION [ALL] término recursivo»; aunque se llame recursiva, es una iteración: cada vuelta procesa solo las filas nuevas de la vuelta anterior (la tabla de trabajo).",
+        "Termina cuando una vuelta no produce filas: la condición de término vive en el WHERE o en el JOIN del término recursivo.",
+        "El ancla fija los tipos de las columnas: si el término recursivo produce otro tipo (numeric, varchar sin largo), convierte en el ancla.",
+        "`SEARCH DEPTH FIRST / BREADTH FIRST BY … SET col` (desde PostgreSQL 14) calcula una columna para ordenar el recorrido; igual hay que escribir ORDER BY.",
+        "`CYCLE col SET marca USING camino` (desde PostgreSQL 14) corta las ramas que repiten un valor; `UNION` sin ALL solo detiene un ciclo si la fila repetida es idéntica."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "¿Cuántas personas trabajan, directa o indirectamente, bajo la gerente de Tecnología? Con un self join llegas a sus subordinados directos; con dos, a los de segundo nivel… pero no sabes cuántos niveles hay, y cada nivel sería otro JOIN. Las jerarquías (organigramas, categorías con subcategorías, carpetas, piezas que se arman con otras piezas) necesitan algo que **repita un paso hasta que no quede nada nuevo**: `WITH RECURSIVE`."
+        },
+        {
+          "type": "diagram",
+          "title": "El organigrama de Andes Digital (tres primeros niveles)",
+          "mermaid": "flowchart TD\n  G[\"1 · Benjamín Pérez<br/>Gerente general\"]\n  G --> F[\"2 · Rodrigo Tapia<br/>Finanzas\"]\n  G --> T[\"3 · Agustina Núñez<br/>Tecnología\"]\n  G --> V[\"4 · Florencia Martínez<br/>Ventas\"]\n  G --> O[\"5 · Felipe Cortés<br/>Operaciones\"]\n  G --> P[\"6 · Agustín Torres<br/>Personas\"]\n  F --> J7[\"7 · Contabilidad<br/>3 a cargo\"]\n  F --> J8[\"8 · Tesorería<br/>2 a cargo\"]\n  T --> J9[\"9 · Desarrollo<br/>8 a cargo\"]\n  T --> J10[\"10 · Datos<br/>6 a cargo\"]\n  T --> J11[\"11 · Infraestructura<br/>3 a cargo\"]\n  V --> J12[\"12 · Ventas Zona Sur<br/>4 a cargo\"]\n  V --> J13[\"13 · Ventas Zona Centro<br/>4 a cargo\"]\n  O --> J14[\"14 · Logística<br/>2 a cargo\"]\n  O --> J15[\"15 · Bodega<br/>5 a cargo\"]\n  P --> J16[\"16 · Reclutamiento<br/>2 a cargo\"]",
+          "caption": "Cada flecha es un jefe_id. Bajo las 10 jefaturas hay 39 personas más: 55 empleados en 4 niveles. La practicante (sin departamento) cuelga del jefe de Desarrollo."
+        },
+        {
+          "type": "h",
+          "text": "Anatomía de una CTE recursiva"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "code": "WITH RECURSIVE nombre (columnas) AS (\n    término ancla          -- no se refiere a «nombre»: el punto de partida\n  UNION ALL                -- o UNION, que descarta filas repetidas\n    término recursivo      -- se refiere a «nombre» una sola vez\n)\nSELECT … FROM nombre;"
+        },
+        {
+          "type": "p",
+          "text": "Aunque se llama «recursiva», por dentro es una **iteración** (la propia documentación lo aclara). PostgreSQL no vuelve a leer todo el resultado en cada vuelta, sino solo las filas **nuevas** de la vuelta anterior, que guarda en una *tabla de trabajo*:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Ejecuta el término ancla. Sus filas van al resultado y a la tabla de trabajo.",
+            "Mientras la tabla de trabajo no esté vacía, ejecuta el término recursivo reemplazando la autorreferencia por **la tabla de trabajo** (no por todo lo acumulado).",
+            "Con `UNION` descarta las filas repetidas (también las que ya estaban en el resultado); con `UNION ALL` las conserva todas.",
+            "Las filas que quedan se agregan al resultado y pasan a ser la nueva tabla de trabajo.",
+            "Cuando una vuelta no produce filas, termina y entrega todo lo acumulado."
+          ]
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo itera una CTE recursiva",
+          "mermaid": "flowchart TD\n  A[\"Ejecuta el término ancla\"] --> B[\"Sus filas van al resultado<br/>y a la tabla de trabajo\"]\n  B --> C{\"¿La tabla de trabajo<br/>está vacía?\"}\n  C -->|\"No\"| D[\"Ejecuta el término recursivo<br/>usando SOLO la tabla de trabajo\"]\n  D --> E[\"UNION: descarta repetidas<br/>UNION ALL: conserva todo\"]\n  E --> F[\"Las filas nuevas van al resultado<br/>y reemplazan la tabla de trabajo\"]\n  F --> C\n  C -->|\"Sí\"| G[\"Fin: entrega todo lo acumulado\"]",
+          "caption": "Si el término recursivo siempre produce filas nuevas, el ciclo nunca termina: la condición de término es responsabilidad tuya."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "-- La serie 1..5\nWITH RECURSIVE t(n) AS (\n  VALUES (1)\n  UNION ALL\n  SELECT n + 1 FROM t WHERE n < 5\n)\nSELECT n FROM t;\n\n-- La suma de 1 a 100 (el ejemplo de la documentación)\nWITH RECURSIVE t(n) AS (\n  VALUES (1)\n  UNION ALL\n  SELECT n + 1 FROM t WHERE n < 100\n)\nSELECT sum(n) FROM t;\n\n-- Sin condición de término: solo el LIMIT la detiene\nWITH RECURSIVE sin_fin(n) AS (\n  VALUES (1)\n  UNION ALL\n  SELECT n + 1 FROM sin_fin\n)\nSELECT n FROM sin_fin LIMIT 3;"
+        },
+        {
+          "type": "p",
+          "text": "Traza la primera: el ancla produce `1`. Vuelta 1: la tabla de trabajo es {1} y el término recursivo produce {2}. Vuelta 2: produce {3}… En la vuelta 5 la tabla de trabajo es {5}, `WHERE n < 5` no deja pasar nada, la vuelta produce cero filas y la iteración termina. **La condición de término vive en el término recursivo**: si la olvidas, la consulta no termina nunca."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "La tercera consulta no tiene condición de término y solo se detiene porque PostgreSQL evalúa las filas de una CTE a medida que la consulta principal las pide, y el `LIMIT 3` deja de pedir. La documentación lo presenta como un truco para **probar**, no para producción: basta un ORDER BY o un JOIN afuera para que la consulta vuelva a ser infinita. En la plataforma, una consulta así se cancela a los 60 segundos; en un servidor real, sigue hasta que alguien la cancele o se agote el espacio temporal."
+        },
+        {
+          "type": "h",
+          "text": "Series con memoria: lo que generate_series no puede hacer"
+        },
+        {
+          "type": "p",
+          "text": "`generate_series` (sección 4) produce series donde cada valor se calcula solo. Una CTE recursiva sirve cuando **cada valor depende del anterior**. Por ejemplo, una cuenta de ahorro para la vivienda: depositas $150.000 al mes y el saldo gana 0,4 % mensual. El saldo de cada mes es el del mes anterior multiplicado por 1,004, más el depósito."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "errors": true,
+          "code": "-- Intento 1: el ancla es integer y el término recursivo produce numeric\nWITH RECURSIVE ahorro(mes, saldo) AS (\n  VALUES (0, 0)\n  UNION ALL\n  SELECT mes + 1, saldo * 1.004 + 150000\n  FROM ahorro\n  WHERE mes < 12\n)\nSELECT * FROM ahorro;\n\n-- Intento 2: el ancla declara el tipo correcto\nWITH RECURSIVE ahorro(mes, saldo) AS (\n  VALUES (0, 0::numeric)\n  UNION ALL\n  SELECT mes + 1, round(saldo * 1.004 + 150000)\n  FROM ahorro\n  WHERE mes < 12\n)\nSELECT mes, saldo FROM ahorro;"
+        },
+        {
+          "type": "p",
+          "text": "El tipo de cada columna lo fija el **ancla**. Si el término recursivo produce otro tipo (aquí `numeric`, por el 1.004), PostgreSQL no convierte solo: falla con `recursive query \"ahorro\" column 2 has type integer in non-recursive term but type numeric overall` y sugiere `Cast the output of the non-recursive term to the correct type`. El arreglo es convertir en el ancla (`0::numeric`). Tras 12 meses depositaste $1.800.000 y tienes $1.840.132. Con textos pasa algo parecido: si el ancla es `'a'::varchar(10)` y el término recursivo concatena, el mensaje es `column 1 has type character varying(10) in non-recursive term but type character varying overall`; conviértelo a `text` en el ancla."
+        },
+        {
+          "type": "h",
+          "text": "El organigrama: nivel y ruta"
+        },
+        {
+          "type": "p",
+          "text": "Para recorrer un árbol hacia abajo, el ancla elige la raíz y el término recursivo une la tabla con la CTE por la relación padre-hijo: «dame los empleados cuyo jefe está entre las filas de la vuelta anterior». De paso se arrastran columnas calculadas: el nivel (`o.nivel + 1`) y la ruta desde la raíz (`o.ruta || ' > ' || …`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "WITH RECURSIVE org AS (\n  -- ancla: la raíz del árbol\n  SELECT id, cargo, 1 AS nivel,\n         nombre || ' ' || split_part(apellido, ' ', 1) AS ruta\n  FROM empleados\n  WHERE jefe_id IS NULL\n  UNION ALL\n  -- término recursivo: quienes reportan a alguien de la vuelta anterior\n  SELECT e.id, e.cargo, o.nivel + 1,\n         o.ruta || ' > ' || e.nombre || ' ' || split_part(e.apellido, ' ', 1)\n  FROM empleados e\n  JOIN org o ON e.jefe_id = o.id\n)\nSELECT id, nivel, cargo, ruta\nFROM org\nWHERE nivel <= 3\nORDER BY nivel, id;\n\n-- ¿Cuántas personas hay en cada nivel?\nWITH RECURSIVE org AS (\n  SELECT id, 1 AS nivel FROM empleados WHERE jefe_id IS NULL\n  UNION ALL\n  SELECT e.id, o.nivel + 1 FROM empleados e JOIN org o ON e.jefe_id = o.id\n)\nSELECT nivel, count(*) AS personas\nFROM org\nGROUP BY nivel\nORDER BY nivel;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Vuelta",
+            "Tabla de trabajo que entra",
+            "Filas nuevas que salen",
+            "Acumulado"
+          ],
+          "rows": [
+            [
+              "Ancla",
+              "—",
+              "1 (el gerente general)",
+              "1"
+            ],
+            [
+              "1",
+              "1 fila (id 1)",
+              "5 gerentes de área",
+              "6"
+            ],
+            [
+              "2",
+              "5 filas",
+              "10 jefaturas",
+              "16"
+            ],
+            [
+              "3",
+              "10 filas",
+              "39 personas",
+              "55"
+            ],
+            [
+              "4",
+              "39 filas",
+              "0: nadie reporta a ellas",
+              "55 → fin"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "En la vuelta 4 el término recursivo busca empleados cuyo jefe esté entre esas 39 personas, no encuentra a nadie y la iteración termina sola: en un árbol, el fin llega naturalmente cuando se acaban las hojas. El filtro `WHERE nivel <= 3` de la consulta principal no detiene la recursión (se aplica después); solo elige qué mostrar."
+        },
+        {
+          "type": "h",
+          "text": "Hacia arriba y hacia abajo desde cualquier nodo"
+        },
+        {
+          "type": "p",
+          "text": "Cambiando el ancla y el sentido del JOIN recorres cualquier parte del árbol. **Hacia arriba** (la cadena de mando de alguien): el ancla es la persona y en cada vuelta se busca al jefe de la fila anterior (`j.id = s.jefe_id`). **Hacia abajo** (todo el equipo de alguien): el ancla es el jefe y se buscan quienes reportan a las filas anteriores (`e.jefe_id = q.id`)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "-- Hacia arriba: la cadena de mando de la practicante (id 55)\nWITH RECURSIVE jefes AS (\n  SELECT id, nombre, apellido, cargo, jefe_id, 0 AS distancia\n  FROM empleados\n  WHERE id = 55\n  UNION ALL\n  SELECT j.id, j.nombre, j.apellido, j.cargo, j.jefe_id, s.distancia + 1\n  FROM empleados j\n  JOIN jefes s ON j.id = s.jefe_id\n)\nSELECT distancia, id, nombre, apellido, cargo\nFROM jefes\nORDER BY distancia;\n\n-- Hacia abajo: todo el equipo del gerente de Finanzas (id 2)\nWITH RECURSIVE equipo AS (\n  SELECT id, nombre, apellido, cargo, 0 AS nivel\n  FROM empleados\n  WHERE id = 2\n  UNION ALL\n  SELECT e.id, e.nombre, e.apellido, e.cargo, q.nivel + 1\n  FROM empleados e\n  JOIN equipo q ON e.jefe_id = q.id\n)\nSELECT nivel, id, nombre, apellido, cargo\nFROM equipo\nORDER BY nivel, id;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Truco para no confundir el sentido: di el JOIN en palabras. Hacia abajo: «los empleados **cuyo jefe** es alguien de la vuelta anterior» → `e.jefe_id = anterior.id`. Hacia arriba: «el empleado **que es jefe** de alguien de la vuelta anterior» → `j.id = anterior.jefe_id`. Hacia arriba la iteración termina al llegar a la raíz, cuyo `jefe_id` es NULL y no calza con nadie."
+        },
+        {
+          "type": "h",
+          "text": "Árboles de categorías y el orden del recorrido: SEARCH"
+        },
+        {
+          "type": "p",
+          "text": "El árbol de categorías de la tienda tiene hoy dos niveles (Tecnología > Audio), pero la misma consulta sirve para cualquier profundidad. En el ejemplo se agregan antes dos subcategorías más profundas (Notebooks, dentro de Computación, y Gamer, dentro de Notebooks) para comprobarlo."
+        },
+        {
+          "type": "p",
+          "text": "Para mostrar un árbol como árbol (cada hijo justo debajo de su padre), el orden importa. Desde PostgreSQL 14, la cláusula `SEARCH`, escrita después del paréntesis de la CTE, agrega una columna de orden: `SEARCH DEPTH FIRST BY col SET orden` recorre en **profundidad** (cada rama completa antes de pasar a la siguiente) y `SEARCH BREADTH FIRST BY col SET orden` recorre **por niveles**. Igual tienes que escribir `ORDER BY orden`: la cláusula solo calcula la columna."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "setup": "INSERT INTO categorias (id, nombre, padre_id) VALUES (14, 'Notebooks', 2), (15, 'Gamer', 14);",
+          "code": "WITH RECURSIVE arbol AS (\n  SELECT id, nombre, 1 AS nivel\n  FROM categorias\n  WHERE padre_id IS NULL\n  UNION ALL\n  SELECT c.id, c.nombre, a.nivel + 1\n  FROM categorias c\n  JOIN arbol a ON c.padre_id = a.id\n) SEARCH DEPTH FIRST BY id SET orden\nSELECT repeat('    ', nivel - 1) || nombre AS categoria, nivel, orden\nFROM arbol\nORDER BY orden;\n\nWITH RECURSIVE arbol AS (\n  SELECT id, nombre, 1 AS nivel\n  FROM categorias\n  WHERE padre_id IS NULL\n  UNION ALL\n  SELECT c.id, c.nombre, a.nivel + 1\n  FROM categorias c\n  JOIN arbol a ON c.padre_id = a.id\n) SEARCH BREADTH FIRST BY id SET orden\nSELECT id, nombre, nivel, orden\nFROM arbol\nORDER BY orden;"
+        },
+        {
+          "type": "p",
+          "text": "La columna `orden` es un detalle interno. En profundidad es un arreglo con el camino de `id` desde la raíz (por ejemplo `{(1),(2),(14)}`), que ordena como una ruta; por niveles es un par (profundidad, id), por ejemplo `(2,14)`, con la raíz en profundidad 0. Úsala para ordenar y no la muestres en un informe."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "`SEARCH` y `CYCLE` son del estándar SQL y llegaron a PostgreSQL en la versión 14. Antes (y en motores que no los tienen) se logra lo mismo a mano: para profundidad, arrastra un arreglo con el camino (`ARRAY[id]` en el ancla y `camino || e.id` en el término recursivo) y ordena por él; para niveles, ordena por la columna `nivel`."
+        },
+        {
+          "type": "h",
+          "text": "Ciclos: cuando el grafo vuelve sobre sí mismo"
+        },
+        {
+          "type": "p",
+          "text": "Un árbol bien formado no tiene ciclos, pero los datos reales a veces sí: un error de digitación deja al gerente general reportando a una operaria de bodega, o el grafo es cíclico por naturaleza (en la red de Metro puedes ir de Baquedano a Salvador y volver). Con un ciclo, el término recursivo encuentra filas «nuevas» para siempre."
+        },
+        {
+          "type": "diagram",
+          "title": "Un error en los datos crea un ciclo",
+          "mermaid": "flowchart LR\n  A[\"48 · Emilia Riquelme<br/>operaria de bodega\"] -->|\"jefe_id = 15\"| B[\"15 · Rodrigo Gutiérrez<br/>jefe de Bodega\"]\n  B -->|\"jefe_id = 5\"| C[\"5 · Felipe Cortés<br/>gerente de Operaciones\"]\n  C -->|\"jefe_id = 1\"| D[\"1 · Benjamín Pérez<br/>gerente general\"]\n  D -.->|\"jefe_id = 48 (error)\"| A",
+          "caption": "Si el gerente general queda con jefe_id = 48, subir por la cadena de mando nunca llega a una raíz: 48 → 15 → 5 → 1 → 48 → …"
+        },
+        {
+          "type": "p",
+          "text": "La cláusula `CYCLE` (PostgreSQL 14) vigila una o más columnas: `CYCLE id SET es_ciclo USING camino` agrega la columna `camino` (los valores de `id` visitados en esa rama) y la bandera `es_ciclo`. Cuando una fila repite un `id` que ya está en su camino, la marca como ciclo y **no la sigue expandiendo**."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "setup": "UPDATE empleados SET jefe_id = 48 WHERE id = 1;",
+          "code": "-- Con el error en los datos: 48 → 15 → 5 → 1 → 48 → …\nWITH RECURSIVE cadena AS (\n  SELECT id, nombre, apellido, jefe_id\n  FROM empleados\n  WHERE id = 48\n  UNION ALL\n  SELECT j.id, j.nombre, j.apellido, j.jefe_id\n  FROM empleados j\n  JOIN cadena c ON j.id = c.jefe_id\n) CYCLE id SET es_ciclo USING camino\nSELECT id, nombre, apellido, jefe_id, es_ciclo, camino\nFROM cadena;\n\n-- La versión a mano, válida en cualquier versión\nWITH RECURSIVE cadena AS (\n  SELECT id, nombre, jefe_id, ARRAY[id] AS camino\n  FROM empleados\n  WHERE id = 48\n  UNION ALL\n  SELECT j.id, j.nombre, j.jefe_id, c.camino || j.id\n  FROM empleados j\n  JOIN cadena c ON j.id = c.jefe_id\n  WHERE j.id <> ALL (c.camino)\n)\nSELECT id, nombre, jefe_id, camino\nFROM cadena;"
+        },
+        {
+          "type": "p",
+          "text": "Con `CYCLE`, la quinta fila (48 otra vez) aparece con `es_ciclo = t` y ahí se corta la rama; filtra con `WHERE NOT es_ciclo` si no la quieres ver. Si prefieres otras marcas, `SET es_ciclo TO 'S' DEFAULT 'N'`. La versión a mano hace lo mismo con un arreglo: `j.id <> ALL (c.camino)` impide volver a un nodo visitado (sí, es el `<> ALL` de la lección 1). En el ejercicio del Metro usarás `CYCLE` sobre una red real, llena de ciclos."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "¿Y si cambio `UNION ALL` por `UNION`? `UNION` descarta una fila solo si es **idéntica** a otra ya producida. En la cadena de arriba, sin columnas extra, la fila de Emilia se repetiría idéntica y la iteración se detendría. Pero apenas agregas `nivel` o `ruta`, cada fila es distinta (nivel 5, nivel 9…) y `UNION` ya no te protege. Para ciclos, usa `CYCLE` o el arreglo de camino."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: las dos partes de una CTE recursiva y qué las une (`UNION` o `UNION ALL`); cuándo termina (cuando una vuelta no produce filas); que el término recursivo solo ve las filas de la vuelta anterior; qué no se permite en el término recursivo (agregados como `count(*)`, `ORDER BY`, referirse a la CTE más de una vez); y cómo evitar ciclos."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Término ancla",
+              "en": "non-recursive term",
+              "def": "La parte de la CTE recursiva que no se refiere a sí misma: produce las filas iniciales."
+            },
+            {
+              "term": "Término recursivo",
+              "en": "recursive term",
+              "def": "La parte que se refiere a la propia CTE; en cada vuelta lee solo la tabla de trabajo."
+            },
+            {
+              "term": "Tabla de trabajo",
+              "en": "working table",
+              "def": "Las filas producidas en la vuelta anterior; es lo único que ve el término recursivo."
+            },
+            {
+              "term": "Recorrido en profundidad / por niveles",
+              "en": "depth-first / breadth-first",
+              "def": "Orden en que se listan los nodos de un árbol: rama por rama, o nivel por nivel. `SEARCH` calcula la columna para ordenar así."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s09-l4",
+      "title": "CTE que modifican datos: mover, registrar y encadenar cambios",
+      "minutes": 20,
+      "goals": [
+        "Encadenar INSERT, UPDATE y DELETE dentro de un WITH, pasando filas de una parte a otra con RETURNING.",
+        "Mover filas de una tabla a otra (archivar) en una sola sentencia atómica.",
+        "Predecir qué ve cada parte de la sentencia, sabiendo que todas trabajan sobre la misma instantánea."
+      ],
+      "takeaways": [
+        "Dentro de un WITH puedes usar INSERT, UPDATE, DELETE y, desde PostgreSQL 17, MERGE; lo que cada una devuelve con RETURNING es lo único que las demás partes pueden leer de ella.",
+        "Todas las partes se ejecutan con la misma instantánea: la consulta principal ve las tablas como estaban antes de la sentencia, no el resultado de los cambios.",
+        "Las CTE que modifican datos se ejecutan siempre y completas, aunque nadie lea su resultado; y la sentencia es atómica: si una parte falla, no queda nada hecho.",
+        "No modifiques la misma fila dos veces en una sentencia: solo una modificación queda y no se puede predecir de forma confiable cuál.",
+        "Un WITH con una sentencia que modifica datos debe ir en el nivel superior, no dentro de una subconsulta."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Archivar préstamos antiguos es «mover» filas: borrarlas de `prestamos` e insertarlas en `prestamos_historicos`. Con dos sentencias separadas tienes que repetir exactamente el mismo filtro dos veces, cuidar que nadie cambie un préstamo entre una y otra, y envolverlo todo en una transacción. Con una CTE que modifica datos, el DELETE entrega las filas que borró y el INSERT las recibe: **una sola sentencia, un solo filtro, todo o nada**."
+        },
+        {
+          "type": "diagram",
+          "title": "Mover filas con una CTE",
+          "mermaid": "flowchart LR\n  A[\"prestamos\"] -->|\"DELETE … RETURNING *\"| M[\"movidos<br/>(CTE: las filas borradas)\"]\n  M -->|\"INSERT … SELECT * FROM movidos\"| B[\"prestamos_historicos\"]",
+          "caption": "RETURNING convierte lo que hizo el DELETE en una tabla que la siguiente parte puede leer."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "setup": "CREATE TABLE prestamos_historicos (LIKE prestamos);",
+          "code": "SELECT count(*) AS a_mover\nFROM prestamos\nWHERE fecha_devolucion < '2025-04-01';\n\nWITH movidos AS (\n  DELETE FROM prestamos\n  WHERE fecha_devolucion < '2025-04-01'\n  RETURNING *\n)\nINSERT INTO prestamos_historicos\nSELECT * FROM movidos;\n\nSELECT (SELECT count(*) FROM prestamos)            AS prestamos,\n       (SELECT count(*) FROM prestamos_historicos) AS historicos;"
+        },
+        {
+          "type": "p",
+          "text": "El DELETE va **dentro** del WITH y su `RETURNING *` convierte las filas borradas en el contenido de `movidos`. La sentencia principal es el INSERT, que lee `movidos` como una tabla; psql muestra solo la etiqueta de la sentencia principal, `INSERT 0 25`. Cuadra: 320 = 295 + 25. La tabla histórica se creó con `CREATE TABLE … (LIKE prestamos)`, que copia las columnas y sus NOT NULL pero no la identidad: el `id` original se conserva tal cual."
+        },
+        {
+          "type": "h",
+          "text": "Una sola instantánea para todas las partes"
+        },
+        {
+          "type": "p",
+          "text": "Todas las partes de un WITH, y también la sentencia principal, se ejecutan **con la misma instantánea** (*snapshot*): la foto de la base tomada al comenzar la sentencia. Ninguna parte ve lo que las otras cambian en las tablas; el único canal entre ellas es lo que devuelve `RETURNING`. Piensa en el acta de una reunión: todos leen la misma acta impresa al comienzo, y lo que se decide aparece recién en el acta de la reunión siguiente (la próxima sentencia)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH alza AS (\n  UPDATE productos\n  SET precio = precio + 10000\n  WHERE sku = 'CAF-001'\n  RETURNING precio\n)\nSELECT p.precio AS precio_en_la_tabla,\n       a.precio AS precio_de_returning\nFROM productos p\nCROSS JOIN alza a\nWHERE p.sku = 'CAF-001';\n\nSELECT precio FROM productos WHERE sku = 'CAF-001';"
+        },
+        {
+          "type": "p",
+          "text": "Adivina antes de ejecutar. La consulta principal lee `productos` con la foto del comienzo y ve el precio **antiguo** ($19.990), mientras que `RETURNING` entrega el **nuevo** ($29.990). La sentencia siguiente ya ve el cambio. Conclusión: si la consulta principal necesita el resultado de un cambio, léelo desde la CTE, nunca desde la tabla."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "Las CTE que modifican datos se ejecutan **siempre y completas**, aunque la consulta principal no las lea. Un SELECT dentro de un WITH, en cambio, solo se ejecuta en la medida en que la consulta principal pide sus filas. Así, `WITH x AS (DELETE FROM …) SELECT …` borra aunque el SELECT no mencione `x` (y, por la instantánea, ese SELECT todavía ve las filas borradas)."
+        },
+        {
+          "type": "h",
+          "text": "Actualizar y dejar registro: reajuste con historial"
+        },
+        {
+          "type": "p",
+          "text": "Un patrón muy común: modificar filas y registrar el cambio en otra tabla. En Andes Digital, el departamento de Ventas recibe un reajuste de 5 % (redondeado a la decena de mil) desde el 1 de julio de 2026, y cada sueldo nuevo debe quedar en `historial_sueldos`:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "WITH reajuste AS (\n  UPDATE empleados\n  SET sueldo = round(sueldo * 1.05, -4)\n  WHERE departamento_id = 4\n    AND fecha_salida IS NULL\n  RETURNING id, old.sueldo AS antes, new.sueldo AS despues\n),\nregistro AS (\n  INSERT INTO historial_sueldos (empleado_id, desde, sueldo)\n  SELECT id, DATE '2026-07-01', despues\n  FROM reajuste\n)\nSELECT id, antes, despues, despues - antes AS alza\nFROM reajuste\nORDER BY id;\n\nSELECT count(*) AS registros_nuevos\nFROM historial_sueldos\nWHERE desde = '2026-07-01';"
+        },
+        {
+          "type": "p",
+          "text": "Tres detalles. Uno: `old.sueldo` y `new.sueldo` en el RETURNING de un UPDATE son nuevos en PostgreSQL 18; antes, RETURNING entregaba solo los valores nuevos. Dos: la CTE `registro` no tiene RETURNING y nadie la lee, pero se ejecuta igual (el conteo final da 11). Tres: la sentencia completa es atómica: o se reajustan los 11 sueldos **y** se registran, o no pasa nada."
+        },
+        {
+          "type": "h",
+          "text": "Insertar en dos tablas con la clave recién generada"
+        },
+        {
+          "type": "p",
+          "text": "Otro clásico: crear una fila «padre» y sus «hijas» cuando la clave del padre la genera la base (una columna de identidad). El `RETURNING id` del primer INSERT alimenta al segundo, sin volver a consultar la tabla ni adivinar el id:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "WITH nuevo AS (\n  INSERT INTO clientes (rut, nombre, apellido, email, comuna, region, fecha_registro)\n  VALUES ('12345678-5', 'Camila', 'Rojas Soto', 'camila.rojas@gmail.com',\n          'Temuco', 'La Araucanía', DATE '2026-07-01')\n  RETURNING id\n)\nINSERT INTO pedidos (cliente_id, fecha, estado)\nSELECT id, TIMESTAMPTZ '2026-07-01 10:30:00-04', 'pendiente'\nFROM nuevo\nRETURNING id AS pedido_id, cliente_id, estado;"
+        },
+        {
+          "type": "p",
+          "text": "La clienta recibe el id 61 y su pedido, el 421, ambos generados por las columnas de identidad. Nadie tuvo que consultar `max(id)`, un atajo que además es peligroso: con dos usuarios insertando al mismo tiempo, ambos podrían leer el mismo máximo."
+        },
+        {
+          "type": "h",
+          "text": "Todo o nada"
+        },
+        {
+          "type": "p",
+          "text": "Como es **una sola sentencia**, si cualquier parte falla se deshace todo, incluido lo que ya habían hecho las otras partes. En este ejemplo la tabla histórica exige que `fecha_devolucion` no sea NULL (un CHECK), pero intentamos archivar todos los préstamos hechos antes de abril de 2025, y 3 de ellos no se han devuelto:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "errors": true,
+          "setup": "CREATE TABLE prestamos_historicos (LIKE prestamos, CHECK (fecha_devolucion IS NOT NULL));",
+          "code": "WITH movidos AS (\n  DELETE FROM prestamos\n  WHERE fecha_prestamo < '2025-04-01'\n  RETURNING *\n)\nINSERT INTO prestamos_historicos\nSELECT * FROM movidos;\n\nSELECT count(*) AS siguen_en_prestamos FROM prestamos;"
+        },
+        {
+          "type": "p",
+          "text": "El INSERT rechazó una fila y el error deshizo también el DELETE: siguen los 320 préstamos. Con dos sentencias sueltas y sin transacción, el DELETE ya habría quedado confirmado y esos préstamos se habrían perdido."
+        },
+        {
+          "type": "h",
+          "text": "Límites y trampas"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "errors": true,
+          "code": "-- 1) Dos cambios a la misma fila en una sola sentencia\nSELECT sueldo AS antes FROM empleados WHERE id = 2;\n\nWITH a AS (\n  UPDATE empleados SET sueldo = sueldo + 1000\n  WHERE id = 2\n  RETURNING sueldo\n)\nUPDATE empleados SET sueldo = sueldo + 1\nWHERE id = 2;\n\nSELECT sueldo AS despues FROM empleados WHERE id = 2;\n\n-- 2) Un WITH que modifica datos debe ir en el nivel superior\nSELECT *\nFROM (WITH x AS (DELETE FROM asignaciones RETURNING *)\n      SELECT * FROM x) AS s;"
+        },
+        {
+          "type": "p",
+          "text": "En el primer caso hay dos UPDATE sobre la misma fila en una sola sentencia: +1000 y +1. El resultado no es +1001: **solo una de las modificaciones queda** (en esta ejecución, la de la sentencia principal) y la documentación advierte que no se puede predecir de forma confiable cuál. Nunca escribas partes de un WITH que puedan tocar las mismas filas. El segundo caso es una regla sintáctica: un WITH con INSERT, UPDATE, DELETE o MERGE solo puede ir al comienzo de la sentencia, no dentro de una subconsulta."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Parte de la sentencia",
+            "Ve las tablas…",
+            "Ve los cambios de las otras partes…"
+          ],
+          "rows": [
+            [
+              "Cada CTE (SELECT, INSERT, UPDATE, DELETE, MERGE)",
+              "como estaban al comenzar la sentencia",
+              "solo a través del RETURNING de esas partes"
+            ],
+            [
+              "La sentencia principal",
+              "como estaban al comenzar la sentencia",
+              "solo a través del RETURNING"
+            ],
+            [
+              "La sentencia siguiente",
+              "con todos los cambios aplicados",
+              "sí: la anterior ya terminó"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "El WITH puede preceder a cualquier sentencia principal: `WITH … INSERT`, `WITH … UPDATE`, `WITH … DELETE` o `WITH … MERGE`. Y desde PostgreSQL 17 también puedes poner un `MERGE … RETURNING` **dentro** del WITH; la función `merge_action()` te dice si cada fila se insertó, actualizó o borró."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: cómo mover filas entre tablas en una sola sentencia (`DELETE … RETURNING` dentro de un WITH más `INSERT … SELECT`); por qué la consulta principal no ve los cambios de las CTE (misma instantánea; el canal es RETURNING); que las CTE que modifican datos se ejecutan aunque nadie las lea; y que la sentencia completa es atómica."
+        }
+      ]
+    },
+    {
+      "id": "s09-l5",
+      "title": "UNION, INTERSECT, EXCEPT y VALUES: apilar y comparar resultados",
+      "minutes": 20,
+      "goals": [
+        "Combinar resultados con UNION, UNION ALL, INTERSECT y EXCEPT respetando sus reglas de columnas, tipos y orden.",
+        "Elegir entre UNION y UNION ALL según si hay que eliminar duplicados, justificando la diferencia de costo.",
+        "Usar VALUES como una tabla literal en el FROM, en un JOIN o en una CTE.",
+        "Verificar que dos consultas devuelven las mismas filas combinando EXCEPT en ambos sentidos."
+      ],
+      "takeaways": [
+        "Las operaciones de conjuntos apilan filas de consultas compatibles (hacia abajo); los JOIN agregan columnas (hacia el lado).",
+        "Todas las consultas deben tener la misma cantidad de columnas con tipos compatibles; los nombres los pone la primera.",
+        "UNION, INTERSECT y EXCEPT eliminan duplicados (como DISTINCT) y consideran iguales a dos NULL; con ALL se conservan las repeticiones: m + n, min(m, n) y max(m − n, 0).",
+        "INTERSECT tiene mayor precedencia que UNION y EXCEPT; el ORDER BY y el LIMIT finales se aplican al resultado completo y solo aceptan nombres o posiciones de columnas.",
+        "VALUES construye una tabla constante: sirve como tabla de traducción, de parámetros o de prueba."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Un JOIN combina tablas **hacia el lado**: agrega columnas. Las operaciones de conjuntos combinan resultados **hacia abajo**: apilan las filas de dos consultas compatibles. Son las operaciones de los diagramas de Venn del colegio: unión, intersección y diferencia. Con dos listas pequeñas se ve todo: A = (1, 2, 2, 3) y B = (2, 3, 4)."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "code": "WITH a(n) AS (VALUES (1), (2), (2), (3)),\n     b(n) AS (VALUES (2), (3), (4))\nSELECT operacion, resultado\nFROM (\n  SELECT 1 AS paso, 'UNION' AS operacion, array_agg(n ORDER BY n) AS resultado\n  FROM (SELECT n FROM a UNION SELECT n FROM b) AS r\n  UNION ALL\n  SELECT 2, 'UNION ALL', array_agg(n ORDER BY n)\n  FROM (SELECT n FROM a UNION ALL SELECT n FROM b) AS r\n  UNION ALL\n  SELECT 3, 'INTERSECT', array_agg(n ORDER BY n)\n  FROM (SELECT n FROM a INTERSECT SELECT n FROM b) AS r\n  UNION ALL\n  SELECT 4, 'INTERSECT ALL', array_agg(n ORDER BY n)\n  FROM (SELECT n FROM a INTERSECT ALL SELECT n FROM b) AS r\n  UNION ALL\n  SELECT 5, 'EXCEPT', array_agg(n ORDER BY n)\n  FROM (SELECT n FROM a EXCEPT SELECT n FROM b) AS r\n  UNION ALL\n  SELECT 6, 'EXCEPT ALL', array_agg(n ORDER BY n)\n  FROM (SELECT n FROM a EXCEPT ALL SELECT n FROM b) AS r\n) AS resumen\nORDER BY paso;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Operador",
+            "Resultado con A y B",
+            "Qué hace",
+            "Repetidos"
+          ],
+          "rows": [
+            [
+              "`UNION`",
+              "1, 2, 3, 4",
+              "Filas que están en A o en B",
+              "Elimina"
+            ],
+            [
+              "`UNION ALL`",
+              "1, 2, 2, 2, 3, 3, 4",
+              "Todas las filas de A y todas las de B",
+              "Conserva: m + n"
+            ],
+            [
+              "`INTERSECT`",
+              "2, 3",
+              "Filas que están en A y en B",
+              "Elimina"
+            ],
+            [
+              "`INTERSECT ALL`",
+              "2, 3",
+              "Lo común, contando repeticiones",
+              "min(m, n) copias"
+            ],
+            [
+              "`EXCEPT`",
+              "1",
+              "Filas de A que no están en B",
+              "Elimina"
+            ],
+            [
+              "`EXCEPT ALL`",
+              "1, 2",
+              "Lo de A menos lo de B, contando repeticiones",
+              "max(m − n, 0) copias"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "El 2 aparece dos veces en A y una en B: `INTERSECT ALL` deja min(2, 1) = 1 copia y `EXCEPT ALL` deja 2 − 1 = 1 copia. Sin ALL, las tres operaciones trabajan con conjuntos (sin repetidos), igual que `DISTINCT`. De paso, el ejemplo usa las propias operaciones: el resumen es un `UNION ALL` de seis consultas, con una columna `paso` para fijar el orden."
+        },
+        {
+          "type": "h",
+          "text": "UNION ALL: apilar resultados de distinto origen"
+        },
+        {
+          "type": "p",
+          "text": "El uso más común es juntar en una lista cosas que viven en tablas distintas. Por ejemplo, la actividad de un cliente (Lucas Pizarro, id 28) en una sola línea de tiempo: sus pedidos y sus reseñas."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT fecha::date AS fecha, 'pedido' AS tipo, estado AS detalle\nFROM pedidos\nWHERE cliente_id = 28\nUNION ALL\nSELECT fecha, 'reseña', 'nota ' || nota\nFROM resenas\nWHERE cliente_id = 28\nORDER BY fecha;"
+        },
+        {
+          "type": "p",
+          "text": "Las dos consultas tienen tres columnas con tipos compatibles (`date`, `text`, `text`); los **nombres** los pone la primera (por eso basta con poner los alias arriba). La columna literal `'pedido'` / `'reseña'` identifica el origen de cada fila, un truco muy usado. Y el `ORDER BY` final ordena el resultado **completo**, no solo la segunda consulta."
+        },
+        {
+          "type": "h",
+          "text": "UNION o UNION ALL; INTERSECT y EXCEPT"
+        },
+        {
+          "type": "p",
+          "text": "¿Cuántos clientes distintos compraron alguna vez? ¿Cuántos compraron en 2025 **y** en 2026? ¿Cuántos compraron en un año y no en el otro?"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*) AS con_union\nFROM (SELECT cliente_id FROM pedidos WHERE fecha <  '2026-01-01'\n      UNION\n      SELECT cliente_id FROM pedidos WHERE fecha >= '2026-01-01') AS t;\n\nSELECT count(*) AS con_union_all\nFROM (SELECT cliente_id FROM pedidos WHERE fecha <  '2026-01-01'\n      UNION ALL\n      SELECT cliente_id FROM pedidos WHERE fecha >= '2026-01-01') AS t;\n\nSELECT count(*) AS en_ambos_anios\nFROM (SELECT cliente_id FROM pedidos WHERE fecha <  '2026-01-01'\n      INTERSECT\n      SELECT cliente_id FROM pedidos WHERE fecha >= '2026-01-01') AS t;\n\nSELECT count(*) AS solo_2025\nFROM (SELECT cliente_id FROM pedidos WHERE fecha <  '2026-01-01'\n      EXCEPT\n      SELECT cliente_id FROM pedidos WHERE fecha >= '2026-01-01') AS t;\n\nSELECT count(*) AS solo_2026\nFROM (SELECT cliente_id FROM pedidos WHERE fecha >= '2026-01-01'\n      EXCEPT\n      SELECT cliente_id FROM pedidos WHERE fecha <  '2026-01-01') AS t;"
+        },
+        {
+          "type": "diagram",
+          "title": "Clientes con pedidos en 2025 y en 2026",
+          "mermaid": "flowchart LR\n  A[\"Solo 2025<br/>6 clientes<br/>A EXCEPT B\"] --- M[\"2025 y 2026<br/>38 clientes<br/>A INTERSECT B\"]\n  M --- C[\"Solo 2026<br/>7 clientes<br/>B EXCEPT A\"]",
+          "caption": "A = clientes con pedidos en 2025 (44), B = clientes con pedidos en 2026 (45). A UNION B = 6 + 38 + 7 = 51 clientes distintos."
+        },
+        {
+          "type": "p",
+          "text": "`UNION` entrega los 51 clientes distintos; `UNION ALL` apila las 420 filas (una por pedido). Eliminar duplicados cuesta: PostgreSQL tiene que ordenar o armar una tabla hash con todas las filas. Si sabes que no puede haber repetidos (como en la línea de tiempo, donde la columna `tipo` ya distingue las ramas) o si quieres conservarlos, usa `UNION ALL`. Fíjate también en que `EXCEPT` no es simétrico: A − B (6) no es lo mismo que B − A (7)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Regla de bolsillo: escribe `UNION ALL` por defecto y cámbialo a `UNION` solo cuando **necesites** eliminar duplicados. Un `UNION` innecesario es uno de los derroches más comunes en las consultas de reportes."
+        },
+        {
+          "type": "p",
+          "text": "Sin paréntesis, `UNION` y `EXCEPT` se evalúan de izquierda a derecha, pero `INTERSECT` tiene **mayor precedencia**: `A UNION B INTERSECT C` significa `A UNION (B INTERSECT C)`. Usa paréntesis para dejar clara la intención."
+        },
+        {
+          "type": "h",
+          "text": "Reglas, NULL y errores típicos"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Todas las consultas deben tener la misma cantidad de columnas, y los tipos de cada posición deben ser compatibles (integer con numeric da numeric; integer con text es un error).",
+            "Los nombres de las columnas del resultado los da la primera consulta.",
+            "`ORDER BY` y `LIMIT` van al final y se aplican al resultado completo; en ese ORDER BY solo puedes usar nombres o posiciones de columnas del resultado, no expresiones.",
+            "Para ordenar o limitar una rama por separado, enciérrala entre paréntesis: `(SELECT … ORDER BY … LIMIT 3) UNION ALL (SELECT …)`.",
+            "Para las operaciones de conjuntos (igual que para `DISTINCT` y `GROUP BY`), dos NULL **son iguales**: `SELECT NULL INTERSECT SELECT NULL` devuelve una fila."
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "errors": true,
+          "code": "-- EXCEPT considera iguales a los NULL: no tiene la trampa de NOT IN\nSELECT count(*) AS no_son_jefes\nFROM (SELECT id FROM empleados\n      EXCEPT\n      SELECT jefe_id FROM empleados) AS t;\n\n-- Errores típicos\nSELECT id, nombre FROM empleados\nUNION\nSELECT id FROM departamentos;\n\nSELECT id FROM empleados\nUNION\nSELECT nombre FROM departamentos;\n\nSELECT nombre, sueldo FROM empleados WHERE id <= 2\nUNION ALL\nSELECT nombre, 0 FROM departamentos WHERE id = 1\nORDER BY upper(nombre);\n\n-- El arreglo: envolver en una subconsulta y ordenar afuera\nSELECT nombre, sueldo\nFROM (SELECT nombre, sueldo FROM empleados WHERE id <= 2\n      UNION ALL\n      SELECT nombre, 0 FROM departamentos WHERE id = 1) AS t\nORDER BY upper(nombre);"
+        },
+        {
+          "type": "p",
+          "text": "`EXCEPT` encuentra a los 39 empleados que no son jefes aunque la columna `jefe_id` tenga un NULL: la misma pregunta que `NOT IN` respondía con un 0. Los tres errores son los de siempre: distinta cantidad de columnas (`each UNION query must have the same number of columns`), tipos incompatibles (`UNION types integer and text cannot be matched`) y una expresión en el ORDER BY del conjunto (`invalid UNION/INTERSECT/EXCEPT ORDER BY clause`), cuyo `HINT` propone justo el arreglo: mover el UNION a un FROM."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "El ORDER BY de un UNION acepta los **nombres** del resultado, que son los de la primera consulta. Si la segunda consulta usa otros alias, esos no existen para el ORDER BY. Y un `ORDER BY` escrito en medio, sin paréntesis, es un error de sintaxis: solo puede haber uno, al final."
+        },
+        {
+          "type": "h",
+          "text": "VALUES: una tabla escrita a mano"
+        },
+        {
+          "type": "p",
+          "text": "`VALUES` construye una tabla constante, fila por fila. Sola es una sentencia completa (sus columnas se llaman `column1`, `column2`…); en el FROM, con un alias y nombres de columna, es una tabla más que puedes unir, filtrar o agrupar. Es ideal para tablas de traducción, parámetros o datos de prueba que no justifican crear una tabla."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "VALUES (1, 'uno'), (2, 'dos');\n\n-- Una tabla de traducción para un informe\nSELECT m.etiqueta, count(*) AS pedidos\nFROM pedidos p\nJOIN (VALUES ('debito',        'Tarjeta de débito'),\n             ('credito',       'Tarjeta de crédito'),\n             ('transferencia', 'Transferencia bancaria'))\n     AS m(metodo, etiqueta) ON m.metodo = p.metodo_pago\nGROUP BY m.etiqueta\nORDER BY pedidos DESC;\n\n-- Los tipos se resuelven como en un UNION: integer y numeric → numeric\nSELECT column1, pg_typeof(column1) FROM (VALUES (1), (2.5)) AS v;"
+        },
+        {
+          "type": "p",
+          "text": "Las reglas de VALUES son las de UNION: todas las filas con la misma cantidad de columnas (si no, `VALUES lists must all be the same length`) y tipos compatibles por posición (con `(1), (2.5)` la columna queda `numeric`). También puede ir dentro de un WITH: `WITH metas(region, meta) AS (VALUES …)` es la forma más limpia de pasarle varios parámetros a una consulta, y ya lo usaste como ancla de una CTE recursiva."
+        },
+        {
+          "type": "h",
+          "text": "Truco profesional: comparar dos consultas"
+        },
+        {
+          "type": "p",
+          "text": "¿Dos consultas escritas de forma distinta devuelven lo mismo? Réstalas en ambos sentidos: si `(A EXCEPT B) UNION ALL (B EXCEPT A)` no devuelve filas, tienen las mismas filas (como conjuntos). Así se prueba una reescritura antes de reemplazar una consulta en producción; para comparar también las repeticiones, usa `EXCEPT ALL`."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "-- ¿IN y EXISTS entregan los mismos empleados con proyectos?\n(SELECT id FROM empleados\n WHERE id IN (SELECT empleado_id FROM asignaciones)\n EXCEPT\n SELECT e.id FROM empleados e\n WHERE EXISTS (SELECT 1 FROM asignaciones a WHERE a.empleado_id = e.id))\nUNION ALL\n(SELECT e.id FROM empleados e\n WHERE EXISTS (SELECT 1 FROM asignaciones a WHERE a.empleado_id = e.id)\n EXCEPT\n SELECT id FROM empleados\n WHERE id IN (SELECT empleado_id FROM asignaciones));"
+        },
+        {
+          "type": "p",
+          "text": "Cero filas: las dos versiones son equivalentes. Los paréntesis son necesarios: sin ellos, la cadena se evaluaría de izquierda a derecha como `((A EXCEPT B) UNION ALL B) EXCEPT A`, que es otra cosa."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Lo que te van a preguntar: la diferencia entre `UNION` y `UNION ALL` (duplicados y costo); qué hacen `INTERSECT` y `EXCEPT` y sus versiones ALL; las reglas (misma cantidad de columnas, tipos compatibles, nombres de la primera consulta, ORDER BY al final); la precedencia de `INTERSECT`; y que los NULL se consideran iguales."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e1",
+      "title": "Libros más largos que el promedio",
+      "level": "facil",
+      "minutes": 6,
+      "dataset": "biblioteca",
+      "prompt": [
+        "La biblioteca quiere destacar sus libros «largos»: los que tienen **más páginas que el promedio** de todos los libros.",
+        "Devuelve `id`, `titulo` y `paginas`, del más largo al más corto (si hay empate de páginas, por `id`). Calcula el promedio con una subconsulta: no escribas el número a mano."
+      ],
+      "starter": "-- Libros con más páginas que el promedio\nSELECT id, titulo, paginas\nFROM libros\nORDER BY paginas DESC, id;",
+      "solution": "SELECT id, titulo, paginas\nFROM libros\nWHERE paginas > (SELECT avg(paginas) FROM libros)\nORDER BY paginas DESC, id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\(\\s*select\\b[\\s\\S]*\\bavg\\s*\\(",
+          "msg": "Calcula el promedio con una subconsulta escalar: (SELECT avg(paginas) FROM libros)",
+          "name": "Subconsulta escalar"
+        }
+      ],
+      "hints": [
+        "Primero ejecuta sola la consulta del promedio: `SELECT avg(paginas) FROM libros`.",
+        "Ponla entre paréntesis en el WHERE: `WHERE paginas > (SELECT avg(paginas) FROM libros)`."
+      ],
+      "explain": "La subconsulta no depende de la fila externa: PostgreSQL la calcula una sola vez (unas 320,6 páginas) y compara cada libro contra ese valor; salen 15 libros. `avg` ignora el libro sin páginas registradas (*La última niebla*, con `paginas` NULL), así que promedia 41 libros y no 42. Ese libro tampoco aparece en el resultado, porque `NULL > 320.6` es desconocido y el WHERE solo deja pasar lo verdadero. Error típico: `WHERE paginas > avg(paginas)`, que falla con `aggregate functions are not allowed in WHERE`. Escribir `WHERE paginas > 320` funcionaría hoy, pero quedaría obsoleto con el primer libro nuevo."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e2",
+      "title": "El equipo del Data warehouse",
+      "level": "facil",
+      "minutes": 8,
+      "dataset": "rrhh",
+      "prompt": [
+        "Necesitas la lista de personas asignadas al proyecto **Data warehouse**. Usa el **nombre** del proyecto, no su id (no lo conoces de memoria).",
+        "Devuelve `id`, `nombre`, `apellido` y `cargo` de esos empleados, ordenados por `id`. Resuélvelo con `IN (subconsulta)`, sin JOIN."
+      ],
+      "starter": "-- Empleados asignados al proyecto Data warehouse\nSELECT id, nombre, apellido, cargo\nFROM empleados\nORDER BY id;",
+      "solution": "SELECT id, nombre, apellido, cargo\nFROM empleados\nWHERE id IN (\n  SELECT empleado_id\n  FROM asignaciones\n  WHERE proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'Data warehouse')\n)\nORDER BY id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bin\\s*\\(\\s*select\\b",
+          "msg": "Filtra con IN (SELECT …)",
+          "name": "IN con subconsulta"
+        }
+      ],
+      "hints": [
+        "Hay dos pasos: el id del proyecto a partir de su nombre, y los `empleado_id` de `asignaciones` con ese proyecto.",
+        "Anida las subconsultas: `WHERE id IN (SELECT empleado_id FROM asignaciones WHERE proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'Data warehouse'))`."
+      ],
+      "explain": "Son 14 personas. La subconsulta más interna es escalar (va después de `=`): funciona porque hay un solo proyecto con ese nombre; si hubiera dos, fallaría con `more than one row returned by a subquery used as an expression`, y lo robusto sería `proyecto_id IN (SELECT id FROM proyectos WHERE nombre = …)`. La del medio es una lista para IN. A diferencia de un JOIN, `IN` nunca duplica filas de `empleados`, aunque la subconsulta repitiera un valor. Alternativa equivalente con EXISTS: `WHERE EXISTS (SELECT 1 FROM asignaciones a JOIN proyectos p ON p.id = a.proyecto_id WHERE a.empleado_id = empleados.id AND p.nombre = 'Data warehouse')`."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e3",
+      "title": "Socios con libros pendientes",
+      "level": "facil",
+      "minutes": 7,
+      "dataset": "biblioteca",
+      "prompt": [
+        "Para enviar recordatorios, la biblioteca necesita a los socios que tienen **al menos un préstamo sin devolver** (`fecha_devolucion` es NULL).",
+        "Devuelve `id`, `nombre` y `comuna` de cada socio (una sola vez, aunque deba varios libros), ordenados por `id`. Usa `EXISTS`."
+      ],
+      "starter": "-- Socios con al menos un préstamo sin devolver\nSELECT s.id, s.nombre, s.comuna\nFROM socios s\nORDER BY s.id;",
+      "solution": "SELECT s.id, s.nombre, s.comuna\nFROM socios s\nWHERE EXISTS (\n  SELECT 1\n  FROM prestamos p\n  WHERE p.socio_id = s.id\n    AND p.fecha_devolucion IS NULL\n)\nORDER BY s.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bexists\\s*\\(",
+          "msg": "Usa WHERE EXISTS (subconsulta correlacionada)",
+          "name": "EXISTS"
+        }
+      ],
+      "hints": [
+        "La subconsulta debe buscar préstamos **de ese socio**: correlaciónala con `p.socio_id = s.id`.",
+        "Agrega la condición `p.fecha_devolucion IS NULL` (no `= NULL`) dentro de la subconsulta."
+      ],
+      "explain": "Son 17 socios con 22 préstamos pendientes en total: algunos deben más de un libro, pero EXISTS solo pregunta si hay al menos uno, así que cada socio aparece una vez. Con un JOIN tendrías que agregar DISTINCT para no repetir socios. Trampa clásica: `p.fecha_devolucion = NULL` nunca es verdadero y la consulta devolvería cero filas. La correlación es imprescindible: sin `p.socio_id = s.id`, la subconsulta preguntaría «¿hay algún préstamo pendiente en toda la biblioteca?» y aparecerían los 50 socios."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e4",
+      "title": "Estados en el orden del flujo",
+      "level": "facil",
+      "minutes": 8,
+      "dataset": "tienda",
+      "prompt": [
+        "Los estados de un pedido siguen un flujo: pendiente → pagado → enviado → entregado, y aparte, cancelado. Ordenarlos alfabéticamente no sirve (`cancelado` quedaría primero).",
+        "Construye con `VALUES` una tabla con cada estado y su número de paso (pendiente 1, pagado 2, enviado 3, entregado 4, cancelado 5), únela con `pedidos` y devuelve `paso`, `estado` y `pedidos` (cantidad de pedidos en ese estado), ordenado por `paso`."
+      ],
+      "starter": "-- Cantidad de pedidos por estado\nSELECT estado, count(*) AS pedidos\nFROM pedidos\nGROUP BY estado\nORDER BY estado;",
+      "solution": "SELECT f.paso, p.estado, count(*) AS pedidos\nFROM pedidos p\nJOIN (VALUES ('pendiente', 1),\n             ('pagado', 2),\n             ('enviado', 3),\n             ('entregado', 4),\n             ('cancelado', 5)) AS f(estado, paso)\n  ON f.estado = p.estado\nGROUP BY f.paso, p.estado\nORDER BY f.paso;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bvalues\\s*\\(",
+          "msg": "Arma la tabla de pasos con VALUES",
+          "name": "VALUES como tabla"
+        }
+      ],
+      "hints": [
+        "`(VALUES ('pendiente', 1), ('pagado', 2), …) AS f(estado, paso)` es una tabla de dos columnas que puedes poner en el FROM.",
+        "Únela con `JOIN … ON f.estado = p.estado`, agrupa por `f.paso, p.estado` y ordena por `f.paso`."
+      ],
+      "explain": "`VALUES` con alias y nombres de columna se comporta como una tabla de 5 filas. El JOIN le agrega a cada pedido su número de paso, y ordenar por ese número da el orden del negocio: pendiente 3, pagado 2, enviado 2, entregado 389 y cancelado 24. Alternativa sin VALUES: `ORDER BY CASE estado WHEN 'pendiente' THEN 1 … END`; pero la tabla de VALUES se puede reutilizar (por ejemplo, en una CTE) y agregarle columnas, como una etiqueta para el informe. Si un estado de VALUES no tuviera pedidos, el JOIN lo haría desaparecer; con `FROM (VALUES …) AS f LEFT JOIN pedidos p ON …` y `count(p.id)` aparecería con 0."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e5",
+      "title": "Sobre el promedio de su categoría",
+      "level": "medio",
+      "minutes": 12,
+      "dataset": "tienda",
+      "prompt": [
+        "Compara cada producto con el precio promedio **de su propia categoría** (no del catálogo completo).",
+        "Devuelve los productos cuyo precio supera ese promedio, con las columnas `sku`, `nombre`, `categoria_id`, `precio` y `promedio_categoria` (el promedio de su categoría, redondeado a pesos enteros).",
+        "Ordena por `categoria_id`, luego por precio de mayor a menor y, si hay empate, por `sku`."
+      ],
+      "starter": "-- Productos más caros que el promedio de su categoría\nSELECT p.sku, p.nombre, p.categoria_id, p.precio\nFROM productos p\nORDER BY p.categoria_id, p.precio DESC, p.sku;",
+      "solution": "SELECT p.sku, p.nombre, p.categoria_id, p.precio,\n       (SELECT round(avg(x.precio))\n        FROM productos x\n        WHERE x.categoria_id = p.categoria_id) AS promedio_categoria\nFROM productos p\nWHERE p.precio > (SELECT avg(x.precio)\n                  FROM productos x\n                  WHERE x.categoria_id = p.categoria_id)\nORDER BY p.categoria_id, p.precio DESC, p.sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\(\\s*select\\b",
+          "msg": "Calcula el promedio de la categoría con una subconsulta",
+          "name": "Subconsulta"
+        }
+      ],
+      "hints": [
+        "El promedio de la categoría de **esta** fila es `(SELECT avg(x.precio) FROM productos x WHERE x.categoria_id = p.categoria_id)`: usa un alias distinto para la tabla de adentro.",
+        "Úsala dos veces: redondeada en el SELECT (`round(…)`) y sin redondear en el WHERE."
+      ],
+      "explain": "Es una subconsulta **correlacionada**: `x.categoria_id = p.categoria_id` la amarra a cada fila externa, así que su valor cambia según la categoría del producto (salen 19 productos). El alias es la clave: si dentro de la subconsulta escribes `WHERE categoria_id = categoria_id`, ambos nombres se refieren a la tabla interna, la condición es siempre verdadera y comparas contra el promedio de todo el catálogo. Compara en el WHERE contra el promedio sin redondear, para no alterar un caso límite. Alternativa con tabla derivada, que calcula cada promedio una sola vez: `JOIN (SELECT categoria_id, avg(precio) AS prom FROM productos GROUP BY categoria_id) c ON c.categoria_id = p.categoria_id WHERE p.precio > c.prom`. En la sección 10 lo harás con `avg(precio) OVER (PARTITION BY categoria_id)`."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e6",
+      "title": "Ticket promedio por medio de pago",
+      "level": "medio",
+      "minutes": 12,
+      "dataset": "tienda",
+      "prompt": [
+        "El ticket de un pedido es la suma de `cantidad * precio_unitario` de sus ítems. Queremos saber qué medio de pago tiene el ticket promedio más alto.",
+        "Considera solo pedidos **no cancelados** y con `metodo_pago` informado. Devuelve `metodo_pago`, `pedidos` (cantidad de pedidos) y `ticket_promedio` (promedio de los tickets, redondeado a pesos enteros), del ticket promedio más alto al más bajo."
+      ],
+      "starter": "-- Primero, el ticket de cada pedido\nSELECT p.id, p.metodo_pago, sum(i.cantidad * i.precio_unitario) AS total\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nGROUP BY p.id, p.metodo_pago;",
+      "solution": "SELECT metodo_pago,\n       count(*)          AS pedidos,\n       round(avg(total)) AS ticket_promedio\nFROM (\n  SELECT p.id, p.metodo_pago, sum(i.cantidad * i.precio_unitario) AS total\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  WHERE p.estado <> 'cancelado'\n    AND p.metodo_pago IS NOT NULL\n  GROUP BY p.id, p.metodo_pago\n) AS t\nGROUP BY metodo_pago\nORDER BY ticket_promedio DESC;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\(\\s*select\\b|\\bwith\\b",
+          "msg": "Calcula primero el ticket de cada pedido en una tabla derivada (o en una CTE)",
+          "name": "Tabla derivada o CTE"
+        }
+      ],
+      "hints": [
+        "No puedes escribir `avg(sum(…))`: los agregados no se anidan. Calcula primero el total de cada pedido en una tabla derivada.",
+        "`FROM (SELECT p.id, p.metodo_pago, sum(…) AS total FROM … GROUP BY p.id, p.metodo_pago) AS t` y afuera `GROUP BY metodo_pago` con `round(avg(total))`."
+      ],
+      "explain": "Hay dos niveles de agregación: adentro, una fila por pedido (393 pedidos: 192 con débito, 139 con crédito y 62 con transferencia); afuera, una fila por medio de pago. Crédito lidera con $72.222. Error típico: promediar directamente los ítems (`avg(i.cantidad * i.precio_unitario)` agrupando por medio de pago), que da el promedio **por ítem**, no por pedido: un pedido con 4 ítems pesaría 4 veces, y el ranking incluso cambia (transferencia quedaría sobre débito). Los pedidos pendientes no tienen medio de pago (NULL): sin ese filtro formarían un grupo aparte."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e7",
+      "title": "Clientes que no volvieron",
+      "level": "medio",
+      "minutes": 10,
+      "dataset": "tienda",
+      "prompt": [
+        "Marketing quiere recuperar a los clientes que compraron en 2025 pero **no han vuelto a comprar en 2026**. Cuenta solo pedidos no cancelados (una compra cancelada no es una compra).",
+        "Devuelve `id`, `nombre` y `apellido` de esos clientes, ordenados por `id`. Resuélvelo con `EXCEPT`."
+      ],
+      "starter": "-- Clientes con compras en 2025\nSELECT cliente_id\nFROM pedidos\nWHERE fecha < '2026-01-01'\n  AND estado <> 'cancelado';",
+      "solution": "SELECT c.id, c.nombre, c.apellido\nFROM clientes c\nWHERE c.id IN (\n  SELECT cliente_id FROM pedidos\n  WHERE fecha < '2026-01-01' AND estado <> 'cancelado'\n  EXCEPT\n  SELECT cliente_id FROM pedidos\n  WHERE fecha >= '2026-01-01' AND estado <> 'cancelado'\n)\nORDER BY c.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bexcept\\b",
+          "msg": "Resta los clientes de 2026 a los de 2025 con EXCEPT",
+          "name": "EXCEPT"
+        }
+      ],
+      "hints": [
+        "«Compraron en 2025» EXCEPT «compraron en 2026»: dos SELECT de `cliente_id`, cada uno con su filtro de fecha y de estado.",
+        "Para traer nombre y apellido, usa esa resta como subconsulta: `WHERE c.id IN (SELECT … EXCEPT SELECT …)`. También puedes restar directamente las tuplas `(c.id, c.nombre, c.apellido)` uniendo con `clientes` en ambas ramas."
+      ],
+      "explain": "Son 6 clientes. `EXCEPT` elimina duplicados, así que da igual cuántos pedidos tenga cada cliente. El filtro `estado <> 'cancelado'` debe ir en **ambas** ramas: si solo lo pones en la primera, un cliente cuyo único pedido de 2026 fue cancelado contaría como si hubiera vuelto (en estos datos no cambia el resultado, pero la consulta sería incorrecta). Las fechas son `timestamptz`: `fecha < '2026-01-01'` compara con la medianoche de Santiago. Equivalente con anti-join: `… WHERE EXISTS (compra en 2025) AND NOT EXISTS (SELECT 1 FROM pedidos p2 WHERE p2.cliente_id = c.id AND p2.fecha >= '2026-01-01' AND p2.estado <> 'cancelado')`. Con `NOT IN` también funcionaría porque `cliente_id` es NOT NULL, pero EXCEPT y NOT EXISTS no dependen de eso."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e8",
+      "title": "El producto estrella de cada categoría",
+      "level": "medio",
+      "minutes": 15,
+      "dataset": "tienda",
+      "prompt": [
+        "Para cada categoría, encuentra el producto (o los productos, si hay empate) con **más unidades vendidas** en pedidos no cancelados.",
+        "Devuelve `categoria` (nombre de la categoría), `sku` y `unidades`, ordenado por `categoria` y luego por `sku`. Arma la consulta con CTE: una con las unidades de cada producto y otra con el máximo de cada categoría."
+      ],
+      "starter": "-- Paso 1: unidades vendidas por producto\nWITH unidades AS (\n  SELECT pr.categoria_id, pr.sku, sum(i.cantidad) AS unidades\n  FROM pedido_items i\n  JOIN pedidos p ON p.id = i.pedido_id\n  JOIN productos pr ON pr.id = i.producto_id\n  WHERE p.estado <> 'cancelado'\n  GROUP BY pr.categoria_id, pr.sku\n)\nSELECT * FROM unidades;",
+      "solution": "WITH unidades AS (\n  SELECT pr.categoria_id, pr.sku, sum(i.cantidad) AS unidades\n  FROM pedido_items i\n  JOIN pedidos p ON p.id = i.pedido_id\n  JOIN productos pr ON pr.id = i.producto_id\n  WHERE p.estado <> 'cancelado'\n  GROUP BY pr.categoria_id, pr.sku\n),\nmaximos AS (\n  SELECT categoria_id, max(unidades) AS maximo\n  FROM unidades\n  GROUP BY categoria_id\n)\nSELECT c.nombre AS categoria, u.sku, u.unidades\nFROM unidades u\nJOIN maximos m ON m.categoria_id = u.categoria_id\n              AND m.maximo = u.unidades\nJOIN categorias c ON c.id = u.categoria_id\nORDER BY categoria, u.sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\b",
+          "msg": "Organiza la consulta con CTE (WITH)",
+          "name": "CTE encadenadas"
+        }
+      ],
+      "hints": [
+        "Segunda CTE: `maximos AS (SELECT categoria_id, max(unidades) AS maximo FROM unidades GROUP BY categoria_id)`.",
+        "En la consulta final, une `unidades` con `maximos` por categoría **y** por `unidades = maximo`, y agrega `categorias` para el nombre."
+      ],
+      "explain": "Las CTE separan el problema en pasos con nombre: unidades por producto → máximo por categoría → productos que alcanzan ese máximo. `unidades` se usa dos veces, así que PostgreSQL la materializa y la calcula una sola vez. Ciclismo tiene un empate (CIC-002 y CIC-003, con 15 unidades cada uno) y por eso aporta dos filas: unir contra el máximo conserva los empates, algo que `ORDER BY … LIMIT 1` no haría. Error típico: `SELECT categoria_id, sku, max(unidades) … GROUP BY categoria_id`, que falla porque `sku` no está agrupado ni agregado. En la sección 10 resolverás lo mismo con `rank() OVER (PARTITION BY …)`."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e9",
+      "title": "La cadena de mando",
+      "level": "medio",
+      "minutes": 12,
+      "dataset": "rrhh",
+      "prompt": [
+        "Emilia Riquelme (id 48, operaria de bodega) quiere saber a quién reporta, subiendo hasta el gerente general.",
+        "Devuelve su cadena de mando con las columnas `distancia` (0 para ella, 1 para su jefe directo, 2 para el jefe de su jefe…), `id`, `nombre`, `apellido` y `cargo`, ordenada por `distancia`. Usa `WITH RECURSIVE`: tu consulta debe seguir funcionando si la jerarquía tuviera más niveles."
+      ],
+      "starter": "-- Ancla: la propia empleada\nSELECT 0 AS distancia, id, nombre, apellido, cargo, jefe_id\nFROM empleados\nWHERE id = 48;",
+      "solution": "WITH RECURSIVE cadena AS (\n  SELECT id, nombre, apellido, cargo, jefe_id, 0 AS distancia\n  FROM empleados\n  WHERE id = 48\n  UNION ALL\n  SELECT j.id, j.nombre, j.apellido, j.cargo, j.jefe_id, c.distancia + 1\n  FROM empleados j\n  JOIN cadena c ON j.id = c.jefe_id\n)\nSELECT distancia, id, nombre, apellido, cargo\nFROM cadena\nORDER BY distancia;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\s+recursive\\b",
+          "msg": "Usa WITH RECURSIVE",
+          "name": "CTE recursiva"
+        }
+      ],
+      "hints": [
+        "El ancla es la fila de id 48 con `0 AS distancia`. Incluye `jefe_id` en la CTE: lo necesitas para subir.",
+        "En el término recursivo, busca **al jefe** de la fila anterior: `JOIN cadena c ON j.id = c.jefe_id`, con `c.distancia + 1`.",
+        "La iteración termina sola: el gerente general tiene jefe_id NULL y el JOIN ya no encuentra a nadie."
+      ],
+      "explain": "Salen 4 filas: Emilia → Rodrigo Gutiérrez (Jefe de Bodega) → Felipe Cortés (Gerente de Operaciones) → Benjamín Pérez (Gerente general). El sentido del JOIN es lo que más se confunde: hacia arriba es `j.id = c.jefe_id` («el empleado que es jefe de la fila anterior»); si escribes `j.jefe_id = c.id` bajas hacia los subordinados de Emilia (no tiene) y obtienes una sola fila. Con tres self joins sacarías lo mismo hoy, pero se rompería apenas se agregue un nivel. La CTE lleva `jefe_id` aunque no se muestre: el SELECT final elige qué columnas ver."
+    },
+    {
+      "id": "s09-e10",
+      "title": "Reajuste de Operaciones con historial",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "script",
+      "dataset": "rrhh",
+      "prompt": [
+        "El departamento de **Operaciones** (`departamento_id = 5`) recibe un reajuste de 5 % desde el **1 de julio de 2026**. El sueldo nuevo es `round(sueldo * 1.05, -4)` (redondeado a la decena de mil) y aplica solo a los empleados vigentes (sin `fecha_salida`).",
+        "En **una sola sentencia** (un WITH con UPDATE … RETURNING), actualiza los sueldos y registra cada sueldo nuevo en `historial_sueldos` con `desde = '2026-07-01'`."
+      ],
+      "starter": "-- Una sola sentencia: WITH x AS (UPDATE … RETURNING …) INSERT …\n",
+      "solution": "WITH reajuste AS (\n  UPDATE empleados\n  SET sueldo = round(sueldo * 1.05, -4)\n  WHERE departamento_id = 5\n    AND fecha_salida IS NULL\n  RETURNING id, sueldo\n)\nINSERT INTO historial_sueldos (empleado_id, desde, sueldo)\nSELECT id, DATE '2026-07-01', sueldo\nFROM reajuste;",
+      "requires": [
+        {
+          "pattern": "\\bwith\\b[\\s\\S]*\\bas\\s*\\(\\s*(update|insert|delete)\\b",
+          "msg": "Encadena los cambios en un WITH: WITH x AS (UPDATE … RETURNING …) INSERT …",
+          "name": "CTE que modifica datos"
+        }
+      ],
+      "checks": [
+        {
+          "name": "Sueldos de Operaciones reajustados",
+          "sql": "SELECT mismas_filas($$SELECT id, sueldo FROM empleados WHERE departamento_id = 5$$, $$VALUES (5, 5360000), (14, 3050000), (15, 2420000), (46, 1670000), (47, 1170000), (48, 720000), (49, 810000), (50, 890000), (51, 880000), (52, 750000)$$)",
+          "fail": "Los sueldos de Operaciones no son los esperados. ¿Usaste round(sueldo * 1.05, -4) y filtraste departamento_id = 5 y fecha_salida IS NULL?"
+        },
+        {
+          "name": "El historial tiene los sueldos nuevos",
+          "sql": "SELECT mismas_filas($$SELECT empleado_id, sueldo FROM historial_sueldos WHERE desde = '2026-07-01'$$, $$SELECT id, sueldo FROM empleados WHERE departamento_id = 5 AND fecha_salida IS NULL$$)",
+          "fail": "historial_sueldos debe tener, con desde = 2026-07-01, una fila por cada empleado reajustado con su sueldo nuevo (ni más ni menos). Recuerda que RETURNING de un UPDATE entrega los valores nuevos."
+        },
+        {
+          "name": "Nada más cambió",
+          "sql": "SELECT sum(sueldo) = 121060000 AND (SELECT count(*) FROM historial_sueldos) = 231,\n       'Suma de sueldos fuera de Operaciones: ' || sum(sueldo) || ' (debía seguir en 121060000); filas en historial_sueldos: ' || (SELECT count(*) FROM historial_sueldos) || ' (se esperaban 221 + 10 = 231)'\nFROM empleados\nWHERE departamento_id IS DISTINCT FROM 5"
+        }
+      ],
+      "hints": [
+        "Parte por el UPDATE con su WHERE (departamento 5 y `fecha_salida IS NULL`) y agrégale `RETURNING id, sueldo`: el RETURNING de un UPDATE entrega los valores **nuevos**.",
+        "Envuélvelo: `WITH reajuste AS (UPDATE … RETURNING id, sueldo) INSERT INTO historial_sueldos (empleado_id, desde, sueldo) SELECT id, DATE '2026-07-01', sueldo FROM reajuste;`"
+      ],
+      "explain": "El RETURNING del UPDATE es el puente: entrega los 10 sueldos ya reajustados y el INSERT los registra, en una sola sentencia atómica (si el INSERT fallara, por ejemplo por una clave repetida en `historial_sueldos`, el reajuste también se desharía). No leas los sueldos desde `empleados` dentro de la misma sentencia (`INSERT … SELECT id, …, sueldo FROM empleados WHERE departamento_id = 5`): todas las partes del WITH usan la misma instantánea y registrarías los sueldos **antiguos**. Si ejecutaras la solución dos veces, la segunda fallaría por la clave primaria `(empleado_id, desde)` del historial y, gracias a la atomicidad, tampoco se aplicaría un segundo reajuste."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e11",
+      "title": "Organigrama con sangría",
+      "level": "dificil",
+      "minutes": 18,
+      "dataset": "rrhh",
+      "prompt": [
+        "Genera el organigrama completo de Andes Digital para imprimirlo: una fila por empleado, con las columnas `persona` y `cargo`.",
+        "`persona` es el nombre y el apellido separados por un espacio, precedidos de **dos espacios por cada nivel** bajo el gerente general: él va sin sangría, sus gerentes con 2 espacios, las jefaturas con 4 y así sucesivamente (por ejemplo, `'  Rodrigo Tapia Vergara'`).",
+        "El orden debe ser el de un árbol: cada persona justo debajo de su jefe y seguida de todo su equipo, antes de pasar a la siguiente; las personas con el mismo jefe van por id."
+      ],
+      "starter": "-- Primero, arma la jerarquía con su nivel\nWITH RECURSIVE org AS (\n  SELECT id, nombre, apellido, cargo, 0 AS nivel\n  FROM empleados\n  WHERE jefe_id IS NULL\n)\nSELECT * FROM org;",
+      "solution": "WITH RECURSIVE org AS (\n  SELECT id, nombre, apellido, cargo, 0 AS nivel\n  FROM empleados\n  WHERE jefe_id IS NULL\n  UNION ALL\n  SELECT e.id, e.nombre, e.apellido, e.cargo, o.nivel + 1\n  FROM empleados e\n  JOIN org o ON e.jefe_id = o.id\n) SEARCH DEPTH FIRST BY id SET orden\nSELECT repeat('  ', nivel) || nombre || ' ' || apellido AS persona, cargo\nFROM org\nORDER BY orden;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\s+recursive\\b",
+          "msg": "Usa WITH RECURSIVE",
+          "name": "CTE recursiva"
+        }
+      ],
+      "hints": [
+        "Una CTE recursiva que baje desde la raíz (`jefe_id IS NULL`) llevando el nivel. Con `0` en la raíz, la sangría es `repeat('  ', nivel)`.",
+        "Para el orden de árbol, agrega `SEARCH DEPTH FIRST BY id SET orden` después del paréntesis de la CTE y termina con `ORDER BY orden`.",
+        "Sin SEARCH: arrastra un arreglo `ARRAY[id] AS camino` en el ancla y `o.camino || e.id` en el término recursivo, y ordena por `camino`."
+      ],
+      "explain": "Ordenar por `nivel` o por `id` no da un árbol: pondría a todos los gerentes juntos y después a todas las jefaturas. El recorrido en profundidad (*depth first*) sí: `SEARCH DEPTH FIRST BY id` construye para cada fila el camino de ids desde la raíz, y ordenar por ese camino deja a cada persona bajo su jefe y a los compañeros por id. Es equivalente a ordenar por un arreglo como `{1,2,7,17}` que arrastras a mano. Ordenar por una ruta de **nombres** (`'Benjamín Pérez > …'`) también agruparía cada rama, pero los compañeros quedarían por nombre y no por id (y con la colación C, un texto que empieza con tilde, como «Álvarez», se ordena después de la z). Trampa: la sangría depende del nivel de la raíz; si la raíz tiene nivel 1, usa `repeat('  ', nivel - 1)`."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e12",
+      "title": "Ventas por rama del catálogo",
+      "level": "dificil",
+      "minutes": 18,
+      "dataset": "tienda",
+      "setup": "INSERT INTO categorias (id, nombre, padre_id) VALUES (14, 'Periféricos', 2), (15, 'Gamer', 14);\nUPDATE productos SET categoria_id = 14 WHERE sku = 'COMP-004';\nUPDATE productos SET categoria_id = 15 WHERE sku = 'COMP-003';",
+      "prompt": [
+        "La tienda reorganizó su catálogo y ahora tiene categorías de **más de dos niveles**: Tecnología > Computación > Periféricos > Gamer (el mouse quedó en Periféricos y el teclado mecánico en Gamer). Podrían aparecer más niveles.",
+        "Devuelve, por cada categoría **raíz** (sin padre): `categoria` (su nombre), `productos_vendidos` (cantidad de productos distintos de toda su rama con al menos una venta) y `ventas` (suma de `cantidad * precio_unitario` de toda su rama, sin pedidos cancelados). Ordena por `ventas` de mayor a menor.",
+        "Tu consulta debe funcionar con cualquier profundidad del árbol."
+      ],
+      "starter": "-- Ventas por la categoría directa de cada producto\nSELECT c.nombre AS categoria, sum(i.cantidad * i.precio_unitario) AS ventas\nFROM pedido_items i\nJOIN pedidos p ON p.id = i.pedido_id\nJOIN productos pr ON pr.id = i.producto_id\nJOIN categorias c ON c.id = pr.categoria_id\nWHERE p.estado <> 'cancelado'\nGROUP BY c.nombre\nORDER BY ventas DESC;",
+      "solution": "WITH RECURSIVE arbol AS (\n  -- cada raíz es la raíz de sí misma\n  SELECT id AS raiz_id, id\n  FROM categorias\n  WHERE padre_id IS NULL\n  UNION ALL\n  -- los hijos heredan la raíz de su padre\n  SELECT a.raiz_id, c.id\n  FROM categorias c\n  JOIN arbol a ON c.padre_id = a.id\n)\nSELECT r.nombre                            AS categoria,\n       count(DISTINCT pr.id)               AS productos_vendidos,\n       sum(i.cantidad * i.precio_unitario) AS ventas\nFROM arbol a\nJOIN categorias r    ON r.id = a.raiz_id\nJOIN productos pr    ON pr.categoria_id = a.id\nJOIN pedido_items i  ON i.producto_id = pr.id\nJOIN pedidos p       ON p.id = i.pedido_id\nWHERE p.estado <> 'cancelado'\nGROUP BY r.nombre\nORDER BY ventas DESC;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\s+recursive\\b",
+          "msg": "Recorre el árbol con WITH RECURSIVE",
+          "name": "CTE recursiva"
+        }
+      ],
+      "hints": [
+        "Arma con WITH RECURSIVE una tabla `arbol(raiz_id, id)`: cada categoría junto a la raíz de su rama. En el ancla, cada raíz es su propia raíz: `SELECT id AS raiz_id, id FROM categorias WHERE padre_id IS NULL`.",
+        "En el término recursivo, los hijos heredan la raíz del padre: `SELECT a.raiz_id, c.id FROM categorias c JOIN arbol a ON c.padre_id = a.id`.",
+        "Después, une `arbol` con productos (`pr.categoria_id = a.id`), ítems y pedidos, y agrupa por el nombre de la raíz. Para contar productos distintos: `count(DISTINCT pr.id)`."
+      ],
+      "explain": "El truco es **arrastrar la raíz** por toda la recursión: el ancla fija `raiz_id` y el término recursivo lo copia sin cambiarlo, así cada categoría, a cualquier profundidad, sabe a qué rama pertenece. Tecnología suma $14.468.510 con 15 productos vendidos. Una solución de dos niveles (unir cada categoría con su padre) falla aquí: con `coalesce(padre.nombre, c.nombre)` aparecen 7 grupos, porque el mouse (nivel 3) queda bajo «Computación» y el teclado (nivel 4) bajo «Periféricos», y Tecnología baja a $13.684.030. `count(DISTINCT pr.id)` es necesario porque un mismo producto aparece en muchos ítems."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e13",
+      "title": "¿A cuántas paradas está cada terminal?",
+      "level": "dificil",
+      "minutes": 25,
+      "dataset": "metro",
+      "prompt": [
+        "La red de Metro es un grafo con ciclos: de Los Héroes puedes ir a República y volver, y las líneas se cruzan en estaciones de combinación. Una **parada** es avanzar a una estación vecina de la misma línea: dos estaciones son vecinas si están en la misma `linea_id` y sus `orden` difieren en 1. Cambiarse de línea en una estación de combinación no cuenta como parada.",
+        "Desde **Los Héroes**, calcula la **menor cantidad de paradas** para llegar a cada estación **terminal** (la primera y la última de cada línea según `orden`). Devuelve `terminal` (nombre de la estación) y `paradas`, ordenado por `paradas` y luego por `terminal`.",
+        "Protege la recursión contra los ciclos (con `CYCLE` o con un arreglo de estaciones visitadas): sin eso, la consulta no termina."
+      ],
+      "starter": "-- Tramos entre estaciones vecinas (en ambos sentidos)\nSELECT a.estacion_id AS desde, b.estacion_id AS hasta, a.linea_id\nFROM linea_estacion a\nJOIN linea_estacion b\n  ON b.linea_id = a.linea_id\n AND abs(b.orden - a.orden) = 1\nORDER BY a.linea_id, a.orden;",
+      "solution": "WITH RECURSIVE tramos AS (\n  SELECT a.estacion_id AS desde, b.estacion_id AS hasta\n  FROM linea_estacion a\n  JOIN linea_estacion b\n    ON b.linea_id = a.linea_id\n   AND abs(b.orden - a.orden) = 1\n),\nterminales AS (\n  SELECT le.estacion_id\n  FROM linea_estacion le\n  WHERE le.orden = 1\n     OR le.orden = (SELECT max(x.orden)\n                    FROM linea_estacion x\n                    WHERE x.linea_id = le.linea_id)\n),\nviaje AS (\n  SELECT e.id AS estacion, 0 AS paradas\n  FROM estaciones e\n  WHERE e.nombre = 'Los Héroes'\n  UNION ALL\n  SELECT t.hasta, v.paradas + 1\n  FROM viaje v\n  JOIN tramos t ON t.desde = v.estacion\n) CYCLE estacion SET vuelta USING ruta\nSELECT e.nombre AS terminal, min(v.paradas) AS paradas\nFROM viaje v\nJOIN estaciones e ON e.id = v.estacion\nWHERE NOT v.vuelta\n  AND v.estacion IN (SELECT estacion_id FROM terminales)\nGROUP BY e.nombre\nORDER BY paradas, terminal;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\s+recursive\\b",
+          "msg": "Recorre la red con WITH RECURSIVE",
+          "name": "CTE recursiva"
+        },
+        {
+          "pattern": "\\bcycle\\b|\\barray\\s*\\[|<>\\s*all\\b|=\\s*any\\b",
+          "msg": "Evita los ciclos con la cláusula CYCLE o con un arreglo de estaciones visitadas",
+          "name": "Protección contra ciclos"
+        }
+      ],
+      "hints": [
+        "Una CTE `tramos(desde, hasta)` con las parejas de estaciones vecinas (la consulta de partida). Otra, recursiva, `viaje(estacion, paradas)`, que parte en Los Héroes con 0 paradas y en cada vuelta avanza por un tramo sumando 1.",
+        "Después del paréntesis de `viaje`, agrega `CYCLE estacion SET vuelta USING ruta`: cada rama se corta cuando repite una estación.",
+        "Terminales: `orden = 1` o `orden` igual al máximo de su línea (una subconsulta correlacionada sobre `linea_estacion`). Al final, `min(paradas)` agrupando por estación, con `WHERE NOT vuelta`."
+      ],
+      "explain": "La CTE recursiva enumera todos los caminos **simples** (sin repetir estaciones) que salen de Los Héroes; `CYCLE` corta cada rama apenas vuelve a una estación ya visitada en esa misma rama, y así el recorrido termina. El mínimo de paradas por estación es la distancia más corta. Por ejemplo, a San Pablo hay 10 paradas por la Línea 1, pero solo 7 combinando: 1 parada por la Línea 2 hasta Santa Ana y 6 por la Línea 5. Sin protección contra ciclos, la consulta rebota para siempre entre estaciones vecinas (en la plataforma se cancela a los 60 segundos). Cambiar `UNION ALL` por `UNION` tampoco basta: las filas (estación, paradas) nunca se repiten, porque las paradas siempre crecen. Enumerar todos los caminos simples crece de forma exponencial en redes grandes; para 103 estaciones es instantáneo, pero en grafos enormes se usan algoritmos especializados de caminos más cortos."
+    },
+    {
+      "id": "s09-e14",
+      "title": "Archivar los préstamos de 2025",
+      "level": "dificil",
+      "minutes": 20,
+      "mode": "script",
+      "dataset": "biblioteca",
+      "setup": "CREATE TABLE prestamos_historicos (LIKE prestamos, archivado_en date NOT NULL);\nALTER TABLE socios ADD COLUMN archivados integer NOT NULL DEFAULT 0;",
+      "prompt": [
+        "Cierre del año: hay que **mover** a `prestamos_historicos` todos los préstamos hechos en 2025 (`fecha_prestamo` dentro de 2025) que **ya fueron devueltos**. Los que siguen sin devolver se quedan en `prestamos`.",
+        "`prestamos_historicos` ya existe: tiene las mismas columnas que `prestamos` y al final `archivado_en` (date, obligatoria), que debe quedar en `2026-07-01`.",
+        "Además, en la **misma sentencia**, anota en la nueva columna `socios.archivados` cuántos préstamos se le archivaron a cada socio (los socios sin préstamos archivados quedan en 0)."
+      ],
+      "starter": "-- Una sola sentencia: DELETE … RETURNING → INSERT → UPDATE\n",
+      "solution": "WITH movidos AS (\n  DELETE FROM prestamos\n  WHERE fecha_prestamo >= DATE '2025-01-01'\n    AND fecha_prestamo <  DATE '2026-01-01'\n    AND fecha_devolucion IS NOT NULL\n  RETURNING *\n),\narchivados AS (\n  INSERT INTO prestamos_historicos\n  SELECT *, DATE '2026-07-01'\n  FROM movidos\n)\nUPDATE socios s\nSET archivados = m.n\nFROM (SELECT socio_id, count(*) AS n\n      FROM movidos\n      GROUP BY socio_id) AS m\nWHERE s.id = m.socio_id;",
+      "requires": [
+        {
+          "pattern": "\\bwith\\b[\\s\\S]*\\bdelete\\b[\\s\\S]*\\breturning\\b",
+          "msg": "Mueve las filas con WITH x AS (DELETE … RETURNING …)",
+          "name": "DELETE … RETURNING en un WITH"
+        }
+      ],
+      "checks": [
+        {
+          "name": "No quedan préstamos de 2025 ya devueltos",
+          "sql": "SELECT count(*) = 0, 'Aún quedan ' || count(*) || ' préstamos de 2025 ya devueltos en prestamos'\nFROM prestamos\nWHERE fecha_prestamo >= '2025-01-01' AND fecha_prestamo < '2026-01-01'\n  AND fecha_devolucion IS NOT NULL"
+        },
+        {
+          "name": "Los préstamos sin devolver siguen en su lugar",
+          "sql": "SELECT count(*) = 11 AND (SELECT count(*) FROM prestamos) = 123,\n       'En prestamos deberían quedar 123 filas, entre ellas los 11 préstamos de 2025 sin devolver; hay ' || (SELECT count(*) FROM prestamos) || ' filas'\nFROM prestamos\nWHERE fecha_prestamo < '2026-01-01' AND fecha_devolucion IS NULL"
+        },
+        {
+          "name": "El histórico tiene exactamente lo movido",
+          "sql": "SELECT count(*) = 197 AND sum(id) = 20722 AND bool_and(archivado_en = DATE '2026-07-01' AND fecha_devolucion IS NOT NULL),\n       'prestamos_historicos tiene ' || count(*) || ' filas; se esperaban los 197 préstamos devueltos de 2025, todos con archivado_en = 2026-07-01'\nFROM prestamos_historicos"
+        },
+        {
+          "name": "Contadores de socios correctos",
+          "sql": "SELECT mismas_filas($$SELECT id, archivados FROM socios WHERE archivados > 0$$, $$SELECT socio_id, count(*)::int FROM prestamos_historicos GROUP BY socio_id$$) AND (SELECT sum(archivados) FROM socios) = 197",
+          "fail": "socios.archivados debe tener, para cada socio, la cantidad de préstamos que se le archivaron (197 en total; 0 para los demás), actualizada en la misma sentencia. Recuerda que, dentro de esa sentencia, prestamos_historicos todavía se ve vacía."
+        }
+      ],
+      "hints": [
+        "Empieza por el DELETE con las tres condiciones (desde, hasta y devuelto) y `RETURNING *`, dentro de `WITH movidos AS (…)`.",
+        "El INSERT puede ser otra CTE: `archivados AS (INSERT INTO prestamos_historicos SELECT *, DATE '2026-07-01' FROM movidos)`. El `*` trae las 6 columnas del préstamo y la fecha ocupa la séptima.",
+        "La sentencia principal es el UPDATE: `UPDATE socios s SET archivados = m.n FROM (SELECT socio_id, count(*) AS n FROM movidos GROUP BY socio_id) AS m WHERE s.id = m.socio_id`."
+      ],
+      "explain": "`movidos` se lee dos veces (en el INSERT y en el UPDATE) y en ambos casos contiene lo que devolvió el DELETE: 197 filas. No cuentes los préstamos archivados leyendo `prestamos_historicos` en el UPDATE: por la instantánea común, dentro de la misma sentencia esa tabla todavía se ve vacía y ningún contador cambiaría. Tampoco sirve `INSERT INTO prestamos_historicos SELECT * FROM movidos`: faltaría la séptima columna, que quedaría NULL y violaría su NOT NULL (y la sentencia completa se desharía, incluido el DELETE). Ojo con el criterio: los 9 préstamos hechos en 2025 y devueltos en 2026 también se archivan, porque lo que manda es la fecha del préstamo. Un rango (`>= '2025-01-01' AND < '2026-01-01'`) es mejor que `extract(year FROM fecha_prestamo) = 2025`, porque puede aprovechar un índice sobre `fecha_prestamo` (sección 14)."
+    },
+    {
+      "mode": "query",
+      "columns": false,
+      "id": "s09-e15",
+      "title": "Proyecto: el costo de cada gerencia",
+      "level": "proyecto",
+      "minutes": 30,
+      "dataset": "rrhh",
+      "prompt": [
+        "El directorio quiere saber cuánto cuesta cada gerencia **completa**: el gerente de área (quienes reportan directamente al gerente general) más **todas** las personas que están bajo él, a cualquier profundidad, **aunque no tengan departamento asignado**.",
+        "Considera solo personas vigentes (sin `fecha_salida`). Devuelve `gerencia` (nombre del departamento del gerente de área), `personas` (incluido el gerente) y `costo_mensual` (suma de sueldos), de mayor a menor costo.",
+        "Al final agrega una fila con `gerencia = 'Total gerencias'` y la suma de las otras dos columnas. Esa fila debe ir **siempre al final**, aunque su costo sea el mayor."
+      ],
+      "starter": "-- Los gerentes de área: reportan directamente al gerente general\nSELECT e.id, e.nombre, d.nombre AS gerencia\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nWHERE e.jefe_id = (SELECT id FROM empleados WHERE jefe_id IS NULL);",
+      "solution": "WITH RECURSIVE bajo AS (\n  -- ancla: cada gerente de área encabeza su propia rama\n  SELECT e.id AS gerente_id, e.id, e.sueldo, e.fecha_salida\n  FROM empleados e\n  WHERE e.jefe_id = (SELECT id FROM empleados WHERE jefe_id IS NULL)\n  UNION ALL\n  -- los subordinados heredan el gerente de su jefe\n  SELECT b.gerente_id, e.id, e.sueldo, e.fecha_salida\n  FROM empleados e\n  JOIN bajo b ON e.jefe_id = b.id\n),\nresumen AS (\n  SELECT d.nombre AS gerencia, count(*) AS personas, sum(b.sueldo) AS costo_mensual\n  FROM bajo b\n  JOIN empleados g     ON g.id = b.gerente_id\n  JOIN departamentos d ON d.id = g.departamento_id\n  WHERE b.fecha_salida IS NULL\n  GROUP BY d.nombre\n)\nSELECT gerencia, personas, costo_mensual\nFROM (\n  SELECT gerencia, personas, costo_mensual, 1 AS bloque FROM resumen\n  UNION ALL\n  SELECT 'Total gerencias', sum(personas), sum(costo_mensual), 2 FROM resumen\n) AS informe\nORDER BY bloque, costo_mensual DESC;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bwith\\s+recursive\\b",
+          "msg": "Recorre las ramas del organigrama con WITH RECURSIVE",
+          "name": "CTE recursiva"
+        },
+        {
+          "pattern": "\\bunion\\b",
+          "msg": "Agrega la fila de total con UNION ALL",
+          "name": "Fila de total con UNION ALL"
+        }
+      ],
+      "hints": [
+        "Arrastra la cabeza de la rama: en el ancla (los gerentes de área), `e.id AS gerente_id`; en el término recursivo, `b.gerente_id` se copia tal cual a cada subordinado.",
+        "Con esa CTE, agrupa por el departamento **del gerente** (une con `empleados g ON g.id = b.gerente_id` y con `departamentos`), filtrando a los vigentes.",
+        "Para el total, `UNION ALL` con `SELECT 'Total gerencias', sum(personas), sum(costo_mensual) FROM resumen`. Para dejarlo al final, agrega una columna auxiliar `bloque` (1 y 2) en una tabla derivada, ordena afuera por ella y no la muestres."
+      ],
+      "explain": "Tecnología cuesta $54.180.000 con 19 personas vigentes, porque incluye a la practicante: no tiene departamento, pero reporta al jefe de Desarrollo. Por eso agrupar por el `departamento_id` de cada empleado da otra cifra (18 personas en Tecnología): la pregunta era por la **rama** del organigrama, no por el departamento de cada fila. Filtra a los vigentes al agregar, no dentro de la recursión: si alguien que se fue tuviera subordinados, cortar la recursión en esa persona haría perder a todo su equipo. Para la fila de total: el ORDER BY de un UNION solo acepta columnas del resultado, así que la columna `bloque` se agrega en una tabla derivada y se ordena afuera (`ORDER BY bloque, costo_mensual DESC`), sin mostrarla. La variante `(SELECT … ORDER BY costo_mensual DESC) UNION ALL SELECT 'Total gerencias', …` suele dar el mismo orden, pero la documentación no garantiza en qué orden devuelve las filas un UNION sin ORDER BY final. El total (52 personas, $123.850.000) no incluye al gerente general, que no pertenece a ninguna gerencia de área."
+    },
+    {
+      "id": "s09-e16",
+      "title": "Proyecto: cierre de la App de despacho",
+      "level": "proyecto",
+      "minutes": 30,
+      "mode": "script",
+      "dataset": "rrhh",
+      "setup": "CREATE TABLE asignaciones_cerradas (\n  empleado_id  integer NOT NULL,\n  proyecto_id  integer NOT NULL,\n  rol          text    NOT NULL,\n  horas_semana integer NOT NULL,\n  cerrada_en   date    NOT NULL\n);\nCREATE TABLE bitacora (\n  id      integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  evento  text NOT NULL,\n  detalle text NOT NULL\n);",
+      "prompt": [
+        "El proyecto **App de despacho** termina el 30 de junio de 2026. Ciérralo en **una sola sentencia** que haga cuatro cosas:",
+        "1) Fijar su `fin` en `2026-06-30` (búscalo por nombre). 2) Eliminar todas sus filas de `asignaciones`. 3) Copiarlas a `asignaciones_cerradas` con `cerrada_en` igual a la fecha de fin del proyecto, tomada del RETURNING del paso 1 (no la escribas dos veces). 4) Registrar en `bitacora` una fila con `evento = 'cierre de proyecto'` y `detalle` con el formato exacto `App de despacho: N asignaciones, H horas semanales liberadas`, donde N y H se calculan a partir de las asignaciones eliminadas.",
+        "Nada más debe cambiar: las asignaciones de los otros proyectos se quedan donde están."
+      ],
+      "starter": "-- Encadena: UPDATE proyectos → DELETE asignaciones → INSERT asignaciones_cerradas → INSERT bitacora\n",
+      "solution": "WITH cerrado AS (\n  UPDATE proyectos\n  SET fin = DATE '2026-06-30'\n  WHERE nombre = 'App de despacho'\n    AND fin IS NULL\n  RETURNING id, nombre, fin\n),\nborradas AS (\n  DELETE FROM asignaciones a\n  USING cerrado c\n  WHERE a.proyecto_id = c.id\n  RETURNING a.*\n),\ncopiadas AS (\n  INSERT INTO asignaciones_cerradas (empleado_id, proyecto_id, rol, horas_semana, cerrada_en)\n  SELECT b.empleado_id, b.proyecto_id, b.rol, b.horas_semana, c.fin\n  FROM borradas b\n  CROSS JOIN cerrado c\n)\nINSERT INTO bitacora (evento, detalle)\nSELECT 'cierre de proyecto',\n       c.nombre || ': ' || count(*) || ' asignaciones, '\n         || sum(b.horas_semana) || ' horas semanales liberadas'\nFROM borradas b\nCROSS JOIN cerrado c\nGROUP BY c.nombre;",
+      "requires": [
+        {
+          "pattern": "\\bwith\\b[\\s\\S]*\\bas\\s*\\(\\s*(update|delete|insert)\\b",
+          "msg": "Encadena los cambios en un WITH con CTE que modifican datos",
+          "name": "CTE que modifican datos"
+        }
+      ],
+      "checks": [
+        {
+          "name": "El proyecto quedó cerrado",
+          "sql": "SELECT fin = DATE '2026-06-30', 'fin de App de despacho: ' || coalesce(fin::text, 'NULL') || ' (se esperaba 2026-06-30)' FROM proyectos WHERE nombre = 'App de despacho'"
+        },
+        {
+          "name": "Sus asignaciones ya no están en asignaciones",
+          "sql": "SELECT count(*) = 0, 'Quedan ' || count(*) || ' asignaciones del proyecto App de despacho' FROM asignaciones a JOIN proyectos p ON p.id = a.proyecto_id WHERE p.nombre = 'App de despacho'"
+        },
+        {
+          "name": "Las asignaciones se copiaron con su fecha de cierre",
+          "sql": "SELECT mismas_filas($$SELECT empleado_id, proyecto_id, rol, horas_semana, cerrada_en FROM asignaciones_cerradas$$, $$SELECT empleado_id, proyecto_id, rol, horas_semana, DATE '2026-06-30' FROM (VALUES (5, 3, 'Desarrollador', 22), (10, 3, 'Desarrollador', 20), (11, 3, 'Líder técnico', 20), (15, 3, 'Desarrollador', 4), (23, 3, 'Desarrollador', 16), (25, 3, 'Desarrollador', 20), (26, 3, 'Desarrollador', 22), (27, 3, 'Líder técnico', 4), (28, 3, 'Desarrollador', 16), (30, 3, 'Desarrollador', 16), (31, 3, 'Desarrollador', 20), (34, 3, 'Desarrollador', 16), (36, 3, 'Líder técnico', 12), (46, 3, 'Líder técnico', 12), (48, 3, 'Líder técnico', 16), (49, 3, 'Líder técnico', 10), (50, 3, 'Desarrollador', 8)) AS v(empleado_id, proyecto_id, rol, horas_semana)$$)",
+          "fail": "asignaciones_cerradas debe tener exactamente las 17 asignaciones que tenía el proyecto (mismo empleado, proyecto, rol y horas), todas con cerrada_en = 2026-06-30."
+        },
+        {
+          "name": "La bitácora registra el cierre",
+          "sql": "SELECT count(*) = 1 AND bool_and(evento = 'cierre de proyecto' AND detalle = 'App de despacho: 17 asignaciones, 254 horas semanales liberadas'),\n       coalesce('bitacora contiene: ' || string_agg(evento || ' | ' || detalle, '; '), 'bitacora está vacía')\nFROM bitacora"
+        },
+        {
+          "name": "Nada más cambió",
+          "sql": "SELECT (SELECT count(*) FROM asignaciones) = 50 AND (SELECT count(*) FROM proyectos WHERE fin IS NULL) = 2,\n       'Hay ' || (SELECT count(*) FROM asignaciones) || ' asignaciones (se esperaban 50, las de los otros proyectos) y ' || (SELECT count(*) FROM proyectos WHERE fin IS NULL) || ' proyectos sin fin (se esperaban 2)'"
+        }
+      ],
+      "hints": [
+        "Cuatro partes: `cerrado AS (UPDATE proyectos … RETURNING id, nombre, fin)`, `borradas AS (DELETE FROM asignaciones … RETURNING …)`, `copiadas AS (INSERT INTO asignaciones_cerradas …)` y la sentencia principal `INSERT INTO bitacora …`.",
+        "El DELETE puede usar la CTE del UPDATE: `DELETE FROM asignaciones a USING cerrado c WHERE a.proyecto_id = c.id RETURNING a.*`. Así no repites el nombre del proyecto.",
+        "Para la bitácora, agrega sobre lo borrado: `SELECT 'cierre de proyecto', c.nombre || ': ' || count(*) || ' asignaciones, ' || sum(b.horas_semana) || ' horas semanales liberadas' FROM borradas b CROSS JOIN cerrado c GROUP BY c.nombre`."
+      ],
+      "explain": "Es el patrón completo de las CTE que modifican datos: cada parte recibe lo que necesita por RETURNING (el id, el nombre y la fecha del proyecto; las asignaciones borradas) y nada se vuelve a leer desde las tablas. `cerrado` alimenta al DELETE y a los dos INSERT: si mañana cambia la fecha, se cambia en un solo lugar. `copiadas` no tiene RETURNING y nadie la lee, pero se ejecuta igual. Como la sentencia es atómica, si la bitácora fallara (por ejemplo, por un `detalle` NULL), el proyecto seguiría abierto y las asignaciones intactas. Calcular N y H con `SELECT count(*) FROM asignaciones WHERE proyecto_id = 3` dentro de la misma sentencia también daría 17 (la instantánea aún ve esas filas), pero es frágil: repite el filtro y no garantiza que la bitácora describa exactamente lo que se borró. Y gracias al `fin IS NULL`, ejecutar la solución dos veces es inofensivo: la segunda vez `cerrado` queda vacío y no se borra ni se registra nada."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "Subconsulta escalar: ¿qué debe devolver?",
+      "back": "A lo más una fila y exactamente una columna. Con 0 filas vale NULL; con 2 o más falla en tiempo de ejecución: `more than one row returned by a subquery used as an expression`."
+    },
+    {
+      "front": "`subquery must return only one column`",
+      "back": "Una subconsulta usada como valor (o en IN, ANY, ALL) devuelve varias columnas. Deja una sola, o compara tuplas: `(a, b) IN (SELECT x, y …)`."
+    },
+    {
+      "front": "`x IN (subconsulta)` equivale a…",
+      "back": "`x = ANY (subconsulta)`."
+    },
+    {
+      "front": "`x NOT IN (subconsulta)` equivale a…",
+      "back": "`x <> ALL (subconsulta)`. Si la subconsulta devuelve algún NULL, nunca es verdadero."
+    },
+    {
+      "front": "¿Por qué NOT IN con un NULL en la lista no devuelve filas?",
+      "back": "`x NOT IN (a, NULL)` = `x <> a AND x <> NULL`; `x <> NULL` es NULL, así que el AND nunca llega a ser verdadero. Usa `NOT EXISTS` o filtra `IS NOT NULL` en la subconsulta."
+    },
+    {
+      "front": "`> ALL` y `> ANY` contra una subconsulta sin filas",
+      "back": "`ALL` → verdadero (nadie lo contradice). `ANY` → falso (nadie lo cumple). Ojo: un filtro mal escrito dentro de un `> ALL` deja pasar todas las filas."
+    },
+    {
+      "front": "`SOME`",
+      "back": "Sinónimo de `ANY`: `x > SOME (…)` = `x > ANY (…)`."
+    },
+    {
+      "front": "¿Qué devuelve EXISTS?",
+      "back": "`true` si la subconsulta devuelve al menos una fila; si no, `false`. Nunca NULL. Las columnas no importan (convención: `SELECT 1`) y deja de buscar en la primera fila."
+    },
+    {
+      "front": "Subconsulta correlacionada",
+      "back": "La que usa columnas de la consulta externa (`WHERE p.cliente_id = c.id`). Conceptualmente se evalúa una vez por fila externa y no se puede ejecutar sola."
+    },
+    {
+      "front": "`InitPlan` vs `SubPlan` en EXPLAIN",
+      "back": "`InitPlan`: subconsulta no correlacionada, calculada una vez antes de recorrer la tabla. `SubPlan`: correlacionada, evaluada por fila externa. `EXISTS` e `IN` suelen aparecer como `Semi Join`."
+    },
+    {
+      "front": "Tabla derivada",
+      "back": "Subconsulta en el FROM: `FROM (SELECT …) AS t`. Sus columnas son las del SELECT interno. El alias es opcional desde PostgreSQL 16, pero conviene ponerlo siempre."
+    },
+    {
+      "front": "¿Cómo promediar totales por pedido si `avg(sum(…))` falla?",
+      "back": "Con una tabla derivada o una CTE: primero `sum` por pedido y después `avg` sobre ese resultado. El error es `aggregate function calls cannot be nested`."
+    },
+    {
+      "front": "Sintaxis de una CTE",
+      "back": "`WITH nombre [(cols)] AS [ [NOT] MATERIALIZED ] (consulta) SELECT … FROM nombre;` Varias CTE se separan con comas, con una sola palabra WITH."
+    },
+    {
+      "front": "¿Cuánto vive una CTE?",
+      "back": "Solo durante la sentencia que la define. En la sentencia siguiente: `relation \"x\" does not exist`."
+    },
+    {
+      "front": "¿Puede una CTE usar otra definida después?",
+      "back": "Sin RECURSIVE, no: `relation \"x\" does not exist` con el HINT `Use WITH RECURSIVE, or re-order the WITH items to remove forward references`. Con `WITH RECURSIVE` el orden no importa."
+    },
+    {
+      "front": "¿Cuándo se materializa una CTE por defecto? (PostgreSQL 12 o posterior)",
+      "back": "Cuando se usa dos o más veces, cuando es recursiva o cuando tiene efectos secundarios (funciones volátiles, INSERT, UPDATE, DELETE). Un SELECT sin funciones volátiles usado una sola vez se integra en la consulta principal."
+    },
+    {
+      "front": "`MATERIALIZED` / `NOT MATERIALIZED`",
+      "back": "`AS MATERIALIZED (…)` obliga a calcularla aparte (los filtros de afuera no entran). `AS NOT MATERIALIZED (…)` obliga a integrarla, aunque se repita el trabajo; se ignora si la CTE es recursiva o tiene efectos secundarios."
+    },
+    {
+      "front": "Las partes de una CTE recursiva",
+      "back": "`WITH RECURSIVE t AS (ancla UNION [ALL] término_recursivo)`. El ancla no se refiere a `t`; el término recursivo se refiere a `t` una sola vez."
+    },
+    {
+      "front": "¿Qué ve el término recursivo en cada vuelta?",
+      "back": "Solo la tabla de trabajo: las filas nuevas de la vuelta anterior, no todo lo acumulado. La iteración termina cuando una vuelta no produce filas."
+    },
+    {
+      "front": "`recursive query \"t\" column 2 has type integer in non-recursive term but type numeric overall`",
+      "back": "El ancla fija los tipos y el término recursivo produce otro. Convierte en el ancla: `0::numeric`, `nombre::text`…"
+    },
+    {
+      "front": "¿Qué no se permite en el término recursivo?",
+      "back": "Agregados (`aggregate functions are not allowed in a recursive query's recursive term`), `ORDER BY` (`ORDER BY in a recursive query is not implemented`) y referirse a la CTE más de una vez."
+    },
+    {
+      "front": "Recorrer una jerarquía con `jefe_id`: hacia abajo vs hacia arriba",
+      "back": "Abajo: `JOIN t ON e.jefe_id = t.id` (quienes reportan a la vuelta anterior). Arriba: `JOIN t ON j.id = t.jefe_id` (el jefe de la vuelta anterior)."
+    },
+    {
+      "front": "Nivel y ruta en una CTE recursiva",
+      "back": "Ancla: `1 AS nivel`, `nombre AS ruta`. Término recursivo: `t.nivel + 1`, `t.ruta || ' > ' || e.nombre`."
+    },
+    {
+      "front": "`SEARCH DEPTH FIRST BY id SET orden` (PostgreSQL 14)",
+      "back": "Agrega la columna `orden` para recorrer en profundidad (rama por rama). Igual hay que escribir `ORDER BY orden`. `BREADTH FIRST` recorre por niveles."
+    },
+    {
+      "front": "`CYCLE id SET es_ciclo USING camino` (PostgreSQL 14)",
+      "back": "Agrega `camino` (los ids visitados en la rama) y `es_ciclo`; la fila que repite un id se marca y no se expande. Otras marcas: `SET es_ciclo TO 'S' DEFAULT 'N'`."
+    },
+    {
+      "front": "Detectar ciclos a mano (cualquier versión)",
+      "back": "Ancla: `ARRAY[id] AS camino`. Término recursivo: `t.camino || e.id` y `WHERE e.id <> ALL (t.camino)`."
+    },
+    {
+      "front": "Mover filas entre tablas en una sola sentencia",
+      "back": "`WITH movidos AS (DELETE FROM a WHERE … RETURNING *) INSERT INTO b SELECT * FROM movidos;` Un solo filtro y todo o nada."
+    },
+    {
+      "front": "¿Qué ve la sentencia principal de un WITH que hizo un UPDATE?",
+      "back": "La tabla como estaba al comenzar la sentencia (todas las partes comparten la instantánea). Los valores nuevos solo llegan a través de RETURNING."
+    },
+    {
+      "front": "¿Se ejecuta un DELETE dentro de un WITH si nadie lo lee?",
+      "back": "Sí: las CTE que modifican datos se ejecutan siempre y completas. Un SELECT dentro de un WITH, en cambio, solo en la medida en que se piden sus filas."
+    },
+    {
+      "front": "`WITH clause containing a data-modifying statement must be at the top level`",
+      "back": "Un WITH con INSERT, UPDATE, DELETE o MERGE debe ir al comienzo de la sentencia, no dentro de una subconsulta."
+    },
+    {
+      "front": "UNION vs UNION ALL",
+      "back": "`UNION` elimina duplicados (como DISTINCT: hay que ordenar o hashear todas las filas). `UNION ALL` conserva todo y es más barato. Usa ALL salvo que necesites quitar repetidos."
+    },
+    {
+      "front": "`INTERSECT ALL` y `EXCEPT ALL` con m copias a la izquierda y n a la derecha",
+      "back": "`INTERSECT ALL`: min(m, n) copias. `EXCEPT ALL`: max(m − n, 0) copias. `UNION ALL`: m + n."
+    },
+    {
+      "front": "Reglas de las operaciones de conjuntos",
+      "back": "Misma cantidad de columnas, tipos compatibles por posición, nombres de la primera consulta, y ORDER BY y LIMIT al final sobre el resultado completo (solo nombres o posiciones de columnas)."
+    },
+    {
+      "front": "Precedencia de UNION, INTERSECT y EXCEPT",
+      "back": "`INTERSECT` se evalúa primero; `UNION` y `EXCEPT`, de izquierda a derecha. `A UNION B INTERSECT C` = `A UNION (B INTERSECT C)`."
+    },
+    {
+      "front": "VALUES como tabla",
+      "back": "`(VALUES (1, 'a'), (2, 'b')) AS t(num, letra)` en el FROM. Solo, es una sentencia y sus columnas se llaman `column1`, `column2`…"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s09-q1",
+      "type": "single",
+      "q": "Ningún producto cuesta más de $1.000.000. ¿Qué devuelve esta consulta?\n```sql\nSELECT (SELECT nombre FROM productos WHERE precio > 1000000) AS caro;\n```",
+      "options": [
+        "Una fila con NULL",
+        "Cero filas",
+        "Un error, porque la subconsulta no devolvió filas",
+        "Una fila con el texto vacío `''`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Una subconsulta escalar sin filas no es un error: su valor es NULL. Como la consulta externa no tiene FROM, siempre produce una fila, que aquí lleva NULL."
+    },
+    {
+      "id": "s09-q2",
+      "type": "single",
+      "q": "La categoría 3 (Audio) tiene 5 productos. ¿Qué pasa con esta consulta?\n```sql\nSELECT sku FROM productos\nWHERE precio = (SELECT precio FROM productos WHERE categoria_id = 3);\n```",
+      "options": [
+        "Falla con `more than one row returned by a subquery used as an expression`",
+        "Devuelve los productos que cuestan lo mismo que algún producto de Audio",
+        "Compara solo contra el primer precio de Audio",
+        "Falla con `subquery must return only one column`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Después de `=` se espera un solo valor y la subconsulta entrega 5. Para comparar contra cualquiera de ellos, usa `IN` o `= ANY`; contra todos, `ALL`."
+    },
+    {
+      "id": "s09-q3",
+      "type": "single",
+      "q": "En rrhh, el gerente general tiene `jefe_id` NULL. ¿Qué cuenta esta consulta?\n```sql\nSELECT count(*) FROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados);\n```",
+      "options": [
+        "0",
+        "39",
+        "16",
+        "55"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La lista contiene un NULL, y `id NOT IN (…, NULL)` incluye la comparación `id <> NULL`, que es desconocida: ninguna fila llega a ser verdadera. Con `NOT EXISTS`, o filtrando `WHERE jefe_id IS NOT NULL`, el resultado es 39."
+    },
+    {
+      "id": "s09-q4",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas cuentan correctamente a los 39 empleados que no son jefes de nadie? (Selecciona TRES.)",
+      "options": [
+        "`SELECT count(*) FROM empleados e WHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id);`",
+        "`SELECT count(*) FROM empleados WHERE id NOT IN (SELECT jefe_id FROM empleados WHERE jefe_id IS NOT NULL);`",
+        "`SELECT count(*) FROM (SELECT id FROM empleados EXCEPT SELECT jefe_id FROM empleados) AS t;`",
+        "`SELECT count(*) FROM empleados WHERE id <> ALL (SELECT jefe_id FROM empleados);`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "`NOT EXISTS` no se afecta por el NULL; `NOT IN` funciona si se filtran los NULL; `EXCEPT` trata los NULL como iguales y no contamina el resultado. `<> ALL` es exactamente `NOT IN`, con la misma trampa: da 0."
+    },
+    {
+      "id": "s09-q5",
+      "type": "single",
+      "q": "La categoría 99 no existe. ¿Qué devuelve esta consulta?\n```sql\nSELECT count(*) FROM productos\nWHERE precio > ALL (SELECT precio FROM productos WHERE categoria_id = 99);\n```",
+      "options": [
+        "49: todos los productos",
+        "0",
+        "NULL",
+        "Un error: la subconsulta está vacía"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Contra un conjunto vacío, `ALL` es verdadero (no hay ningún valor que lo contradiga). Con `ANY` el resultado sería 0, porque no hay ningún valor que lo cumpla."
+    },
+    {
+      "id": "s09-q6",
+      "type": "yesno",
+      "q": "Sobre IN, ANY y ALL, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`x IN (subconsulta)` equivale a `x = ANY (subconsulta)`.",
+          "answer": true
+        },
+        {
+          "text": "`x NOT IN (subconsulta)` equivale a `x <> ANY (subconsulta)`.",
+          "answer": false
+        },
+        {
+          "text": "`SOME` es sinónimo de `ANY`.",
+          "answer": true
+        },
+        {
+          "text": "`x > ALL (subconsulta)` es verdadero si la subconsulta no devuelve filas.",
+          "answer": true
+        },
+        {
+          "text": "`x = ANY (subconsulta)` es verdadero si la subconsulta no devuelve filas.",
+          "answer": false
+        }
+      ],
+      "explain": "`NOT IN` equivale a `<> ALL` («distinto de todos»); `<> ANY` significa «distinto de alguno», que es casi siempre verdadero. Con una lista vacía, ALL es verdadero y ANY es falso."
+    },
+    {
+      "id": "s09-q7",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT EXISTS (SELECT NULL);`?",
+      "options": [
+        "true",
+        "NULL",
+        "false",
+        "Un error: EXISTS necesita columnas con valores"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La subconsulta devuelve una fila (que contiene un NULL). A EXISTS solo le importa que haya filas, no sus valores: el resultado es true. EXISTS nunca devuelve NULL."
+    },
+    {
+      "id": "s09-q8",
+      "type": "single",
+      "q": "¿Qué distingue a una subconsulta correlacionada de una no correlacionada?",
+      "options": [
+        "La correlacionada usa columnas de la consulta externa, así que su resultado depende de cada fila externa",
+        "La correlacionada siempre va en el FROM y la no correlacionada en el WHERE",
+        "La no correlacionada se evalúa una vez por cada fila externa",
+        "Solo las correlacionadas pueden usar funciones de agregado"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La correlación es la referencia a la consulta externa (`s.jefe_id = e.id`). Por eso no se puede ejecutar sola y, conceptualmente, se evalúa por fila. La no correlacionada se calcula una vez (`InitPlan`)."
+    },
+    {
+      "id": "s09-q9",
+      "type": "single",
+      "q": "¿Qué muestra EXPLAIN para `WHERE precio > (SELECT avg(precio) FROM productos)`?",
+      "options": [
+        "Un `InitPlan`: la subconsulta se calcula una vez antes de recorrer la tabla",
+        "Un `SubPlan` que se ejecuta para cada fila",
+        "Un `Hash Semi Join`",
+        "Un `CTE Scan`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La subconsulta no depende de la fila externa, así que es un `InitPlan` y el filtro compara contra su resultado (`(InitPlan 1).col1`). Un `SubPlan` aparece con subconsultas correlacionadas, como un conteo por fila en el SELECT."
+    },
+    {
+      "id": "s09-q10",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta?\n```sql\nSELECT avg(sum(cantidad * precio_unitario))\nFROM pedido_items\nGROUP BY pedido_id;\n```",
+      "options": [
+        "Falla con `aggregate function calls cannot be nested`",
+        "Devuelve el ticket promedio de todos los pedidos",
+        "Devuelve una fila por pedido con su total",
+        "Devuelve el promedio por ítem"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Los agregados no se anidan. Calcula primero el total de cada pedido en una tabla derivada o una CTE, y promedia afuera: `SELECT avg(total) FROM (SELECT pedido_id, sum(…) AS total FROM pedido_items GROUP BY pedido_id) AS t`."
+    },
+    {
+      "id": "s09-q11",
+      "type": "yesno",
+      "q": "Sobre las tablas derivadas (subconsultas en el FROM), indica Sí o No.",
+      "statements": [
+        {
+          "text": "Desde PostgreSQL 16, el alias de una subconsulta en el FROM es opcional.",
+          "answer": true
+        },
+        {
+          "text": "Sus columnas toman los nombres (o alias) del SELECT interno.",
+          "answer": true
+        },
+        {
+          "text": "Se puede usar la misma tabla derivada dos veces en la consulta con solo nombrar su alias.",
+          "answer": false
+        },
+        {
+          "text": "Sirven para agregar sobre un resultado ya agregado.",
+          "answer": true
+        }
+      ],
+      "explain": "El alias de una tabla derivada solo vale donde se definió; para reutilizar un resultado varias veces en la misma sentencia está la CTE. El alias se volvió opcional en PostgreSQL 16, pero el estándar y otros motores lo exigen."
+    },
+    {
+      "id": "s09-q12",
+      "type": "single",
+      "q": "¿Qué hace esta condición?\n```sql\nWHERE (departamento_id, sueldo) IN (SELECT departamento_id, max(sueldo)\n                                    FROM empleados\n                                    GROUP BY departamento_id)\n```",
+      "options": [
+        "Deja las filas cuyo par (departamento, sueldo) coincide con el sueldo máximo de su departamento",
+        "Falla: IN solo acepta una columna",
+        "Compara el sueldo contra el máximo de toda la empresa",
+        "Deja a todos los empleados de los departamentos que tienen algún sueldo máximo"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Es una comparación de tuplas: `(a, b) IN (SELECT x, y …)` es verdadero si el par completo coincide con algún par de la subconsulta. Así se obtiene quién gana el máximo de cada departamento (con empates incluidos)."
+    },
+    {
+      "id": "s09-q13",
+      "type": "single",
+      "q": "¿Qué pasa al ejecutar estas dos sentencias seguidas?\n```sql\nWITH caros AS (SELECT * FROM productos WHERE precio > 100000)\nSELECT count(*) FROM caros;\nSELECT count(*) FROM caros;\n```",
+      "options": [
+        "La primera devuelve 4 y la segunda falla con `relation \"caros\" does not exist`",
+        "Las dos devuelven 4",
+        "La primera falla: WITH necesita RECURSIVE",
+        "La segunda devuelve 0"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Una CTE existe solo durante la sentencia que la define. Para reutilizar una consulta entre sentencias necesitas una vista (sección 12) o una tabla."
+    },
+    {
+      "id": "s09-q14",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta?\n```sql\nWITH resumen AS (SELECT count(*) AS n FROM base),\n     base    AS (SELECT * FROM productos)\nSELECT n FROM resumen;\n```",
+      "options": [
+        "Falla con `relation \"base\" does not exist`, y el HINT sugiere reordenar las CTE o usar WITH RECURSIVE",
+        "Funciona: el orden de las CTE no importa",
+        "Falla con `syntax error at or near \",\"`",
+        "Falla con `WITH query name \"base\" specified more than once`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Sin RECURSIVE, cada CTE solo ve a las anteriores. El DETAIL lo explica: `There is a WITH item named \"base\", but it cannot be referenced from this part of the query`."
+    },
+    {
+      "id": "s09-q15",
+      "type": "single",
+      "q": "Una CTE se llama `productos`, igual que una tabla. Dentro de esa sentencia, ¿qué lee `SELECT * FROM productos`?",
+      "options": [
+        "La CTE: dentro de la sentencia oculta a la tabla",
+        "La tabla: las tablas tienen prioridad",
+        "Falla por nombre ambiguo",
+        "La unión de ambas"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El nombre de una CTE tiene prioridad sobre las tablas en esa sentencia. Funciona, pero confunde: evita nombrar las CTE igual que tablas reales."
+    },
+    {
+      "id": "s09-q16",
+      "type": "multi",
+      "q": "En PostgreSQL 12 o posterior, ¿en cuáles de estos casos una CTE se **materializa** (se calcula aparte)? (Selecciona TRES.)",
+      "options": [
+        "Se usa dos veces en la consulta principal y no se indica nada",
+        "Se declara con `AS MATERIALIZED`",
+        "Es recursiva",
+        "Es un SELECT sin funciones volátiles que se usa una sola vez",
+        "Se declara con `AS NOT MATERIALIZED` y es un SELECT simple"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Por defecto se materializa si se usa varias veces; `MATERIALIZED` lo fuerza; las recursivas siempre se calculan aparte (`NOT MATERIALIZED` se ignora en ellas). Un SELECT simple usado una vez se integra, y `NOT MATERIALIZED` fuerza la integración."
+    },
+    {
+      "id": "s09-q17",
+      "type": "single",
+      "q": "¿Qué muestra `EXPLAIN (COSTS OFF)` para esta consulta?\n```sql\nWITH p AS MATERIALIZED (SELECT * FROM pedidos)\nSELECT * FROM p WHERE id = 42;\n```",
+      "options": [
+        "`CTE Scan on p` con `Filter: (id = 42)`, sobre un `Seq Scan on pedidos`",
+        "`Index Scan using pedidos_pkey on pedidos`",
+        "`Seq Scan on pedidos` con `Filter: (id = 42)`",
+        "Un error: una CTE materializada no admite WHERE afuera"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`MATERIALIZED` impide empujar el filtro hacia adentro: se leen los 420 pedidos, se guardan y recién después se filtra la copia. Sin `MATERIALIZED`, la CTE (usada una vez) se integra y PostgreSQL usa el índice de la clave primaria."
+    },
+    {
+      "id": "s09-q18",
+      "type": "yesno",
+      "q": "Sobre las CTE, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Una CTE existe solo durante la sentencia que la define.",
+          "answer": true
+        },
+        {
+          "text": "Antes de PostgreSQL 12, las CTE siempre se materializaban.",
+          "answer": true
+        },
+        {
+          "text": "`NOT MATERIALIZED` puede hacer que el trabajo de la CTE se repita en cada lugar donde se usa.",
+          "answer": true
+        },
+        {
+          "text": "Una CTE se guarda en la base de datos como una vista temporal.",
+          "answer": false
+        },
+        {
+          "text": "Una CTE puede declarar su lista de columnas: `WITH t(a, b) AS (…)`.",
+          "answer": true
+        }
+      ],
+      "explain": "Una CTE no se guarda en ninguna parte: vive dentro de la sentencia. Al integrarla en varios lugares con NOT MATERIALIZED, cada referencia se calcula por separado (a cambio de poder optimizar cada una)."
+    },
+    {
+      "id": "s09-q19",
+      "type": "single",
+      "q": "¿Qué devuelve esta consulta?\n```sql\nWITH RECURSIVE t(n) AS (\n  VALUES (1)\n  UNION ALL\n  SELECT n * 2 FROM t WHERE n < 20\n)\nSELECT max(n) FROM t;\n```",
+      "options": [
+        "32",
+        "16",
+        "20",
+        "64"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Traza las vueltas: 1, 2, 4, 8, 16. Con n = 16 se cumple `n < 20` y se produce 32; con n = 32 no se cumple y la iteración termina. El máximo es 32: la condición se evalúa sobre la fila **anterior**, no sobre la que se produce."
+    },
+    {
+      "id": "s09-q20",
+      "type": "single",
+      "q": "En cada vuelta, ¿qué filas ve el término recursivo cuando se refiere a la propia CTE?",
+      "options": [
+        "Solo las filas nuevas de la vuelta anterior (la tabla de trabajo)",
+        "Todas las filas acumuladas hasta ese momento",
+        "Solo las filas del ancla",
+        "La tabla original completa"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Por eso la recursión avanza «de a un nivel»: en el organigrama, la vuelta 2 solo busca subordinados de los 5 gerentes encontrados en la vuelta 1, no de todos los anteriores."
+    },
+    {
+      "id": "s09-q21",
+      "type": "single",
+      "q": "¿Por qué falla esta consulta?\n```sql\nWITH RECURSIVE t(n, total) AS (\n  SELECT 1, 0\n  UNION ALL\n  SELECT n + 1, total + n * 1.5 FROM t WHERE n < 3\n)\nSELECT * FROM t;\n```",
+      "options": [
+        "El ancla fija `total` como integer y el término recursivo produce numeric",
+        "No se puede sumar dentro de una CTE recursiva",
+        "Falta un ORDER BY en el término recursivo",
+        "La columna `total` no existe en el ancla"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El error es `recursive query \"t\" column 2 has type integer in non-recursive term but type numeric overall`, con el HINT `Cast the output of the non-recursive term to the correct type`. Se arregla con `SELECT 1, 0::numeric` en el ancla."
+    },
+    {
+      "id": "s09-q22",
+      "type": "multi",
+      "q": "¿Qué NO está permitido en el término recursivo de una CTE recursiva? (Selecciona TRES.)",
+      "options": [
+        "Funciones de agregado como `count(*)`",
+        "`ORDER BY`",
+        "Referirse a la CTE recursiva dos veces",
+        "Un JOIN con otra tabla",
+        "Un WHERE"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Los mensajes son `aggregate functions are not allowed in a recursive query's recursive term`, `ORDER BY in a recursive query is not implemented` y `recursive reference to query \"t\" must not appear more than once`. JOIN y WHERE son justamente lo normal en un término recursivo."
+    },
+    {
+      "id": "s09-q23",
+      "type": "single",
+      "q": "Hay un ciclo en los datos (48 → 15 → 5 → 1 → 48). ¿Qué hace `CYCLE id SET es_ciclo USING camino` en la CTE que sube por la cadena de mando?",
+      "options": [
+        "Agrega `camino` y `es_ciclo`; cuando una fila repite un id de su camino la marca con `es_ciclo = true` y no la sigue expandiendo",
+        "Elimina del resultado todas las filas que forman el ciclo",
+        "Lanza un error al detectar el ciclo",
+        "Convierte el `UNION ALL` en `UNION`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La fila repetida (48 otra vez) aparece una vez, marcada, y ahí se corta la rama. Si no la quieres ver, filtra con `WHERE NOT es_ciclo`."
+    },
+    {
+      "id": "s09-q24",
+      "type": "single",
+      "q": "¿Qué hace `SEARCH DEPTH FIRST BY id SET orden`?",
+      "options": [
+        "Agrega la columna `orden`, que al usarla en ORDER BY lista cada rama completa antes de pasar a la siguiente",
+        "Ordena el resultado en profundidad sin necesidad de ORDER BY",
+        "Limita la profundidad de la recursión",
+        "Recorre el árbol por niveles"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "SEARCH solo calcula la columna; el orden final lo da `ORDER BY orden`. `BREADTH FIRST` es la variante por niveles. Ambas existen desde PostgreSQL 14."
+    },
+    {
+      "id": "s09-q25",
+      "type": "yesno",
+      "q": "Sobre UNION y UNION ALL en una CTE recursiva, indica Sí o No.",
+      "statements": [
+        {
+          "text": "Con UNION se descartan las filas que ya estaban en el resultado.",
+          "answer": true
+        },
+        {
+          "text": "UNION siempre evita los ciclos infinitos.",
+          "answer": false
+        },
+        {
+          "text": "Si la CTE arrastra una columna `nivel`, UNION no detiene un ciclo porque cada fila es distinta.",
+          "answer": true
+        },
+        {
+          "text": "UNION ALL es más barato porque no busca duplicados.",
+          "answer": true
+        }
+      ],
+      "explain": "UNION solo descarta filas **idénticas**. Si cada vuelta cambia alguna columna (nivel, ruta, paradas), nunca hay filas idénticas y el ciclo sigue. Para ciclos, usa CYCLE o un arreglo de camino."
+    },
+    {
+      "id": "s09-q26",
+      "type": "single",
+      "q": "Una CTE recursiva sin condición de término produce 1, 2, 3… sin fin. ¿Qué pasa con `SELECT n FROM t LIMIT 3`?",
+      "options": [
+        "Devuelve 1, 2 y 3 y se detiene, porque PostgreSQL solo evalúa las filas de la CTE que la consulta principal va pidiendo",
+        "Nunca termina",
+        "Falla: LIMIT no se permite con CTE recursivas",
+        "Devuelve 3 filas cualesquiera"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación lo muestra como truco para probar consultas que podrían no terminar. No lo uses en producción: con un ORDER BY o un JOIN en la consulta principal, se necesitarían todas las filas y la consulta volvería a ser infinita."
+    },
+    {
+      "id": "s09-q27",
+      "type": "single",
+      "q": "`CAF-001` cuesta $19.990. ¿Qué muestra la consulta principal?\n```sql\nWITH alza AS (\n  UPDATE productos SET precio = precio + 10000\n  WHERE sku = 'CAF-001'\n  RETURNING precio\n)\nSELECT precio FROM productos WHERE sku = 'CAF-001';\n```",
+      "options": [
+        "19990: la consulta principal usa la misma instantánea y no ve el cambio",
+        "29990",
+        "Un error: no se puede leer una tabla que se está modificando",
+        "Cero filas"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Todas las partes de la sentencia ven la base como estaba al comenzar. El precio nuevo (29990) solo se puede leer desde `alza` (su RETURNING) o en la sentencia siguiente."
+    },
+    {
+      "id": "s09-q28",
+      "type": "single",
+      "q": "¿Qué pasa con el DELETE?\n```sql\nWITH borrar AS (\n  DELETE FROM prestamos WHERE fecha_prestamo < '2025-06-01'\n)\nSELECT count(*) FROM prestamos;\n```",
+      "options": [
+        "Se ejecuta completo aunque nadie lea `borrar`, y el conteo muestra las filas de antes del DELETE",
+        "No se ejecuta, porque la consulta principal no lee `borrar`",
+        "Se ejecuta, y el conteo ya descuenta las filas borradas",
+        "Falla: un DELETE dentro de un WITH necesita RETURNING"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Las CTE que modifican datos se ejecutan siempre y completas. El conteo, por la instantánea común, todavía ve las filas borradas (cuenta los 320 préstamos); la sentencia siguiente verá menos. RETURNING solo es necesario si otra parte quiere leer `borrar`."
+    },
+    {
+      "id": "s09-q29",
+      "type": "multi",
+      "q": "¿Cuáles afirmaciones sobre las CTE que modifican datos son correctas? (Selecciona TRES.)",
+      "options": [
+        "Todas las partes de la sentencia usan la misma instantánea.",
+        "RETURNING es la única forma de pasar los cambios de una parte a otra.",
+        "Si una parte falla, se deshace la sentencia completa.",
+        "Se ejecutan en el orden en que se escriben, y cada una ve los cambios de las anteriores.",
+        "Pueden ir dentro de una subconsulta del FROM."
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "Las partes se ejecutan de forma concurrente, con la misma instantánea, y el orden real de los cambios no se puede predecir: por eso se comunican solo por RETURNING. Un WITH que modifica datos debe ir en el nivel superior (`WITH clause containing a data-modifying statement must be at the top level`)."
+    },
+    {
+      "id": "s09-q30",
+      "type": "single",
+      "q": "¿Qué pasa si una sentencia modifica la misma fila dos veces (una en una CTE y otra en la sentencia principal)?",
+      "options": [
+        "Solo una de las modificaciones queda, y no se puede predecir de forma confiable cuál",
+        "Se aplican las dos, una después de la otra",
+        "Siempre falla con un error",
+        "Siempre queda la de la CTE, porque se escribe primero"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "La documentación lo dice así: modificar una fila dos veces en una sentencia no está soportado; solo una de las modificaciones tiene lugar. Con +1000 en la CTE y +1 en la principal, el resultado no es +1001. Evita que las partes toquen las mismas filas."
+    },
+    {
+      "id": "s09-q31",
+      "type": "single",
+      "q": "Una sentencia mueve 25 préstamos con `WITH movidos AS (DELETE … RETURNING *) INSERT INTO prestamos_historicos SELECT * FROM movidos;`. ¿Qué etiqueta imprime psql?",
+      "options": [
+        "`INSERT 0 25`",
+        "`DELETE 25`",
+        "`DELETE 25` y luego `INSERT 0 25`",
+        "`WITH 25`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "psql muestra la etiqueta de la sentencia principal, que aquí es el INSERT. El DELETE es una parte de la sentencia y no imprime su propia etiqueta."
+    },
+    {
+      "id": "s09-q32",
+      "type": "single",
+      "q": "Con A = (1, 2, 2, 3) y B = (2, 3, 4), ¿qué devuelve `A EXCEPT ALL B`?",
+      "options": [
+        "1 y 2",
+        "1",
+        "1, 2 y 2",
+        "4"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`EXCEPT ALL` deja max(m − n, 0) copias de cada valor: el 1 (1 − 0 = 1), el 2 (2 − 1 = 1) y el 3 (1 − 1 = 0). Sin ALL, `A EXCEPT B` daría solo el 1."
+    },
+    {
+      "id": "s09-q33",
+      "type": "multi",
+      "q": "Con A = (1, 2, 2, 3) y B = (2, 3, 4), ¿cuáles resultados son correctos? (Selecciona TRES.)",
+      "options": [
+        "`A UNION B` → 1, 2, 3, 4",
+        "`A UNION ALL B` → 7 filas",
+        "`A INTERSECT B` → 2, 3",
+        "`A EXCEPT B` → 1, 2",
+        "`B EXCEPT A` → ninguna fila"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "`A EXCEPT B` es solo 1 (sin ALL, el 2 está en B y desaparece), y `B EXCEPT A` es 4: EXCEPT no es simétrico."
+    },
+    {
+      "id": "s09-q34",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta?\n```sql\nSELECT id, nombre FROM productos\nUNION\nSELECT id FROM categorias;\n```",
+      "options": [
+        "Falla con `each UNION query must have the same number of columns`",
+        "Completa la segunda consulta con NULL",
+        "Devuelve solo la columna id",
+        "Falla con `UNION types integer and text cannot be matched`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Todas las consultas de una operación de conjuntos deben tener la misma cantidad de columnas. Si de verdad quieres rellenar, agrégalo tú: SELECT id, NULL FROM categorias."
+    },
+    {
+      "id": "s09-q35",
+      "type": "single",
+      "q": "¿Cuál es el problema de esta consulta?\n```sql\nSELECT sku AS codigo FROM productos\nUNION ALL\nSELECT nombre FROM categorias\nORDER BY lower(codigo);\n```",
+      "options": [
+        "El ORDER BY de una operación de conjuntos solo acepta nombres o posiciones de columnas del resultado, no expresiones",
+        "No se pueden usar alias en un UNION",
+        "UNION ALL no admite ORDER BY",
+        "`lower` no existe para text"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El error es `invalid UNION/INTERSECT/EXCEPT ORDER BY clause`, y el HINT propone mover el UNION a un FROM: `SELECT codigo FROM (… UNION ALL …) AS t ORDER BY lower(codigo)`."
+    },
+    {
+      "id": "s09-q36",
+      "type": "single",
+      "q": "¿Cómo se evalúa `A UNION B INTERSECT C` sin paréntesis?",
+      "options": [
+        "`A UNION (B INTERSECT C)`: INTERSECT tiene mayor precedencia",
+        "`(A UNION B) INTERSECT C`: de izquierda a derecha",
+        "Es un error de sintaxis sin paréntesis",
+        "Depende del plan que elija el planificador"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "INTERSECT se evalúa antes; UNION y EXCEPT, entre ellos, de izquierda a derecha. Usa paréntesis cuando combines operadores distintos."
+    },
+    {
+      "id": "s09-q37",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT NULL::int INTERSECT SELECT NULL::int;`?",
+      "options": [
+        "Una fila con NULL: en las operaciones de conjuntos dos NULL se consideran iguales",
+        "Cero filas, porque NULL = NULL no es verdadero",
+        "Un error",
+        "Una fila con false"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Igual que DISTINCT y GROUP BY, las operaciones de conjuntos consideran iguales a dos NULL. Por eso `EXCEPT` no tiene la trampa de `NOT IN`."
+    },
+    {
+      "id": "s09-q38",
+      "type": "single",
+      "q": "¿Por qué `UNION ALL` suele ser más rápido que `UNION`?",
+      "options": [
+        "Porque no tiene que eliminar duplicados, lo que exige ordenar o armar una tabla hash con todas las filas",
+        "Porque usa índices y UNION no",
+        "Porque ejecuta las dos consultas en paralelo",
+        "No hay diferencia de rendimiento"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "UNION hace el trabajo extra de un DISTINCT sobre el resultado completo. Si las ramas no pueden tener filas repetidas, o si quieres conservarlas, UNION ALL da el mismo resultado sin ese costo."
+    },
+    {
+      "id": "s09-q39",
+      "type": "yesno",
+      "q": "Sobre VALUES, indica Sí o No.",
+      "statements": [
+        {
+          "text": "`VALUES (1, 'a'), (2, 'b');` es una sentencia válida por sí sola.",
+          "answer": true
+        },
+        {
+          "text": "Sin alias, sus columnas se llaman `column1`, `column2`…",
+          "answer": true
+        },
+        {
+          "text": "Todas las filas de un VALUES deben tener la misma cantidad de columnas.",
+          "answer": true
+        },
+        {
+          "text": "En `VALUES (1), (2.5)` la columna es integer y el 2.5 se trunca.",
+          "answer": false
+        },
+        {
+          "text": "VALUES puede ir dentro de un WITH o como ancla de una CTE recursiva.",
+          "answer": true
+        }
+      ],
+      "explain": "Los tipos de VALUES se resuelven como en un UNION: integer y numeric dan numeric, así que el 2.5 se conserva. Si las filas tienen distinta cantidad de columnas: `VALUES lists must all be the same length`."
+    },
+    {
+      "id": "s09-q40",
+      "type": "single",
+      "q": "Quieres comprobar que dos consultas A y B devuelven exactamente las mismas filas (como conjuntos). ¿Qué consulta usas?",
+      "options": [
+        "`(A EXCEPT B) UNION ALL (B EXCEPT A)`: si no devuelve filas, son iguales",
+        "`A INTERSECT B`: si devuelve filas, son iguales",
+        "`A EXCEPT B`: si no devuelve filas, son iguales",
+        "`A UNION B`: si devuelve tantas filas como A, son iguales"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "`A EXCEPT B` vacío solo prueba que A está contenido en B; hay que restar en ambos sentidos. Para comparar también las repeticiones, usa `EXCEPT ALL` en las dos restas."
+    },
+    {
+      "id": "s09-q41",
+      "type": "single",
+      "q": "¿Cuál de estas construcciones NO acepta una subconsulta que devuelve varias filas?",
+      "options": [
+        "`precio = (SELECT …)`",
+        "`precio IN (SELECT …)`",
+        "`precio > ALL (SELECT …)`",
+        "`EXISTS (SELECT …)`"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Después de un operador de comparación sin ANY ni ALL se espera un valor escalar. IN, ANY y ALL aceptan listas, y a EXISTS le da igual cuántas filas haya."
+    },
+    {
+      "id": "s09-q42",
+      "type": "single",
+      "q": "¿Qué hace el DELETE en esta sentencia?\n```sql\nWITH movidos AS (\n  DELETE FROM prestamos WHERE fecha_prestamo < '2025-04-01'\n  RETURNING *\n)\nINSERT INTO prestamos_historicos SELECT * FROM movidos;\n```\n(La tabla histórica tiene un CHECK que exige `fecha_devolucion`, y 3 de esos préstamos no se han devuelto.)",
+      "options": [
+        "Se deshace: el INSERT falla por el CHECK y la sentencia completa vuelve atrás",
+        "Queda hecho, aunque el INSERT falle",
+        "Borra solo los préstamos devueltos",
+        "Inserta los préstamos que cumplen el CHECK y borra todos"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "Una sentencia con CTE es atómica: si cualquier parte falla, no queda nada hecho. Con dos sentencias sueltas y sin transacción, el DELETE ya se habría confirmado y esos préstamos se habrían perdido."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: consultas WITH (expresiones de tabla comunes, CTE recursivas, SEARCH, CYCLE y CTE que modifican datos)",
+      "url": "https://www.postgresql.org/docs/18/queries-with.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: expresiones de subconsulta (EXISTS, IN, NOT IN, ANY/SOME, ALL)",
+      "url": "https://www.postgresql.org/docs/18/functions-subquery.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: combinar consultas (UNION, INTERSECT, EXCEPT)",
+      "url": "https://www.postgresql.org/docs/18/queries-union.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: subconsultas escalares",
+      "url": "https://www.postgresql.org/docs/18/sql-expressions.html#SQL-SYNTAX-SCALAR-SUBQUERIES"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: subconsultas en el FROM (tablas derivadas)",
+      "url": "https://www.postgresql.org/docs/18/queries-table-expressions.html#QUERIES-SUBQUERIES"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: listas VALUES",
+      "url": "https://www.postgresql.org/docs/18/queries-values.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT (cláusula WITH, UNION, INTERSECT y EXCEPT)",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html"
+    },
+    {
+      "title": "Notas de la versión 16 de PostgreSQL (alias opcional en las subconsultas del FROM)",
+      "url": "https://www.postgresql.org/docs/release/16.0/"
+    }
+  ]
+}

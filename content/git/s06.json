@@ -1,0 +1,2653 @@
+{
+ "id": "s06",
+ "order": 6,
+ "title": "Fusionar ramas y resolver conflictos",
+ "domain": "colaboracion",
+ "summary": "Cómo integra Git el trabajo de dos ramas: avance rápido (fast-forward) o fusión de tres vías a partir de la base común; cómo controlar el tipo de fusión y su mensaje; por qué aparecen los conflictos, cómo leerlos y resolverlos con calma (de contenido, de borrado y de renombrado), y cuándo conviene usar -X ours/theirs o --squash.",
+ "goal": "Integrar ramas con git merge eligiendo entre avance rápido y commit de fusión, y resolver conflictos de contenido y de archivos sin perder trabajo, dejando siempre el repositorio limpio.",
+ "objectives": [
+  "Predecir si una fusión será un avance rápido o una fusión de tres vías identificando la base común con `git merge-base`",
+  "Controlar el resultado de `git merge` con `--no-ff`, `--ff-only`, `-m`, `-e` y `--no-edit`, y deshacer una fusión local con `ORIG_HEAD`",
+  "Interpretar un conflicto a partir de los marcadores, `git status`, las etapas del índice y `git diff`",
+  "Resolver conflictos editando o con `git checkout`/`git restore --ours/--theirs`, y concluir con `git add` + `git commit` o cancelar con `git merge --abort`",
+  "Resolver conflictos de archivos (modify/delete, rename/rename, add/add) con `git add` y `git rm`",
+  "Configurar `merge.conflictStyle` (`diff3`, `zdiff3`) y aplicar `-X ours`/`-X theirs` verificando qué se pierde",
+  "Integrar una rama como un único commit con `git merge --squash` y explicar sus consecuencias",
+  "Aplicar prácticas de equipo que reducen conflictos, como traer `main` a la rama antes de entregarla"
+ ],
+ "lessons": [
+  {
+   "id": "s06-l1",
+   "title": "Fusionar: avance rápido o fusión de tres vías",
+   "minutes": 22,
+   "goals": [
+    "Predecir si `git merge` hará un avance rápido o creará un commit de fusión mirando el gráfico",
+    "Encontrar la base común de dos ramas con `git merge-base`",
+    "Ejecutar una fusión desde la rama que recibe los cambios"
+   ],
+   "takeaways": [
+    "`git merge X` integra X **en la rama en la que estás**: primero te cambias a la rama que recibe.",
+    "Si tu rama es ancestro de X, Git solo adelanta el puntero (fast-forward): no hay commit nuevo y la historia queda lineal.",
+    "Si las ramas divergieron, Git compara tres instantáneas (base común, tu punta y la otra) y crea un commit de fusión con dos padres.",
+    "La base común es el mejor ancestro compartido; `git merge-base A B` la muestra y `--is-ancestor` responde si habrá avance rápido.",
+    "`Already up to date.` significa que no había nada que integrar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s05 aprendiste a abrir ramas para trabajar en paralelo sin estorbarte. Esa es la mitad de la historia; la otra mitad es **volver a juntar** ese trabajo. Eso es **fusionar** (*merge*), y en Git siempre se hace igual: te paras en la rama que **recibe** los cambios y nombras la rama que quieres **traer**."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git switch main              # 1. la rama que recibe\ngit merge feature/login      # 2. la rama que traes"
+    },
+    {
+     "type": "p",
+     "text": "`git merge` no copia archivos a ciegas: mira la **forma del grafo** de commits y elige entre dos caminos. Entender cuál tomará, y por qué, es la clave de toda esta sección."
+    },
+    {
+     "type": "h",
+     "text": "Camino 1: avance rápido (fast-forward)"
+    },
+    {
+     "type": "p",
+     "text": "Si desde que creaste la rama nadie tocó `main`, la punta de `main` es un **ancestro** de la punta de tu rama: todo lo que tiene `main` ya está dentro de tu rama. Git no necesita combinar nada: simplemente **adelanta el puntero** `main` hasta el último commit de la rama. No se crea ningún commit nuevo y la historia queda recta."
+    },
+    {
+     "type": "diagram",
+     "title": "Antes: main quedó atrás y fix/errata va dos commits adelante",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  branch fix/errata\n  checkout fix/errata\n  commit id: \"C\"\n  commit id: \"D\"",
+     "caption": "main apunta a B y fix/errata a D. B es ancestro de D: todo lo de main ya está en la rama."
+    },
+    {
+     "type": "diagram",
+     "title": "Después de git merge fix/errata (estando en main)",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B\"\n  commit id: \"C\"\n  commit id: \"D\"",
+     "caption": "Historia lineal: main y fix/errata apuntan ahora al mismo commit D. Git solo movió una etiqueta; no creó nada."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sitio\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Bienbenidos</h1>' 'Crea la portada'\ncommit_archivo estilos.css 'body { font-family: sans-serif; }' 'Añade estilos'\ngit switch -q -c fix/errata\nfecha '2026-09-02 09:30'\ncommit_archivo index.html '<h1>Bienvenidos</h1>' 'Corrige errata en la portada'\ncommit_archivo estilos.css 'body { font-family: sans-serif; margin: 0; }' 'Quita el margen del body'\ngit switch -q main",
+     "cwd": "sitio",
+     "code": "git log --oneline --graph --all\ngit merge fix/errata\ngit log --oneline --graph --all",
+     "caption": "Avance rápido: main salta hasta la punta de fix/errata."
+    },
+    {
+     "type": "p",
+     "text": "Lee la salida con calma: `Updating 1a2b3c4..5d6e7f8` indica desde qué commit hasta cuál avanzó `main`, y `Fast-forward` confirma el camino que tomó Git. Debajo viene el resumen de archivos cambiados (el *diffstat*). En el gráfico, `main` y `fix/errata` quedan sobre el mismo commit."
+    },
+    {
+     "type": "h",
+     "text": "Camino 2: las ramas divergieron → fusión de tres vías"
+    },
+    {
+     "type": "p",
+     "text": "Ahora imagina que, mientras trabajabas en tu rama, Camila integró su página de contacto en `main`. Las dos ramas **divergieron**: cada una tiene commits que la otra no tiene. Si Git adelantara `main` hasta tu rama, el commit de Camila quedaría fuera. Por eso hace una **fusión de tres vías** (*three-way merge*) y guarda el resultado en un **commit de fusión** (*merge commit*) con **dos padres**."
+    },
+    {
+     "type": "diagram",
+     "title": "Ramas divergentes y su commit de fusión",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  commit id: \"B (base común)\"\n  branch feature/newsletter\n  checkout feature/newsletter\n  commit id: \"C\"\n  commit id: \"D\"\n  checkout main\n  commit id: \"E (Camila)\"\n  merge feature/newsletter id: \"M\"",
+     "caption": "M tiene dos padres: E (lo que tenía main) y D (la punta de la rama). B es la base común: el último commit que ambas comparten."
+    },
+    {
+     "type": "p",
+     "text": "¿Por qué *tres* vías? Porque Git compara tres instantáneas: la **base común** (el último commit que comparten ambas ramas), la punta de tu rama (**HEAD**, lo que Git llama *ours*, «lo nuestro») y la punta de la otra (*theirs*, «lo de ellos»). La base es lo que permite saber **quién cambió qué**, zona por zona:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Base común",
+      "Tu rama (ours)",
+      "La otra (theirs)",
+      "Resultado"
+     ],
+     "rows": [
+      [
+       "X",
+       "X",
+       "X",
+       "X (nadie lo cambió)"
+      ],
+      [
+       "X",
+       "X",
+       "Y",
+       "Y (solo cambió la otra rama)"
+      ],
+      [
+       "X",
+       "Y",
+       "X",
+       "Y (solo cambiaste tú)"
+      ],
+      [
+       "X",
+       "Y",
+       "Y",
+       "Y (ambos hicieron el mismo cambio)"
+      ],
+      [
+       "X",
+       "Y",
+       "Z",
+       "**Conflicto**: Git no puede elegir y te pregunta"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Sin la base, Git vería dos versiones distintas y no sabría si una línea que solo está en un lado fue **agregada** por ese lado o **borrada** por el otro. Con la base, la inmensa mayoría de las fusiones se resuelve sola; solo cuando ambos lados cambian la misma zona de forma distinta aparece un **conflicto** (lección 3)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ngit switch -q -c feature/newsletter\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo",
+     "cwd": "boletin",
+     "code": "git log --oneline --graph --all\ngit merge-base main feature/newsletter\ngit merge feature/newsletter\ngit log --oneline --graph --all\ngit log -1 --format=\"%h %s | padres: %p\"",
+     "caption": "Fusión de tres vías: nace un commit con dos padres."
+    },
+    {
+     "type": "p",
+     "text": "`Merge made by the 'ort' strategy.` te dice que hubo fusión real y qué algoritmo la hizo: **ort** es el algoritmo por defecto desde Git 2.34 (en tutoriales antiguos verás `'recursive'`; desde Git 2.50 ese nombre es solo un sinónimo de `ort`). El commit nuevo se llama `Merge branch 'feature/newsletter'` y `%p` muestra sus **dos padres**: la punta anterior de `main` y la punta de la rama."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Cuando la fusión crea un commit, `git merge` abre el editor con el mensaje propuesto (`Merge branch 'feature/newsletter'`) para que lo aceptes o expliques el porqué de la fusión: guarda y cierra, y Git termina. Lo hace porque detecta una terminal interactiva (como la tuya o la de práctica); en un script sin terminal usa el mensaje propuesto directamente. En la lección 2 verás cómo controlarlo con `-m`, `-e` y `--no-edit`."
+    },
+    {
+     "type": "h",
+     "text": "La base común: git merge-base"
+    },
+    {
+     "type": "p",
+     "text": "`git merge-base A B` imprime el hash de la **base común** (el *mejor ancestro común*) de dos commits o ramas: el punto donde se separaron. Y `git merge-base --is-ancestor A B` no imprime nada: responde con su **código de salida** (0 = sí, A es ancestro de B). Es exactamente la pregunta «¿esta fusión será un avance rápido?»."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ngit switch -q -c feature/newsletter\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo\ngit switch -q -c fix/pie\nfecha '2026-09-03 09:00'\ncommit_archivo pie.html '<footer>Boletín del barrio · 2026</footer>' 'Añade pie de página'\ngit switch -q main",
+     "cwd": "boletin",
+     "code": "git log --oneline --graph --all\ngit merge-base --is-ancestor main feature/newsletter && echo \"fast-forward posible\" || echo \"habrá fusión de tres vías\"\ngit merge-base --is-ancestor main fix/pie && echo \"fast-forward posible\" || echo \"habrá fusión de tres vías\"",
+     "caption": "La misma pregunta que se hace git merge, respondida antes de fusionar."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace git merge X (estando en main)",
+     "mermaid": "flowchart TD\n  A[\"git merge X\"] --> B{\"¿X ya está contenida en main?\"}\n  B -- \"sí\" --> C[\"Already up to date. (nada que hacer)\"]\n  B -- \"no\" --> D{\"¿main es ancestro de X?\"}\n  D -- \"sí\" --> E[\"Fast-forward: main avanza hasta X\"]\n  D -- \"no\" --> F[\"Fusión de tres vías desde la base común\"]\n  F --> G{\"¿Ambos cambiaron la misma zona?\"}\n  G -- \"no\" --> H[\"Commit de fusión automático (2 padres)\"]\n  G -- \"sí\" --> I[\"CONFLICT: Git se detiene y te pide decidir\"]",
+     "caption": "Con --no-ff, el camino «Fast-forward» también termina en un commit de fusión (lección 2)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Fusiona en la dirección correcta.** `git merge feature/x` estando en `main` integra la funcionalidad en `main`; `git merge main` estando en `feature/x` trae `main` a tu rama (útil para ponerte al día, lección 6). Confundirlas es el error número uno: mira `git status` o `git branch` antes de fusionar. Si fusionas al revés una rama que ya contiene todo, verás `Already up to date.` y no pasará nada."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas típicas: «¿Cuántos padres tiene un commit de fusión?» → dos (o más en una fusión *octopus*, s15). «¿Qué crea un fast-forward?» → ningún commit: solo mueve el puntero. «¿Qué tres versiones usa una fusión de tres vías?» → la base común, HEAD (ours) y la punta de la otra rama (theirs)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "fusionar",
+       "en": "merge",
+       "def": "Integrar en la rama actual los commits de otra rama."
+      },
+      {
+       "term": "avance rápido",
+       "en": "fast-forward",
+       "def": "Fusión en la que la rama actual es ancestro de la otra: Git solo adelanta el puntero, sin commit nuevo."
+      },
+      {
+       "term": "fusión de tres vías",
+       "en": "three-way merge",
+       "def": "Combinación que compara la base común con las dos puntas para decidir, zona por zona, qué cambió cada lado."
+      },
+      {
+       "term": "commit de fusión",
+       "en": "merge commit",
+       "def": "Commit con dos (o más) padres que registra la unión de dos historias."
+      },
+      {
+       "term": "base común",
+       "en": "merge base",
+       "def": "El mejor ancestro común de dos commits; lo muestra `git merge-base`."
+      },
+      {
+       "term": "ort",
+       "en": "Ostensibly Recursive's Twin",
+       "def": "Algoritmo de fusión por defecto desde Git 2.34; reemplazó a `recursive`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l2",
+   "title": "Controlar la fusión: --no-ff, --ff-only y el mensaje",
+   "minutes": 20,
+   "goals": [
+    "Forzar un commit de fusión con `--no-ff` o exigir un avance rápido con `--ff-only`",
+    "Redactar o aceptar el mensaje de una fusión con `-m`, `-e` y `--no-edit`",
+    "Identificar los padres de un commit de fusión con `HEAD^1` y `HEAD^2`",
+    "Deshacer una fusión local recién hecha con `git reset --hard ORIG_HEAD`"
+   ],
+   "takeaways": [
+    "`--no-ff` crea un commit de fusión aunque se pudiera avanzar: deja constancia de que esos commits eran una unidad.",
+    "`--ff-only` solo avanza; si las ramas divergieron, se niega sin tocar nada.",
+    "La configuración `merge.ff` (`false` u `only`) cambia el comportamiento por defecto.",
+    "El primer padre (`^1`) es la rama donde estabas; el segundo (`^2`), la que fusionaste.",
+    "Una fusión local aún no compartida se deshace con `git reset --hard ORIG_HEAD`; una ya publicada se revierte (s16)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Por defecto (`--ff`), Git hace un avance rápido cuando puede y un commit de fusión cuando no. Pero los equipos tienen políticas distintas: algunos quieren **siempre** un commit de fusión por cada funcionalidad; otros quieren que ciertas ramas **solo** avancen, sin fusiones. Git te da una opción para cada caso."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Si se puede avanzar",
+      "Si las ramas divergieron",
+      "Cuándo usarla"
+     ],
+     "rows": [
+      [
+       "`--ff` (por defecto)",
+       "Avanza (sin commit)",
+       "Commit de fusión",
+       "Uso diario"
+      ],
+      [
+       "`--no-ff`",
+       "Crea commit de fusión igual",
+       "Commit de fusión",
+       "Integrar funcionalidades y que queden agrupadas (Git Flow, botón «Create a merge commit» de GitHub)"
+      ],
+      [
+       "`--ff-only`",
+       "Avanza",
+       "**Se niega**: `fatal: Not possible to fast-forward, aborting.`",
+       "Actualizar una rama sin crear fusiones por accidente (muy útil con remotos, s07)"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Integrar con --no-ff aunque main no haya avanzado",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  branch feature/carrito\n  checkout feature/carrito\n  commit id: \"B\"\n  commit id: \"C\"\n  checkout main\n  merge feature/carrito id: \"M (--no-ff)\"",
+     "caption": "M tiene dos padres: A y C. Con un fast-forward, main apuntaría directamente a C y no quedaría rastro de que B y C eran una funcionalidad."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Tienda</h1>' 'Crea la portada'\ngit switch -q -c feature/carrito\nfecha '2026-09-03 10:00'\ncommit_archivo carrito.js 'const carrito = [];' 'Crea el carrito'\nanexar carrito.js 'function agregar(p) { carrito.push(p); }'\ngit commit -qam 'Permite agregar productos'\ngit switch -q main",
+     "cwd": "tienda",
+     "code": "git merge --no-ff feature/carrito\ngit log --oneline --graph --all\ngit log -1 --format=\"padres: %p\"\ngit rev-parse --short HEAD^1\ngit rev-parse --short HEAD^2",
+     "caption": "--no-ff: commit de fusión aunque bastara con avanzar."
+    },
+    {
+     "type": "p",
+     "text": "`HEAD^1` es el **primer padre** del commit de fusión: donde estaba `main` antes de fusionar. `HEAD^2` es el **segundo padre**: la punta de la rama que trajiste. No lo confundas con `HEAD~2`, que significa «dos generaciones atrás siguiendo siempre el primer padre». Gracias a esta convención, `git log --first-parent` recorre solo la línea principal y muestra `main` como una lista de integraciones (lo usarás en s11)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ngit switch -q -c feature/newsletter\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo\ngit switch -q -c fix/pie\nfecha '2026-09-03 09:00'\ncommit_archivo pie.html '<footer>Boletín del barrio · 2026</footer>' 'Añade pie de página'\ngit switch -q main",
+     "cwd": "boletin",
+     "code": "git merge --ff-only feature/newsletter\ngit status\ngit merge --ff-only fix/pie\ngit log --oneline --graph --all",
+     "caption": "--ff-only: rechaza la fusión de tres vías y acepta el avance rápido."
+    },
+    {
+     "type": "p",
+     "text": "Con ramas divergentes, `--ff-only` muestra unas pistas (`hint: Diverging branches can't be fast-forwarded, you need to either: git merge --no-ff ... or: git rebase`) y termina con `fatal: Not possible to fast-forward, aborting.` El repositorio queda **exactamente igual** que antes: no hay nada que deshacer. En cambio, con `fix/pie`, que sí se puede avanzar, funciona normalmente."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Puedes fijar la política por repositorio o globalmente: `git config merge.ff false` equivale a usar siempre `--no-ff` y `git config merge.ff only`, a usar siempre `--ff-only`. Mucha gente prefiere dejar el valor por defecto y escribir la opción explícita cuando la necesita, para que el comando diga lo que hace."
+    },
+    {
+     "type": "h",
+     "text": "El mensaje del commit de fusión"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git merge rama` → propone `Merge branch 'rama'` y, en una terminal interactiva, abre el editor para que lo confirmes. Si no estás en `main` (o `master`), añade el destino: `Merge branch 'main' into feature/pagos`.",
+      "`git merge -m \"Integra el carrito\" rama` → usa tu mensaje directamente, sin abrir el editor.",
+      "`git merge -e rama` (o `--edit`) → fuerza el editor. Es muy útil junto con `-m`: el editor se abre con tu borrador para que expliques **por qué** se fusiona.",
+      "`git merge --no-edit rama` → acepta el mensaje propuesto sin abrir el editor (típico en scripts).",
+      "`git merge --log rama` → añade al mensaje la lista de commits integrados (con `git config merge.log true` se activa por defecto)."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ngit switch -q -c feature/newsletter\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo",
+     "cwd": "boletin",
+     "code": "git merge -e -m \"Integra el boletín\" feature/newsletter\ngit log -1 --format=%B",
+     "caption": "Con -m y -e, el editor se abre con tu borrador: guárdalo tal cual o mejóralo."
+    },
+    {
+     "type": "p",
+     "text": "En el editor verás el mensaje (el propuesto o tu borrador) y unas líneas que empiezan con `#` (instrucciones que Git descarta). Si guardas un mensaje vacío, Git no crea el commit (`error: Empty commit message.` y `Not committing merge; use 'git commit' to complete the merge.`), pero la fusión queda **en curso**: termínala con `git commit` o cancélala con `git merge --abort`."
+    },
+    {
+     "type": "h",
+     "text": "Deshacer una fusión recién hecha"
+    },
+    {
+     "type": "p",
+     "text": "Antes de operaciones que mueven HEAD de forma importante (merge, reset, rebase), Git guarda la posición anterior en una referencia especial llamada `ORIG_HEAD`. Si acabas de fusionar algo por error y **todavía no lo has compartido**, puedes volver atrás con `git reset --hard ORIG_HEAD`. Si la fusión creó un commit de fusión, `git reset --hard HEAD~1` también sirve (su primer padre es donde estabas); tras un avance rápido, en cambio, solo `ORIG_HEAD` te devuelve al punto exacto. Recuerda de s04 que `--hard` descarta cambios no confirmados: úsalo con el árbol limpio."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ngit switch -q -c feature/newsletter\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 15:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo",
+     "cwd": "boletin",
+     "code": "git merge feature/newsletter\ngit log --oneline --graph --all\ngit reset --hard ORIG_HEAD\ngit log --oneline --graph --all",
+     "caption": "La fusión desaparece de main, pero la rama sigue intacta para fusionarla de nuevo."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Antes de fusionar, deja el árbol limpio.** Si tienes cambios sin confirmar en archivos que la fusión necesita tocar, Git se niega: `error: Your local changes to the following files would be overwritten by merge: ... Please commit your changes or stash them before you merge.` y termina con `Aborting`. Confirma tu trabajo o guárdalo con `git stash` (s10) y vuelve a intentarlo. Existe `git merge --autostash`, pero es mejor partir limpio."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Si la fusión ya está en un remoto compartido, **no** uses `reset`: reescribirías historia que otros tienen. Lo correcto es `git revert -m 1 <commit-de-fusión>`, que crea un commit nuevo que deshace la fusión; lo verás a fondo en s16."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué diferencia hay entre `--no-ff` y `--ff-only`?» → `--no-ff` **siempre** crea commit de fusión; `--ff-only` **nunca** lo crea (y falla si haría falta). «¿Qué es `HEAD^2` después de un merge?» → la punta de la rama fusionada (segundo padre). «¿Dónde guarda Git la posición anterior a un merge?» → en `ORIG_HEAD`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "--no-ff",
+       "def": "Obliga a crear un commit de fusión aunque se pudiera avanzar."
+      },
+      {
+       "term": "--ff-only",
+       "def": "Solo permite el avance rápido; si hace falta un commit de fusión, se niega sin cambiar nada."
+      },
+      {
+       "term": "primer padre",
+       "en": "first parent",
+       "def": "`HEAD^1`: el commit en el que estaba la rama al fusionar."
+      },
+      {
+       "term": "segundo padre",
+       "en": "second parent",
+       "def": "`HEAD^2`: la punta de la rama que se fusionó."
+      },
+      {
+       "term": "ORIG_HEAD",
+       "def": "Referencia donde Git guarda la posición de HEAD antes de un merge, reset o rebase."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l3",
+   "title": "Conflictos: por qué ocurren y cómo leerlos",
+   "minutes": 20,
+   "goals": [
+    "Reconocer en la salida de `git merge` y de `git status` que una fusión se detuvo por conflictos",
+    "Interpretar los marcadores `<<<<<<<`, `=======` y `>>>>>>>` identificando qué lado es cada uno",
+    "Inspeccionar un conflicto con `git diff`, `git ls-files -u` y `git log --merge`"
+   ],
+   "takeaways": [
+    "Hay conflicto cuando ambos lados cambian la misma zona (o líneas contiguas) de forma distinta respecto de la base, o cuando uno borra o renombra lo que el otro cambió.",
+    "Git fusiona todo lo que puede y se detiene en lo que no: HEAD no se mueve y `MERGE_HEAD` apunta a la otra rama.",
+    "Entre `<<<<<<< HEAD` y `=======` está tu versión (ours); entre `=======` y `>>>>>>> rama`, la que traes (theirs).",
+    "En el índice, un archivo en conflicto tiene hasta tres etapas: 1 = base, 2 = ours, 3 = theirs.",
+    "Un conflicto no es un error: es Git pidiéndote una decisión que no puede tomar solo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un **conflicto** aparece cuando la regla de las tres vías no alcanza para decidir: los dos lados cambiaron la misma zona de forma distinta. Git no elige al azar ni «gana el último»: se detiene, marca el problema y te pide que decidas. Es una conversación, no un fallo."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación (respecto de la base común)",
+      "¿Conflicto?"
+     ],
+     "rows": [
+      [
+       "Cada lado cambia archivos distintos",
+       "No"
+      ],
+      [
+       "Ambos cambian el mismo archivo, en zonas separadas",
+       "No: Git combina ambos cambios"
+      ],
+      [
+       "Ambos hacen exactamente el mismo cambio",
+       "No"
+      ],
+      [
+       "Ambos cambian la misma línea, o líneas contiguas, de forma distinta",
+       "Sí: `CONFLICT (content)`"
+      ],
+      [
+       "Uno modifica un archivo y el otro lo borra",
+       "Sí: `CONFLICT (modify/delete)`"
+      ],
+      [
+       "Ambos crean un archivo con el mismo nombre y distinto contenido",
+       "Sí: `CONFLICT (add/add)`"
+      ],
+      [
+       "Ambos renombran el mismo archivo con nombres distintos",
+       "Sí: `CONFLICT (rename/rename)`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Las líneas contiguas también chocan.** Si tú cambias la línea 2 y tu compañera la línea 3, Git lo considera la misma zona y marca conflicto, aunque no hayan tocado la misma línea. Git no conoce el significado del texto: prefiere preguntarte antes que adivinar mal."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git log --oneline --graph --all\ngit merge alza\ngit status\ncat precios.txt",
+     "caption": "Ana subió el café a 1800 y tú lo ajustaste a 1600: la misma línea, dos decisiones."
+    },
+    {
+     "type": "p",
+     "text": "Lee la salida de arriba abajo: `Auto-merging precios.txt` (Git intentó combinar el archivo), `CONFLICT (content): Merge conflict in precios.txt` (no pudo) y `Automatic merge failed; fix conflicts and then commit the result.` (te toca a ti). Después, `git status` lo confirma: `You have unmerged paths.`, la sección `Unmerged paths:` y el archivo marcado como `both modified:` (ambos lo modificaron). También te recuerda las dos salidas: resolver y confirmar, o `git merge --abort`."
+    },
+    {
+     "type": "h",
+     "text": "Anatomía de los marcadores"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "<<<<<<< HEAD\ncafe: 1600\n=======\ncafe: 1800\n>>>>>>> alza\nte: 1200\nsandwich: 3500"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`<<<<<<< HEAD` abre el conflicto. Debajo está **tu versión**: la de la rama en la que estás (HEAD, *ours*).",
+      "`=======` separa las dos versiones.",
+      "`>>>>>>> alza` cierra el conflicto. Encima está la versión **que traes** (*theirs*), rotulada con el nombre de la rama.",
+      "Todo lo que está **fuera** de los marcadores ya quedó bien fusionado (aquí, `te` y `sandwich`).",
+      "Resolver significa dejar el texto como debe quedar y **borrar las tres líneas de marcadores**."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "*Ours* es siempre la rama en la que estás (HEAD) y *theirs* la que nombras en `git merge`. Ojo: durante un **rebase** los papeles se invierten (lo verás en s09); es una pregunta clásica de entrevista."
+    },
+    {
+     "type": "h",
+     "text": "Qué guarda Git mientras hay un conflicto"
+    },
+    {
+     "type": "diagram",
+     "title": "Estados de una fusión con conflictos",
+     "mermaid": "stateDiagram-v2\n  [*] --> Limpio\n  Limpio --> EnConflicto: git merge rama (CONFLICT)\n  EnConflicto --> EnConflicto: editar un archivo y git add\n  EnConflicto --> Limpio: git merge --abort\n  EnConflicto --> Resuelto: último conflicto marcado con git add\n  Resuelto --> Limpio: git commit o git merge --continue",
+     "caption": "Mientras estás en EnConflicto o Resuelto, Git se niega a cambiar de rama o empezar otra fusión."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**HEAD no se mueve**: `main` sigue en su commit; el commit de fusión todavía no existe.",
+      "`.git/MERGE_HEAD` guarda el hash de la punta que estás fusionando, y `.git/MERGE_MSG` el mensaje propuesto.",
+      "Los archivos que se fusionaron bien ya están actualizados en el directorio de trabajo **y** en el área de preparación.",
+      "Cada archivo en conflicto aparece en el área de preparación en **tres etapas** (*stages*): 1 = base común, 2 = ours (HEAD), 3 = theirs (MERGE_HEAD). En el directorio de trabajo queda la versión con marcadores.",
+      "Mientras dure, Git se niega a otras operaciones: `fatal: cannot switch branch while merging` o `fatal: You have not concluded your merge (MERGE_HEAD exists).`"
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\ngit ls-files -u\ngit show :1:precios.txt\ngit show :2:precios.txt\ngit show :3:precios.txt\ngit rev-parse --short MERGE_HEAD",
+     "caption": "Las tres versiones que Git guarda del archivo en conflicto."
+    },
+    {
+     "type": "p",
+     "text": "`git ls-files -u` (*unmerged*) lista las entradas en conflicto con su número de etapa, y `git show :N:archivo` muestra el contenido de la etapa N. Así puedes ver la versión original (1), la tuya (2) y la de Ana (3) sin marcadores de por medio."
+    },
+    {
+     "type": "h",
+     "text": "git diff durante un conflicto"
+    },
+    {
+     "type": "p",
+     "text": "Con un conflicto abierto, `git diff` muestra un **diff combinado** (`diff --cc`): en lugar de una columna de `+`/`-` hay **dos**; la primera compara con tu versión y la segunda con la que traes. Las líneas `++<<<<<<< HEAD` significan «esta línea no está en ninguno de los dos lados» (son los marcadores). Además tienes tres atajos: `git diff --ours` (el archivo actual contra tu versión), `git diff --theirs` (contra la de ellos) y `git diff --base` (contra la base). Y `git log --merge` lista solo los commits de cada lado que tocaron los archivos en conflicto: sabrás con quién hablar."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\ngit diff\ngit diff --base\ngit log --oneline --left-right --merge",
+     "caption": "Diff combinado, comparación con la base y los commits involucrados (< tuyos, > de ellos)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Antes de resolver, pregúntate **qué quería lograr cada lado**, no solo qué texto dejó. `git log --merge -p` muestra los commits y cambios de ambos lados que provocaron el conflicto; sus mensajes suelen explicar la intención."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "conflicto",
+       "en": "merge conflict",
+       "def": "Zona que ambos lados cambiaron de forma distinta y que Git no puede combinar solo."
+      },
+      {
+       "term": "marcadores de conflicto",
+       "en": "conflict markers",
+       "def": "Las líneas `<<<<<<<`, `=======` y `>>>>>>>` (y `|||||||` en diff3/zdiff3) que delimitan cada versión."
+      },
+      {
+       "term": "ruta sin fusionar",
+       "en": "unmerged path",
+       "def": "Archivo con conflicto pendiente; aparece en `git status` bajo `Unmerged paths`."
+      },
+      {
+       "term": "MERGE_HEAD",
+       "def": "Referencia a la punta que se está fusionando; existe mientras la fusión no termine."
+      },
+      {
+       "term": "etapas",
+       "en": "stages",
+       "def": "Versiones de un archivo en conflicto en el índice: 1 = base, 2 = ours, 3 = theirs."
+      },
+      {
+       "term": "diff combinado",
+       "en": "combined diff",
+       "def": "Formato `diff --cc` que compara el resultado con varios padres a la vez, con una columna por padre."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l4",
+   "title": "Resolver conflictos paso a paso",
+   "minutes": 24,
+   "goals": [
+    "Resolver un conflicto de contenido editando el archivo y concluir la fusión con `git add` y `git commit`",
+    "Cancelar una fusión con `git merge --abort` y recrear un conflicto con `git checkout -m`",
+    "Quedarse con una versión completa usando `git checkout --ours/--theirs` o `git restore --ours/--theirs`",
+    "Configurar `merge.conflictStyle` en `zdiff3` e interpretar la sección de la base"
+   ],
+   "takeaways": [
+    "Resolver es dejar el archivo como debe quedar, sin marcadores, y marcarlo con `git add`.",
+    "`git commit` (o `git merge --continue`) crea el commit de fusión con el mensaje propuesto.",
+    "`git merge --abort` vuelve al estado previo a la fusión; por eso conviene fusionar con el árbol limpio.",
+    "`--ours`/`--theirs` reemplazan el archivo **completo** por un lado; igual falta `git add`.",
+    "Con `zdiff3` ves también la versión original, lo que hace la resolución más fácil y segura."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Resolver un conflicto siempre sigue la misma receta. Nada de magia: Git ya hizo todo lo automático; tú aportas el criterio."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`git status` → qué archivos están en conflicto (`Unmerged paths`).",
+      "Abre cada uno (`code archivo`), busca `<<<<<<<` y decide: tu versión, la otra, una combinación o algo nuevo. Borra los tres marcadores.",
+      "`git add archivo` → le dice a Git «este ya está resuelto» (el archivo pasa de las etapas 1/2/3 a una sola entrada normal).",
+      "`git status` → cuando no quedan conflictos dice `All conflicts fixed but you are still merging.`",
+      "`git commit` (se abre el editor con `Merge branch '…'`) o `git merge --continue`, que comprueba que haya una fusión en curso y luego llama a `git commit`."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "diagram",
+     "title": "El ciclo de resolución",
+     "mermaid": "flowchart TD\n  A[\"git merge rama\"] --> B{\"¿CONFLICT?\"}\n  B -- \"no\" --> Z[\"Commit de fusión creado\"]\n  B -- \"sí\" --> C[\"git status: ver Unmerged paths\"]\n  C --> D[\"Editar el archivo y borrar los marcadores\"]\n  D --> E[\"git add archivo\"]\n  E --> F{\"¿Quedan archivos sin fusionar?\"}\n  F -- \"sí\" --> D\n  F -- \"no\" --> G[\"git commit o git merge --continue\"]\n  G --> Z\n  C -. \"mejor empezar de nuevo\" .-> X[\"git merge --abort\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\n# En la vida real abrirías el archivo con: code precios.txt\nprintf 'cafe: 1700\\nte: 1200\\nsandwich: 3500\\n' > precios.txt\ngit diff\ngit add precios.txt\ngit status\ngit commit\ngit log --oneline --graph --all",
+     "caption": "Resolución completa: acordaron 1700, un valor que no estaba en ningún lado."
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en el `git diff` justo después de editar: el diff combinado ahora muestra `- cafe: 1600` y ` -cafe: 1800` (quitados respecto de cada lado) y `++cafe: 1700` (nuevo respecto de **ambos**). Es la forma de revisar tu resolución antes de marcarla. Al hacer `git commit` se abre el editor con `Merge branch 'alza'` y un comentario `# Conflicts:` que lista los archivos que tuvieron conflicto; guarda y listo."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En la terminal de práctica, `code archivo` abre el editor integrado. En tu computador, editores como VS Code detectan los marcadores y ofrecen botones («Accept Current Change», «Accept Incoming Change», «Accept Both Changes») e incluso un editor de fusión de tres paneles. También existe `git mergetool`, que abre la herramienta configurada en `merge.tool`. Todas hacen lo mismo que tú a mano: dejar el archivo sin marcadores."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**El error más caro: confirmar con marcadores.** `git add` no revisa el contenido: si agregas un archivo que aún tiene `<<<<<<<`, Git lo da por resuelto. Y `git commit -a` agrega todos los archivos modificados, incluidos los que están en conflicto. Antes de confirmar ejecuta `git diff --check`: avisa `leftover conflict marker` en cada marcador que quede."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\ngit add precios.txt\ngit status\ngit diff --cached --check\ngit checkout -m precios.txt\ngit status --short",
+     "caption": "Un git add apresurado «resuelve» el archivo con los marcadores dentro; git checkout -m recrea el conflicto."
+    },
+    {
+     "type": "h",
+     "text": "Cancelar: git merge --abort"
+    },
+    {
+     "type": "p",
+     "text": "Si el conflicto es más grande de lo esperado, o fusionaste la rama equivocada, `git merge --abort` intenta reconstruir el estado previo a la fusión: devuelve el área de preparación y el directorio de trabajo a HEAD y borra `MERGE_HEAD`. Solo funciona mientras la fusión está en curso. Si tenías cambios sin confirmar cuando empezaste, puede que no logre recuperarlos: otra razón para fusionar siempre con el árbol limpio."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Sube el café a 1800'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500'\ngit commit -qam 'Ajusta el café a 1600'",
+     "cwd": "cafeteria",
+     "code": "git merge alza\ngit merge --abort\ngit status\ncat precios.txt",
+     "caption": "Como si nunca hubieras escrito git merge."
+    },
+    {
+     "type": "h",
+     "text": "Quedarse con un lado completo: --ours y --theirs"
+    },
+    {
+     "type": "p",
+     "text": "A veces no hay nada que combinar: una versión es la correcta **completa** (un archivo generado, una configuración que manda, un rediseño entero). Para eso: `git checkout --ours archivo` (toma la etapa 2, tu versión) o `git checkout --theirs archivo` (la etapa 3, la que traes). Su equivalente moderno es `git restore --ours archivo` / `git restore --theirs archivo`. Solo reescriben el archivo en el directorio de trabajo: **después falta `git add`**. Si te arrepientes, `git checkout -m archivo` (o `git restore -m archivo`) vuelve a crear el conflicto con marcadores."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir config.ini $'[app]\\nnombre = Tienda\\npuerto = 8080\\nmodo = dev\\nidioma = es'\ngit add config.ini\ngit commit -qm 'Config inicial'\ngit switch -q -c prod\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir config.ini $'[app]\\nnombre = Tienda\\npuerto = 80\\nmodo = prod\\nidioma = es'\ngit commit -qam 'Config de producción'\nyo\ngit switch -q main\nfecha '2026-09-02 11:00'\nescribir config.ini $'[app]\\nnombre = Tienda Sur\\npuerto = 8080\\nmodo = debug\\nidioma = es'\ngit commit -qam 'Cambia nombre y modo'",
+     "cwd": "tienda",
+     "code": "git merge prod\ngit checkout --theirs config.ini\ncat config.ini\ngit status --short\ngit checkout -m config.ini\ncat config.ini\ngit restore --ours config.ini\ngit add config.ini\ngit commit",
+     "caption": "El estado UU se mantiene hasta el git add, aunque ya no haya marcadores."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`--ours`/`--theirs` descartan **todo** lo del otro lado en ese archivo, incluso las zonas que Git había combinado bien. Si el otro lado tenía cambios útiles en otras partes del archivo, edítalo a mano. No lo confundas con `-X ours`/`-X theirs` (lección 6), que solo decide los fragmentos en conflicto."
+    },
+    {
+     "type": "h",
+     "text": "Ver también la base: diff3 y zdiff3"
+    },
+    {
+     "type": "p",
+     "text": "El estilo por defecto (`merge`) muestra solo los dos lados. Con `merge.conflictStyle = diff3`, Git añade una sección `|||||||` con el **texto original** (la base) antes del `=======`. `zdiff3` (desde Git 2.35) hace lo mismo pero, además, saca del conflicto las líneas iguales al principio y al final, así que el bloque queda más pequeño. Mira el mismo conflicto en los tres estilos:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo sitio\nfecha '2026-09-01 10:00'\ncommit_archivo menu.html $'<ul>\\n  <li>Inicio</li>\\n  <li>Contacto</li>\\n</ul>' 'Crea el menú'\ngit switch -q -c equipo\nautor 'Martina Díaz' 'martina@ejemplo.com'\nfecha '2026-09-02 10:00'\ncommit_archivo menu.html $'<ul>\\n  <li>Inicio</li>\\n  <li>Blog</li>\\n  <li>Equipo</li>\\n  <li>Contacto</li>\\n</ul>' 'Agrega Blog y Equipo al menú'\nyo\ngit switch -q main\nfecha '2026-09-02 11:00'\ncommit_archivo menu.html $'<ul>\\n  <li>Inicio</li>\\n  <li>Blog</li>\\n  <li>Precios</li>\\n  <li>Contacto</li>\\n</ul>' 'Agrega Blog y Precios al menú'",
+     "cwd": "sitio",
+     "code": "git merge equipo\ncat menu.html\ngit merge --abort\ngit config merge.conflictStyle diff3\ngit merge equipo\ncat menu.html\ngit checkout --conflict=zdiff3 menu.html\ncat menu.html",
+     "caption": "Mismo conflicto, tres presentaciones. git checkout --conflict=ESTILO lo redibuja sin abortar."
+    },
+    {
+     "type": "p",
+     "text": "Lee la versión zdiff3: después de `|||||||` (rotulado con el hash corto de la base durante una fusión, o `base` si lo redibujas con `--conflict`) **no hay nada**. Significa que en la base no existía ninguna línea ahí: ambos lados **agregaron** algo. Casi seguro la resolución correcta es conservar las dos (`Precios` y `Equipo`). Con el estilo `merge` no podrías saber si alguien había borrado algo. Fíjate también en que diff3 repite `<li>Blog</li>` en ambos lados, mientras que zdiff3 lo deja fuera porque es igual."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Configúralo una vez para siempre: `git config --global merge.conflictStyle zdiff3`. Muchos desarrolladores experimentados lo recomiendan como primera configuración después de la identidad."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué hace `git add` sobre un archivo en conflicto?» → lo marca como resuelto (sin revisar su contenido). «¿Cómo terminas una fusión después de resolver?» → `git commit` o `git merge --continue`. «¿Y cómo la cancelas?» → `git merge --abort`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "git merge --abort",
+       "def": "Cancela la fusión en curso e intenta volver al estado anterior."
+      },
+      {
+       "term": "git merge --continue",
+       "def": "Concluye una fusión cuyos conflictos ya se marcaron como resueltos (llama a `git commit`)."
+      },
+      {
+       "term": "--ours / --theirs",
+       "def": "Opciones de `git checkout` y `git restore` para quedarse con la versión completa de un lado en un archivo en conflicto."
+      },
+      {
+       "term": "merge.conflictStyle",
+       "def": "Configuración del estilo de marcadores: `merge` (por defecto), `diff3` o `zdiff3`."
+      },
+      {
+       "term": "git diff --check",
+       "def": "Avisa de marcadores de conflicto olvidados (`leftover conflict marker`) y de espacios problemáticos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l5",
+   "title": "Conflictos de archivos: borrar, renombrar y crear",
+   "minutes": 18,
+   "goals": [
+    "Identificar conflictos modify/delete, rename/rename, rename/delete y add/add en la salida de `git merge` y en `git status --short`",
+    "Resolver conflictos de archivos conservándolos con `git add` o eliminándolos con `git rm`",
+    "Explicar cómo `ort` detecta renombrados y los combina con cambios de contenido"
+   ],
+   "takeaways": [
+    "Los conflictos de archivos no siempre tienen marcadores dentro: se deciden con `git add` (conservar) o `git rm` (eliminar).",
+    "`git status --short` usa dos letras: la primera es tu lado y la segunda el de ellos (`UU`, `UD`, `DU`, `AA`, `DD`…).",
+    "Git detecta renombrados por similitud de contenido: si una rama renombra y la otra edita, la edición sigue al archivo sin conflicto.",
+    "En modify/delete, averigua si el cambio sigue teniendo sentido o si el borrado era correcto; nunca lo decidas al azar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "No todos los conflictos son de líneas. A veces el problema es **si el archivo debe existir** o **cómo se llama**. Git los anuncia con un tipo entre paréntesis en la línea `CONFLICT (...)`. Estos son los que verás en la práctica, con los mensajes exactos de Git 2.50:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Mensaje de Git",
+      "Qué pasó",
+      "Cómo se resuelve"
+     ],
+     "rows": [
+      [
+       "`CONFLICT (modify/delete): utils.js deleted in limpieza and modified in HEAD.  Version HEAD of utils.js left in tree.`",
+       "Tú modificaste el archivo; la otra rama lo borró",
+       "Conservar: `git add utils.js` · Eliminar: `git rm utils.js`"
+      ],
+      [
+       "`CONFLICT (add/add): Merge conflict in CONTRIBUTING.md`",
+       "Ambos crearon un archivo con el mismo nombre y distinto contenido",
+       "Como uno de contenido: editar, quitar marcadores y `git add`"
+      ],
+      [
+       "`CONFLICT (rename/rename): notas.md renamed to manual.md in HEAD and to guias/equipo.md in ordena.`",
+       "Ambos renombraron el mismo archivo con nombres distintos",
+       "Elige un nombre: `git add` el que queda y `git rm` el otro y el original"
+      ],
+      [
+       "`CONFLICT (rename/delete): x.txt renamed to y.txt in HEAD, but deleted in otra.`",
+       "Tú renombraste; la otra rama lo borró",
+       "`git add y.txt` para conservarlo o `git rm y.txt`"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En `git status --short` cada archivo sin fusionar lleva **dos letras**: la primera describe lo que pasó en tu lado (*us*) y la segunda en el de ellos (*them*). `U` significa «sin fusionar» (*unmerged*)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Código",
+      "Significado (según la documentación)",
+      "En `git status` largo"
+     ],
+     "rows": [
+      [
+       "`UU`",
+       "ambos modificaron",
+       "`both modified`"
+      ],
+      [
+       "`AA`",
+       "ambos agregaron",
+       "`both added`"
+      ],
+      [
+       "`UD`",
+       "lo borraron ellos",
+       "`deleted by them`"
+      ],
+      [
+       "`DU`",
+       "lo borramos nosotros",
+       "`deleted by us`"
+      ],
+      [
+       "`AU`",
+       "lo agregamos nosotros",
+       "`added by us`"
+      ],
+      [
+       "`UA`",
+       "lo agregaron ellos",
+       "`added by them`"
+      ],
+      [
+       "`DD`",
+       "ambos lo borraron",
+       "`both deleted`"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Modificar contra borrar",
+     "mermaid": "gitGraph\n  commit id: \"Añade utils.js\"\n  commit id: \"Añade app.js\"\n  branch limpieza\n  checkout limpieza\n  commit id: \"Elimina utils.js\"\n  commit id: \"Renombra app.js\"\n  checkout main\n  commit id: \"Corrige sumar()\"\n  commit id: \"Actualiza app.js\"\n  merge limpieza id: \"¿utils.js sí o no?\"",
+     "caption": "Tomás borró utils.js porque «nadie lo usa»; tú le corregiste un error. Git no sabe quién tiene razón."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-01 10:00'\ncommit_archivo utils.js $'function sumar(a, b) {\\n  return a + b;\\n}' 'Añade utils.js'\ncommit_archivo app.js 'console.log(\"v1\");' 'Añade app.js'\ngit switch -q -c limpieza\nautor 'Tomás Vera' 'tomas@ejemplo.com'\nfecha '2026-09-02 10:00'\ngit rm -q utils.js\ngit commit -qm 'Elimina utils.js (nadie lo usa)'\ngit mv app.js main.js\ngit commit -qm 'Renombra app.js a main.js'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir utils.js $'function sumar(a, b) {\\n  return Number(a) + Number(b);\\n}'\ngit commit -qam 'Corrige sumar() con textos'\nescribir app.js 'console.log(\"v2\");'\ngit commit -qam 'Actualiza app.js'",
+     "cwd": "calculadora",
+     "code": "git merge limpieza\ngit status\ngit status --short\ncat main.js\ngit checkout --theirs utils.js\ngit rm utils.js\ngit commit\ngit log --oneline --graph --all",
+     "caption": "modify/delete y, de regalo, un renombrado que Git combina solo."
+    },
+    {
+     "type": "p",
+     "text": "Dos cosas importantes en esta demostración. Primero, `git checkout --theirs utils.js` falla con `error: path 'utils.js' does not have their version`: en la etapa 3 no hay nada, porque la otra rama lo borró. En un conflicto de archivos, las herramientas son `git add` y `git rm`. Segundo, **no hubo conflicto con `app.js`**: Tomás lo renombró a `main.js` y tú cambiaste su contenido; Git detectó el renombrado y aplicó tu cambio al archivo con el nombre nuevo (`renamed: app.js -> main.js`, y `main.js` contiene `v2`)."
+    },
+    {
+     "type": "h",
+     "text": "Cómo detecta Git los renombrados"
+    },
+    {
+     "type": "p",
+     "text": "Git no guarda «renombré X a Y»: guarda instantáneas. Al fusionar, `ort` compara la base con cada lado y, si en un lado desapareció un archivo y apareció otro **suficientemente parecido** (por defecto, 50 % de similitud), los empareja como renombrado. Por eso conviene renombrar en un commit aparte, sin cambiar mucho el contenido: así Git lo reconoce con seguridad. El umbral se ajusta con `-X find-renames=<n>`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo docs\nfecha '2026-09-01 10:00'\ncommit_archivo notas.md $'# Guía del equipo\\nUsa ramas cortas.' 'Añade notas'\ngit switch -q -c ordena\nautor 'Martina Díaz' 'martina@ejemplo.com'\nfecha '2026-09-02 10:00'\nmkdir guias\ngit mv notas.md guias/equipo.md\ngit commit -qm 'Mueve las notas a guias/equipo.md'\ncommit_archivo CONTRIBUTING.md '## Estilo de commits' 'Añade CONTRIBUTING'\nyo\ngit switch -q main\nfecha '2026-09-02 11:00'\ngit mv notas.md manual.md\ngit commit -qm 'Renombra notas.md a manual.md'\ncommit_archivo CONTRIBUTING.md '## Cómo proponer cambios' 'Crea CONTRIBUTING'",
+     "cwd": "docs",
+     "code": "git merge ordena\ngit status --short\ngit rm notas.md manual.md\ngit add guias/equipo.md\nprintf '## Cómo proponer cambios\\n## Estilo de commits\\n' > CONTRIBUTING.md\ngit add CONTRIBUTING.md\ngit status --short\ngit commit",
+     "caption": "rename/rename (se decide con git rm y git add) y add/add (se resuelve como uno de contenido)."
+    },
+    {
+     "type": "p",
+     "text": "El renombrado doble deja tres entradas: `DD notas.md` (ambos lo quitaron de su nombre original), `AU manual.md` (tu nombre) y `UA guias/equipo.md` (el de Martina). El equipo eligió `guias/equipo.md`: se eliminan las otras dos con `git rm` y se marca la elegida con `git add`. `CONTRIBUTING.md` es un `AA`: ambos lo crearon, y se resuelve editando."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**No borres a ciegas.** En un modify/delete, `git rm` sin pensar tira a la basura la corrección de tu compañero, y `git add` sin pensar resucita un archivo que alguien eliminó a propósito. Revisa `git log --merge --stat` para ver quién hizo qué y, si hace falta, pregunta. Si el archivo sigue en uso (búscalo con `grep`), consérvalo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«`git status --short` muestra `UD config.js`. ¿Qué significa?» → conflicto sin fusionar: tú lo modificaste (U) y la otra rama lo borró (D). Se resuelve con `git add config.js` (conservar) o `git rm config.js` (eliminar), y luego `git commit`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "conflicto modificar/borrar",
+       "en": "modify/delete",
+       "def": "Un lado modificó un archivo que el otro borró."
+      },
+      {
+       "term": "conflicto agregar/agregar",
+       "en": "add/add",
+       "def": "Ambos lados crearon un archivo con el mismo nombre y distinto contenido."
+      },
+      {
+       "term": "conflicto renombrar/renombrar",
+       "en": "rename/rename",
+       "def": "Ambos lados renombraron el mismo archivo con nombres distintos."
+      },
+      {
+       "term": "detección de renombrados",
+       "en": "rename detection",
+       "def": "Emparejamiento por similitud (50 % por defecto) de un archivo que desaparece con otro que aparece."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s06-l6",
+   "title": "Estrategias, fusión aplastada y buenas prácticas",
+   "minutes": 22,
+   "goals": [
+    "Aplicar `-X ours` y `-X theirs` para decidir automáticamente los fragmentos en conflicto y verificar qué se perdió",
+    "Distinguir la opción `-X ours` de la estrategia `-s ours`",
+    "Integrar una rama como un único commit con `git merge --squash` y eliminarla después con `git branch -D`",
+    "Aplicar hábitos de equipo que reducen los conflictos, como traer `main` a la rama antes de entregarla"
+   ],
+   "takeaways": [
+    "`-X ours`/`-X theirs` solo deciden los fragmentos en conflicto; lo que no choca del otro lado sí entra.",
+    "Un fragmento en conflicto puede abarcar líneas contiguas: con `-X` puedes perder cambios buenos del otro lado. Revisa el resultado.",
+    "`-s ours` ignora por completo el contenido de la otra rama; solo la registra como padre (s15).",
+    "`--squash` deja los cambios preparados sin commit ni `MERGE_HEAD`: el commit resultante tiene un solo padre y la rama no queda «fusionada».",
+    "Ramas cortas, integrar `main` a menudo y commits pequeños significan conflictos pocos y fáciles."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La fusión la hace una **estrategia** (`-s`); la de siempre es `ort`. A la estrategia se le pueden pasar **opciones** con `-X opción` (o `--strategy-option=opción`). Las que usarás de verdad:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Efecto"
+     ],
+     "rows": [
+      [
+       "`git merge -X ours rama`",
+       "En cada fragmento en conflicto gana **tu** versión; los cambios que no chocan se fusionan normalmente"
+      ],
+      [
+       "`git merge -X theirs rama`",
+       "En cada fragmento en conflicto gana la versión **que traes**"
+      ],
+      [
+       "`git merge -X ignore-space-change rama`",
+       "Trata como iguales las líneas que solo difieren en la cantidad de espacios (útil tras reindentar); también existen `ignore-all-space` e `ignore-space-at-eol`"
+      ],
+      [
+       "`git merge -X find-renames=70 rama`",
+       "Cambia el umbral de similitud para detectar renombrados"
+      ],
+      [
+       "`git merge -s ours rama`",
+       "**Estrategia**, no opción: el resultado es exactamente tu árbol; la otra rama no aporta ningún cambio y solo queda registrada como segundo padre"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\npan: 900' 'Lista de precios'\ngit switch -q -c alza\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\npan: 950'\ngit commit -qam 'Sube café y pan'\ncommit_archivo horario.txt 'Lunes a viernes, 8:00 a 18:00' 'Añade horario'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1300\\npan: 900'\ngit commit -qam 'Ajusta café y té'",
+     "cwd": "cafeteria",
+     "code": "git merge -X ours alza\ncat precios.txt\nls\ngit reset --hard ORIG_HEAD\ngit merge -X theirs alza\ncat precios.txt",
+     "caption": "Mira qué pasa con el precio del pan y con el del té."
+    },
+    {
+     "type": "p",
+     "text": "Resultado revelador: con `-X ours`, `horario.txt` (que no chocaba) sí llegó, pero el **pan quedó en 900**: se perdió el alza a 950 de Ana. ¿Por qué? Tú cambiaste café y té; Ana, café y pan. Esas líneas son contiguas, así que forman **un solo fragmento en conflicto**, y `-X ours` se quedó con tu versión completa de ese fragmento. Con `-X theirs` pasa lo contrario: se pierde tu té a 1300. `-X` es un mazo, no un bisturí: úsalo cuando la política está clara (traducciones, archivos generados) y revisa siempre con `git diff HEAD^1 HEAD` o `git show`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**`-X ours` no es `-s ours`.** La documentación lo advierte: la opción `-X ours` fusiona todo y solo desempata los conflictos a tu favor; la estrategia `-s ours` *ni siquiera mira* lo que contiene la otra rama y declara que tu historia ya incluye todo lo que pasó en ella. Además, existe `-X theirs` pero **no** existe una estrategia `-s theirs`. Verás `-s ours` y otras estrategias en s15."
+    },
+    {
+     "type": "h",
+     "text": "Fusión aplastada: git merge --squash"
+    },
+    {
+     "type": "p",
+     "text": "`git merge --squash rama` calcula el mismo resultado que una fusión, pero **no crea el commit, no mueve HEAD y no registra `MERGE_HEAD`**: deja los cambios preparados en el área de preparación. Luego tú haces un `git commit` normal, con **un solo padre**. Sirve para integrar una rama llena de commits «wip» como un único commit limpio; es lo que hace el botón «Squash and merge» de GitHub (s08)."
+    },
+    {
+     "type": "diagram",
+     "title": "Squash: los cambios entran, la historia de la rama no",
+     "mermaid": "gitGraph\n  commit id: \"A\"\n  branch feature/cupones\n  checkout feature/cupones\n  commit id: \"wip\"\n  commit id: \"más wip\"\n  commit id: \"arregla typo\"\n  checkout main\n  commit id: \"B\"\n  commit id: \"S: Añade cupones\"",
+     "caption": "S contiene los cambios de los tres commits, pero su único padre es B: Git no sabe que feature/cupones se integró."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Recetario</h1>' 'Crea la portada'\ngit switch -q -c feature/cupones\nfecha '2026-09-02 10:00'\ncommit_archivo cupones.js 'const cupones = {};' 'wip'\nanexar cupones.js 'cupones.BIENVENIDA = 10;'\ngit commit -qam 'más wip'\nanexar cupones.js 'module.exports = cupones;'\ngit commit -qam 'arregla typo'\ngit switch -q main\nautor 'Ignacio Fuentes' 'ignacio@ejemplo.com'\nfecha '2026-09-03 10:00'\ncommit_archivo LEEME.md '# Recetario' 'Añade LEEME'\nyo",
+     "cwd": "recetario",
+     "code": "git merge --squash feature/cupones\ngit status\ngit commit -m \"Añade cupones de descuento\"\ngit log --oneline --graph --all\ngit branch -d feature/cupones\ngit branch -D feature/cupones",
+     "caption": "Tres commits desordenados se convierten en uno."
+    },
+    {
+     "type": "p",
+     "text": "La salida dice `Automatic merge went well; stopped before committing as requested` y `Squash commit -- not updating HEAD`. Como el commit nuevo no tiene a la rama como padre, `git branch -d` se niega (`error: the branch 'feature/cupones' is not fully merged`): para Git esa rama **no** está fusionada. Si ya revisaste que su contenido está en `main`, bórrala con `-D`. Si no das `-m`, `git commit` propone el mensaje `Squashed commit of the following:` con la lista de commits integrados."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Después de un squash, **no sigas trabajando en la misma rama** para volver a aplastarla más tarde: Git intentará aplicar otra vez los cambios que ya entraron y aparecerán conflictos raros. Borra la rama y crea una nueva desde `main`. Otro detalle: si un `--squash` termina en conflicto, `git merge --abort` no sirve (`fatal: There is no merge to abort (MERGE_HEAD missing).`); usa `git reset --merge`."
+    },
+    {
+     "type": "h",
+     "text": "Ponerte al día: traer main a tu rama"
+    },
+    {
+     "type": "p",
+     "text": "Una práctica muy extendida: antes de entregar tu rama, **trae `main` a ella** (`git merge main` estando en tu rama). Los conflictos se resuelven en tu rama, donde puedes probar con calma, y no en `main`. Después, `main` puede integrar tu rama con un simple avance rápido. La alternativa es reescribir tu rama encima de `main` con rebase (s09)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-01 10:00'\ncommit_archivo servidor.js 'const puerto = 3000;' 'Crea el servidor'\ngit switch -q -c feature/pagos\nfecha '2026-09-02 10:00'\ncommit_archivo pagos.js 'function pagar(monto) {}' 'Esqueleto de pagos'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-03 10:00'\ncommit_archivo pedidos.js 'function crearPedido() {}' 'Añade pedidos'\nyo\ngit switch -q feature/pagos",
+     "cwd": "api",
+     "code": "git merge main\ngit log --oneline --graph --all\ngit switch main\ngit merge --ff-only feature/pagos\ngit log --oneline --graph --all",
+     "caption": "El mensaje por defecto es Merge branch 'main' into feature/pagos, y luego main solo avanza."
+    },
+    {
+     "type": "h",
+     "text": "Buenas prácticas para evitar (y domar) conflictos"
+    },
+    {
+     "type": "diagram",
+     "title": "Menos conflictos, y más fáciles",
+     "mermaid": "mindmap\n  root((Menos conflictos))\n    Ramas cortas\n      Integrar en días, no semanas\n      Traer main a tu rama a menudo\n    Commits pequeños\n      Un tema por commit\n      Reformateo en commit aparte\n    Acuerdos de equipo\n      Mismo formateador\n      Fin de línea con gitattributes\n      Avisar antes de tocar archivos centrales\n    Antes de fusionar\n      Árbol limpio\n      Revisar qué viene\n    Después de resolver\n      git diff --check\n      Probar antes de confirmar"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Ramas cortas**: una rama que vive dos días choca poco; una que vive dos meses choca con todo.",
+      "**Integra `main` en tu rama a menudo** y resuelve ahí, en pequeñas dosis.",
+      "**Commits pequeños y con un solo tema**. Si vas a reformatear un archivo entero, hazlo en un commit aparte y avisa al equipo: reformatear y cambiar lógica a la vez es la fábrica de conflictos más eficiente que existe.",
+      "**Acuerdos de equipo**: mismo formateador, mismas reglas de fin de línea (`.gitattributes`, s13) y aviso cuando vas a tocar archivos centrales (rutas, configuración).",
+      "**Antes de fusionar**: `git status` limpio y revisa qué viene con `git log --oneline --graph --all` y `git diff main...feature/x` (con **tres puntos**: los cambios de la rama desde la base común).",
+      "**Después de resolver**: `git diff --check`, ejecuta el programa o las pruebas y recién ahí confirma. Un merge que compila no siempre funciona: dos cambios compatibles en texto pueden ser incompatibles en lógica.",
+      "**Conflictos que se repiten**: Git puede recordar cómo los resolviste con `rerere` (s15)."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En GitHub, el botón de fusión de un pull request ofrece tres métodos: «Create a merge commit» (equivale a `--no-ff`), «Squash and merge» (como `--squash`) y «Rebase and merge» (s09). Saber qué historia deja cada uno es un tema habitual en las preguntas sobre pull requests (lo retomarás en s08 y s17)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "estrategia de fusión",
+       "en": "merge strategy",
+       "def": "Algoritmo que hace la fusión (`-s`): `ort` por defecto; también `ours`, `octopus`, `resolve`, `subtree`."
+      },
+      {
+       "term": "opción de estrategia",
+       "en": "strategy option",
+       "def": "Ajuste que se pasa a la estrategia con `-X`, como `ours`, `theirs` o `ignore-space-change`."
+      },
+      {
+       "term": "fusión aplastada",
+       "en": "squash merge",
+       "def": "Integra los cambios de una rama como un único commit normal, sin registrar la rama como padre."
+      },
+      {
+       "term": "diff de tres puntos",
+       "en": "A...B",
+       "def": "`git diff A...B` muestra los cambios de B desde su base común con A."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s06-e1",
+   "title": "Tu primer avance rápido",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En tu portafolio personal acabas de corregir una errata («Bienbenidos») en la rama `fix/errata-portada` y quieres llevar la corrección a `main`. Desde que creaste la rama, `main` no ha cambiado.",
+    "Integra la rama en `main` **sin crear un commit de fusión** (debe ser un avance rápido) y después borra la rama, que ya no hace falta. Termina en `main`.",
+    "Empieza mirando dónde estás y cómo está el grafo:\n```bash\ngit status\ngit log --oneline --graph --all\n```"
+   ],
+   "setup": "nuevo_repo portafolio\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Bienbenidos a mi portafolio</h1>' 'Crea la portada'\ncommit_archivo estilos.css 'h1 { color: teal; }' 'Añade estilos básicos'\ngit switch -q -c fix/errata-portada\nfecha '2026-09-02 09:15'\ncommit_archivo index.html '<h1>Bienvenidos a mi portafolio</h1>' 'Corrige errata en la portada'",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "main incluye la corrección",
+     "script": "mensaje_es main \"Corrige errata en la portada\" \"main todavía no tiene el commit de la corrección: ¿fusionaste estando en main?\"\ncontenido main index.html | grep -q 'Bienvenidos' || falla \"En main, index.html todavía dice «Bienbenidos»\"\ntrue"
+    },
+    {
+     "name": "Fue un avance rápido (sin commit de fusión)",
+     "script": "es_merge main && falla \"main terminó con un commit de fusión: aquí bastaba un avance rápido (fast-forward)\"\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener exactamente 3 commits y tiene $(num_commits main)\"\ntrue"
+    },
+    {
+     "name": "La rama ya integrada se borró",
+     "script": "rama_no_existe fix/errata-portada \"La rama fix/errata-portada ya está integrada: bórrala\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git switch main",
+    "git merge fix/errata-portada",
+    "git branch -d fix/errata-portada"
+   ],
+   "hints": [
+    "`git merge` trae otra rama **a la rama en la que estás**. ¿En cuál estás ahora?",
+    "Cámbiate con `git switch main` y fusiona la rama del arreglo: como `main` no avanzó, Git solo moverá el puntero (verás `Fast-forward`).",
+    "Para borrar una rama ya fusionada usa `git branch -d nombre`: con `-d` minúscula, Git comprueba que esté integrada antes de borrarla."
+   ],
+   "explain": "Como `main` era ancestro de `fix/errata-portada`, `git merge` hizo un avance rápido: la salida dice `Updating …` y `Fast-forward`. No se creó ningún commit; `main` pasó a apuntar al commit de la corrección y por eso tiene 3 commits. `git branch -d` borra la rama sin riesgo porque su trabajo ya está en `main` (si no lo estuviera, se negaría).\n\nAlternativa más estricta: `git merge --ff-only fix/errata-portada`, que garantiza que no se cree un commit de fusión y falla si no se puede avanzar. Error típico: ejecutar `git merge main` estando todavía en la rama del arreglo; eso intenta traer `main` a la rama y responde `Already up to date.` porque la rama ya lo contiene."
+  },
+  {
+   "id": "s06-e2",
+   "title": "Fusión de tres vías con el trabajo de una compañera",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "Terminaste el formulario de suscripción del boletín en `feature/suscripcion`. Mientras tanto, Camila agregó la página de contacto directamente en `main`, así que las ramas **divergieron**.",
+    "Integra tu rama en `main` con una fusión de tres vías, conservando el mensaje que propone Git (`Merge branch 'feature/suscripcion'`). No borres la rama todavía.",
+    "Antes de fusionar, averigua con `git merge-base` qué commit es la base común y ubícalo en `git log --oneline --graph --all` (no se comprueba, pero te servirá para leer el gráfico)."
+   ],
+   "setup": "nuevo_repo boletin\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Boletín del barrio</h1>' 'Crea la portada'\ncommit_archivo LEEME.md '# Boletín del barrio' 'Añade LEEME'\ngit switch -q -c feature/suscripcion\nfecha '2026-09-02 11:00'\ncommit_archivo suscripcion.html '<form>Tu correo: <input type=\"email\"></form>' 'Añade formulario de suscripción'\nanexar LEEME.md '- Suscripción por correo en suscripcion.html'\ngit commit -qam 'Documenta la suscripción en el LEEME'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-02 16:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@boletin.cl</p>' 'Añade página de contacto'\nyo\ngit switch -q feature/suscripcion",
+   "cwd": "boletin",
+   "checks": [
+    {
+     "name": "main termina en un commit de fusión",
+     "script": "es_merge main || falla \"El último commit de main no es una fusión (debería tener dos padres)\"\ntrue"
+    },
+    {
+     "name": "Los padres de la fusión son los correctos",
+     "script": "mensaje_es main^1 \"Añade página de contacto\" \"El primer padre de la fusión debería ser el commit de Camila: la fusión se hace estando en main\"\nmensaje_es main^2 \"Documenta la suscripción en el LEEME\" \"El segundo padre debería ser la punta de feature/suscripcion\"\ntrue"
+    },
+    {
+     "name": "El mensaje es el que propone Git",
+     "script": "mensaje_es main \"Merge branch 'feature/suscripcion'\"\ntrue"
+    },
+    {
+     "name": "main tiene los archivos de ambos lados",
+     "script": "git cat-file -e main:suscripcion.html 2>/dev/null || falla \"A main le falta suscripcion.html\"\ngit cat-file -e main:contacto.html 2>/dev/null || falla \"A main le falta contacto.html (el trabajo de Camila)\"\ntrue"
+    },
+    {
+     "name": "Estás en main, todo limpio y la rama sigue existiendo",
+     "script": "en_rama main\nlimpio\nrama_existe feature/suscripcion \"No borres todavía feature/suscripcion\"\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge-base main feature/suscripcion",
+    "git switch main",
+    "git merge feature/suscripcion"
+   ],
+   "hints": [
+    "Mira el gráfico: `main` tiene un commit (el de Camila) que tu rama no tiene. Eso impide el avance rápido.",
+    "Cámbiate a `main` y ejecuta `git merge feature/suscripcion`. Se abrirá el editor con `Merge branch 'feature/suscripcion'`: guarda sin cambiarlo.",
+    "Comprueba con `git log --oneline --graph --all` que el commit nuevo tiene dos líneas entrando: dos padres."
+   ],
+   "explain": "`git merge-base main feature/suscripcion` devuelve el commit `Añade LEEME`: el último que comparten. Desde ahí, `main` sumó el commit de Camila y tu rama sumó dos commits, así que Git hizo una fusión de tres vías (`Merge made by the 'ort' strategy.`) y creó un commit con dos padres: `main^1` es el commit de Camila (donde estaba `main`) y `main^2` es la punta de tu rama.\n\nEn el editor bastaba con guardar el mensaje propuesto; con `git merge --no-edit feature/suscripcion` se acepta sin abrir el editor, y con `-m` escribes otro directamente. Si fusionaste al revés (estando en tu rama, `git merge main`), el commit se llamaría `Merge branch 'main' into feature/suscripcion` y quedaría en tu rama: deshazlo con `git reset --hard ORIG_HEAD` y repite desde `main`."
+  },
+  {
+   "id": "s06-e3",
+   "title": "Política del equipo: siempre commit de fusión",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "En el equipo de la agenda la regla es clara: **cada funcionalidad entra a `main` con su propio commit de fusión**, para poder identificarla (y revertirla si hace falta) como una unidad.",
+    "Diego terminó `feature/recordatorios`. Como `main` no ha avanzado desde que él creó la rama, Git haría un avance rápido… pero la regla manda. Intégrala con un commit de fusión cuyo mensaje sea exactamente `Integra feature/recordatorios` y después borra la rama."
+   ],
+   "setup": "nuevo_repo agenda\nfecha '2026-09-01 10:00'\ncommit_archivo index.html '<h1>Agenda</h1>' 'Crea la agenda'\ncommit_archivo semana.js 'function vistaSemanal() {}' 'Añade vista semanal'\ngit switch -q -c feature/recordatorios\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-03 10:00'\ncommit_archivo recordatorios.js 'function crearRecordatorio(evento) {}' 'Crea recordatorios'\nanexar recordatorios.js 'function enviarCorreo(recordatorio) {}'\ngit commit -qam 'Envía recordatorio por correo'\nyo\ngit switch -q main",
+   "cwd": "agenda",
+   "checks": [
+    {
+     "name": "main termina en un commit de fusión",
+     "script": "es_merge main || falla \"main no terminó en un commit de fusión: por defecto Git avanza rápido cuando puede; hay una opción para impedirlo\"\ntrue"
+    },
+    {
+     "name": "Los padres son el último commit de main y la punta de la rama",
+     "script": "mensaje_es main^1 \"Añade vista semanal\" \"El primer padre debería ser el último commit que tenía main\"\nmensaje_es main^2 \"Envía recordatorio por correo\" \"El segundo padre debería ser la punta de feature/recordatorios\"\ntrue"
+    },
+    {
+     "name": "El mensaje es el pedido",
+     "script": "mensaje_es main \"Integra feature/recordatorios\"\ntrue"
+    },
+    {
+     "name": "La rama integrada se borró",
+     "script": "rama_no_existe feature/recordatorios \"Borra la rama feature/recordatorios, ya integrada\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge --no-ff -m \"Integra feature/recordatorios\" feature/recordatorios",
+    "git branch -d feature/recordatorios"
+   ],
+   "hints": [
+    "Hay una opción de `git merge` que crea el commit de fusión aunque se pudiera avanzar rápido.",
+    "`--no-ff` fuerza el commit de fusión y `-m \"…\"` le pone el mensaje.",
+    "Si ya hiciste un avance rápido por error, vuelve atrás con `git reset --hard ORIG_HEAD` y repite con la opción correcta."
+   ],
+   "explain": "`git merge --no-ff -m \"Integra feature/recordatorios\" feature/recordatorios` crea un commit de fusión con dos padres (`Añade vista semanal` y `Envía recordatorio por correo`) aunque bastara con avanzar. En el gráfico, los commits de Diego quedan en su propia «burbuja», y revertir la funcionalidad completa sería revertir un solo commit (s16).\n\nAlternativas: `git merge --no-ff feature/recordatorios` y escribir el mensaje en el editor que se abre, o configurar `git config merge.ff false` para que el repositorio use `--no-ff` siempre. Después de un `--no-ff`, `git branch -d` funciona porque la punta de la rama es ancestro de `main`."
+  },
+  {
+   "id": "s06-e4",
+   "title": "Tu primer conflicto",
+   "level": "facil",
+   "minutes": 12,
+   "prompt": [
+    "En la cafetería, Ana subió el café a 1800 (y agregó el jugo natural) en la rama `alza-precios`; tú lo habías ajustado a 1600 en `main`. La dueña zanjó la discusión: **el café queda en 1700**.",
+    "Fusiona `alza-precios` en `main`, resuelve el conflicto para que `precios.txt` quede con el café a 1700 y todo lo demás tal cual (incluido el jugo de Ana), y termina la fusión.",
+    "Para editar el archivo usa `code precios.txt`."
+   ],
+   "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 10:00'\ncommit_archivo precios.txt $'cafe: 1500\\nte: 1200\\nsandwich: 3500\\nkuchen: 2500' 'Lista de precios'\ngit switch -q -c alza-precios\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir precios.txt $'cafe: 1800\\nte: 1200\\nsandwich: 3500\\nkuchen: 2500\\njugo natural: 2200'\ngit commit -qam 'Sube el café y agrega jugo natural'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir precios.txt $'cafe: 1600\\nte: 1200\\nsandwich: 3500\\nkuchen: 2500'\ngit commit -qam 'Ajusta el precio del café'",
+   "cwd": "cafeteria",
+   "checks": [
+    {
+     "name": "La fusión está terminada",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\ntrue"
+    },
+    {
+     "name": "No quedan conflictos ni marcadores",
+     "script": "sin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\ntrue"
+    },
+    {
+     "name": "El café quedó en 1700",
+     "script": "[ \"$(contenido HEAD precios.txt | grep -c '^cafe: 1700$')\" = 1 ] || falla \"En el commit final, precios.txt debería tener una sola línea «cafe: 1700»\"\ncontenido HEAD precios.txt | grep -q -e 'cafe: 1600' -e 'cafe: 1800' && falla \"Todavía queda una línea con un precio antiguo del café (1600 o 1800)\"\ntrue"
+    },
+    {
+     "name": "El resto de la lista está intacto",
+     "script": "for l in 'te: 1200' 'sandwich: 3500' 'kuchen: 2500' 'jugo natural: 2200'; do contenido HEAD precios.txt | grep -qx \"$l\" || falla \"A precios.txt le falta la línea: $l\"; done\n[ \"$(contenido HEAD precios.txt | grep -c .)\" = 5 ] || falla \"precios.txt debería tener exactamente 5 líneas con texto\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge alza-precios",
+    "printf 'cafe: 1700\\nte: 1200\\nsandwich: 3500\\nkuchen: 2500\\njugo natural: 2200\\n' > precios.txt",
+    "git add precios.txt",
+    "git commit"
+   ],
+   "hints": [
+    "Después de `git merge alza-precios`, lee `git status`: te dice qué archivo está en conflicto y qué hacer.",
+    "Abre el archivo con `code precios.txt`. Entre `<<<<<<< HEAD` y `=======` está tu línea; entre `=======` y `>>>>>>> alza-precios`, la de Ana. Deja solo `cafe: 1700` y borra las tres líneas de marcadores. El jugo ya entró solo: no lo toques.",
+    "Guarda, marca el archivo como resuelto con `git add precios.txt` y termina con `git commit` (guarda el mensaje propuesto)."
+   ],
+   "explain": "El conflicto aparece porque ambos cambiaron la misma línea (`cafe`) respecto de la base (1500). En cambio, la línea del jugo solo la agregó Ana y en una zona que tú no tocaste, así que Git la fusionó sola: por eso está fuera de los marcadores.\n\nLa resolución puede ser tu versión, la otra, una combinación o, como aquí, algo nuevo (1700). `git add` marca el archivo como resuelto y `git commit` crea el commit de fusión con el mensaje `Merge branch 'alza-precios'`. En lugar de `git commit` puedes usar `git merge --continue`. Antes de confirmar, `git diff --check` te habría avisado si quedaba algún marcador."
+  },
+  {
+   "id": "s06-e5",
+   "title": "¿Avance rápido o no? Base común y --ff-only",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Revisión de ramas en el inventario. Tu líder te pide dos cosas:",
+    "1. Para revisar el trabajo de Valentina, crea una rama llamada `base-reportes` que apunte a la **base común** entre `main` y `feature/reportes` (el commit desde el que se separaron).\n2. Integra `hotfix/stock-negativo` en `main`, pero **solo si es un avance rápido**: usa la opción que se niega a crear commits de fusión.",
+    "`feature/reportes` **no** se integra todavía. Termina en `main`."
+   ],
+   "setup": "nuevo_repo inventario\nfecha '2026-09-01 10:00'\ncommit_archivo stock.py 'stock = {}' 'Crea el inventario'\ngit switch -q -c feature/reportes\nautor 'Valentina Muñoz' 'valentina@ejemplo.com'\nfecha '2026-09-02 10:00'\ncommit_archivo reportes.py 'def reporte_diario(): pass' 'Añade reporte diario'\nanexar reportes.py 'def reporte_mensual(): pass'\ngit commit -qam 'Añade reporte mensual'\nyo\ngit switch -q main\nfecha '2026-09-03 09:00'\ncommit_archivo stock.py $'stock = {}\\nMINIMO = 5' 'Define stock mínimo'\ngit switch -q -c hotfix/stock-negativo\nfecha '2026-09-03 12:00'\nanexar stock.py 'def descontar(p, n): stock[p] = max(0, stock[p] - n)'\ngit commit -qam 'Impide stock negativo'\ngit switch -q main",
+   "cwd": "inventario",
+   "checks": [
+    {
+     "name": "base-reportes apunta a la base común",
+     "script": "rama_existe base-reportes \"Crea la rama base-reportes\"\n[ \"$(git rev-parse base-reportes)\" = \"$(git merge-base main feature/reportes)\" ] || falla \"base-reportes no apunta a la base común de main y feature/reportes (pregúntale a git merge-base)\"\ntrue"
+    },
+    {
+     "name": "main incluye el hotfix por avance rápido",
+     "script": "mensaje_es main \"Impide stock negativo\" \"main todavía no incluye el hotfix\"\nes_merge main && falla \"main tiene un commit de fusión: el hotfix debía entrar por avance rápido\"\ntrue"
+    },
+    {
+     "name": "feature/reportes sigue fuera de main",
+     "script": "ancestro feature/reportes main && falla \"feature/reportes no debía integrarse todavía\"\ngit log --format=%s main | grep -qx 'Añade reporte diario' && falla \"Los commits de feature/reportes no debían llegar a main\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git log --oneline --graph --all",
+    "git merge-base main feature/reportes",
+    "git branch base-reportes main...feature/reportes",
+    "git merge --ff-only hotfix/stock-negativo"
+   ],
+   "hints": [
+    "`git merge-base main feature/reportes` imprime el hash de la base común. Una rama puede crearse en cualquier commit: `git branch nombre <commit>`.",
+    "Para el hotfix, `git merge --ff-only rama` solo avanza; si hiciera falta un commit de fusión, se negaría sin tocar nada.",
+    "Si quieres comprobarlo antes: `git merge-base --is-ancestor main hotfix/stock-negativo && echo sí || echo no`."
+   ],
+   "explain": "La base común de `main` y `feature/reportes` es `Crea el inventario`: después de ese commit, cada rama siguió su camino. Lo natural es copiar el hash que imprime `git merge-base` y ejecutar `git branch base-reportes <hash>`. La solución usa un atajo: como punto de partida, `A...B` significa «la base común de A y B» si hay una sola (está documentado en `git switch` y `git checkout`, y `git branch` también lo acepta).\n\nEl hotfix nació de la punta actual de `main`, así que `main` es su ancestro y `--ff-only` avanza sin problemas. Si hubieras probado `git merge --ff-only feature/reportes`, Git habría respondido `fatal: Not possible to fast-forward, aborting.` sin cambiar nada: justo la red de seguridad que buscabas. Por eso `--ff-only` es la opción típica para actualizar ramas que solo deben avanzar."
+  },
+  {
+   "id": "s06-e6",
+   "title": "Aborta la fusión equivocada",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "Ibas a probar el tema oscuro del blog y ejecutaste `git merge experimento/tema-oscuro` en `main`… y aparecieron conflictos en dos archivos. En ese momento llega el mensaje del equipo: **el tema oscuro se descarta**; lo que hay que integrar hoy es `feature/buscador`, de Ignacio.",
+    "Deja `main` exactamente como estaba antes de esa fusión (sin resolver nada a mano) y luego integra `feature/buscador` con el mensaje que propone Git.",
+    "Empieza con `git status` para ver en qué situación estás."
+   ],
+   "setup": "nuevo_repo blog\nfecha '2026-09-01 10:00'\ncommit_archivo estilos.css $'body {\\n  background: white;\\n  color: black;\\n}' 'Estilos base'\ncommit_archivo index.html '<h1>Mi blog</h1>' 'Crea la portada'\ngit switch -q -c experimento/tema-oscuro\nfecha '2026-09-02 10:00'\nescribir estilos.css $'body {\\n  background: #111;\\n  color: #eee;\\n}'\ngit commit -qam 'Prueba un tema oscuro'\nescribir index.html '<h1 class=\"oscuro\">Mi blog</h1>'\ngit commit -qam 'Marca la portada como oscura'\ngit switch -q main\ngit switch -q -c feature/buscador\nautor 'Ignacio Fuentes' 'ignacio@ejemplo.com'\nfecha '2026-09-03 10:00'\ncommit_archivo buscador.js 'function buscar(texto) {}' 'Añade buscador'\nyo\ngit switch -q main\nfecha '2026-09-03 12:00'\nescribir estilos.css $'body {\\n  background: #fafafa;\\n  color: #222;\\n}'\ngit commit -qam 'Suaviza los colores'\nescribir index.html '<h1>Mi blog de viajes</h1>'\ngit commit -qam 'Cambia el título'\ngit merge experimento/tema-oscuro >/dev/null 2>&1 || true",
+   "cwd": "blog",
+   "checks": [
+    {
+     "name": "No queda ninguna fusión a medias",
+     "script": "sin_operacion_en_curso\ntrue"
+    },
+    {
+     "name": "El experimento no entró en main",
+     "script": "ancestro experimento/tema-oscuro main && falla \"El tema oscuro terminó dentro de main: tenía que descartarse\"\ncontenido main estilos.css | grep -q '#111' && falla \"estilos.css de main tiene colores del tema oscuro\"\ntrue"
+    },
+    {
+     "name": "main conserva sus últimos cambios",
+     "script": "contenido main estilos.css | grep -q '#fafafa' || falla \"estilos.css de main debería conservar los colores suavizados (#fafafa)\"\ncontenido main index.html | grep -qx '<h1>Mi blog de viajes</h1>' || falla \"index.html de main debería seguir siendo el de «Mi blog de viajes»\"\ntrue"
+    },
+    {
+     "name": "feature/buscador está integrada con un commit de fusión",
+     "script": "es_merge main || falla \"main debería terminar en el commit de fusión de feature/buscador\"\nmensaje_es main^1 \"Cambia el título\" \"El primer padre de la fusión debería ser el último commit de main\"\nmensaje_es main^2 \"Añade buscador\" \"El segundo padre debería ser la punta de feature/buscador\"\nmensaje_es main \"Merge branch 'feature/buscador'\"\ntrue"
+    },
+    {
+     "name": "Sin marcadores y todo limpio en main",
+     "script": "sin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\nen_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git merge --abort",
+    "git merge feature/buscador"
+   ],
+   "hints": [
+    "`git status` dice `You have unmerged paths` y te sugiere dos salidas. Una de ellas es para cuando decides no fusionar.",
+    "`git merge --abort` deshace la fusión en curso y devuelve el área de preparación y los archivos al estado de HEAD.",
+    "Con el árbol limpio, fusiona `feature/buscador` como siempre."
+   ],
+   "explain": "Mientras una fusión está detenida por conflictos existe `.git/MERGE_HEAD` y Git se niega a empezar otra (`fatal: You have not concluded your merge (MERGE_HEAD exists).`). `git merge --abort` borra ese estado y reconstruye el de antes: como `main` nunca se movió (HEAD no avanza hasta el commit de fusión), basta con restaurar el índice y el directorio de trabajo. Equivale a `git reset --merge`.\n\nError típico: «limpiar» borrando los marcadores a mano o con `git checkout --ours` en cada archivo; eso deja la fusión en curso, y un `git commit` posterior registraría el experimento como fusionado (con dos padres) aunque no aportara cambios. Recuerda que `--abort` solo es seguro si empezaste la fusión con el árbol limpio."
+  },
+  {
+   "id": "s06-e7",
+   "title": "Varios conflictos en varios archivos (con zdiff3)",
+   "level": "medio",
+   "minutes": 18,
+   "prompt": [
+    "Diego terminó `feature/envio-gratis` en la Tienda Austral. Mientras tanto, en `main` subió el costo del despacho, se agregó el pago con débito y se publicó la versión 1.4.1. Al fusionar chocarán **tres archivos**.",
+    "Antes de fusionar, configura **solo en este repositorio** el estilo de conflictos `zdiff3`, para ver también la versión original en cada conflicto.",
+    "Decisiones del equipo:\n• `config.ini`: el despacho cuesta `envio = 4490` (el valor de main) y además queda la línea nueva de Diego `envio_gratis_desde = 30000`.\n• `LEEME.md`: se conservan las dos novedades (la de main y la de Diego).\n• `version.txt`: la versión que sale es `1.5.0`.",
+    "Los demás cambios de ambos lados deben llegar intactos."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir config.ini $'[tienda]\\nnombre = Tienda Austral\\nmoneda = CLP\\nenvio = 3990'\nescribir LEEME.md $'# Tienda Austral\\n\\n## Novedades\\n- Catálogo de productos'\nescribir version.txt '1.4.0'\nescribir carrito.js $'function total(items) {\\n  return items.reduce((s, i) => s + i.precio, 0);\\n}\\n\\nfunction vaciar(carrito) {\\n  carrito.length = 0;\\n}'\ngit add .\ngit commit -qm 'Tienda Austral 1.4.0'\ngit switch -q -c feature/envio-gratis\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir config.ini $'[tienda]\\nnombre = Tienda Austral\\nmoneda = CLP\\nenvio = 0\\nenvio_gratis_desde = 30000'\nanexar carrito.js ''\nanexar carrito.js 'function envioGratis(total) {'\nanexar carrito.js '  return total >= 30000;'\nanexar carrito.js '}'\ngit commit -qam 'Calcula el envío gratis'\nanexar LEEME.md '- Envío gratis sobre 30.000 pesos'\nescribir version.txt '1.5.0-beta'\ngit commit -qam 'Documenta el envío gratis'\nyo\ngit switch -q main\nfecha '2026-09-02 15:00'\nescribir config.ini $'[tienda]\\nnombre = Tienda Austral\\nmoneda = CLP\\nenvio = 4490'\ngit commit -qam 'Sube el costo del despacho'\nanexar LEEME.md '- Pago con tarjeta de débito'\ngit commit -qam 'Anuncia pago con débito'\nescribir carrito.js $'function total(items) {\\n  return items.reduce((s, i) => s + i.precio * i.cantidad, 0);\\n}\\n\\nfunction vaciar(carrito) {\\n  carrito.length = 0;\\n}'\nescribir version.txt '1.4.1'\ngit commit -qam 'Corrige el total con cantidades (1.4.1)'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "zdiff3 configurado en este repositorio",
+     "script": "[ \"$(git config --local merge.conflictStyle)\" = zdiff3 ] || falla \"Configura merge.conflictStyle = zdiff3 en este repositorio (sin --global)\"\ntrue"
+    },
+    {
+     "name": "La fusión está terminada, sin conflictos ni marcadores",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nsin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\ntrue"
+    },
+    {
+     "name": "config.ini tiene el despacho de main y el envío gratis de Diego",
+     "script": "c=\"$(contenido HEAD config.ini)\"\necho \"$c\" | grep -qx 'envio = 4490' || falla \"config.ini debería tener «envio = 4490»\"\necho \"$c\" | grep -qx 'envio_gratis_desde = 30000' || falla \"config.ini debería tener «envio_gratis_desde = 30000»\"\n[ \"$(echo \"$c\" | grep -c '^envio = ')\" = 1 ] || falla \"En config.ini debe quedar una sola línea «envio = …»\"\necho \"$c\" | grep -qx 'nombre = Tienda Austral' || falla \"config.ini perdió la línea del nombre\"\ntrue"
+    },
+    {
+     "name": "LEEME.md conserva las dos novedades",
+     "script": "c=\"$(contenido HEAD LEEME.md)\"\nfor l in '- Catálogo de productos' '- Pago con tarjeta de débito' '- Envío gratis sobre 30.000 pesos'; do [ \"$(echo \"$c\" | grep -cxF -- \"$l\")\" = 1 ] || falla \"LEEME.md debería tener exactamente una vez la línea: $l\"; done\ntrue"
+    },
+    {
+     "name": "version.txt dice 1.5.0",
+     "script": "[ \"$(contenido HEAD version.txt)\" = 1.5.0 ] || falla \"version.txt debería contener solo 1.5.0\"\ntrue"
+    },
+    {
+     "name": "carrito.js tiene los cambios de ambos lados",
+     "script": "contenido HEAD carrito.js | grep -qF 'i.precio * i.cantidad' || falla \"carrito.js perdió la corrección de main (precio * cantidad)\"\ncontenido HEAD carrito.js | grep -q 'function envioGratis' || falla \"carrito.js perdió la función envioGratis de Diego\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git config merge.conflictStyle zdiff3",
+    "git merge feature/envio-gratis",
+    "printf '[tienda]\\nnombre = Tienda Austral\\nmoneda = CLP\\nenvio = 4490\\nenvio_gratis_desde = 30000\\n' > config.ini",
+    "printf '# Tienda Austral\\n\\n## Novedades\\n- Catálogo de productos\\n- Pago con tarjeta de débito\\n- Envío gratis sobre 30.000 pesos\\n' > LEEME.md",
+    "echo 1.5.0 > version.txt",
+    "git diff --check",
+    "git add config.ini LEEME.md version.txt",
+    "git commit"
+   ],
+   "hints": [
+    "La configuración local se escribe sin `--global`: `git config clave valor`, estando dentro del repositorio.",
+    "Tras `git merge feature/envio-gratis`, `git status` lista tres `both modified`. `carrito.js` no aparece: Git lo combinó solo. Resuelve los tres archivos uno por uno con `code`.",
+    "En zdiff3, lo que está entre `|||||||` y `=======` es la base: te ayuda a ver qué cambió cada lado. Borra también esa sección y sus marcadores.",
+    "Cuando termines, `git diff --check` no debería mostrar nada; luego `git add` de los tres archivos y `git commit`."
+   ],
+   "explain": "`git config merge.conflictStyle zdiff3` (sin `--global`) guarda la opción en `.git/config`. Con ese estilo, cada conflicto muestra tres partes: la tuya, la base (tras `|||||||`) y la que traes. En `config.ini`, la base dice `envio = 3990`: ves que main lo subió a 4490 y que Diego lo puso en 0 y agregó una línea; la decisión combina ambas intenciones. En `LEEME.md` la base está vacía: ambos agregaron una línea, así que se conservan las dos.\n\n`carrito.js` se fusionó solo porque cada lado cambió una zona distinta. Una resolución puede tomarse archivo por archivo: a medida que resuelves, `git add` los va sacando de `Unmerged paths`, y `git commit` solo se permite cuando no queda ninguno. Si prefieres el estilo solo para un conflicto puntual, `git checkout --conflict=zdiff3 archivo` lo redibuja sin tocar la configuración."
+  },
+  {
+   "id": "s06-e8",
+   "title": "Modificar contra borrar",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Tomás hizo limpieza en la rama `limpieza` de la app del clima: borró lo que creía código muerto de `src/legacy/` y renombró `src/api.js` a `src/clima-api.js`. Mientras tanto, tú corregiste un error en `src/legacy/convertir.js` (sumaba 23 en vez de 32) y agregaste un timeout a la API.",
+    "Integra `limpieza` en `main`. Antes de decidir, comprueba si `convertir.js` de verdad no se usa (pista: `grep -n convertir src/formato.js`). Lo que se usa se conserva **con tu corrección**; el resto de la limpieza de Tomás (el CSS viejo y el renombrado) se acepta."
+   ],
+   "setup": "nuevo_repo app-clima\nfecha '2026-09-01 10:00'\nescribir src/legacy/convertir.js $'function aFahrenheit(c) {\\n  return c * 9 / 5 + 23;\\n}\\nmodule.exports = { aFahrenheit };'\nescribir src/formato.js $'const { aFahrenheit } = require(\"./legacy/convertir\");\\nfunction mostrar(c) {\\n  return c + \" °C / \" + aFahrenheit(c) + \" °F\";\\n}\\nmodule.exports = { mostrar };'\nescribir src/api.js $'async function obtenerClima(ciudad) {\\n  return fetch(\"/clima?c=\" + ciudad);\\n}\\nmodule.exports = { obtenerClima };'\nescribir src/legacy/viejo.css 'body { font-family: \"Comic Sans MS\"; }'\ngit add .\ngit commit -qm 'Primera versión de la app del clima'\ngit switch -q -c limpieza\nautor 'Tomás Vera' 'tomas@ejemplo.com'\nfecha '2026-09-02 10:00'\ngit rm -q src/legacy/convertir.js src/legacy/viejo.css\ngit commit -qm 'Elimina código legacy sin uso'\ngit mv src/api.js src/clima-api.js\ngit commit -qm 'Renombra api.js a clima-api.js'\nyo\ngit switch -q main\nfecha '2026-09-02 15:00'\nescribir src/legacy/convertir.js $'function aFahrenheit(c) {\\n  return c * 9 / 5 + 32;\\n}\\nmodule.exports = { aFahrenheit };'\ngit commit -qam 'Corrige la conversión a Fahrenheit'\nescribir src/api.js $'async function obtenerClima(ciudad) {\\n  return fetch(\"/clima?c=\" + ciudad, { signal: AbortSignal.timeout(5000) });\\n}\\nmodule.exports = { obtenerClima };'\ngit commit -qam 'Agrega timeout a la API'",
+   "cwd": "app-clima",
+   "checks": [
+    {
+     "name": "La fusión está terminada y sin conflictos",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nsin_conflictos\ntrue"
+    },
+    {
+     "name": "convertir.js se conserva con tu corrección",
+     "script": "git cat-file -e HEAD:src/legacy/convertir.js 2>/dev/null || falla \"src/legacy/convertir.js desapareció, pero src/formato.js lo usa\"\ncontenido HEAD src/legacy/convertir.js | grep -qF 'c * 9 / 5 + 32' || falla \"convertir.js debería conservar tu corrección (+ 32)\"\ntrue"
+    },
+    {
+     "name": "Se aceptó la eliminación del CSS viejo",
+     "script": "git cat-file -e HEAD:src/legacy/viejo.css 2>/dev/null && falla \"src/legacy/viejo.css sí era código muerto: la limpieza de Tomás debía aplicarse\"\ntrue"
+    },
+    {
+     "name": "El renombrado conserva tu timeout",
+     "script": "git cat-file -e HEAD:src/api.js 2>/dev/null && falla \"src/api.js debería llamarse ahora src/clima-api.js\"\ncontenido HEAD src/clima-api.js | grep -q 'timeout' || falla \"src/clima-api.js debería incluir tu timeout\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge limpieza",
+    "grep -n convertir src/formato.js",
+    "git status",
+    "git add src/legacy/convertir.js",
+    "git commit"
+   ],
+   "hints": [
+    "La salida de `git merge` dice `CONFLICT (modify/delete)`: no hay marcadores que editar; la decisión es si el archivo existe o no.",
+    "`grep -n convertir src/formato.js` muestra que `formato.js` lo importa con `require`: si lo borras, la app se rompe.",
+    "Para conservar un archivo en conflicto modify/delete usa `git add` (para eliminarlo sería `git rm`). Luego `git commit`."
+   ],
+   "explain": "`CONFLICT (modify/delete): src/legacy/convertir.js deleted in limpieza and modified in HEAD.` Git deja tu versión en el directorio de trabajo y espera tu decisión: `git add` la conserva y `git rm` acepta el borrado. `git checkout --theirs` no sirve aquí (`does not have their version`), porque del lado de Tomás el archivo no existe.\n\nEl resto de la limpieza entró sin conflictos: `viejo.css` solo lo tocó Tomás (lo borró) y el renombrado de `api.js` se combinó con tu timeout gracias a la detección de renombrados de `ort`. La lección de fondo: un modify/delete no se resuelve por reflejo; hay que averiguar si el borrado era correcto (aquí no lo era) y, de ser posible, avisarle al autor."
+  },
+  {
+   "id": "s06-e9",
+   "title": "Quedarse con un lado completo: --ours y --theirs",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Valentina terminó el rediseño de la landing en `feature/rediseno`. Al fusionarlo en `main` chocarán dos archivos, y el equipo ya decidió qué hacer:",
+    "• `estilos.css`: se queda **completo** el rediseño de Valentina (tus retoques en `main` ya no aplican).\n• `datos/precios.json`: se quedan **completos** los precios reales de `main` (la rama de Valentina trae precios de prueba).",
+    "Todo lo demás de ambas ramas debe llegar a `main`. No hace falta editar a mano: hay una forma de tomar un archivo entero de un lado."
+   ],
+   "setup": "nuevo_repo landing\nfecha '2026-09-01 10:00'\nescribir estilos.css $'h1 {\\n  color: navy;\\n  font-size: 32px;\\n}\\n\\n.boton {\\n  background: gray;\\n  padding: 4px;\\n}\\n\\n.pie {\\n  font-size: 12px;\\n}'\nescribir datos/precios.json $'{\\n  \"basico\": 9990,\\n  \"pro\": 19990,\\n  \"empresa\": 49990\\n}'\nescribir index.html '<h1>Nuestro producto</h1>'\ngit add .\ngit commit -qm 'Primera versión de la landing'\ngit switch -q -c feature/rediseno\nautor 'Valentina Muñoz' 'valentina@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir estilos.css $'h1 {\\n  color: #0b3d91;\\n  font-size: 40px;\\n}\\n\\n.boton {\\n  background: #ff6f3c;\\n  padding: 12px 24px;\\n}\\n\\n.pie {\\n  font-size: 14px;\\n}'\nescribir datos/precios.json $'{\\n  \"basico\": 1,\\n  \"pro\": 2,\\n  \"empresa\": 3\\n}'\ngit commit -qam 'Rediseño completo de estilos'\ncommit_archivo logo.svg '<svg><circle r=\"10\"/></svg>' 'Añade logo'\nyo\ngit switch -q main\nfecha '2026-09-02 18:00'\nescribir estilos.css $'h1 {\\n  color: darkblue;\\n  font-size: 32px;\\n}\\n\\n.boton {\\n  background: gray;\\n  padding: 6px;\\n}\\n\\n.pie {\\n  font-size: 13px;\\n}'\nescribir datos/precios.json $'{\\n  \"basico\": 10990,\\n  \"pro\": 21990,\\n  \"empresa\": 52990\\n}'\ngit commit -qam 'Actualiza precios y retoca estilos'\ncommit_archivo contacto.html '<p>ventas@landing.cl</p>' 'Añade contacto'",
+   "cwd": "landing",
+   "checks": [
+    {
+     "name": "La fusión está terminada y sin conflictos",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nsin_conflictos\ntrue"
+    },
+    {
+     "name": "estilos.css es el del rediseño",
+     "script": "[ \"$(git rev-parse HEAD:estilos.css 2>/dev/null)\" = \"$(git rev-parse feature/rediseno:estilos.css)\" ] || falla \"estilos.css debería ser idéntico al de feature/rediseno\"\ntrue"
+    },
+    {
+     "name": "precios.json es el de main",
+     "script": "es_merge HEAD || falla \"Todavía no hay commit de fusión\"\n[ \"$(git rev-parse HEAD:datos/precios.json)\" = \"$(git rev-parse HEAD^1:datos/precios.json)\" ] || falla \"datos/precios.json debería ser idéntico al que tenía main antes de fusionar\"\ntrue"
+    },
+    {
+     "name": "Llegaron los archivos nuevos de ambos lados",
+     "script": "git cat-file -e HEAD:logo.svg 2>/dev/null || falla \"Falta logo.svg (de Valentina)\"\ngit cat-file -e HEAD:contacto.html 2>/dev/null || falla \"Falta contacto.html (de main)\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge feature/rediseno",
+    "git checkout --theirs estilos.css",
+    "git checkout --ours datos/precios.json",
+    "git add estilos.css datos/precios.json",
+    "git commit"
+   ],
+   "hints": [
+    "Durante un conflicto, Git guarda tu versión (etapa 2, *ours*) y la que traes (etapa 3, *theirs*) de cada archivo.",
+    "`git checkout --theirs archivo` (o `git restore --theirs archivo`) deja el archivo exactamente como en la rama que fusionas; `--ours`, como en tu rama.",
+    "Después de elegir, el archivo sigue marcado como `UU` en `git status --short`: falta `git add` y luego `git commit`."
+   ],
+   "explain": "`git checkout --theirs estilos.css` copia al directorio de trabajo la etapa 3 (la versión de `feature/rediseno`) y `git checkout --ours datos/precios.json` la etapa 2 (la de `main`). Ninguno de los dos marca el conflicto como resuelto: eso lo hace `git add`. Su equivalente moderno es `git restore --theirs` / `git restore --ours`.\n\nOjo con la diferencia: `--ours/--theirs` sobre un archivo reemplaza el archivo **entero**, incluidas las zonas que no chocaban. Eso es lo que se pidió aquí, pero si el otro lado tuviera cambios útiles en otras partes del mismo archivo, se perderían. Si te equivocas de lado, `git checkout -m archivo` recrea el conflicto con marcadores."
+  },
+  {
+   "id": "s06-e10",
+   "title": "Política automática: la traducción gana los choques",
+   "level": "dificil",
+   "minutes": 14,
+   "prompt": [
+    "Fernanda, del equipo de traducción, revisó todos los textos de la app de turismo en `traduccion/revision`. En `main`, los desarrolladores también retocaron algunos textos y agregaron el botón «compartir» y la pantalla del mapa.",
+    "La política acordada: **en cualquier choque entre ambos, gana la traducción revisada**; pero los cambios de `main` que no chocan (como la clave `compartir` y la pantalla del mapa) deben conservarse.",
+    "Integra la rama con un commit de fusión cuyo mensaje sea `Integra revisión de traducciones`. Hay dos archivos con varios choques: busca la forma de aplicar la política **automáticamente** en lugar de editar a mano y, después, revisa el resultado."
+   ],
+   "setup": "nuevo_repo app-turismo\nfecha '2026-09-01 10:00'\nescribir textos/es.txt $'titulo=Bienvenido\\nboton_ingresar=Entrar\\nboton_salir=Salir\\nerror_red=Error de red\\nayuda=Ayuda\\npie=Hecho en Valdivia'\nescribir textos/en.txt $'titulo=Welcome\\nboton_ingresar=Enter\\nboton_salir=Exit\\nerror_red=Network error\\nayuda=Help\\npie=Made in Valdivia'\ngit add .\ngit commit -qm 'Textos iniciales'\ngit switch -q -c traduccion/revision\nautor 'Fernanda Muñoz' 'fernanda@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir textos/es.txt $'titulo=Te damos la bienvenida\\nboton_ingresar=Iniciar sesión\\nboton_salir=Salir\\nerror_red=Sin conexión a internet\\nayuda=Ayuda\\npie=Hecho en Valdivia'\nescribir textos/en.txt $'titulo=Welcome aboard\\nboton_ingresar=Sign in\\nboton_salir=Exit\\nerror_red=No internet connection\\nayuda=Help\\npie=Made in Valdivia'\ngit commit -qam 'Revisión profesional de textos'\nyo\ngit switch -q main\nfecha '2026-09-02 12:00'\nescribir textos/es.txt $'titulo=Bienvenido\\nboton_ingresar=Ingresar\\nboton_salir=Salir\\nerror_red=Error de conexión\\nayuda=Ayuda\\npie=Hecho en Valdivia\\ncompartir=Compartir'\nescribir textos/en.txt $'titulo=Welcome\\nboton_ingresar=Log in\\nboton_salir=Exit\\nerror_red=Connection error\\nayuda=Help\\npie=Made in Valdivia\\ncompartir=Share'\ngit commit -qam 'Ajusta textos y agrega botón compartir'\ncommit_archivo pantallas/mapa.txt 'Mapa de rutas turísticas' 'Añade pantalla de mapa'",
+   "cwd": "app-turismo",
+   "checks": [
+    {
+     "name": "Fusión terminada con el mensaje pedido",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nmensaje_es HEAD \"Integra revisión de traducciones\"\ntrue"
+    },
+    {
+     "name": "es.txt: en los choques gana la traducción",
+     "script": "for l in 'titulo=Te damos la bienvenida' 'boton_ingresar=Iniciar sesión' 'error_red=Sin conexión a internet'; do contenido HEAD textos/es.txt | grep -qxF -- \"$l\" || falla \"A textos/es.txt le falta la línea: $l\"; done\n[ \"$(contenido HEAD textos/es.txt | grep -c '^boton_ingresar=')\" = 1 ] || falla \"En textos/es.txt debe quedar una sola clave boton_ingresar\"\ntrue"
+    },
+    {
+     "name": "en.txt: en los choques gana la traducción",
+     "script": "for l in 'titulo=Welcome aboard' 'boton_ingresar=Sign in' 'error_red=No internet connection'; do contenido HEAD textos/en.txt | grep -qxF -- \"$l\" || falla \"A textos/en.txt le falta la línea: $l\"; done\ntrue"
+    },
+    {
+     "name": "Se conservan los cambios de main que no chocaban",
+     "script": "contenido HEAD textos/es.txt | grep -qx 'compartir=Compartir' || falla \"textos/es.txt perdió la clave compartir de main\"\ncontenido HEAD textos/en.txt | grep -qx 'compartir=Share' || falla \"textos/en.txt perdió la clave compartir de main\"\ngit cat-file -e HEAD:pantallas/mapa.txt 2>/dev/null || falla \"Falta pantallas/mapa.txt\"\ntrue"
+    },
+    {
+     "name": "Sin marcadores y todo limpio en main",
+     "script": "sin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\nen_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge -X theirs -m \"Integra revisión de traducciones\" traduccion/revision",
+    "git show --stat HEAD",
+    "cat textos/es.txt"
+   ],
+   "hints": [
+    "Git acepta opciones para su estrategia de fusión con `-X`. Una de ellas decide los fragmentos en conflicto a favor de un lado.",
+    "`git merge -X theirs rama` resuelve cada choque con la versión de la rama que traes, y fusiona normalmente todo lo demás. Combínalo con `-m` para el mensaje.",
+    "Revisa el resultado con `cat textos/es.txt` y `git diff HEAD^1 HEAD`: ¿sigue estando `compartir`?"
+   ],
+   "explain": "`git merge -X theirs -m \"Integra revisión de traducciones\" traduccion/revision` hace una fusión normal; solo en los fragmentos en conflicto se queda con la versión de la traducción. La clave `compartir` estaba en una zona que Fernanda no tocó, así que entró sin conflicto, igual que `pantallas/mapa.txt`.\n\nCuidado con dos confusiones clásicas: `-X theirs` **no** es «quedarse con la rama entera» (para un archivo completo usarías `git checkout --theirs`), y no existe una estrategia `-s theirs`. Además, un fragmento en conflicto puede abarcar líneas contiguas que el otro lado cambió por motivos distintos; por eso, después de un `-X`, revisa siempre el resultado (`git show`, `git diff HEAD^1 HEAD`). Resolver a mano también era válido, pero con decenas de choques la opción automática aplica la política de forma consistente."
+  },
+  {
+   "id": "s06-e11",
+   "title": "Un solo commit limpio con --squash (y un conflicto en el camino)",
+   "level": "dificil",
+   "minutes": 16,
+   "prompt": [
+    "Tu rama `feature/buscador` del recetario funciona, pero su historia da vergüenza: commits como «wip», «más wip» y «ahora sí funciona». El equipo pide que entre a `main` como **un único commit normal** (sin commit de fusión) con el mensaje `Añade buscador de recetas`.",
+    "Ojo: Ignacio agregó un enlace a favoritos en la misma zona de `index.html` donde tú pusiste el buscador. En el resultado deben quedar **las dos cosas**: primero el `<nav>` de Ignacio y después tu `<input>`.",
+    "Al final, borra la rama `feature/buscador`. Git se va a resistir: entiende por qué antes de insistir."
+   ],
+   "setup": "nuevo_repo recetario\nfecha '2026-09-01 10:00'\ncommit_archivo index.html $'<header>\\n  <h1>Recetario</h1>\\n</header>\\n<main id=\"recetas\"></main>' 'Crea la portada'\ngit switch -q -c feature/buscador\nfecha '2026-09-02 10:00'\ncommit_archivo buscador.js 'function buscar(texto) {' 'wip'\nanexar buscador.js '  console.log(texto);'\ngit commit -qam 'más wip'\nanexar buscador.js '  return recetas.filter(r => r.nombre.includes(texto));'\ngit commit -qam 'ahora sí funciona'\nescribir buscador.js $'function buscar(texto) {\\n  return recetas.filter(r => r.nombre.includes(texto));\\n}'\ngit commit -qam 'quita console.log'\nescribir index.html $'<header>\\n  <h1>Recetario</h1>\\n  <input id=\"buscar\" placeholder=\"Buscar receta\">\\n</header>\\n<main id=\"recetas\"></main>'\ngit commit -qam 'agrega input'\ngit switch -q main\nautor 'Ignacio Fuentes' 'ignacio@ejemplo.com'\nfecha '2026-09-03 10:00'\nescribir index.html $'<header>\\n  <h1>Recetario</h1>\\n  <nav><a href=\"favoritos.html\">Favoritos</a></nav>\\n</header>\\n<main id=\"recetas\"></main>'\ngit commit -qam 'Agrega enlace a favoritos'\nyo\ngit switch -q feature/buscador",
+   "cwd": "recetario",
+   "checks": [
+    {
+     "name": "main suma un único commit normal",
+     "script": "es_merge main && falla \"main terminó con un commit de fusión: se pedía un único commit normal\"\n[ \"$(num_commits main)\" = 3 ] || falla \"main debería tener 3 commits (los 2 que tenía + 1 nuevo) y tiene $(num_commits main)\"\ngit log --format=%s main | grep -qx 'wip' && falla \"Los commits «wip» llegaron a main: se pedía un solo commit\"\ntrue"
+    },
+    {
+     "name": "El mensaje es el pedido",
+     "script": "mensaje_es main \"Añade buscador de recetas\"\ntrue"
+    },
+    {
+     "name": "El commit trae el buscador",
+     "script": "git cat-file -e main:buscador.js 2>/dev/null || falla \"Falta buscador.js en main\"\ncontenido main buscador.js | grep -q 'recetas.filter' || falla \"buscador.js de main no tiene la versión final del buscador\"\ntrue"
+    },
+    {
+     "name": "index.html tiene el nav y el buscador, en ese orden",
+     "script": "c=\"$(contenido main index.html)\"\necho \"$c\" | grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^=======' && falla \"index.html de main tiene marcadores de conflicto\"\n[ \"$(echo \"$c\" | grep -cF '<nav><a href=\"favoritos.html\">Favoritos</a></nav>')\" = 1 ] || falla \"index.html debería tener una vez el <nav> de Ignacio\"\n[ \"$(echo \"$c\" | grep -cF '<input id=\"buscar\" placeholder=\"Buscar receta\">')\" = 1 ] || falla \"index.html debería tener una vez tu <input>\"\nn=$(echo \"$c\" | grep -n '<nav>' | cut -d: -f1); i=$(echo \"$c\" | grep -n '<input' | cut -d: -f1)\n[ \"$n\" -lt \"$i\" ] || falla \"El <nav> de Ignacio debe ir antes que tu <input>\"\ntrue"
+    },
+    {
+     "name": "La rama se borró",
+     "script": "rama_no_existe feature/buscador \"Borra la rama feature/buscador (su contenido ya está en main)\"\ntrue"
+    },
+    {
+     "name": "Sin conflictos y todo limpio en main",
+     "script": "sin_conflictos\nen_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git switch main",
+    "git merge --squash feature/buscador",
+    "printf '<header>\\n  <h1>Recetario</h1>\\n  <nav><a href=\"favoritos.html\">Favoritos</a></nav>\\n  <input id=\"buscar\" placeholder=\"Buscar receta\">\\n</header>\\n<main id=\"recetas\"></main>\\n' > index.html",
+    "git add index.html",
+    "git commit -m \"Añade buscador de recetas\"",
+    "git branch -d feature/buscador",
+    "git branch -D feature/buscador"
+   ],
+   "hints": [
+    "`git merge --squash rama` prepara los cambios de toda la rama sin crear commit ni registrar la fusión.",
+    "Aquí el squash se detiene por un conflicto en `index.html`. Resuélvelo como siempre (edita, deja las dos líneas, `git add`). Ojo: `git merge --abort` no funciona tras un squash, porque no hay `MERGE_HEAD`.",
+    "Termina con `git commit -m \"Añade buscador de recetas\"`: será un commit normal, con un solo padre.",
+    "`git branch -d` se niega porque, para Git, la rama no está fusionada: su punta no es ancestro de `main`. Una vez comprobado que su contenido está en `main`, bórrala con `-D`."
+   ],
+   "explain": "`git merge --squash feature/buscador` calcula el resultado de la fusión, lo deja en el área de preparación y se detiene (`Squash commit -- not updating HEAD`). Al haber conflicto, lo resuelves igual que en una fusión normal, pero el commit final es **normal**: un solo padre, sin `MERGE_HEAD`. Si no das `-m`, Git propone el mensaje `Squashed commit of the following:` con la lista de commits aplastados.\n\nConsecuencias que debes conocer: (1) la historia de la rama no queda enlazada, por eso `git branch -d` responde `error: the branch 'feature/buscador' is not fully merged` y hay que usar `-D`; (2) si siguieras trabajando en esa rama y la aplastaras otra vez, Git intentaría reaplicar cambios que ya entraron; (3) para cancelar un squash con conflictos se usa `git reset --merge` (o `git reset --hard`), no `git merge --abort`. En s09 verás otra forma de limpiar commits: el rebase interactivo."
+  },
+  {
+   "id": "s06-e12",
+   "title": "Renombrar contra renombrar (y crear contra crear)",
+   "level": "dificil",
+   "minutes": 16,
+   "prompt": [
+    "Martina reorganizó la documentación en `reorganiza-docs`: movió `notas.md` a `docs/guia.md` y creó `CONTRIBUTING.md` con una sección. A la vez, tú renombraste `notas.md` a `manual.md` y también creaste un `CONTRIBUTING.md` con otra sección.",
+    "Decisiones del equipo:\n• La guía vive en `docs/guia.md` (la estructura de Martina). No debe quedar ni `manual.md` ni `notas.md`.\n• `CONTRIBUTING.md` combina ambas versiones: el título `# Cómo contribuir` una sola vez, luego tu sección `## Cómo proponer cambios` con su texto y después la de Martina `## Estilo de commits` con su texto.",
+    "Integra `reorganiza-docs` en `main` aplicando esas decisiones. Lee con atención `git status --short`: cada código de dos letras te dice qué pasó."
+   ],
+   "setup": "nuevo_repo docs-equipo\nfecha '2026-09-01 10:00'\ncommit_archivo notas.md $'# Guía del equipo\\n\\nUsamos ramas cortas y revisamos todo por pull request.' 'Añade la guía del equipo'\ncommit_archivo LEEME.md '# Documentación del equipo' 'Añade LEEME'\ngit switch -q -c reorganiza-docs\nautor 'Martina Díaz' 'martina@ejemplo.com'\nfecha '2026-09-02 10:00'\nmkdir -p docs\ngit mv notas.md docs/guia.md\ngit commit -qm 'Mueve la guía a docs/guia.md'\ncommit_archivo CONTRIBUTING.md $'# Cómo contribuir\\n\\n## Estilo de commits\\nMensajes en imperativo y de menos de 50 caracteres.' 'Añade CONTRIBUTING'\nyo\ngit switch -q main\nfecha '2026-09-02 11:00'\ngit mv notas.md manual.md\ngit commit -qm 'Renombra notas.md a manual.md'\ncommit_archivo CONTRIBUTING.md $'# Cómo contribuir\\n\\n## Cómo proponer cambios\\nAbre una rama desde main y pide revisión.' 'Crea CONTRIBUTING'",
+   "cwd": "docs-equipo",
+   "checks": [
+    {
+     "name": "La fusión está terminada",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nsin_conflictos\ntrue"
+    },
+    {
+     "name": "La guía vive solo en docs/guia.md",
+     "script": "git cat-file -e HEAD:docs/guia.md 2>/dev/null || falla \"La guía debería estar en docs/guia.md\"\nfor f in manual.md notas.md; do git cat-file -e \"HEAD:$f\" 2>/dev/null && falla \"En el commit final sobra $f: la guía debe existir solo como docs/guia.md\"; done\ncontenido HEAD docs/guia.md | grep -q 'ramas cortas' || falla \"docs/guia.md perdió su contenido\"\ntrue"
+    },
+    {
+     "name": "CONTRIBUTING.md combina ambas secciones en orden",
+     "script": "c=\"$(contenido HEAD CONTRIBUTING.md)\"\necho \"$c\" | grep -q -e '^<<<<<<<' -e '^=======' -e '^>>>>>>>' -e '^|||||||' && falla \"CONTRIBUTING.md tiene marcadores de conflicto\"\n[ \"$(echo \"$c\" | grep -cx '# Cómo contribuir')\" = 1 ] || falla \"El título «# Cómo contribuir» debe aparecer una sola vez\"\nfor l in '## Cómo proponer cambios' 'Abre una rama desde main y pide revisión.' '## Estilo de commits' 'Mensajes en imperativo y de menos de 50 caracteres.'; do [ \"$(echo \"$c\" | grep -cxF -- \"$l\")\" = 1 ] || falla \"CONTRIBUTING.md debería tener exactamente una vez la línea: $l\"; done\na=$(echo \"$c\" | grep -n '^## Cómo proponer' | cut -d: -f1); b=$(echo \"$c\" | grep -n '^## Estilo' | cut -d: -f1)\n[ \"$a\" -lt \"$b\" ] || falla \"Tu sección (Cómo proponer cambios) debe ir antes que la de Martina (Estilo de commits)\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge reorganiza-docs",
+    "git status --short",
+    "git rm notas.md manual.md",
+    "git add docs/guia.md",
+    "printf '# Cómo contribuir\\n\\n## Cómo proponer cambios\\nAbre una rama desde main y pide revisión.\\n\\n## Estilo de commits\\nMensajes en imperativo y de menos de 50 caracteres.\\n' > CONTRIBUTING.md",
+    "git add CONTRIBUTING.md",
+    "git commit"
+   ],
+   "hints": [
+    "`git status --short` muestra `DD notas.md` (ambos lo quitaron de ese nombre), `AU manual.md` (tu nombre), `UA docs/guia.md` (el de Martina) y `AA CONTRIBUTING.md` (ambos lo crearon).",
+    "Para los nombres: elimina con `git rm` los que no deben quedar (puedes pasar varios a la vez) y marca con `git add` el que se queda.",
+    "`CONTRIBUTING.md` es un conflicto de contenido normal: ábrelo con `code`, arma la versión combinada sin marcadores y haz `git add`. Luego `git commit`."
+   ],
+   "explain": "La fusión anuncia `CONFLICT (rename/rename): notas.md renamed to manual.md in HEAD and to docs/guia.md in reorganiza-docs.` y `CONFLICT (add/add): Merge conflict in CONTRIBUTING.md`. Un rename/rename no tiene marcadores: Git deja **los dos** archivos candidatos en el directorio de trabajo y tres entradas sin fusionar. La resolución es de árbol: `git rm notas.md manual.md` quita el nombre original y el tuyo; `git add docs/guia.md` confirma el elegido.\n\nEl add/add se trata como un conflicto de contenido cuya base está vacía (ninguna versión existía antes). Si hubieras elegido tu nombre, habría bastado con `git rm notas.md docs/guia.md` y `git add manual.md`. Consejo de equipo: los renombrados masivos conviene hacerlos en un commit propio, anunciados y rápidos de integrar, para que nadie trabaje en paralelo sobre los nombres viejos."
+  },
+  {
+   "id": "s06-e13",
+   "title": "Combina ambos lados y explica la fusión",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "En el módulo de facturación ya se integró `feature/descuentos`: `calcularTotal` recibe un `descuento` y lo resta al final. Pablo trabajó en paralelo en `feature/iva`, que multiplica el total por 1,19 y lo redondea. Los dos cambiaron la misma línea de retorno.",
+    "Fusiona `feature/iva` en `main`. El IVA se aplica **después** del descuento, así que la línea de retorno debe quedar exactamente así (con dos espacios de sangría):\n```js\n  return Math.round((total - descuento) * 1.19);\n```",
+    "La firma de la función debe conservar el parámetro `descuento = 0`. Cierra la fusión con un mensaje escrito por ti en el editor: asunto exacto `Fusiona feature/iva: IVA después del descuento`, una línea en blanco y un cuerpo (una o dos líneas) que explique la decisión."
+   ],
+   "setup": "nuevo_repo facturacion\nfecha '2026-09-01 10:00'\ncommit_archivo src/total.js $'function calcularTotal(items) {\\n  let total = 0;\\n  for (const item of items) {\\n    total += item.precio * item.cantidad;\\n  }\\n  return total;\\n}\\n\\nmodule.exports = { calcularTotal };' 'Calcula el total de la boleta'\ngit switch -q -c feature/iva\nautor 'Pablo Reyes' 'pablo@ejemplo.com'\nfecha '2026-09-02 10:00'\nescribir src/total.js $'function calcularTotal(items) {\\n  let total = 0;\\n  for (const item of items) {\\n    total += item.precio * item.cantidad;\\n  }\\n  return Math.round(total * 1.19);\\n}\\n\\nmodule.exports = { calcularTotal };'\ngit commit -qam 'Aplica IVA al total'\nyo\ngit switch -q main\ngit switch -q -c feature/descuentos\nfecha '2026-09-02 12:00'\nescribir src/total.js $'function calcularTotal(items, descuento = 0) {\\n  let total = 0;\\n  for (const item of items) {\\n    total += item.precio * item.cantidad;\\n  }\\n  return total - descuento;\\n}\\n\\nmodule.exports = { calcularTotal };'\ngit commit -qam 'Permite descuentos en el total'\ngit switch -q main\ngit merge -q --no-ff --no-edit feature/descuentos\ngit branch -q -d feature/descuentos",
+   "cwd": "facturacion",
+   "checks": [
+    {
+     "name": "La fusión está terminada y sin marcadores",
+     "script": "sin_operacion_en_curso\nes_merge HEAD || falla \"El último commit todavía no es un commit de fusión: termina la fusión con git add y git commit\"\nsin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\nmensaje_es HEAD^2 \"Aplica IVA al total\" \"El segundo padre de la fusión debería ser la punta de feature/iva\"\ntrue"
+    },
+    {
+     "name": "La firma conserva el descuento",
+     "script": "contenido HEAD src/total.js | grep -qF 'function calcularTotal(items, descuento = 0) {' || falla \"La firma debería seguir siendo «function calcularTotal(items, descuento = 0) {»\"\ntrue"
+    },
+    {
+     "name": "El retorno aplica el IVA después del descuento",
+     "script": "contenido HEAD src/total.js | grep -qxF '  return Math.round((total - descuento) * 1.19);' || falla \"La línea de retorno debe quedar exactamente «  return Math.round((total - descuento) * 1.19);» (con dos espacios de sangría)\"\n[ \"$(contenido HEAD src/total.js | grep -c 'return')\" = 1 ] || falla \"Debe quedar una sola línea con return\"\ntrue"
+    },
+    {
+     "name": "El mensaje tiene el asunto pedido y un cuerpo",
+     "script": "mensaje_es HEAD \"Fusiona feature/iva: IVA después del descuento\"\n[ -n \"$(git log -1 --format=%b HEAD | grep -v '^#' | tr -d '[:space:]')\" ] || falla \"Agrega un cuerpo al mensaje: una línea en blanco después del asunto y una explicación\"\ntrue"
+    },
+    {
+     "name": "Estás en main y todo está limpio",
+     "script": "en_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git merge feature/iva",
+    "printf 'function calcularTotal(items, descuento = 0) {\\n  let total = 0;\\n  for (const item of items) {\\n    total += item.precio * item.cantidad;\\n  }\\n  return Math.round((total - descuento) * 1.19);\\n}\\n\\nmodule.exports = { calcularTotal };\\n' > src/total.js",
+    "git diff",
+    "git add src/total.js",
+    {
+     "cmd": "git commit",
+     "edit": "Fusiona feature/iva: IVA después del descuento\n\nEl IVA del 19 % se calcula sobre el total ya descontado,\ncomo pidió contabilidad.\n"
+    }
+   ],
+   "hints": [
+    "Mira el conflicto con `git diff`: la firma (con `descuento`) ya se fusionó sola; solo choca la línea del `return`.",
+    "La línea correcta no es de ningún lado: combina ambas intenciones. Edita `src/total.js`, deja solo esa línea de retorno y borra los marcadores.",
+    "Para escribir el mensaje, usa `git commit` sin `-m`: se abrirá el editor con `Merge branch 'feature/iva'`. Reemplaza la primera línea por el asunto pedido, deja una línea en blanco y escribe el cuerpo. Las líneas con `#` se ignoran."
+   ],
+   "explain": "Este es el caso más común en la vida real: ninguno de los dos lados es «el correcto»; la resolución es una tercera versión que respeta ambas intenciones (descontar y luego aplicar IVA). Por eso conviene leer los mensajes de los commits en conflicto (`git log --merge`) antes de editar.\n\nEl commit de fusión es un buen lugar para documentar decisiones: quien lea la historia verá en el mensaje por qué el `return` quedó así. Con `git commit` se abre el editor con el mensaje propuesto y la lista `# Conflicts:`; si en cambio usas `git commit --no-edit`, el mensaje no pasa por el editor y conserva esas líneas `#` tal cual. Después de confirmar, `git show HEAD` muestra un diff combinado: la línea `++  return Math.round((total - descuento) * 1.19);` indica que es nueva respecto de ambos padres."
+  },
+  {
+   "id": "s06-e14",
+   "title": "Proyecto: viernes de integración con tres ramas del equipo",
+   "level": "proyecto",
+   "minutes": 30,
+   "prompt": [
+    "Es viernes de integración en *Reservas El Fogón*. Tres personas del equipo terminaron sus funcionalidades, cada una en su rama creada desde el mismo `main`: `feature/login` (Camila), `feature/menu` (Diego) y `feature/reservas-online` (Ana). Te toca integrarlas.",
+    "Reglas del equipo:\n1. Se integran **en este orden**: login, menu, reservas-online.\n2. Cada una con **su propio commit de fusión** (aunque se pudiera avanzar rápido) y con el mensaje que propone Git.\n3. Si hay conflictos, se conservan los aportes de todos en el orden de integración: en `app.js` las rutas quedan `/inicio`, `/contacto`, `/login`, `/menu`, `/reservas`; en `LEEME.md`, las funcionalidades nuevas en ese mismo orden.\n4. Después de las tres fusiones, un commit normal `Sube versión a 1.1.0` que deje `version.txt` en `1.1.0`.\n5. Al final, borra las tres ramas integradas y deja todo limpio en `main`.",
+    "Revisa primero el panorama con `git log --oneline --graph --all` y piensa dónde van a aparecer los conflictos antes de que aparezcan."
+   ],
+   "setup": "nuevo_repo reservas\nfecha '2026-09-07 10:00'\nescribir app.js $'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n];\\n\\nmodule.exports = rutas;'\nescribir LEEME.md $'# Reservas El Fogón\\n\\n## Funcionalidades\\n- Página de inicio\\n- Formulario de contacto'\nescribir version.txt '1.0.0'\ngit add .\ngit commit -qm 'Versión 1.0.0 del sitio de reservas'\ngit switch -q -c feature/login\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-08 10:00'\ncommit_archivo login.html '<form id=\"login\">Correo y contraseña</form>' 'Crea la página de login'\nescribir app.js $'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n  \"/login\",\\n];\\n\\nmodule.exports = rutas;'\nanexar LEEME.md '- Inicio de sesión para clientes'\ngit commit -qam 'Enlaza el login desde las rutas y el LEEME'\ngit switch -q main\ngit switch -q -c feature/menu\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-09 11:00'\ncommit_archivo menu.html '<section id=\"menu\">Carta del día</section>' 'Crea la carta del día'\nescribir app.js $'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n  \"/menu\",\\n];\\n\\nmodule.exports = rutas;'\nanexar LEEME.md '- Carta del día'\ngit commit -qam 'Enlaza la carta desde las rutas y el LEEME'\ngit switch -q main\ngit switch -q -c feature/reservas-online\nautor 'Ana Pérez' 'ana@ejemplo.com'\nfecha '2026-09-10 12:00'\ncommit_archivo reservas.html '<form id=\"reserva\">Fecha, hora y personas</form>' 'Crea el formulario de reservas'\nescribir app.js $'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n  \"/reservas\",\\n];\\n\\nmodule.exports = rutas;'\nanexar LEEME.md '- Reservas en línea'\ngit commit -qam 'Enlaza las reservas desde las rutas y el LEEME'\nyo\ngit switch -q main",
+   "cwd": "reservas",
+   "checks": [
+    {
+     "name": "Tres commits de fusión en main, en el orden pedido",
+     "script": "m=\"$(git log --merges --first-parent --reverse --format=%s main | tr '\\n' '|')\"\n[ \"$m\" = \"Merge branch 'feature/login'|Merge branch 'feature/menu'|Merge branch 'feature/reservas-online'|\" ] || falla \"En la línea principal de main deberían verse tres fusiones, en orden (login, menu, reservas-online) y con el mensaje que propone Git\"\ntrue"
+    },
+    {
+     "name": "Cada fusión trae la punta de su rama",
+     "script": "set -- $(git log --merges --first-parent --reverse --format=%H main)\n[ $# -ge 3 ] || falla \"Faltan commits de fusión en main\"\nmensaje_es \"$1^2\" \"Enlaza el login desde las rutas y el LEEME\" \"La primera fusión debería traer la punta de feature/login\"\nmensaje_es \"$2^2\" \"Enlaza la carta desde las rutas y el LEEME\" \"La segunda fusión debería traer la punta de feature/menu\"\nmensaje_es \"$3^2\" \"Enlaza las reservas desde las rutas y el LEEME\" \"La tercera fusión debería traer la punta de feature/reservas-online\"\ntrue"
+    },
+    {
+     "name": "app.js tiene las cinco rutas en orden",
+     "script": "r=\"$(contenido main app.js | grep -o '\"/[a-z]*\"' | tr '\\n' ' ')\"\n[ \"$r\" = '\"/inicio\" \"/contacto\" \"/login\" \"/menu\" \"/reservas\" ' ] || falla \"Las rutas de app.js en main deberían ser, en orden: /inicio, /contacto, /login, /menu, /reservas\"\ncontenido main app.js | grep -qx 'module.exports = rutas;' || falla \"app.js perdió la línea module.exports\"\ntrue"
+    },
+    {
+     "name": "LEEME.md lista las funcionalidades en orden",
+     "script": "f=\"$(contenido main LEEME.md | grep '^- ' | tr '\\n' '|')\"\n[ \"$f\" = \"- Página de inicio|- Formulario de contacto|- Inicio de sesión para clientes|- Carta del día|- Reservas en línea|\" ] || falla \"La lista de funcionalidades de LEEME.md no tiene las cinco líneas en el orden pedido\"\ntrue"
+    },
+    {
+     "name": "Están las páginas de las tres funcionalidades",
+     "script": "for f in login.html menu.html reservas.html; do git cat-file -e \"main:$f\" 2>/dev/null || falla \"A main le falta $f\"; done\ntrue"
+    },
+    {
+     "name": "La versión 1.1.0 está en un commit normal al final",
+     "script": "mensaje_es main \"Sube versión a 1.1.0\" \"El último commit de main debería ser «Sube versión a 1.1.0»\"\nes_merge main && falla \"«Sube versión a 1.1.0» debe ser un commit normal, no una fusión\"\n[ \"$(contenido main version.txt)\" = 1.1.0 ] || falla \"version.txt debería contener 1.1.0\"\nmensaje_es main^1 \"Merge branch 'feature/reservas-online'\" \"El commit de versión debe ir justo después de la última fusión\"\ntrue"
+    },
+    {
+     "name": "Las ramas integradas se borraron",
+     "script": "rama_no_existe feature/login \"Borra feature/login, ya integrada\"\nrama_no_existe feature/menu \"Borra feature/menu, ya integrada\"\nrama_no_existe feature/reservas-online \"Borra feature/reservas-online, ya integrada\"\ntrue"
+    },
+    {
+     "name": "Sin marcadores ni operaciones a medias; todo limpio en main",
+     "script": "sin_operacion_en_curso\nsin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\nen_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git log --oneline --graph --all",
+    "git merge --no-ff feature/login",
+    "git merge --no-ff feature/menu",
+    "printf 'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n  \"/login\",\\n  \"/menu\",\\n];\\n\\nmodule.exports = rutas;\\n' > app.js",
+    "printf '# Reservas El Fogón\\n\\n## Funcionalidades\\n- Página de inicio\\n- Formulario de contacto\\n- Inicio de sesión para clientes\\n- Carta del día\\n' > LEEME.md",
+    "git add app.js LEEME.md",
+    "git commit",
+    "git merge --no-ff feature/reservas-online",
+    "printf 'const rutas = [\\n  \"/inicio\",\\n  \"/contacto\",\\n  \"/login\",\\n  \"/menu\",\\n  \"/reservas\",\\n];\\n\\nmodule.exports = rutas;\\n' > app.js",
+    "printf '# Reservas El Fogón\\n\\n## Funcionalidades\\n- Página de inicio\\n- Formulario de contacto\\n- Inicio de sesión para clientes\\n- Carta del día\\n- Reservas en línea\\n' > LEEME.md",
+    "git add app.js LEEME.md",
+    "git commit",
+    "echo 1.1.0 > version.txt",
+    "git commit -am \"Sube versión a 1.1.0\"",
+    "git branch -d feature/login feature/menu feature/reservas-online",
+    "git log --oneline --graph"
+   ],
+   "hints": [
+    "Las tres ramas agregan una línea en el mismo lugar de `app.js` y al final de `LEEME.md`. La primera fusión no choca con nada (main no cambió), pero sí las siguientes.",
+    "Como la primera fusión podría ser un avance rápido y la regla exige commit de fusión, usa `git merge --no-ff` en las tres.",
+    "En cada conflicto, deja las líneas de todas las ramas ya integradas más la nueva, en orden, sin marcadores; `git add` y `git commit` antes de seguir con la siguiente rama (Git no te deja empezar otra fusión con una a medias).",
+    "Para el cierre: edita `version.txt`, `git commit -am \"Sube versión a 1.1.0\"` y `git branch -d` con los tres nombres a la vez."
+   ],
+   "explain": "El orden importa: la primera fusión (`login`) no tiene conflictos; la segunda (`menu`) choca porque login y menu agregaron una línea en el mismo punto de `app.js` y al final de `LEEME.md`; la tercera choca con el resultado de las dos anteriores. Cada conflicto es del tipo «ambos agregaron», y la resolución correcta casi siempre es conservar todo en un orden razonable.\n\n`--no-ff` garantiza un commit de fusión por funcionalidad, así `git log --first-parent --oneline` muestra `main` como una lista limpia de integraciones y cualquiera de ellas puede revertirse como unidad (s16). Un integrador profesional haría además dos cosas que aquí no se piden: ejecutar las pruebas después de cada fusión y, si una fusión sale mal, `git reset --hard ORIG_HEAD` antes de publicar. En un equipo real, este trabajo lo hacen los pull requests (s08), y cada autor suele traer `main` a su rama antes para resolver sus propios conflictos (proyecto siguiente)."
+  },
+  {
+   "id": "s06-e15",
+   "title": "Proyecto: pon al día tu rama antes de entregarla",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Llevas varios días en `feature/pagos` de la API de pedidos. Mientras tanto, Camila y Diego integraron cambios en `main` que tocan los mismos archivos que tú (`config.js` y `LEEME.md`).",
+    "La práctica del equipo es: **los conflictos se resuelven en la rama de quien entrega, no en `main`**. Así que:\n1. Trae `main` a tu rama `feature/pagos` con una fusión (con el mensaje que propone Git) y resuelve ahí los conflictos.\n2. Integra luego tu rama en `main` con la opción que **solo permite avanzar rápido**: si todo está bien hecho, `main` no necesitará un commit de fusión propio.\n3. Borra `feature/pagos` y termina en `main` con todo limpio.",
+    "Decisiones para los conflictos:\n• `config.js`: quedan las dos claves nuevas, primero `limitePedidos` (de main) y luego `pasarela` (tuya).\n• `LEEME.md`: los endpoints quedan en este orden: `GET /pedidos`, `DELETE /pedidos/:id`, `POST /pagos`."
+   ],
+   "setup": "nuevo_repo api-pedidos\nfecha '2026-09-14 10:00'\nescribir config.js $'module.exports = {\\n  puerto: 3000,\\n  moneda: \"CLP\",\\n};'\nescribir LEEME.md $'# API de pedidos\\n\\n## Endpoints\\n- GET /pedidos'\nescribir servidor.js 'const config = require(\"./config\");'\ngit add .\ngit commit -qm 'API de pedidos inicial'\ngit switch -q -c feature/pagos\nfecha '2026-09-15 10:00'\ncommit_archivo pagos.js 'function pagar(monto) {}' 'Esqueleto del módulo de pagos'\nescribir config.js $'module.exports = {\\n  puerto: 3000,\\n  moneda: \"CLP\",\\n  pasarela: \"webpay\",\\n};'\ngit commit -qam 'Configura la pasarela de pagos'\nanexar LEEME.md '- POST /pagos'\ngit commit -qam 'Documenta el endpoint de pagos'\nescribir pagos.js $'function pagar(monto) {\\n  if (monto <= 0) throw new Error(\"Monto inválido\");\\n}'\ngit commit -qam 'Valida el monto del pago'\ngit switch -q main\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-16 09:00'\nescribir config.js $'module.exports = {\\n  puerto: 3000,\\n  moneda: \"CLP\",\\n  limitePedidos: 50,\\n};'\ngit commit -qam 'Agrega límite de pedidos'\nautor 'Diego Soto' 'diego@ejemplo.com'\nfecha '2026-09-16 11:00'\nanexar LEEME.md '- DELETE /pedidos/:id'\ngit commit -qam 'Documenta la cancelación de pedidos'\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-16 15:00'\ncommit_archivo package.json '{ \"name\": \"api-pedidos\", \"version\": \"1.2.0\" }' 'Actualiza dependencias'\nyo",
+   "cwd": "api-pedidos",
+   "checks": [
+    {
+     "name": "main terminó en la fusión hecha en tu rama",
+     "script": "es_merge main || falla \"main debería terminar en un commit de fusión (el que hiciste en tu rama al traer main)\"\nmensaje_es main \"Merge branch 'main' into feature/pagos\" \"El commit de fusión debe hacerse en tu rama (trae main a feature/pagos) y conservar el mensaje propuesto\"\ntrue"
+    },
+    {
+     "name": "Los padres de esa fusión son los correctos",
+     "script": "mensaje_es main^1 \"Valida el monto del pago\" \"El primer padre de la fusión debería ser tu último commit en feature/pagos\"\nmensaje_es main^2 \"Actualiza dependencias\" \"El segundo padre debería ser el último commit de main (el de Camila)\"\ntrue"
+    },
+    {
+     "name": "main se actualizó solo por avance rápido",
+     "script": "n=\"$(git rev-list --merges --count main)\"\n[ \"$n\" = 0 ] && falla \"main todavía no incluye la fusión que debías hacer en tu rama\"\n[ \"$n\" = 1 ] || falla \"main tiene $n commits de fusión y debería tener uno solo (el de tu rama): ¿fusionaste en main en vez de avanzar rápido?\"\ntrue"
+    },
+    {
+     "name": "config.js tiene ambas claves en orden",
+     "script": "k=\"$(contenido main config.js | grep -o '^  [a-zA-Z]*:' | tr -d ' :' | tr '\\n' ' ')\"\n[ \"$k\" = \"puerto moneda limitePedidos pasarela \" ] || falla \"Las claves de config.js deberían ser, en orden: puerto, moneda, limitePedidos, pasarela\"\ntrue"
+    },
+    {
+     "name": "LEEME.md tiene los tres endpoints en orden",
+     "script": "e=\"$(contenido main LEEME.md | grep '^- ' | tr '\\n' '|')\"\n[ \"$e\" = \"- GET /pedidos|- DELETE /pedidos/:id|- POST /pagos|\" ] || falla \"Los endpoints de LEEME.md deberían ser, en orden: GET /pedidos, DELETE /pedidos/:id, POST /pagos\"\ntrue"
+    },
+    {
+     "name": "Llegó todo el trabajo de ambos lados",
+     "script": "git cat-file -e main:pagos.js 2>/dev/null || falla \"A main le falta pagos.js\"\ngit cat-file -e main:package.json 2>/dev/null || falla \"A main le falta package.json (el trabajo de Camila)\"\ncontenido main pagos.js | grep -q 'Monto inválido' || falla \"pagos.js debería tener la validación del monto\"\ntrue"
+    },
+    {
+     "name": "La rama se borró y todo quedó limpio en main",
+     "script": "rama_no_existe feature/pagos \"Borra feature/pagos: ya está integrada\"\nsin_operacion_en_curso\nsin_conflictos \"Todavía hay conflictos sin resolver o marcadores <<<<<<< en algún archivo\"\ngrep -rqs -e '^|||||||' -e '^>>>>>>>' --exclude-dir=.git . && falla \"Quedan marcadores de conflicto (||||||| o >>>>>>>) en algún archivo\"\ngit grep -q -e '^<<<<<<<' -e '^>>>>>>>' -e '^|||||||' HEAD -- && falla \"El último commit contiene marcadores de conflicto: quítalos y confirma de nuevo\"\nen_rama main\nlimpio\ntrue"
+    }
+   ],
+   "solution": [
+    "git switch feature/pagos",
+    "git merge main",
+    "printf 'module.exports = {\\n  puerto: 3000,\\n  moneda: \"CLP\",\\n  limitePedidos: 50,\\n  pasarela: \"webpay\",\\n};\\n' > config.js",
+    "printf '# API de pedidos\\n\\n## Endpoints\\n- GET /pedidos\\n- DELETE /pedidos/:id\\n- POST /pagos\\n' > LEEME.md",
+    "git diff --check",
+    "git add config.js LEEME.md",
+    "git commit",
+    "git switch main",
+    "git merge --ff-only feature/pagos",
+    "git branch -d feature/pagos",
+    "git log --oneline --graph"
+   ],
+   "hints": [
+    "Paso 1: cámbiate a `feature/pagos` y ejecuta `git merge main`. Los conflictos aparecerán en tu rama; el mensaje propuesto será `Merge branch 'main' into feature/pagos`.",
+    "Resuelve `config.js` y `LEEME.md` según las decisiones, `git add` y `git commit`. Comprueba con el gráfico que tu rama ahora contiene todos los commits de `main`.",
+    "Paso 2: vuelve a `main` y usa `git merge --ff-only feature/pagos`. Como `main` es ahora ancestro de tu rama, solo avanzará.",
+    "Paso 3: `git branch -d feature/pagos` funciona porque la rama quedó totalmente integrada."
+   ],
+   "explain": "Al traer `main` a tu rama, el commit de fusión tiene como primer padre tu último commit y como segundo padre la punta de `main`, y su mensaje es `Merge branch 'main' into feature/pagos` (Git añade `into …` cuando no estás en `main`). Desde ese momento, `main` es ancestro de `feature/pagos`, así que integrarla es un simple avance rápido: `main` no recibe ningún commit de fusión propio y los conflictos quedaron resueltos (y, en un equipo real, probados) en tu rama.\n\n`--ff-only` funciona como red de seguridad: si alguien hubiera agregado otro commit a `main` entre medio, se habría negado y tendrías que repetir el paso 1. Alternativa: rebasar tu rama sobre `main` (s09), que deja la historia lineal pero reescribe tus commits. En los pull requests de GitHub (s08) verás el botón «Update branch», que por defecto hace esta misma fusión de la rama base dentro de tu rama."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué es un avance rápido (fast-forward)?",
+   "back": "Una fusión en la que la rama actual es ancestro de la otra: Git solo adelanta el puntero hasta la otra punta. No crea commit y la historia queda lineal."
+  },
+  {
+   "front": "¿Qué es un commit de fusión?",
+   "back": "Un commit con dos (o más) padres que une dos historias. Lo crea `git merge` cuando las ramas divergieron (o siempre, con `--no-ff`)."
+  },
+  {
+   "front": "¿Qué tres versiones compara una fusión de tres vías?",
+   "back": "La base común (el último commit que comparten), la punta de tu rama (HEAD, *ours*) y la punta de la rama que traes (*theirs*)."
+  },
+  {
+   "front": "`git merge-base A B`",
+   "back": "Imprime el mejor ancestro común de A y B: el punto donde se separaron. Con `--is-ancestor A B` responde con el código de salida (0 = A es ancestro de B)."
+  },
+  {
+   "front": "`git merge --no-ff rama`",
+   "back": "Crea un commit de fusión aunque se pudiera avanzar rápido. Deja agrupados los commits de la funcionalidad."
+  },
+  {
+   "front": "`git merge --ff-only rama`",
+   "back": "Solo avanza rápido. Si hace falta un commit de fusión, se niega (`fatal: Not possible to fast-forward, aborting.`) sin cambiar nada."
+  },
+  {
+   "front": "En un commit de fusión, ¿qué son `HEAD^1` y `HEAD^2`?",
+   "back": "`HEAD^1`: el primer padre, donde estaba tu rama. `HEAD^2`: el segundo padre, la punta de la rama fusionada. (`HEAD~2` es otra cosa: dos generaciones atrás.)"
+  },
+  {
+   "front": "¿Cómo deshaces una fusión local recién hecha y aún no publicada?",
+   "back": "`git reset --hard ORIG_HEAD` (Git guarda en `ORIG_HEAD` dónde estaba HEAD antes del merge). Si ya se publicó: `git revert -m 1 <fusión>` (s16)."
+  },
+  {
+   "front": "En los marcadores, ¿qué hay entre `<<<<<<< HEAD` y `=======`? ¿Y entre `=======` y `>>>>>>> rama`?",
+   "back": "Arriba, tu versión (la rama en la que estás, *ours*). Abajo, la versión que traes (*theirs*), rotulada con el nombre de la rama."
+  },
+  {
+   "front": "¿Qué es `MERGE_HEAD`?",
+   "back": "La referencia a la punta que se está fusionando. Existe mientras la fusión está en curso; por eso Git sabe que el próximo commit será de fusión."
+  },
+  {
+   "front": "Etapas del índice en un conflicto",
+   "back": "1 = base común, 2 = ours (HEAD), 3 = theirs (MERGE_HEAD). Se ven con `git ls-files -u` y `git show :N:archivo`."
+  },
+  {
+   "front": "Receta para resolver un conflicto de contenido",
+   "back": "`git status` → editar el archivo y quitar los marcadores → `git add archivo` → cuando no queden `Unmerged paths`, `git commit` (o `git merge --continue`)."
+  },
+  {
+   "front": "`git merge --abort`",
+   "back": "Cancela la fusión en curso y vuelve al estado previo (índice y trabajo como HEAD, sin `MERGE_HEAD`). Por eso conviene fusionar con el árbol limpio."
+  },
+  {
+   "front": "`git checkout --ours archivo` / `--theirs archivo`",
+   "back": "Reemplazan el archivo completo por tu versión (etapa 2) o por la que traes (etapa 3). Después falta `git add`. Equivalente moderno: `git restore --ours/--theirs`."
+  },
+  {
+   "front": "¿Cómo vuelves a ver los marcadores de un archivo que ya tocaste o marcaste?",
+   "back": "`git checkout -m archivo` (o `git restore -m archivo`) recrea el conflicto. Con `git checkout --conflict=zdiff3 archivo` lo redibuja en otro estilo."
+  },
+  {
+   "front": "diff3 frente a zdiff3",
+   "back": "Ambos añaden una sección `|||||||` con el texto de la base. zdiff3 (desde Git 2.35) además saca del conflicto las líneas iguales al principio y al final. Se activa con `git config --global merge.conflictStyle zdiff3`."
+  },
+  {
+   "front": "¿Cómo detectas marcadores olvidados antes de confirmar?",
+   "back": "`git diff --check` (o `git diff --cached --check` si ya hiciste `git add`): avisa `leftover conflict marker`. `git add` no revisa el contenido."
+  },
+  {
+   "front": "`CONFLICT (modify/delete)`: ¿cómo se resuelve?",
+   "back": "Decidiendo si el archivo existe: `git add archivo` para conservarlo o `git rm archivo` para aceptar el borrado. Luego `git commit`."
+  },
+  {
+   "front": "`git status --short` muestra `UD archivo`",
+   "back": "Conflicto sin fusionar: tú lo modificaste (primera letra, tu lado) y la otra rama lo borró (segunda letra, su lado)."
+  },
+  {
+   "front": "`-X ours` frente a `-s ours`",
+   "back": "`-X ours` fusiona todo y solo decide los fragmentos en conflicto a tu favor. `-s ours` es una estrategia que ignora por completo el contenido de la otra rama y solo la registra como padre."
+  },
+  {
+   "front": "`git merge --squash rama`",
+   "back": "Deja en el índice el resultado de fusionar toda la rama, sin crear commit ni `MERGE_HEAD`. El `git commit` posterior es un commit normal con un solo padre."
+  },
+  {
+   "front": "¿Por qué `git branch -d` falla después de un squash?",
+   "back": "Porque el commit aplastado no tiene a la rama como padre: para Git no está fusionada. Tras comprobar su contenido, se borra con `git branch -D`."
+  },
+  {
+   "front": "¿Cuál es la estrategia de fusión por defecto?",
+   "back": "`ort` (desde Git 2.34). Reemplazó a `recursive`, que desde Git 2.50 es solo un sinónimo de `ort`."
+  },
+  {
+   "front": "¿Qué hace `git merge main` estando en tu rama de funcionalidad?",
+   "back": "Trae `main` a tu rama (mensaje `Merge branch 'main' into feature/x`). Resuelves ahí los conflictos y luego `main` puede integrar tu rama con un avance rápido."
+  },
+  {
+   "front": "`git diff main...feature/x` (tres puntos)",
+   "back": "Muestra los cambios de `feature/x` desde su base común con `main`: exactamente lo que aportaría la rama al fusionarla."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s06-q1",
+   "type": "single",
+   "q": "Estás en `main` y ejecutas `git merge feature/x`. `main` no tiene commits nuevos desde que se creó `feature/x`. ¿Qué hace Git (sin opciones)?",
+   "options": [
+    "Crea un commit de fusión con dos padres",
+    "Adelanta `main` hasta la punta de `feature/x` sin crear commits",
+    "Copia los commits de `feature/x` con hashes nuevos encima de `main`",
+    "Responde `Already up to date.`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`main` es ancestro de `feature/x`, así que Git hace un avance rápido (`Fast-forward`): solo mueve el puntero. Para forzar un commit de fusión haría falta `--no-ff`."
+  },
+  {
+   "id": "s06-q2",
+   "type": "single",
+   "q": "¿Qué tres instantáneas compara una fusión de tres vías?",
+   "options": [
+    "HEAD, el área de preparación y el directorio de trabajo",
+    "La base común, la punta de la rama actual y la punta de la rama que se fusiona",
+    "El primer commit del repositorio y las dos puntas",
+    "Las dos puntas y `ORIG_HEAD`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La base común permite saber qué cambió cada lado. Sin ella, Git no distinguiría una línea agregada por un lado de una borrada por el otro."
+  },
+  {
+   "id": "s06-q3",
+   "type": "single",
+   "q": "¿Qué muestra `git merge-base main feature`?",
+   "options": [
+    "El hash del mejor ancestro común de ambas ramas",
+    "Los commits de `feature` que no están en `main`",
+    "La rama en la que se hará la fusión",
+    "El último commit de fusión entre ambas"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git merge-base` encuentra la base común que usaría una fusión de tres vías: el punto donde las ramas se separaron."
+  },
+  {
+   "id": "s06-q4",
+   "type": "single",
+   "q": "Con esta historia, ¿qué devuelve `git merge-base main feature/menu`?\n```text\n* 9c1e2f0 (HEAD -> main) Ajusta estilos\n| * 4b7a1d3 (feature/menu) Añade menú\n|/\n* 2d5e8a1 Crea la portada\n```",
+   "options": [
+    "`9c1e2f0`",
+    "`4b7a1d3`",
+    "`2d5e8a1`",
+    "Nada: no tienen base común"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`2d5e8a1` es el último commit que comparten ambas ramas: desde ahí, `main` sumó `9c1e2f0` y `feature/menu` sumó `4b7a1d3`. Por eso fusionarlas requiere una fusión de tres vías."
+  },
+  {
+   "id": "s06-q5",
+   "type": "single",
+   "q": "Estás en `main` y ejecutas `git merge feature`, que crea un commit de fusión. ¿Qué es `HEAD^2`?",
+   "options": [
+    "El commit dos generaciones atrás en `main`",
+    "La punta de `feature` en el momento de la fusión",
+    "La base común",
+    "El commit donde estaba `main` antes de fusionar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El segundo padre es la rama fusionada. El primer padre (`HEAD^1`) es donde estaba `main`. No confundir con `HEAD~2`, que sigue dos veces el primer padre."
+  },
+  {
+   "id": "s06-q6",
+   "type": "single",
+   "q": "Las ramas divergieron y ejecutas `git merge --ff-only feature`. ¿Qué pasa?",
+   "options": [
+    "Crea un commit de fusión igualmente",
+    "Hace un rebase automático de `feature`",
+    "Falla con `fatal: Not possible to fast-forward, aborting.` sin cambiar nada",
+    "Deja la fusión a medias con conflictos"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`--ff-only` solo permite el avance rápido. Si hace falta un commit de fusión, se niega y el repositorio queda intacto (Git sugiere `git merge --no-ff` o `git rebase`)."
+  },
+  {
+   "id": "s06-q7",
+   "type": "multi",
+   "q": "¿En cuáles de estos casos `git merge` crea un commit de fusión? (Selecciona DOS.)",
+   "options": [
+    "Las ramas divergieron y no hay conflictos",
+    "La rama actual es ancestro de la otra y se usa `--no-ff`",
+    "La rama actual es ancestro de la otra, sin opciones",
+    "La otra rama ya está contenida en la actual",
+    "Se usa `--squash`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Divergencia → fusión de tres vías con commit de fusión. `--no-ff` fuerza el commit aunque se pudiera avanzar. Sin opciones y siendo ancestro → fast-forward; si ya está contenida → `Already up to date.`; `--squash` nunca crea commit de fusión."
+  },
+  {
+   "id": "s06-q8",
+   "type": "single",
+   "q": "¿Qué significa la respuesta `Already up to date.` de `git merge rama`?",
+   "options": [
+    "Que hubo un avance rápido",
+    "Que todos los commits de `rama` ya están en la rama actual",
+    "Que la rama remota está sincronizada",
+    "Que la fusión terminó sin conflictos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Si la rama indicada ya es ancestro de HEAD, no hay nada que integrar. Suele pasar cuando se fusiona en la dirección equivocada."
+  },
+  {
+   "id": "s06-q9",
+   "type": "single",
+   "q": "Estás en `feature/pagos` y ejecutas `git merge main` (las ramas divergieron y no hay conflictos). ¿Qué mensaje propone Git para el commit de fusión?",
+   "options": [
+    "`Merge branch 'feature/pagos'`",
+    "`Merge branch 'main' into feature/pagos`",
+    "`Merge main`",
+    "`Merge remote-tracking branch 'main'`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git nombra la rama que traes y, cuando no estás en `main` (o `master`), añade `into <rama actual>`."
+  },
+  {
+   "id": "s06-q10",
+   "type": "single",
+   "q": "Tras `git merge alza` aparece `CONFLICT (content): Merge conflict in precios.txt`. ¿Dónde está HEAD?",
+   "options": [
+    "En un commit de fusión provisional",
+    "En el mismo commit que antes de ejecutar `git merge`",
+    "En la punta de `alza`",
+    "Separado (detached)"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Mientras hay conflictos, HEAD no se mueve: el commit de fusión todavía no existe. Git guarda la otra punta en `MERGE_HEAD`."
+  },
+  {
+   "id": "s06-q11",
+   "type": "single",
+   "q": "Estás en `main` y ejecutaste `git merge diseno`. ¿Qué línea viene de `main`?\n```text\n<<<<<<< HEAD\ncolor: azul\n=======\ncolor: verde\n>>>>>>> diseno\n```",
+   "options": [
+    "`color: azul`",
+    "`color: verde`",
+    "Ninguna: ambas vienen de la base",
+    "Depende de qué commit sea más reciente"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Entre `<<<<<<< HEAD` y `=======` está la versión de la rama en la que estás (ours). Entre `=======` y `>>>>>>> diseno`, la que traes (theirs). La fecha no influye."
+  },
+  {
+   "id": "s06-q12",
+   "type": "single",
+   "q": "Durante una fusión, ¿qué es *ours*?",
+   "options": [
+    "La rama que nombras en `git merge`",
+    "La rama en la que estás (HEAD)",
+    "La base común",
+    "Siempre `main`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "*Ours* es HEAD, la rama en la que ejecutas `git merge`; *theirs* es la que nombras. En un rebase los papeles se invierten (s09)."
+  },
+  {
+   "id": "s06-q13",
+   "type": "single",
+   "q": "¿Qué hace `git add` sobre un archivo en conflicto?",
+   "options": [
+    "Resuelve el conflicto eligiendo tu versión",
+    "Lo marca como resuelto con el contenido actual del archivo, tenga o no marcadores",
+    "Falla si el archivo tiene marcadores",
+    "Crea el commit de fusión"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git add` no revisa el contenido: si agregas un archivo con `<<<<<<<`, Git lo da por resuelto. Por eso conviene `git diff --check` antes de confirmar."
+  },
+  {
+   "id": "s06-q14",
+   "type": "multi",
+   "q": "¿Qué comandos concluyen una fusión cuyos conflictos ya están marcados como resueltos? (Selecciona DOS.)",
+   "options": [
+    "`git commit`",
+    "`git merge --continue`",
+    "`git merge --abort`",
+    "`git add .`",
+    "`git merge --quit`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`git merge --continue` comprueba que haya una fusión en curso y llama a `git commit`. `--abort` la cancela; `git add` solo marca archivos; `--quit` olvida la fusión dejando índice y archivos como están."
+  },
+  {
+   "id": "s06-q15",
+   "type": "single",
+   "q": "¿Qué hace `git merge --abort`?",
+   "options": [
+    "Borra la rama que intentabas fusionar",
+    "Crea un commit que deshace la fusión",
+    "Cancela la fusión en curso e intenta volver al estado previo",
+    "Resuelve todos los conflictos a favor de HEAD"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Restaura el índice y el directorio de trabajo a HEAD y elimina `MERGE_HEAD`. Si tenías cambios sin confirmar al empezar, puede no lograr reconstruirlos."
+  },
+  {
+   "id": "s06-q16",
+   "type": "single",
+   "q": "Durante un conflicto, ¿qué contiene la etapa 3 del índice para ese archivo?",
+   "options": [
+    "La versión de la base común",
+    "Tu versión (HEAD)",
+    "La versión de la rama que se fusiona (`MERGE_HEAD`)",
+    "La versión con marcadores"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Etapa 1 = base, 2 = ours, 3 = theirs. La versión con marcadores solo existe en el directorio de trabajo."
+  },
+  {
+   "id": "s06-q17",
+   "type": "single",
+   "q": "¿Qué comando lista las entradas del índice en conflicto junto con su número de etapa?",
+   "options": [
+    "`git ls-files -u`",
+    "`git status --stages`",
+    "`git diff --cached`",
+    "`git show :0:archivo`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git ls-files -u` (*unmerged*) muestra modo, hash y etapa de cada versión. Luego `git show :2:archivo` enseña, por ejemplo, tu versión."
+  },
+  {
+   "id": "s06-q18",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre `--ours`, `--theirs` y `-m` en un conflicto de contenido.",
+   "statements": [
+    {
+     "text": "`git checkout --theirs archivo` deja el archivo como en la rama que estás fusionando.",
+     "answer": true
+    },
+    {
+     "text": "Después de `git checkout --ours archivo`, el conflicto queda marcado como resuelto automáticamente.",
+     "answer": false
+    },
+    {
+     "text": "`git restore --ours archivo` es un equivalente moderno de `git checkout --ours archivo`.",
+     "answer": true
+    },
+    {
+     "text": "`git checkout --ours archivo` conserva los cambios del otro lado en las zonas que no chocaban.",
+     "answer": false
+    },
+    {
+     "text": "`git checkout -m archivo` recrea el conflicto con marcadores.",
+     "answer": true
+    }
+   ],
+   "explain": "`--ours/--theirs` reemplazan el archivo **completo** por la etapa 2 o 3, incluidas las zonas que no chocaban, y no marcan nada como resuelto: falta `git add`. `git checkout -m` (o `git restore -m`) vuelve a generar el conflicto."
+  },
+  {
+   "id": "s06-q19",
+   "type": "single",
+   "q": "¿Qué añade el estilo `diff3` a los marcadores de conflicto?",
+   "options": [
+    "Una sección `|||||||` con el texto de la base común",
+    "Números de línea",
+    "El autor de cada lado",
+    "Una tercera rama"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Ver la base permite saber qué cambió realmente cada lado; por ejemplo, si la sección de la base está vacía, ambos agregaron líneas."
+  },
+  {
+   "id": "s06-q20",
+   "type": "single",
+   "q": "¿En qué se diferencia `zdiff3` de `diff3`?",
+   "options": [
+    "zdiff3 no muestra la base",
+    "zdiff3 saca del conflicto las líneas iguales al principio y al final de ambos lados",
+    "zdiff3 solo sirve para archivos binarios",
+    "zdiff3 resuelve automáticamente los conflictos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "zdiff3 (desde Git 2.35) muestra la base como diff3 pero deja fuera de la región en conflicto las líneas comunes de los bordes, así el bloque es más pequeño."
+  },
+  {
+   "id": "s06-q21",
+   "type": "single",
+   "q": "¿Cómo configuras el estilo zdiff3 para todos tus repositorios?",
+   "options": [
+    "`git config --global merge.conflictStyle zdiff3`",
+    "`git merge --style=zdiff3`",
+    "`git config core.conflict zdiff3`",
+    "`git config --global diff.style zdiff3`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La variable es `merge.conflictStyle` (valores `merge`, `diff3`, `zdiff3`). Para un solo archivo existe `git checkout --conflict=zdiff3 archivo`."
+  },
+  {
+   "id": "s06-q22",
+   "type": "single",
+   "q": "`git merge limpieza` muestra `CONFLICT (modify/delete): utils.js deleted in limpieza and modified in HEAD.` Quieres conservar tu versión. ¿Qué haces?",
+   "options": [
+    "`git checkout --theirs utils.js`",
+    "`git add utils.js` y luego `git commit`",
+    "`git rm utils.js` y luego `git commit`",
+    "`git merge --abort`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En un conflicto de archivos se decide con `git add` (conservar) o `git rm` (eliminar). `--theirs` falla: la otra rama no tiene versión de ese archivo (`does not have their version`)."
+  },
+  {
+   "id": "s06-q23",
+   "type": "single",
+   "q": "`git status --short` muestra `UD config.js`. ¿Qué pasó?",
+   "options": [
+    "Tú lo borraste y la otra rama lo modificó",
+    "Tú lo modificaste y la otra rama lo borró",
+    "Ambos lo borraron",
+    "Ambos lo modificaron"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La primera letra es tu lado y la segunda el de ellos: `U` (sin fusionar, modificado) y `D` (borrado). En el formato largo aparece como `deleted by them`."
+  },
+  {
+   "id": "s06-q24",
+   "type": "single",
+   "q": "Una rama renombró `app.js` a `main.js` (sin cambiar el contenido) y tú modificaste `app.js`. ¿Qué pasa al fusionar?",
+   "options": [
+    "Conflicto modify/delete sobre `app.js`",
+    "Git detecta el renombrado y aplica tu cambio a `main.js`",
+    "Quedan los dos archivos, `app.js` y `main.js`",
+    "La fusión falla: Git no admite renombrados"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`ort` empareja archivos desaparecidos y aparecidos por similitud (50 % por defecto) y aplica los cambios del otro lado al nombre nuevo."
+  },
+  {
+   "id": "s06-q25",
+   "type": "single",
+   "q": "¿Qué hace `git merge -X ours feature`?",
+   "options": [
+    "Ignora todo lo de `feature` y solo la registra como padre",
+    "Fusiona normalmente y, en los fragmentos en conflicto, se queda con tu versión",
+    "Se queda con tu versión de todos los archivos que ambos modificaron",
+    "Hace fast-forward si es posible y, si no, falla"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-X ours` es una opción de la estrategia `ort`: los cambios de `feature` que no chocan sí entran. Ojo: un fragmento en conflicto puede abarcar líneas contiguas que el otro lado cambió."
+  },
+  {
+   "id": "s06-q26",
+   "type": "single",
+   "q": "¿Qué produce `git merge -s ours vieja`?",
+   "options": [
+    "Un commit de fusión cuyo árbol es exactamente el de tu rama actual",
+    "Lo mismo que `git merge -X ours vieja`",
+    "Un commit normal con los cambios de `vieja` aplastados",
+    "Un error: `-s ours` no existe"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La estrategia `ours` no mira el contenido de la otra rama: el resultado es tu árbol y `vieja` solo queda registrada como segundo padre. Se usa para dar por superada una historia (s15)."
+  },
+  {
+   "id": "s06-q27",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre las estrategias de fusión en Git 2.50.",
+   "statements": [
+    {
+     "text": "Existe la opción `-X theirs`.",
+     "answer": true
+    },
+    {
+     "text": "Existe la estrategia `-s theirs`.",
+     "answer": false
+    },
+    {
+     "text": "`ort` es la estrategia por defecto para fusionar dos ramas desde Git 2.34.",
+     "answer": true
+    },
+    {
+     "text": "`-s recursive` es un sinónimo de `ort`.",
+     "answer": true
+    }
+   ],
+   "explain": "La documentación lo aclara: hay opción `-X theirs` pero no estrategia `theirs`. `ort` es la predeterminada desde 2.34 y, desde 2.50, `recursive` redirige a `ort`."
+  },
+  {
+   "id": "s06-q28",
+   "type": "single",
+   "q": "Después de `git merge --squash feature` sin conflictos, ¿cuál es el estado del repositorio?",
+   "options": [
+    "Ya existe un commit de fusión con dos padres",
+    "Los cambios están preparados en el índice, falta `git commit` y no hay `MERGE_HEAD`",
+    "La rama `feature` fue borrada",
+    "HEAD apunta a la punta de `feature`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git responde `Squash commit -- not updating HEAD`: calcula el resultado, lo prepara y se detiene. El commit que hagas después tendrá un solo padre."
+  },
+  {
+   "id": "s06-q29",
+   "type": "single",
+   "q": "Hiciste `git merge --squash feature` y luego `git commit`. ¿Por qué `git branch -d feature` falla?",
+   "options": [
+    "Porque `feature` tiene cambios sin confirmar",
+    "Porque la punta de `feature` no es ancestro de la rama actual: para Git no está fusionada",
+    "Porque `-d` no borra ramas locales",
+    "Porque falta publicar la rama"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El commit aplastado no enlaza la historia de `feature`. Git responde `the branch 'feature' is not fully merged`; si comprobaste que el contenido está integrado, usa `git branch -D`."
+  },
+  {
+   "id": "s06-q30",
+   "type": "multi",
+   "q": "¿Qué prácticas reducen los conflictos en un equipo? (Selecciona TRES.)",
+   "options": [
+    "Ramas de vida corta",
+    "Traer `main` a tu rama con frecuencia",
+    "Reformatear todo el proyecto en el mismo commit que un cambio de lógica",
+    "Commits pequeños con un solo tema",
+    "Trabajar semanas sin integrar para no molestar"
+   ],
+   "answer": [
+    0,
+    1,
+    3
+   ],
+   "explain": "Cuanto más tiempo divergen las ramas y más grandes son los cambios, más y peores conflictos. Los reformateos masivos van en commits aparte y avisados."
+  },
+  {
+   "id": "s06-q31",
+   "type": "single",
+   "q": "Fusionaste por error en tu `main` local y todavía no lo publicas. ¿Cuál es la forma más directa de deshacerlo?",
+   "options": [
+    "`git revert HEAD`",
+    "`git reset --hard ORIG_HEAD`",
+    "`git merge --abort`",
+    "`git branch -D main`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`ORIG_HEAD` guarda dónde estaba HEAD antes de la fusión. `git merge --abort` solo sirve mientras la fusión está en curso (con conflictos); `revert` es para historia ya compartida."
+  },
+  {
+   "id": "s06-q32",
+   "type": "single",
+   "q": "Tienes cambios sin confirmar en `precios.txt` y ejecutas un `git merge` que necesita modificar ese archivo. ¿Qué pasa?",
+   "options": [
+    "Git sobrescribe tus cambios",
+    "Git se niega: `error: Your local changes to the following files would be overwritten by merge` y aborta",
+    "Git mezcla tus cambios con marcadores de conflicto",
+    "Git guarda tus cambios en un stash siempre, sin preguntar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Git protege tu trabajo: te pide confirmar o guardar con `git stash` antes de fusionar. `--autostash` existe, pero hay que activarlo (con la opción o con la configuración `merge.autoStash`)."
+  },
+  {
+   "id": "s06-q33",
+   "type": "single",
+   "q": "¿Qué muestra `git diff` (sin opciones) mientras hay un conflicto sin resolver?",
+   "options": [
+    "Nada, porque el índice está bloqueado",
+    "Un diff combinado (`diff --cc`) con dos columnas de `+`/`-`, una por cada lado",
+    "Solo los cambios respecto de la base",
+    "El diff del último commit"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La primera columna compara con tu versión y la segunda con la que traes. Para comparar con un solo lado: `git diff --ours`, `--theirs` o `--base`."
+  },
+  {
+   "id": "s06-q34",
+   "type": "single",
+   "q": "¿Qué comando te avisa si quedaron marcadores de conflicto olvidados antes de confirmar?",
+   "options": [
+    "`git diff --check`",
+    "`git status --markers`",
+    "`git merge --verify`",
+    "`git fsck`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git diff --check` informa `leftover conflict marker` (y problemas de espacios). Si ya hiciste `git add`, usa `git diff --cached --check`."
+  },
+  {
+   "id": "s06-q35",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre cuándo aparece un conflicto (comparando con la base común).",
+   "statements": [
+    {
+     "text": "Si tú cambias la línea 2 y tu compañera la línea 3 del mismo archivo, puede haber conflicto.",
+     "answer": true
+    },
+    {
+     "text": "Si ambos hacen exactamente el mismo cambio en la misma línea, hay conflicto.",
+     "answer": false
+    },
+    {
+     "text": "Si cada uno cambia un archivo distinto, no hay conflicto.",
+     "answer": true
+    },
+    {
+     "text": "Mientras hay un conflicto sin resolver, puedes cambiarte de rama con `git switch` sin problemas.",
+     "answer": false
+    }
+   ],
+   "explain": "Git trata las líneas contiguas como una misma zona. Cambios idénticos no chocan. Durante una fusión, `git switch` responde `fatal: cannot switch branch while merging`."
+  },
+  {
+   "id": "s06-q36",
+   "type": "single",
+   "q": "¿Para qué sirve `git log --merge` durante un conflicto?",
+   "options": [
+    "Lista los commits de ambos lados que tocaron los archivos en conflicto",
+    "Crea el commit de fusión",
+    "Muestra solo los commits de fusión del repositorio",
+    "Deshace la fusión"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con `--left-right` verás `<` para tus commits y `>` para los de la otra rama: sabrás qué intención tenía cada cambio y con quién hablar."
+  },
+  {
+   "id": "s06-q37",
+   "type": "single",
+   "q": "¿Qué comando muestra solo los commits de fusión de la historia?",
+   "options": [
+    "`git log --merges`",
+    "`git log --merge`",
+    "`git log --first-parent`",
+    "`git merge --list`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--merges` filtra commits con más de un padre. No confundir con `--merge` (commits relacionados con un conflicto en curso) ni con `--first-parent` (recorre solo la línea principal)."
+  },
+  {
+   "id": "s06-q38",
+   "type": "single",
+   "q": "Quieres ver qué cambios aportaría `feature/x` si la fusionaras en `main`. ¿Qué comando usas?",
+   "options": [
+    "`git diff main...feature/x`",
+    "`git diff feature/x...main`",
+    "`git log main`",
+    "`git merge --dry-run feature/x`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con tres puntos, `git diff A...B` compara la base común de A y B con B: justo lo que hizo la rama desde que se separó. (`git merge` no tiene `--dry-run`.)"
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-merge — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-merge"
+  },
+  {
+   "title": "Merge strategies (ort, ours, octopus…) — Documentación oficial",
+   "url": "https://git-scm.com/docs/merge-strategies"
+  },
+  {
+   "title": "git-merge-base — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-merge-base"
+  },
+  {
+   "title": "git-checkout (--ours, --theirs, -m, --conflict) — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-checkout"
+  },
+  {
+   "title": "git-restore — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-restore"
+  },
+  {
+   "title": "git-status (formato corto de rutas sin fusionar) — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-status"
+  },
+  {
+   "title": "git-diff (diff combinado, --check, A...B) — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-diff"
+  },
+  {
+   "title": "git-commit (--cleanup y mensajes) — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-commit"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Procedimientos básicos para ramificar y fusionar",
+   "url": "https://git-scm.com/book/es/v2/Ramificaciones-en-Git-Procedimientos-B%C3%A1sicos-para-Ramificar-y-Fusionar"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Advanced Merging",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Advanced-Merging"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.34 (ort por defecto)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-34/"
+  },
+  {
+   "title": "GitHub Blog — Highlights from Git 2.35 (zdiff3)",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-35/"
+  },
+  {
+   "title": "GitHub Docs — About pull request merges (--no-ff, squash, rebase)",
+   "url": "https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges"
+  },
+  {
+   "title": "GitHub Docs — About merge methods on GitHub",
+   "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github"
+  },
+  {
+   "title": "Atlassian — Git merge",
+   "url": "https://www.atlassian.com/git/tutorials/using-branches/git-merge"
+  },
+  {
+   "title": "Atlassian — Git merge conflicts",
+   "url": "https://www.atlassian.com/git/tutorials/using-branches/merge-conflicts"
+  }
+ ]
+}

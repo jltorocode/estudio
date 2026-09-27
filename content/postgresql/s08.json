@@ -1,0 +1,2373 @@
+{
+  "id": "s08",
+  "order": 8,
+  "title": "JOIN: combinar tablas",
+  "domain": "consultas",
+  "summary": "Aprendes a volver a juntar lo que el modelo relacional separa: INNER, LEFT, RIGHT, FULL y CROSS JOIN, self joins, semi-joins y anti-joins con EXISTS, y subconsultas LATERAL para el top-N por grupo. Sobre todo, aprendes a predecir cuántas filas devuelve un join y a esquivar sus trampas clásicas: la condición en ON vs WHERE, las sumas infladas por joins 1-N, el NOT IN con NULL y el NATURAL JOIN.",
+  "goal": "Escribir sin ayuda consultas que combinen de 2 a 5 tablas con el tipo de join correcto, prediciendo cuántas filas devuelven y evitando las trampas de ON vs WHERE, fan-out y NOT IN.",
+  "objectives": [
+    "Escribir consultas `INNER JOIN … ON` entre varias tablas siguiendo las claves foráneas del modelo, con alias y columnas calificadas.",
+    "Predecir cuántas filas devuelve un join a partir de la cardinalidad de la relación y de las filas sin pareja.",
+    "Conservar filas sin pareja con `LEFT`, `RIGHT` y `FULL JOIN`, y decidir si cada condición va en `ON` o en `WHERE`.",
+    "Detectar y corregir resultados inflados por joins 1-N (fan-out) y conteos erróneos con `count(*)` tras un LEFT JOIN.",
+    "Relacionar una tabla consigo misma (self join) para jerarquías y pares, y usar `CROSS JOIN` para armar grillas.",
+    "Resolver semi-joins y anti-joins con `EXISTS`, `IN`, `NOT EXISTS` y `LEFT JOIN … IS NULL`, explicando por qué `NOT IN` falla con NULL.",
+    "Resolver top-N por grupo y pre-agregaciones con subconsultas `LATERAL`, y usar `unnest` y `generate_series` en el FROM.",
+    "Evaluar los riesgos de `USING` y `NATURAL JOIN` frente a un `ON` explícito."
+  ],
+  "lessons": [
+    {
+      "id": "s08-l1",
+      "title": "Por qué los datos están repartidos e INNER JOIN",
+      "minutes": 20,
+      "goals": [
+        "Explicar con el modelo de Tienda Andes por qué el nombre de un cliente se guarda una sola vez y cómo la clave foránea `pedidos.cliente_id` permite recuperarlo.",
+        "Escribir consultas `INNER JOIN … ON` entre dos tablas usando alias y columnas calificadas.",
+        "Predecir cuántas filas devuelve un INNER JOIN a partir de la cardinalidad de la relación y de las filas sin pareja.",
+        "Diagnosticar y corregir los errores `column reference … is ambiguous` e `invalid reference to FROM-clause entry`."
+      ],
+      "takeaways": [
+        "Los datos se reparten en tablas para no repetirlos; las claves foráneas (`pedidos.cliente_id → clientes.id`) son los hilos que permiten volver a juntarlos con un JOIN.",
+        "Modelo mental: `A JOIN B ON cond` forma todas las parejas (fila de A, fila de B) y se queda con las que cumplen `cond`. PostgreSQL lo ejecuta de forma mucho más eficiente, pero el resultado es exactamente ese.",
+        "En un INNER JOIN cada fila de A aparece tantas veces como parejas tenga en B: una vez, n veces o **ninguna** si no tiene pareja.",
+        "Con dos o más tablas, califica las columnas (`p.id`, `c.nombre`); si le pones alias a una tabla, desde ese momento solo existe el alias.",
+        "`JOIN` a secas es `INNER JOIN`; `FROM a, b WHERE a.x = b.y` es la sintaxis antigua equivalente, y si olvidas la condición obtienes un producto cartesiano."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Mira la tabla `pedidos`: cada pedido dice `cliente_id = 26`, no «Catalina Castro Tapia». ¿Por qué no guardar el nombre ahí mismo? Porque la clienta tiene varios pedidos, y si el nombre (o el email, o la comuna) estuviera copiado en cada uno, un cambio de dirección obligaría a corregir muchas filas; basta olvidar una para que la base diga dos cosas distintas sobre la misma persona. La solución de las bases relacionales es guardar **cada dato una sola vez** en su tabla y enlazar las tablas con **claves foráneas**: `pedidos.cliente_id` apunta a `clientes.id`. Lo verás a fondo en la sección 11 (normalización); aquí aprendes la otra mitad del trato: cómo **volver a juntar** los datos al consultar."
+        },
+        {
+          "type": "p",
+          "text": "Piensa en una boleta electrónica: no trae impresa toda tu ficha de cliente, solo tu RUT; si alguien necesita tu dirección, la busca con ese RUT en el registro de clientes. Hacer esa búsqueda a mano se ve así:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT id, cliente_id, fecha, estado\nFROM pedidos\nORDER BY id\nLIMIT 3;\nSELECT id, nombre, apellido\nFROM clientes\nWHERE id IN (26, 40, 33);"
+        },
+        {
+          "type": "p",
+          "text": "Funcionó, pero tuviste que leer los números del primer resultado y copiarlos en la segunda consulta. Un **JOIN** hace ese cruce por ti, para todas las filas a la vez, y entrega una sola tabla con columnas de ambas. Antes de escribirlo, conviene tener a la vista el mapa de las tablas y de sus hilos."
+        },
+        {
+          "type": "diagram",
+          "title": "Modelo de Tienda Andes: tablas y claves foráneas",
+          "mermaid": "erDiagram\n  clientes ||--o{ pedidos : \"hace\"\n  pedidos ||--|{ pedido_items : \"contiene\"\n  productos ||--o{ pedido_items : \"aparece en\"\n  categorias ||--o{ productos : \"clasifica\"\n  categorias |o--o{ categorias : \"es padre de\"\n  clientes ||--o{ resenas : \"escribe\"\n  productos ||--o{ resenas : \"recibe\"\n  clientes {\n    int id PK\n    text rut\n    text nombre\n    text apellido\n    text comuna\n  }\n  pedidos {\n    int id PK\n    int cliente_id FK\n    timestamptz fecha\n    text estado\n    int costo_despacho\n  }\n  pedido_items {\n    int pedido_id PK\n    int producto_id PK\n    int cantidad\n    int precio_unitario\n  }\n  productos {\n    int id PK\n    text sku\n    text nombre\n    int categoria_id FK\n    int precio\n  }\n  categorias {\n    int id PK\n    text nombre\n    int padre_id FK\n  }\n  resenas {\n    int id PK\n    int producto_id FK\n    int cliente_id FK\n    smallint nota\n  }",
+          "caption": "Cada línea es una clave foránea y, por lo tanto, un JOIN posible. `||--o{` se lee «uno a cero o muchos»: un cliente hace 0, 1 o muchos pedidos; cada pedido es de exactamente un cliente. `pedido_items` es la tabla intermedia de la relación muchos a muchos entre pedidos y productos (su clave primaria es el par pedido_id, producto_id)."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Relación",
+            "Clave foránea → clave primaria",
+            "Cardinalidad",
+            "Condición del JOIN"
+          ],
+          "rows": [
+            [
+              "clientes – pedidos",
+              "`pedidos.cliente_id → clientes.id`",
+              "1 cliente : 0..N pedidos",
+              "`p.cliente_id = c.id`"
+            ],
+            [
+              "pedidos – pedido_items",
+              "`pedido_items.pedido_id → pedidos.id`",
+              "1 pedido : 1..N ítems",
+              "`i.pedido_id = p.id`"
+            ],
+            [
+              "productos – pedido_items",
+              "`pedido_items.producto_id → productos.id`",
+              "1 producto : 0..N ítems",
+              "`i.producto_id = pr.id`"
+            ],
+            [
+              "categorias – productos",
+              "`productos.categoria_id → categorias.id`",
+              "1 categoría : 0..N productos",
+              "`pr.categoria_id = c.id`"
+            ],
+            [
+              "categorias – categorias",
+              "`categorias.padre_id → categorias.id`",
+              "1 padre : 0..N hijas",
+              "`hija.padre_id = padre.id`"
+            ],
+            [
+              "pedidos – productos",
+              "a través de `pedido_items`",
+              "N : M",
+              "dos JOIN: `pedidos → pedido_items → productos`"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "El modelo mental: todas las parejas, filtradas"
+        },
+        {
+          "type": "p",
+          "text": "La documentación define el INNER JOIN así: *para cada fila R1 de T1, la tabla combinada tiene una fila por cada fila de T2 que cumple la condición de unión con R1*. Una forma equivalente de imaginarlo: PostgreSQL forma **todas las parejas posibles** (cada cliente con cada pedido) y se queda solo con las que cumplen la condición del `ON`. Cada pareja que sobrevive se convierte en **una fila más ancha**: las columnas del cliente seguidas de las del pedido."
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo se arma un INNER JOIN (con 3 clientes y 3 pedidos)",
+          "mermaid": "flowchart LR\n  A[\"clientes c<br/>26 Catalina<br/>33 Emilia<br/>7 Diego\"] --> X[\"Todas las parejas (c, p)<br/>3 × 3 = 9\"]\n  B[\"pedidos p<br/>pedido 1 · cliente 26<br/>pedido 3 · cliente 33<br/>pedido 54 · cliente 27\"] --> X\n  X --> F{\"¿p.cliente_id = c.id?\"}\n  F -- \"sí: 2 parejas\" --> R[\"Resultado<br/>pedido 1 + Catalina<br/>pedido 3 + Emilia\"]\n  F -- \"no: 7 parejas\" --> D[\"Descartadas<br/>Diego no tiene pedidos: no aparece<br/>el pedido 54 es de otro cliente\"]",
+          "caption": "Así se razona sobre el resultado. PostgreSQL no forma de verdad todas las parejas: usa algoritmos como Nested Loop, Hash Join o Merge Join (sección 15), que llegan al mismo resultado sin revisar cada combinación."
+        },
+        {
+          "type": "h",
+          "text": "Tu primer JOIN"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT p.id AS pedido, p.fecha, p.estado,\n       c.nombre, c.apellido, c.comuna\nFROM pedidos p\nJOIN clientes c ON c.id = p.cliente_id\nORDER BY p.id\nLIMIT 5;"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "`FROM pedidos p`: la tabla de partida, con el **alias** `p` (un apodo que vale solo dentro de esta consulta; `pedidos AS p` es lo mismo).",
+            "`JOIN clientes c`: la segunda tabla, con alias `c`. `JOIN` a secas significa `INNER JOIN`.",
+            "`ON c.id = p.cliente_id`: la **condición de unión**. Casi siempre es «clave foránea = clave primaria», pero puede ser cualquier expresión booleana.",
+            "`p.fecha`, `c.nombre`: columnas **calificadas** con el alias de su tabla. Así nadie (ni PostgreSQL ni quien lea tu consulta) duda de dónde sale cada una.",
+            "El resto (`ORDER BY`, `LIMIT`, `WHERE`…) funciona igual que en una consulta de una tabla: el JOIN solo cambia de dónde salen las filas."
+          ]
+        },
+        {
+          "type": "p",
+          "text": "La palabra `INNER` es opcional, pero escribirla no hace daño. Aquí va la otra relación clásica, productos con su categoría. Fíjate en que las dos tablas tienen una columna `nombre`: por eso les damos alias distintos en el resultado."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT pr.sku, pr.nombre AS producto, c.nombre AS categoria, pr.precio\nFROM productos pr\nINNER JOIN categorias c ON c.id = pr.categoria_id\nORDER BY pr.sku\nLIMIT 8;"
+        },
+        {
+          "type": "h",
+          "text": "Dos errores que vas a ver mil veces"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT id, nombre\nFROM productos\nJOIN categorias ON categorias.id = productos.categoria_id;\nSELECT pr.nombre\nFROM productos pr\nJOIN categorias c ON categorias.id = pr.categoria_id;"
+        },
+        {
+          "type": "p",
+          "text": "El primero, `column reference \"id\" is ambiguous`, aparece porque `id` existe en **las dos** tablas y PostgreSQL no adivina: tienes que decir `productos.id` o `categorias.id`. El segundo es más sutil: al escribir `categorias c`, la tabla pasa a llamarse `c` **dentro de esta consulta** y el nombre original deja de estar disponible; el `HINT` te lo sugiere (`Perhaps you meant to reference the table alias \"c\"`)."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**Unir por la columna equivocada no da error.** `JOIN clientes c ON c.id = p.id` es sintácticamente perfecto: empareja el pedido 1 con el cliente 1, el pedido 2 con el cliente 2… y entrega un resultado de aspecto razonable y completamente falso. Antes de escribir el `ON`, mira el diagrama o `\\d pedidos` (sección *Foreign-key constraints*) y usa exactamente la clave foránea."
+        },
+        {
+          "type": "h",
+          "text": "¿Cuántas filas devuelve un JOIN?"
+        },
+        {
+          "type": "p",
+          "text": "Esta es la pregunta que separa a quien *usa* joins de quien los *entiende*. Razona desde la cardinalidad: cada pedido tiene exactamente un cliente (`cliente_id` es NOT NULL y es clave foránea), así que `pedidos JOIN clientes` devuelve **una fila por pedido**: 420. Visto desde el otro lado, cada cliente aparece **tantas veces como pedidos tenga**, y los clientes sin pedidos **no aparecen**. Compruébalo:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*) AS clientes FROM clientes;\nSELECT count(*) AS pedidos FROM pedidos;\nSELECT count(*) AS filas_del_join\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id;\nSELECT count(DISTINCT c.id) AS clientes_que_aparecen\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id;"
+        },
+        {
+          "type": "p",
+          "text": "60 clientes y 420 pedidos producen 420 filas en las que solo aparecen 51 clientes distintos: los 9 restantes nunca han comprado y el INNER JOIN los descarta sin avisar. Eso a veces es justo lo que quieres («ventas con su cliente») y a veces es un error grave («listado de todos los clientes»). En la próxima lección aprendes a conservarlos."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿Cuántas filas devuelve `A JOIN B`?» Respuesta de manual: entre 0 y |A| × |B|. Respuesta útil: si la condición es «clave foránea de A = clave primaria de B» y la clave foránea es NOT NULL, exactamente |A| (una fila por cada fila del lado «muchos»). Si la clave foránea admite NULL, las filas con NULL se pierden (NULL = algo nunca es verdadero). Y cada fila del lado «uno» se repite tantas veces como hijos tenga."
+        },
+        {
+          "type": "h",
+          "text": "La sintaxis antigua y el producto cartesiano"
+        },
+        {
+          "type": "p",
+          "text": "Antes de que SQL tuviera `JOIN … ON` (estándar SQL-92), los joins se escribían listando las tablas con comas y poniendo la condición en el `WHERE`. PostgreSQL la sigue aceptando y la vas a encontrar en código antiguo. Sin condición, la coma produce el **producto cartesiano**: todas las parejas posibles."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*) AS filas FROM productos, categorias;\nSELECT count(*) AS filas\nFROM productos pr, categorias c\nWHERE c.id = pr.categoria_id;\nSELECT count(*) AS filas\nFROM productos pr\nJOIN categorias c ON c.id = pr.categoria_id;"
+        },
+        {
+          "type": "p",
+          "text": "49 productos × 13 categorías = 637 parejas; al exigir `c.id = pr.categoria_id` quedan las 49 correctas, con las dos sintaxis. Para un INNER JOIN da lo mismo poner la condición en `ON` o en `WHERE`: el planificador las trata igual. Aun así, prefiere `JOIN … ON`: la condición queda pegada a la tabla que une, separada de los filtros, y es imposible olvidarla, porque `JOIN` sin `ON` es un error de sintaxis."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**El producto cartesiano accidental.** Con comas, olvidar una condición no da error: da |A| × |B| filas. Con tablas reales (420 pedidos × 818 ítems = 343.560 filas) la consulta se pone lenta y los totales salen gigantes. Si un conteo o una suma te parece absurdamente grande, lo primero que debes revisar es si falta una condición de unión."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "El `ON` acepta cualquier expresión booleana, no solo igualdades: `ON c.id = pr.categoria_id AND pr.activo` o `ON pr.precio BETWEEN r.desde AND r.hasta` son válidos. Cuando la condición solo usa `=`, se habla de *equi-join*; es el caso de la inmensa mayoría de los joins entre claves."
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "JOIN",
+              "en": "join",
+              "def": "Operación del FROM que combina dos tablas en una tabla más ancha, emparejando filas según una condición."
+            },
+            {
+              "term": "INNER JOIN",
+              "en": "inner join",
+              "def": "Join que conserva solo las parejas que cumplen la condición; las filas sin pareja desaparecen."
+            },
+            {
+              "term": "Clave foránea",
+              "en": "foreign key",
+              "def": "Columna que guarda la clave primaria de otra tabla (`pedidos.cliente_id`); es el hilo natural para un JOIN."
+            },
+            {
+              "term": "Alias de tabla",
+              "en": "table alias",
+              "def": "Nombre corto (`p`, `c`) que reemplaza al nombre de la tabla dentro de la consulta."
+            },
+            {
+              "term": "Producto cartesiano",
+              "en": "Cartesian product",
+              "def": "Todas las combinaciones posibles de filas de dos tablas: |A| × |B| filas."
+            },
+            {
+              "term": "Cardinalidad",
+              "en": "cardinality",
+              "def": "Cuántas filas de una tabla se relacionan con una fila de la otra (1-1, 1-N, N-M)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s08-l2",
+      "title": "LEFT, RIGHT y FULL JOIN: conservar las filas sin pareja",
+      "minutes": 25,
+      "goals": [
+        "Escribir `LEFT JOIN`, `RIGHT JOIN` y `FULL JOIN` para conservar las filas sin pareja y predecir cuántas filas devuelven.",
+        "Distinguir un NULL «sin pareja» de un NULL de los datos probando una columna NOT NULL de la tabla opcional.",
+        "Decidir si una condición va en `ON` o en `WHERE` en un outer join y justificar la diferencia en el resultado.",
+        "Contar los hijos de cada fila, incluidos los ceros, con `count(columna)` en vez de `count(*)`."
+      ],
+      "takeaways": [
+        "`A LEFT JOIN B` = el INNER JOIN + una fila por cada fila de A sin pareja, con NULL en todas las columnas de B. Nunca devuelve menos filas que A.",
+        "`RIGHT JOIN` es un LEFT JOIN con las tablas al revés; `FULL JOIN` conserva las filas sin pareja de ambos lados.",
+        "En un outer join, `ON` decide qué filas de B cuentan como pareja (antes de completar con NULL) y `WHERE` filtra el resultado ya armado: una condición sobre B en el WHERE elimina las filas completadas con NULL y convierte el LEFT JOIN en un INNER JOIN.",
+        "Una condición sobre A dentro del `ON` de un LEFT JOIN no filtra A: solo le quita parejas.",
+        "Para contar hijos incluyendo el cero usa `count(b.columna_not_null)`: `count(*)` cuenta como 1 la fila completada con NULL."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Marketing pide «todos los clientes con sus pedidos, incluidos los que nunca han comprado, para invitarlos con un cupón». El INNER JOIN de la lección anterior no sirve: descarta justo a esos 9 clientes. Para conservar las filas sin pareja existen los **outer joins**. La documentación describe el LEFT JOIN en dos pasos: *primero se hace un inner join; luego, por cada fila de T1 que no cumple la condición con ninguna fila de T2, se agrega una fila con NULL en las columnas de T2*. Resultado: cada fila de la tabla de la izquierda aparece **al menos una vez**."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT c.id, c.nombre, p.id AS pedido, p.fecha::date AS fecha\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE c.id IN (6, 7, 27)\nORDER BY c.id, p.id;"
+        },
+        {
+          "type": "p",
+          "text": "`\\pset null '(null)'` hace que psql muestre los NULL de forma visible (por defecto los deja en blanco). Lucas (6) tiene un pedido y aparece una vez; Matías (27) tiene dos y aparece dos veces; Diego (7) no tiene ninguno y, en vez de desaparecer, aparece **una vez con NULL** en todas las columnas de `pedidos`. `LEFT JOIN` y `LEFT OUTER JOIN` son exactamente lo mismo: `OUTER` es opcional."
+        },
+        {
+          "type": "diagram",
+          "title": "Qué filas conserva cada tipo de JOIN (clientes = A, pedidos = B)",
+          "mermaid": "flowchart LR\n  subgraph filas[\"Las filas posibles del resultado\"]\n    SA[\"Solo en A<br/>clientes sin pedidos: 9\"]\n    AB[\"En A y en B<br/>cada pedido con su cliente: 420\"]\n    SB[\"Solo en B<br/>pedidos sin cliente: 0\"]\n  end\n  I[\"INNER JOIN<br/>420 filas\"] --> AB\n  L[\"LEFT JOIN<br/>429 filas\"] --> SA\n  L --> AB\n  R[\"RIGHT JOIN<br/>420 filas\"] --> AB\n  R --> SB\n  F[\"FULL JOIN<br/>429 filas\"] --> SA\n  F --> AB\n  F --> SB",
+          "caption": "El «diagrama de conjuntos» de los joins. Ojo: no son conjuntos de clientes ni de pedidos, sino de **filas del resultado**. Aquí no hay pedidos sin cliente (la clave foránea NOT NULL lo impide), por eso RIGHT = INNER y FULL = LEFT."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Tipo",
+            "Qué conserva",
+            "`clientes ⋈ pedidos`",
+            "`empleados ⋈ departamentos` (con un depto. vacío)"
+          ],
+          "rows": [
+            [
+              "`INNER JOIN`",
+              "Solo las parejas",
+              "420",
+              "54"
+            ],
+            [
+              "`LEFT JOIN`",
+              "Parejas + filas de A sin pareja",
+              "429",
+              "55 (+ el practicante sin departamento)"
+            ],
+            [
+              "`RIGHT JOIN`",
+              "Parejas + filas de B sin pareja",
+              "420",
+              "55 (+ el departamento sin empleados)"
+            ],
+            [
+              "`FULL JOIN`",
+              "Parejas + ambos lados sin pareja",
+              "429",
+              "56"
+            ],
+            [
+              "`CROSS JOIN`",
+              "Todas las combinaciones, sin condición",
+              "25.200",
+              "—"
+            ]
+          ]
+        },
+        {
+          "type": "h",
+          "text": "Contar incluyendo los ceros: count(*) vs count(columna)"
+        },
+        {
+          "type": "p",
+          "text": "El uso más común del LEFT JOIN es contar hijos: «pedidos por cliente, incluidos los que tienen 0». Aquí aparece una trampa que combina esta sección con la anterior. Recuerda de la sección 7: `count(*)` cuenta **filas** y `count(columna)` cuenta **valores no NULL**. Tras un LEFT JOIN, el cliente sin pedidos sí tiene una fila (la completada con NULL)…"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.id, c.nombre,\n       count(*)    AS con_asterisco,\n       count(p.id) AS con_columna\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE c.id IN (6, 7, 19, 27)\nGROUP BY c.id, c.nombre\nORDER BY c.id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**`count(*)` dice que Diego tiene 1 pedido.** La fila completada con NULL existe, así que `count(*)` la cuenta. `count(p.id)` cuenta los `p.id` no NULL y da el 0 correcto. Regla: después de un LEFT JOIN, cuenta una columna NOT NULL de la tabla de la derecha (su clave primaria o la columna de la condición). Lo mismo vale para `sum`: `sum(p.costo_despacho)` de un cliente sin pedidos es NULL, así que envuélvelo en `coalesce(…, 0)`."
+        },
+        {
+          "type": "h",
+          "text": "¿El NULL es porque no hubo pareja o porque el dato es NULL?"
+        },
+        {
+          "type": "p",
+          "text": "Un NULL en una columna de B puede significar dos cosas: «esta fila de A no tuvo pareja» o «tuvo pareja, pero ese dato está vacío» (un pedido pendiente tiene `metodo_pago` NULL). Para distinguirlos, pregunta por una columna de B que **no puede ser NULL** en los datos: su clave primaria (`p.id`) o la columna del `ON` (`p.cliente_id`). Si esa columna es NULL, fue el LEFT JOIN quien la puso. Esta idea es la base del *anti-join* que verás en la lección 4."
+        },
+        {
+          "type": "h",
+          "text": "RIGHT JOIN y FULL JOIN"
+        },
+        {
+          "type": "p",
+          "text": "`A RIGHT JOIN B` conserva todas las filas de **B**: es idéntico a `B LEFT JOIN A` (solo cambia el orden de las columnas con `SELECT *`). Casi nadie lo escribe, porque leer de izquierda a derecha «la tabla principal primero» es más natural; si te encuentras con uno, gíralo mentalmente a LEFT. `FULL JOIN` (o `FULL OUTER JOIN`) conserva las filas sin pareja **de los dos lados**. Para verlo necesitamos filas huérfanas en ambos lados: en rrhh, el practicante no tiene departamento, y el `setup` de este ejemplo agrega un departamento Legal todavía sin empleados."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "setup": "INSERT INTO departamentos (id, nombre, ciudad) VALUES (7, 'Legal', 'Santiago');",
+          "code": "\\pset null '(null)'\nSELECT e.id, e.nombre, e.cargo, d.nombre AS departamento\nFROM empleados e\nFULL JOIN departamentos d ON d.id = e.departamento_id\nWHERE e.id IS NULL OR d.id IS NULL OR e.id <= 2;\nSELECT count(*) AS inner_join FROM empleados e JOIN departamentos d ON d.id = e.departamento_id;\nSELECT count(*) AS left_join FROM empleados e LEFT JOIN departamentos d ON d.id = e.departamento_id;\nSELECT count(*) AS right_join FROM empleados e RIGHT JOIN departamentos d ON d.id = e.departamento_id;\nSELECT count(*) AS full_join FROM empleados e FULL JOIN departamentos d ON d.id = e.departamento_id;"
+        },
+        {
+          "type": "p",
+          "text": "54 parejas; el LEFT agrega al practicante (55); el RIGHT agrega a Legal (55); el FULL agrega a ambos (56). El filtro `e.id IS NULL OR d.id IS NULL` es el truco para listar **solo los huérfanos** de un FULL JOIN: las filas donde uno de los lados fue completado con NULL."
+        },
+        {
+          "type": "p",
+          "text": "El uso estrella del FULL JOIN en la vida real es **cuadrar dos listas**: lo que dice el sistema contra lo que dice el banco, el inventario del sistema contra el conteo físico. En este ejemplo (sin dataset, con dos tablas creadas en el `setup`) se concilian las ventas pagadas por transferencia con los abonos de la cartola bancaria:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "setup": "CREATE TABLE ventas_transferencia (pedido_id integer PRIMARY KEY, monto integer NOT NULL);\nCREATE TABLE abonos_banco (operacion text PRIMARY KEY, pedido_id integer, monto integer NOT NULL);\nINSERT INTO ventas_transferencia VALUES (401, 45980), (402, 18990), (403, 129990), (404, 7990);\nINSERT INTO abonos_banco VALUES ('OP-9001', 401, 45980), ('OP-9002', 402, 18000), ('OP-9003', 404, 7990), ('OP-9004', 999, 25000);",
+          "code": "\\pset null '(null)'\nSELECT v.pedido_id AS en_sistema, b.pedido_id AS en_banco,\n       v.monto AS monto_sistema, b.monto AS monto_banco, b.operacion\nFROM ventas_transferencia v\nFULL JOIN abonos_banco b ON b.pedido_id = v.pedido_id\nORDER BY coalesce(v.pedido_id, b.pedido_id);\nSELECT coalesce(v.pedido_id, b.pedido_id) AS pedido,\n       CASE WHEN b.operacion IS NULL THEN 'falta el abono'\n            WHEN v.pedido_id IS NULL THEN 'abono sin venta'\n            ELSE 'montos distintos' END AS problema\nFROM ventas_transferencia v\nFULL JOIN abonos_banco b ON b.pedido_id = v.pedido_id\nWHERE v.monto IS DISTINCT FROM b.monto\nORDER BY pedido;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Dos herramientas que el FULL JOIN pide a gritos: `coalesce(v.pedido_id, b.pedido_id)` para obtener **una** clave aunque venga de cualquiera de los lados, y `IS DISTINCT FROM` (sección 2) para comparar valores que pueden ser NULL: `v.monto <> b.monto` sería NULL (no verdadero) en las filas huérfanas y las perdería."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "PostgreSQL solo admite FULL JOIN con condiciones que se puedan ejecutar como *merge join* o *hash join* (en la práctica, igualdades). `FROM productos pr FULL JOIN categorias c ON c.id < pr.categoria_id` falla con `ERROR:  FULL JOIN is only supported with merge-joinable or hash-joinable join conditions`. LEFT y RIGHT no tienen esa restricción."
+        },
+        {
+          "type": "h",
+          "text": "La trampa clásica: ¿la condición va en ON o en WHERE?"
+        },
+        {
+          "type": "p",
+          "text": "Aquí está el error de outer joins más frecuente en entrevistas y en código real. Piensa en el orden en que ocurren las cosas: primero el `FROM` arma la tabla combinada (el `ON` decide quién es pareja y luego se completan con NULL las filas de A sin pareja); **después** el `WHERE` filtra esa tabla ya armada. La documentación lo dice así: una restricción en el `ON` se procesa *antes* del join y una en el `WHERE`, *después*. En un INNER JOIN da igual; en un outer join cambia todo."
+        },
+        {
+          "type": "diagram",
+          "title": "ON antes, WHERE después",
+          "mermaid": "flowchart TB\n  A[\"clientes c: 60 filas\"] --> J\n  B[\"pedidos p: 420 filas\"] --> J\n  J[\"1. LEFT JOIN … ON p.cliente_id = c.id AND p.estado = 'cancelado'<br/>solo los pedidos cancelados cuentan como pareja\"] --> N[\"2. Se completan con NULL los clientes sin pareja<br/>64 filas: los 60 clientes siguen ahí\"]\n  N --> W[\"3. WHERE filtra la tabla ya armada\"]\n  W --> S[\"4. SELECT, ORDER BY…\"]\n  X[\"Si p.estado = 'cancelado' va en el WHERE:<br/>en las filas completadas p.estado es NULL,<br/>NULL = 'cancelado' no es verdadero y la fila cae<br/>24 filas: el LEFT JOIN se volvió INNER\"] -.-> W",
+          "caption": "La condición sobre la tabla opcional (B) en el ON restringe las parejas; en el WHERE elimina precisamente las filas que el LEFT JOIN había rescatado."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT c.id, c.nombre, c.apellido, p.id AS pedido, p.estado\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id AND p.estado = 'cancelado'\nWHERE c.id BETWEEN 1 AND 6\nORDER BY c.id, p.id;\nSELECT c.id, c.nombre, c.apellido, p.id AS pedido, p.estado\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE p.estado = 'cancelado' AND c.id BETWEEN 1 AND 6\nORDER BY c.id, p.id;"
+        },
+        {
+          "type": "p",
+          "text": "La primera consulta responde «cada cliente con sus pedidos cancelados, si los tiene»: salen los 6 clientes y solo Lucas (1) y Francisca (5) tienen uno. La segunda responde «pedidos cancelados con su cliente»: solo 2 filas, porque para los demás clientes `p.estado` quedó NULL (o era otro estado) y el WHERE los eliminó. Con toda la tabla la diferencia es 64 filas contra 24. Las dos consultas son válidas; el error es escribir la segunda cuando querías la primera. PostgreSQL incluso detecta el caso y ejecuta la segunda como un INNER JOIN, porque sabe que el WHERE descartará todas las filas completadas con NULL."
+        },
+        {
+          "type": "p",
+          "text": "La trampa tiene una segunda cara, menos conocida: una condición sobre la tabla **de la izquierda** dentro del `ON` de un LEFT JOIN **no filtra** esa tabla."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(*) AS filas_on\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id AND c.region = 'Metropolitana';\nSELECT count(*) AS filas_where\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE c.region = 'Metropolitana';"
+        },
+        {
+          "type": "p",
+          "text": "Con la condición en el `ON` salen 307 filas: las 283 parejas de los clientes de la Región Metropolitana, 7 clientes metropolitanos sin pedidos… y **los 17 clientes de otras regiones (o sin región)**, cada uno con NULL en `pedidos`, porque el LEFT JOIN conserva todas las filas de A pase lo que pase: la condición solo les impidió tener pareja. Con la condición en el `WHERE` salen 290 (283 + 7): ahora sí se filtraron los clientes."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Dónde va la condición",
+            "Sobre A (la tabla que se conserva)",
+            "Sobre B (la tabla opcional)"
+          ],
+          "rows": [
+            [
+              "En el `ON`",
+              "No filtra A: solo le quita parejas (casi nunca es lo que quieres)",
+              "Restringe qué filas de B son pareja; A se conserva completa (lo usual)"
+            ],
+            [
+              "En el `WHERE`",
+              "Filtra A (lo usual)",
+              "Elimina las filas completadas con NULL: el LEFT JOIN se vuelve INNER, salvo que preguntes `IS NULL`"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta clásica: «¿Por qué mi LEFT JOIN se comporta como INNER JOIN?». Respuesta: porque en el WHERE hay una condición sobre una columna de la tabla de la derecha (`WHERE p.estado = 'entregado'`); en las filas sin pareja esa columna es NULL, la comparación no es verdadera y la fila se descarta. Solución: mover la condición al `ON`. Contrapregunta frecuente: «¿y en un INNER JOIN importa?». No: ahí `ON` y `WHERE` dan el mismo resultado."
+        }
+      ]
+    },
+    {
+      "id": "s08-l3",
+      "title": "Muchas tablas, self join, CROSS JOIN, USING y NATURAL",
+      "minutes": 25,
+      "goals": [
+        "Encadenar joins de 3 a 5 tablas siguiendo las claves foráneas y predecir el nivel de detalle (la granularidad) del resultado.",
+        "Detectar y corregir sumas infladas por joins 1-N y el LEFT JOIN que se pierde al encadenarlo con un INNER JOIN.",
+        "Escribir un self join con dos alias de la misma tabla para relacionar empleados con sus jefes.",
+        "Usar `CROSS JOIN`, `USING` y `NATURAL` identificando qué columnas comparan y por qué NATURAL es peligroso."
+      ],
+      "takeaways": [
+        "Cada JOIN hacia el lado «muchos» baja el nivel de detalle: `pedidos JOIN pedido_items` tiene una fila por ítem, no por pedido.",
+        "Si sumas una columna de la tabla «de arriba» (como `costo_despacho`) después de bajar al detalle, la sumas una vez por cada fila de detalle: el total se infla.",
+        "Un LEFT JOIN seguido de un INNER JOIN contra la tabla opcional vuelve a perder las filas sin pareja: sigue con LEFT JOIN o agrupa el join interno entre paréntesis.",
+        "Un self join es la misma tabla con dos alias que cumplen papeles distintos (empleado y jefe); usa LEFT JOIN para no perder la raíz del árbol.",
+        "`USING (col)` compara columnas del mismo nombre y deja una sola en el resultado; `NATURAL` compara **todas** las columnas del mismo nombre, sin que las veas."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Las preguntas de negocio rara vez caben en dos tablas: «qué productos, de qué categoría, compró cada cliente» recorre cinco. La técnica es seguir los hilos del diagrama de la lección 1, un JOIN por hilo: `clientes → pedidos → pedido_items → productos → categorias`. Sin paréntesis, PostgreSQL arma los joins **de izquierda a derecha**: primero `pedidos` con `clientes`, ese resultado con `pedido_items`, y así; cada `ON` puede usar cualquier tabla que ya esté a su izquierda."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT p.id AS pedido,\n       c.nombre || ' ' || c.apellido AS cliente,\n       pr.nombre AS producto,\n       ca.nombre AS categoria,\n       i.cantidad, i.precio_unitario,\n       i.cantidad * i.precio_unitario AS subtotal\nFROM pedidos p\nJOIN clientes c     ON c.id = p.cliente_id\nJOIN pedido_items i ON i.pedido_id = p.id\nJOIN productos pr   ON pr.id = i.producto_id\nJOIN categorias ca  ON ca.id = pr.categoria_id\nWHERE p.id = 13\nORDER BY pr.id;"
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Escribe un JOIN por línea, con alias cortos y fáciles de recordar (`p` pedidos, `c` clientes, `i` ítems, `pr` productos, `ca` categorías) y la condición en la forma «tabla nueva = tabla anterior». Cuando algo falle, podrás comentar las últimas líneas con `--` e ir agregando joins de a uno, mirando cuántas filas aparecen en cada paso."
+        },
+        {
+          "type": "h",
+          "text": "La granularidad: cada JOIN 1-N multiplica filas"
+        },
+        {
+          "type": "p",
+          "text": "El pedido 13 ocupa **4 filas** en el resultado anterior, una por producto: al unir con `pedido_items` el resultado dejó de tener «una fila por pedido» y pasó a tener «una fila por ítem». Ese nivel de detalle se llama **granularidad**. Los datos del pedido (cliente, fecha, despacho) se **repiten** en cada fila de sus ítems, y eso es inofensivo… hasta que los sumas."
+        },
+        {
+          "type": "diagram",
+          "title": "Fan-out: el despacho se repite en cada ítem",
+          "mermaid": "flowchart LR\n  P[\"pedidos<br/>pedido 1: despacho 3990<br/>pedido 2: despacho 5990\"] --> J[\"JOIN pedido_items<br/>ON i.pedido_id = p.id\"]\n  I[\"pedido_items<br/>pedido 1: 2 ítems<br/>pedido 2: 2 ítems\"] --> J\n  J --> R[\"4 filas<br/>pedido 1 · 3990 · producto 12<br/>pedido 1 · 3990 · producto 29<br/>pedido 2 · 5990 · producto 44<br/>pedido 2 · 5990 · producto 49\"]\n  R --> S[\"sum(costo_despacho) = 19960<br/>pero se cobró 9980\"]",
+          "caption": "Al bajar al detalle, cada dato del pedido se copia una vez por ítem (en inglés, *fan-out*). Contarlo o sumarlo a ese nivel lo multiplica."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT p.id, p.costo_despacho, i.producto_id,\n       i.cantidad * i.precio_unitario AS subtotal\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id\nWHERE p.id IN (1, 2)\nORDER BY p.id, i.producto_id;\nSELECT sum(costo_despacho) AS despacho_real\nFROM pedidos;\nSELECT sum(p.costo_despacho) AS despacho_inflado, count(*) AS filas\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id;"
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**La suma inflada.** Los 420 pedidos registran $1.087.650 en despachos, pero la consulta con el JOIN dice $1.558.650: cada despacho se sumó una vez por ítem. La regla: **suma cada medida a su propia granularidad**. Los despachos se suman desde `pedidos`; los montos de productos, desde `pedido_items`. Para contar pedidos después de bajar al detalle sirve `count(DISTINCT p.id)`, pero `sum(DISTINCT p.costo_despacho)` **no** arregla la suma: junta los despachos de pedidos distintos que cuestan lo mismo (todos los de $3.990 contarían una vez). La solución limpia es pre-agregar el detalle por pedido antes de unirlo, con `LATERAL` (lección 5) o con subconsultas (sección 9)."
+        },
+        {
+          "type": "h",
+          "text": "El LEFT JOIN que se pierde en el camino"
+        },
+        {
+          "type": "p",
+          "text": "Encadenar outer joins tiene su propia trampa. Quieres todos los clientes con el detalle de lo que compraron, así que empiezas con `clientes LEFT JOIN pedidos` y, como siempre, agregas `JOIN pedido_items`. Mira qué pasa con los 9 clientes sin pedidos:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT count(DISTINCT c.id) AS clientes, count(*) AS filas\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nJOIN pedido_items i ON i.pedido_id = p.id;\nSELECT count(DISTINCT c.id) AS clientes, count(*) AS filas\nFROM clientes c\nLEFT JOIN pedidos p      ON p.cliente_id = c.id\nLEFT JOIN pedido_items i ON i.pedido_id = p.id;\nSELECT count(DISTINCT c.id) AS clientes, count(*) AS filas\nFROM clientes c\nLEFT JOIN (pedidos p JOIN pedido_items i ON i.pedido_id = p.id)\n       ON p.cliente_id = c.id;"
+        },
+        {
+          "type": "p",
+          "text": "La primera consulta perdió a los 9 (51 clientes): el LEFT JOIN los rescató con `p.id` NULL, pero el siguiente INNER JOIN exige `i.pedido_id = p.id`, que con NULL nunca es verdadero, y los descarta. Hay dos arreglos. El habitual es seguir con `LEFT JOIN` hasta el final (60 clientes, 827 filas = 818 ítems + 9 clientes sin nada). El otro es usar **paréntesis**: `(pedidos p JOIN pedido_items i ON …)` se arma primero como una unidad y luego se une completo, con LEFT JOIN, a los clientes. Aquí dan lo mismo porque todo pedido tiene ítems. La diferencia aparece cuando la tabla del medio tiene filas sin detalle: con LEFT hasta el final, un pedido sin ítems aparece con NULL en las columnas del ítem; con paréntesis, ese pedido no aparece (su cliente sí se conserva). En el ejercicio de unidades vendidas por categoría los paréntesis son la herramienta justa."
+        },
+        {
+          "type": "h",
+          "text": "Self join: una tabla que se une consigo misma"
+        },
+        {
+          "type": "p",
+          "text": "En rrhh, `empleados.jefe_id` es una clave foránea que apunta a… `empleados.id`. El organigrama completo vive en una sola tabla. Para ver a cada persona junto a su jefe hay que leer la tabla **dos veces**, en dos papeles distintos: como «empleado» y como «jefe». Eso es un **self join**, y los alias dejan de ser comodidad para ser obligatorios: sin ellos, `FROM empleados JOIN empleados …` falla con `ERROR:  table name \"empleados\" specified more than once`."
+        },
+        {
+          "type": "diagram",
+          "title": "El organigrama de Andes Digital está guardado en empleados.jefe_id",
+          "mermaid": "flowchart TD\n  G[\"1 · Benjamín Pérez<br/>Gerente general<br/>jefe_id NULL\"]\n  G --> F[\"2 · Rodrigo Tapia<br/>Gerente de Finanzas\"]\n  G --> T[\"3 · Agustina Núñez<br/>Gerente de Tecnología\"]\n  G --> V[\"4 · Florencia Martínez<br/>Gerente de Ventas\"]\n  G --> O[\"5 · Felipe Cortés<br/>Gerente de Operaciones\"]\n  G --> P[\"6 · Agustín Torres<br/>Gerente de Personas\"]\n  T --> D[\"9 · Cristóbal Bravo<br/>Jefe de Desarrollo\"]\n  T --> DA[\"10 · Maximiliano González<br/>Jefe de Datos\"]\n  T --> IN[\"11 · Rodrigo Martínez<br/>Jefe de Infraestructura\"]\n  D --> DEV[\"22 a 28: siete desarrolladores<br/>55: el practicante\"]",
+          "caption": "Cada flecha es una fila cuyo `jefe_id` apunta al `id` de otra fila de la misma tabla. Solo el gerente general tiene `jefe_id` NULL: es la raíz del árbol."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "\\pset null '(null)'\nSELECT e.id, e.nombre, e.apellido, e.cargo,\n       j.nombre || ' ' || j.apellido   AS jefe,\n       jj.nombre || ' ' || jj.apellido AS jefe_del_jefe\nFROM empleados e\nLEFT JOIN empleados j  ON j.id  = e.jefe_id\nLEFT JOIN empleados jj ON jj.id = j.jefe_id\nWHERE e.id IN (1, 2, 9, 23, 55)\nORDER BY e.id;\nSELECT j.nombre || ' ' || j.apellido AS jefe, j.cargo, count(*) AS a_cargo\nFROM empleados j\nJOIN empleados e ON e.jefe_id = j.id\nGROUP BY j.id, j.nombre, j.apellido, j.cargo\nORDER BY a_cargo DESC, j.id\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "Lee los alias como papeles: `e` es «el empleado», `j` «su jefe» y `jj` «el jefe de su jefe». La condición `j.id = e.jefe_id` dice «la fila j es la que tiene como id el jefe_id de la fila e». Se usa **LEFT** JOIN porque el gerente general no tiene jefe: con INNER JOIN desaparecería (54 filas en vez de 55). La segunda consulta recorre la flecha al revés (`e.jefe_id = j.id` agrupando por el jefe) y cuenta los reportes directos: Cristóbal Bravo tiene 8 (siete desarrolladores y el practicante)."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Con un self join por nivel puedes subir 2 o 3 niveles, pero no «todos los niveles que haya»: para recorrer un árbol de profundidad desconocida se usa una CTE recursiva (`WITH RECURSIVE`, sección 9). Otro self join clásico: pares de líneas del metro que comparten una estación (`linea_estacion a JOIN linea_estacion b ON b.estacion_id = a.estacion_id AND a.linea_id < b.linea_id`). El `<` evita emparejar una línea consigo misma y listar cada par dos veces (L1-L5 y L5-L1): con `<>` salen 18 filas; con `<`, las 9 combinaciones reales. Lo practicarás en los ejercicios."
+        },
+        {
+          "type": "h",
+          "text": "CROSS JOIN: todas las combinaciones, a propósito"
+        },
+        {
+          "type": "p",
+          "text": "`A CROSS JOIN B` es el producto cartesiano explícito: |A| × |B| filas, sin condición. Es equivalente a `A JOIN B ON true` y a `FROM A, B`. Rara vez tiene sentido entre dos tablas grandes, pero es la herramienta correcta para armar una **grilla**: todas las combinaciones de departamento y proyecto, de sucursal y mes, de producto y talla… y después rellenarla con un LEFT JOIN, para que las combinaciones sin datos salgan con 0 en vez de desaparecer."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "SELECT count(*) AS combinaciones\nFROM departamentos\nCROSS JOIN proyectos;\nSELECT d.nombre AS departamento, pr.nombre AS proyecto,\n       count(a.empleado_id) AS personas\nFROM departamentos d\nCROSS JOIN proyectos pr\nLEFT JOIN (asignaciones a JOIN empleados e ON e.id = a.empleado_id)\n       ON a.proyecto_id = pr.id AND e.departamento_id = d.id\nWHERE d.id IN (3, 5)\nGROUP BY d.id, d.nombre, pr.id, pr.nombre\nORDER BY d.id, pr.id;"
+        },
+        {
+          "type": "p",
+          "text": "6 departamentos × 6 proyectos = 36 combinaciones. La segunda consulta arma la grilla para Tecnología y Operaciones y cuenta cuántas personas de cada departamento trabajan en cada proyecto. Los paréntesis unen primero cada asignación con su empleado, para poder exigir en el `ON` que el empleado sea **de ese departamento**; las casillas sin nadie quedan con 0 gracias al LEFT JOIN y a `count(a.empleado_id)`."
+        },
+        {
+          "type": "h",
+          "text": "Relaciones N-M, USING y NATURAL"
+        },
+        {
+          "type": "p",
+          "text": "Un libro puede tener varios autores y un autor varios libros; en biblioteca eso se guarda en `libro_autor (libro_id, autor_id)`. Para ver títulos con autores se hacen **dos** joins: `libros → libro_autor → autores`. La antología de poesía chilena tiene 5 autores, así que aparece en 5 filas. Esta base también sirve para ver dos atajos de sintaxis. Cuando las columnas de la condición **se llaman igual** en ambas tablas, `JOIN … USING (libro_id)` equivale a `ON prestamos.libro_id = libro_autor.libro_id`. `NATURAL JOIN` va un paso más allá: arma el `USING` con **todas** las columnas que tengan el mismo nombre en ambas tablas, sin que tengas que escribirlas. Y ahí está el problema:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "SELECT l.titulo, a.nombre AS autor\nFROM libros l\nJOIN libro_autor la ON la.libro_id = l.id\nJOIN autores a      ON a.id = la.autor_id\nWHERE l.id IN (26, 41)\nORDER BY l.id, a.nombre;\nSELECT *\nFROM prestamos\nJOIN libro_autor USING (libro_id)\nORDER BY id\nLIMIT 3;\nSELECT a.nombre AS autor, count(*) AS prestamos\nFROM prestamos\nJOIN libro_autor USING (libro_id)\nJOIN autores a ON a.id = libro_autor.autor_id\nGROUP BY a.id, a.nombre\nORDER BY prestamos DESC, a.id\nLIMIT 5;\nSELECT id, libro_id, titulo\nFROM prestamos NATURAL JOIN libros\nORDER BY id\nLIMIT 3;\nSELECT count(*) AS filas FROM prestamos NATURAL JOIN libros;\nSELECT count(*) AS filas FROM libros NATURAL JOIN libro_autor;"
+        },
+        {
+          "type": "p",
+          "text": "Fíjate en el `SELECT *` con `USING`: la columna `libro_id` sale **una sola vez y primero**, seguida del resto de `prestamos` y del resto de `libro_autor`. Así lo define la documentación: una columna por cada par del `USING`, luego las demás de la izquierda y luego las de la derecha. En el conteo por autor, cada préstamo de la antología cuenta para sus 5 autores: aquí el fan-out es justo lo que se quiere (el préstamo «le pertenece» a cada autor)."
+        },
+        {
+          "type": "p",
+          "text": "Ahora el NATURAL JOIN. Querías cada préstamo con el título de su libro, pero la única columna con el mismo nombre en `prestamos` y `libros` es `id`, así que se emparejó el **préstamo 1 con el libro 1** (Desolación), cuando el préstamo 1 es del libro 39. Sin error, con un resultado de aspecto normal (42 filas, porque solo hay 42 libros). Entre `libros` y `libro_autor` no hay ninguna columna con el mismo nombre (`id` y `libro_id` no coinciden), y entonces NATURAL JOIN se comporta como un `CROSS JOIN`: 42 × 48 = 2.016 filas. En Tienda Andes pasa lo mismo: `clientes NATURAL JOIN pedidos` une el cliente 1 con el pedido 1 (60 filas sin sentido) y `productos NATURAL JOIN categorias` compara `id` **y** `nombre` y devuelve 0 filas. `USING` tampoco sirve ahí, porque las claves foráneas se llaman `cliente_id` y las primarias `id`: `clientes JOIN pedidos USING (cliente_id)` falla con `column \"cliente_id\" specified in USING clause does not exist in left table`."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**No uses NATURAL JOIN en código que va a durar.** La condición depende de los nombres de columna *en el momento de ejecutar*: si mañana alguien agrega `creado_en` a dos tablas que unías con NATURAL, la consulta empieza a exigir que las fechas coincidan y los resultados cambian en silencio. La documentación lo advierte: `USING` es razonablemente seguro porque solo compara las columnas que listaste; `NATURAL` es *considerablemente más riesgoso*. Escribe `ON` (o `USING`) explícito."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Forma",
+            "Qué compara",
+            "Columnas en `SELECT *`",
+            "Riesgo"
+          ],
+          "rows": [
+            [
+              "`JOIN … ON a.x = b.y`",
+              "Lo que escribas",
+              "Todas las de A y luego todas las de B",
+              "Ninguno: todo explícito"
+            ],
+            [
+              "`JOIN … USING (x)`",
+              "`a.x = b.x` (mismo nombre)",
+              "`x` una vez, luego el resto de A y el resto de B",
+              "Bajo"
+            ],
+            [
+              "`NATURAL JOIN`",
+              "Todas las columnas de igual nombre",
+              "Las comunes una vez, luego el resto",
+              "Alto: cambia si cambian las tablas"
+            ],
+            [
+              "`CROSS JOIN`",
+              "Nada: todas las parejas",
+              "Todas las de A y luego todas las de B",
+              "Resultados enormes si no era la intención"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Tres detalles finos que aparecen en pruebas: (1) en un join con `USING (libro_id)` puedes escribir `libro_id` sin calificar, y también `prestamos.libro_id`; desde PostgreSQL 14, `USING (libro_id) AS x` le da un alias a la columna combinada (`x.libro_id`). (2) `JOIN` se une con más fuerza que la coma: en `FROM productos pr, pedido_items i JOIN categorias c ON c.id = pr.categoria_id` el `ON` no puede ver a `pr` y falla con `invalid reference to FROM-clause entry for table \"pr\"`. (3) Sin paréntesis, los joins se arman de izquierda a derecha."
+        }
+      ]
+    },
+    {
+      "id": "s08-l4",
+      "title": "Semi-join y anti-join: EXISTS, IN y la trampa de NOT IN",
+      "minutes": 25,
+      "goals": [
+        "Escribir semi-joins con `EXISTS` o `IN` que filtran las filas con al menos una pareja sin duplicarlas.",
+        "Escribir anti-joins con `NOT EXISTS` y con `LEFT JOIN … WHERE b.clave IS NULL` (clientes sin pedidos, libros nunca prestados).",
+        "Explicar con la lógica de tres valores por qué `NOT IN` con un NULL en la subconsulta devuelve cero filas, y reescribirlo con `NOT EXISTS`.",
+        "Elegir entre JOIN, EXISTS e IN según si la consulta necesita columnas de la otra tabla o solo saber si existe una pareja."
+      ],
+      "takeaways": [
+        "Semi-join: «filas de A que tienen al menos una pareja en B». Cada fila de A aparece **una vez**, tenga 1 o 50 parejas. Se escribe con `EXISTS` o `IN`.",
+        "Anti-join: «filas de A sin ninguna pareja en B». Se escribe con `NOT EXISTS` o con `LEFT JOIN … WHERE b.columna_not_null IS NULL`.",
+        "`x NOT IN (subconsulta)` equivale a `x <> v1 AND x <> v2 AND …`: si algún valor es NULL, la condición nunca es verdadera y la consulta devuelve 0 filas.",
+        "`NOT EXISTS` no tiene ese problema y PostgreSQL lo ejecuta como un Anti Join: es la forma recomendada.",
+        "Usa JOIN cuando necesitas columnas de B; usa EXISTS / NOT EXISTS cuando solo preguntas si hay (o no hay) pareja."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Hay dos preguntas muy comunes que *parecen* joins, pero no lo son del todo: «¿qué clientes compraron un saco de dormir?» y «¿qué clientes nunca han comprado?». En ninguna necesitas columnas del pedido: solo quieres **filtrar clientes** según si tienen o no una pareja. El álgebra relacional les da nombre: **semi-join** (se quedan las filas con pareja) y **anti-join** (se quedan las filas sin pareja). Si las resuelves con un JOIN común, vas a pelear con duplicados."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.id, c.nombre, c.apellido\nFROM clientes c\nJOIN pedidos p      ON p.cliente_id = c.id\nJOIN pedido_items i ON i.pedido_id = p.id\nJOIN productos pr   ON pr.id = i.producto_id\nWHERE pr.sku = 'OUT-003'\nORDER BY c.id;\nSELECT c.id, c.nombre, c.apellido\nFROM clientes c\nWHERE EXISTS (\n  SELECT 1\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  JOIN productos pr   ON pr.id = i.producto_id\n  WHERE p.cliente_id = c.id\n    AND pr.sku = 'OUT-003'\n)\nORDER BY c.id;\nSELECT count(*) AS con_join\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id\nWHERE p.metodo_pago = 'transferencia';\nSELECT count(*) AS con_exists\nFROM clientes c\nWHERE EXISTS (SELECT 1 FROM pedidos p\n              WHERE p.cliente_id = c.id AND p.metodo_pago = 'transferencia');\nSELECT count(*) AS con_in\nFROM clientes c\nWHERE c.id IN (SELECT p.cliente_id FROM pedidos p\n               WHERE p.metodo_pago = 'transferencia');"
+        },
+        {
+          "type": "p",
+          "text": "El JOIN devuelve 19 filas porque cada cliente aparece una vez **por cada vez que compró** el saco (Rodrigo, el 50, cinco veces). La versión con `EXISTS` devuelve 12: cada cliente una vez. Cómo se lee: «clientes `c` tales que **existe** al menos una fila en (pedidos ⋈ ítems ⋈ productos) que sea de `c` y del producto OUT-003». La subconsulta menciona `c.id`, una columna de la consulta de afuera: por eso se llama **subconsulta correlacionada** (conceptualmente, se evalúa para cada cliente). Y como a `EXISTS` solo le importa si hay filas, no qué contienen, se escribe por convención `SELECT 1`."
+        },
+        {
+          "type": "p",
+          "text": "Las tres últimas consultas cuentan lo mismo de tres formas: 63 pedidos por transferencia, que pertenecen a 33 clientes. `IN (subconsulta)` es la otra forma del semi-join: «el id del cliente está en la lista de clientes que pagaron por transferencia»; la subconsulta no está correlacionada (no menciona a `c`). Para el semi-join, `EXISTS` e `IN` dan el mismo resultado y PostgreSQL suele ejecutarlos igual (como *Semi Join*); `IN` se lee mejor con una sola columna y `EXISTS` cuando la condición es compuesta."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "`SELECT DISTINCT c.id, c.nombre … JOIN …` también quita los duplicados, pero es un parche: primero multiplica las filas y después las ordena o agrupa para deshacerse de ellas, y si olvidas incluir `c.id` en la lista, dos clientes que se llamen igual se funden en uno. Si no necesitas columnas del pedido, el semi-join dice exactamente lo que quieres."
+        },
+        {
+          "type": "h",
+          "text": "Anti-join: los que no tienen pareja"
+        },
+        {
+          "type": "diagram",
+          "title": "Cómo razona NOT EXISTS (anti-join)",
+          "mermaid": "flowchart TD\n  C[\"Para cada cliente c\"] --> Q{\"¿Existe algún pedido p<br/>con p.cliente_id = c.id?\"}\n  Q -- \"sí: basta encontrar el primero\" --> X[\"NOT EXISTS es falso<br/>el cliente se descarta\"]\n  Q -- \"no hay ninguno\" --> K[\"NOT EXISTS es verdadero<br/>el cliente queda\"]\n  K --> R[\"Resultado: los 9 clientes sin pedidos\"]",
+          "caption": "La documentación indica que la subconsulta de EXISTS se ejecuta solo hasta saber si devuelve al menos una fila; no necesita recorrer todos los pedidos del cliente."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.id, c.nombre, c.apellido, c.comuna\nFROM clientes c\nWHERE NOT EXISTS (SELECT 1 FROM pedidos p WHERE p.cliente_id = c.id)\nORDER BY c.id;\nSELECT count(*) AS left_join_is_null\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE p.id IS NULL;\nSELECT count(*) AS not_in\nFROM clientes c\nWHERE c.id NOT IN (SELECT cliente_id FROM pedidos);"
+        },
+        {
+          "type": "p",
+          "text": "Las tres formas dan 9. La del medio es el **LEFT JOIN antijoin**: haces el LEFT JOIN y te quedas solo con las filas que el LEFT JOIN tuvo que completar con NULL. Es la aplicación directa de la lección 2: pregunta por una columna de B que no puede ser NULL en los datos (la clave primaria `p.id` o la columna del `ON`). La tercera, `NOT IN`, funciona aquí… por suerte: `pedidos.cliente_id` es NOT NULL. En unos minutos vas a ver qué pasa cuando no lo es."
+        },
+        {
+          "type": "p",
+          "text": "Si preguntas por una columna que **sí** admite NULL en los datos, el anti-join se contamina con filas que sí tenían pareja. Los pedidos pendientes no tienen `metodo_pago`:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT c.id, c.nombre, p.id AS pedido, p.estado, p.metodo_pago\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE p.metodo_pago IS NULL\nORDER BY c.id;"
+        },
+        {
+          "type": "p",
+          "text": "Salen 12 filas en vez de 9: se colaron Emilia (33), Fernanda (49) y Josefa (58), que **sí** tienen pedidos, solo que uno de ellos está pendiente y tiene `metodo_pago` NULL. Por eso la regla es probar la clave primaria o la columna de la condición, nunca una columna cualquiera."
+        },
+        {
+          "type": "h",
+          "text": "La trampa de NOT IN con NULL"
+        },
+        {
+          "type": "p",
+          "text": "En rrhh, «empleados que no son jefes de nadie» parece una consulta de una línea: `WHERE id NOT IN (SELECT jefe_id FROM empleados)`. Pero la lista de `jefe_id` contiene un NULL (el del gerente general), y eso lo arruina todo. `x NOT IN (a, b, NULL)` significa `x <> a AND x <> b AND x <> NULL`. La última comparación es NULL (desconocido) para cualquier `x`, y con la lógica de tres valores de la sección 2, `verdadero AND NULL` es NULL: la condición nunca llega a ser verdadera. La documentación lo dice sin rodeos: si no hay valores iguales y al menos una fila de la derecha es NULL, el resultado de `NOT IN` es NULL, no verdadero."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "\\pset null '(null)'\nSELECT 5 IN (1, 5, NULL)   AS a,\n       5 IN (1, 2, NULL)   AS b,\n       5 NOT IN (1, 2)     AS c,\n       5 NOT IN (1, 2, NULL) AS d;\nSELECT count(*) AS no_son_jefes_not_in\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados);\nSELECT count(*) AS no_son_jefes_not_exists\nFROM empleados e\nWHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id);\nSELECT count(*) AS not_in_sin_nulos\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados WHERE jefe_id IS NOT NULL);"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Expresión",
+            "Se expande a",
+            "Resultado"
+          ],
+          "rows": [
+            [
+              "`5 IN (1, 5, NULL)`",
+              "`5 = 1 OR 5 = 5 OR 5 = NULL` → `false OR true OR NULL`",
+              "`true` (basta un verdadero)"
+            ],
+            [
+              "`5 IN (1, 2, NULL)`",
+              "`false OR false OR NULL`",
+              "`NULL`"
+            ],
+            [
+              "`5 NOT IN (1, 2)`",
+              "`5 <> 1 AND 5 <> 2` → `true AND true`",
+              "`true`"
+            ],
+            [
+              "`5 NOT IN (1, 2, NULL)`",
+              "`true AND true AND NULL`",
+              "`NULL` → el WHERE descarta la fila"
+            ],
+            [
+              "`5 NOT IN (subconsulta vacía)`",
+              "No hay nada con qué comparar",
+              "`true`"
+            ]
+          ]
+        },
+        {
+          "type": "p",
+          "text": "Resultado real: `NOT IN` dice que **0** empleados no son jefes, cuando son 39. No hay error ni advertencia: solo un resultado vacío y plausible. `NOT EXISTS` da 39 porque no compara valores contra una lista: pregunta si existe una fila que cumpla `s.jefe_id = e.id`, y las filas con `jefe_id` NULL simplemente no cumplen. Filtrar los NULL dentro de la subconsulta también arregla el `NOT IN`, pero depende de que te acuerdes cada vez."
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "Pregunta infaltable en entrevistas de SQL: «Esta consulta con `NOT IN` devuelve 0 filas y debería devolver varias, ¿por qué?». Respuesta: la subconsulta devuelve al menos un NULL; `x NOT IN (…, NULL)` nunca es verdadero. Solución: `NOT EXISTS` (o filtrar `IS NOT NULL` en la subconsulta). Regla práctica: **nunca uses `NOT IN` con una subconsulta**; con una lista de literales que tú escribes (`NOT IN ('cancelado', 'pendiente')`) no hay riesgo."
+        },
+        {
+          "type": "h",
+          "text": "Cómo lo ejecuta PostgreSQL (adelanto)"
+        },
+        {
+          "type": "p",
+          "text": "Hay una razón más para preferir `NOT EXISTS`: el planificador sabe convertirlo en un nodo **Anti Join** (y `EXISTS` en un *Semi Join*), con los mismos algoritmos eficientes de cualquier join. `NOT IN` con subconsulta, por culpa de la semántica de los NULL, no puede convertirse así y queda como un filtro que consulta una tabla hash por cada fila. Leer planes es tema de la sección 15; por ahora basta con reconocer los nombres:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "rrhh",
+          "code": "EXPLAIN (COSTS OFF)\nSELECT * FROM empleados e\nWHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id);\nEXPLAIN (COSTS OFF)\nSELECT * FROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados);"
+        },
+        {
+          "type": "p",
+          "text": "El primer plan dice `Hash Right Anti Join`: un anti-join de verdad. El segundo es un `Seq Scan` con un `Filter` que usa `hashed SubPlan 1`. Con tablas grandes, y sobre todo si la subconsulta no cabe en memoria, la diferencia puede ser enorme."
+        },
+        {
+          "type": "p",
+          "text": "El mismo patrón responde preguntas de cualquier dominio. En biblioteca, ¿qué libros nunca se han prestado?"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "biblioteca",
+          "code": "SELECT l.id, l.titulo, l.anio\nFROM libros l\nWHERE NOT EXISTS (SELECT 1 FROM prestamos p WHERE p.libro_id = l.id)\nORDER BY l.id;\nSELECT l.id, l.titulo\nFROM libros l\nLEFT JOIN prestamos p ON p.libro_id = l.id\nWHERE p.id IS NULL\nORDER BY l.id;"
+        },
+        {
+          "type": "table",
+          "head": [
+            "Quieres…",
+            "Usa",
+            "Ejemplo"
+          ],
+          "rows": [
+            [
+              "Columnas de ambas tablas",
+              "`JOIN` (o `LEFT JOIN`)",
+              "Pedidos con el nombre del cliente"
+            ],
+            [
+              "Filas de A con al menos una pareja, sin duplicar",
+              "`EXISTS` o `IN (subconsulta)`",
+              "Clientes que compraron el saco de dormir"
+            ],
+            [
+              "Filas de A sin ninguna pareja",
+              "`NOT EXISTS` o `LEFT JOIN … WHERE b.pk IS NULL`",
+              "Clientes sin pedidos, libros nunca prestados"
+            ],
+            [
+              "Excluir una lista fija escrita por ti",
+              "`NOT IN ('a', 'b')`",
+              "Pedidos que no están cancelados ni pendientes"
+            ],
+            [
+              "Excluir según una subconsulta",
+              "**Nunca** `NOT IN`: usa `NOT EXISTS`",
+              "Empleados que no son jefes"
+            ]
+          ]
+        },
+        {
+          "type": "terms",
+          "items": [
+            {
+              "term": "Semi-join",
+              "en": "semi-join",
+              "def": "Filtra las filas de A que tienen al menos una pareja en B, sin repetirlas ni traer columnas de B."
+            },
+            {
+              "term": "Anti-join",
+              "en": "anti-join",
+              "def": "Filtra las filas de A que no tienen ninguna pareja en B."
+            },
+            {
+              "term": "Subconsulta correlacionada",
+              "en": "correlated subquery",
+              "def": "Subconsulta que usa columnas de la consulta externa (`p.cliente_id = c.id`); conceptualmente se evalúa por cada fila externa."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s08-l5",
+      "title": "LATERAL: top-N por grupo y funciones en el FROM",
+      "minutes": 20,
+      "goals": [
+        "Escribir subconsultas `LATERAL` que usan columnas de las tablas anteriores del FROM.",
+        "Resolver top-N por grupo (los 2 productos más caros de cada categoría, el último pedido de cada cliente) con `CROSS JOIN LATERAL` y `LEFT JOIN LATERAL … ON true`.",
+        "Usar funciones que devuelven conjuntos (`unnest`, `generate_series`) en el FROM, con `WITH ORDINALITY` cuando importa la posición.",
+        "Pre-agregar el detalle con LATERAL para calcular totales sin inflarlos."
+      ],
+      "takeaways": [
+        "Una subconsulta normal del FROM se evalúa sola y no puede mirar a sus vecinas; con `LATERAL` se evalúa (conceptualmente) una vez por cada fila de lo que está a su izquierda y puede usar sus columnas.",
+        "`CROSS JOIN LATERAL (… LIMIT n)` = top-N por grupo; las filas de la izquierda sin resultados desaparecen. `LEFT JOIN LATERAL (…) ON true` las conserva con NULL.",
+        "Dentro del LATERAL, el `ORDER BY` necesita desempate (`precio DESC, id`) para que el top-N sea determinista.",
+        "Las funciones en el FROM (`unnest`, `generate_series`) pueden usar columnas anteriores aunque no escribas LATERAL; `WITH ORDINALITY` agrega la posición.",
+        "Un agregado sin GROUP BY dentro de un LATERAL siempre devuelve exactamente una fila: ideal para pre-agregar el detalle sin inflar sumas ni perder filas."
+      ],
+      "blocks": [
+        {
+          "type": "p",
+          "text": "Problema: «los 2 productos más caros **de cada** categoría». `ORDER BY precio DESC LIMIT 2` corta el resultado completo (saldrían 2 productos en total), y `DISTINCT ON` (sección 2) da solo **uno** por grupo. Lo que necesitas es repetir una consulta chica —«los 2 más caros de *esta* categoría»— para cada categoría. Esa consulta tendría que ir en el FROM y mirar el `id` de la categoría de al lado… y una subconsulta normal del FROM no puede hacerlo:"
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "errors": true,
+          "code": "SELECT c.nombre AS categoria, top.nombre AS producto, top.precio\nFROM categorias c,\n     (SELECT pr.nombre, pr.precio\n      FROM productos pr\n      WHERE pr.categoria_id = c.id\n      ORDER BY pr.precio DESC\n      LIMIT 2) AS top;\nSELECT c.nombre AS categoria, top.nombre AS producto, top.precio\nFROM categorias c\nCROSS JOIN LATERAL (\n  SELECT pr.nombre, pr.precio\n  FROM productos pr\n  WHERE pr.categoria_id = c.id\n  ORDER BY pr.precio DESC, pr.id\n  LIMIT 2\n) AS top\nWHERE c.id IN (2, 3, 11)\nORDER BY c.id, top.precio DESC;"
+        },
+        {
+          "type": "p",
+          "text": "El error lo explica todo: `There is an entry for table \"c\", but it cannot be referenced from this part of the query`, y el `HINT` da la solución: `you must mark this subquery with LATERAL`. Sin `LATERAL`, cada elemento del FROM se evalúa **independiente** de los demás. Con `LATERAL`, la subconsulta puede usar columnas de los elementos que están **a su izquierda**, y PostgreSQL la evalúa para cada fila de esos elementos: toma la categoría 2, corre la subconsulta con `c.id = 2`, une sus 2 filas con la categoría; toma la categoría 3… Es un «para cada» (un ciclo `for`) escrito en SQL."
+        },
+        {
+          "type": "diagram",
+          "title": "LATERAL: una subconsulta por cada fila de la izquierda",
+          "mermaid": "flowchart LR\n  C[\"categorias c<br/>una fila a la vez\"] -->|\"c.id = 2\"| S[\"Subconsulta LATERAL<br/>productos de la categoría c.id<br/>ORDER BY precio DESC, id<br/>LIMIT 2\"]\n  S -->|\"2 filas\"| J[\"Se unen con<br/>la fila de c\"]\n  J --> R[\"Computación · Notebook<br/>Computación · Monitor<br/>…y así con cada categoría\"]\n  C -.->|\"categoría sin productos:<br/>0 filas\"| X[\"CROSS JOIN LATERAL la descarta<br/>LEFT JOIN LATERAL la conserva con NULL\"]",
+          "caption": "La subconsulta ve las columnas de la fila actual de la izquierda. Lo que devuelve se une con esa fila como en cualquier join."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "**El top-N necesita desempate.** Si dos productos de una categoría costaran lo mismo en el segundo lugar, `ORDER BY pr.precio DESC LIMIT 2` elegiría cualquiera de los dos y el resultado podría cambiar entre ejecuciones. Agrega siempre una columna única al final del `ORDER BY` interno (`pr.precio DESC, pr.id`). Y si quieres incluir todos los empatados, cambia `LIMIT 2` por `FETCH FIRST 2 ROWS WITH TIES` (sección 2)."
+        },
+        {
+          "type": "h",
+          "text": "LEFT JOIN LATERAL … ON true: no perder a nadie"
+        },
+        {
+          "type": "p",
+          "text": "`CROSS JOIN LATERAL` se comporta como un INNER JOIN: si la subconsulta no devuelve filas para una fila de la izquierda, esa fila desaparece. Las 3 categorías padre (Tecnología, Hogar, Deportes) no tienen productos propios, así que con `CROSS JOIN LATERAL` no aparecerían aunque quitaras el filtro `WHERE c.id IN (…)`. Para conservarlas se usa `LEFT JOIN LATERAL (…) ON true`: el `ON true` está porque la sintaxis del LEFT JOIN exige una condición, y el filtro real ya va dentro de la subconsulta. Ejemplo: el último pedido de cada cliente, incluidos los que no tienen ninguno."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "\\pset null '(null)'\nSELECT c.id, c.nombre, u.id AS ultimo_pedido, u.fecha::date AS fecha, u.estado\nFROM clientes c\nLEFT JOIN LATERAL (\n  SELECT p.id, p.fecha, p.estado\n  FROM pedidos p\n  WHERE p.cliente_id = c.id\n  ORDER BY p.fecha DESC, p.id DESC\n  LIMIT 1\n) AS u ON true\nWHERE c.id BETWEEN 5 AND 9\nORDER BY c.id;\nSELECT count(*) AS con_cross\nFROM clientes c\nCROSS JOIN LATERAL (SELECT p.id FROM pedidos p WHERE p.cliente_id = c.id\n                    ORDER BY p.fecha DESC, p.id DESC LIMIT 1) AS u;\nSELECT count(*) AS con_left\nFROM clientes c\nLEFT JOIN LATERAL (SELECT p.id FROM pedidos p WHERE p.cliente_id = c.id\n                   ORDER BY p.fecha DESC, p.id DESC LIMIT 1) AS u ON true;"
+        },
+        {
+          "type": "p",
+          "text": "51 contra 60: la diferencia son, otra vez, los 9 clientes sin pedidos. Diego (7) aparece con NULL gracias al LEFT JOIN. La subconsulta LATERAL puede traer **varias columnas** del mismo pedido (id, fecha, estado), algo que una subconsulta escalar en el SELECT no puede hacer de una vez."
+        },
+        {
+          "type": "callout",
+          "variant": "warn",
+          "text": "LATERAL solo puede referirse a lo que está a su izquierda en un `CROSS JOIN`, `INNER JOIN` o `LEFT JOIN`. Con `RIGHT` o `FULL` falla: `ERROR:  invalid reference to FROM-clause entry for table \"c\"` con `DETAIL:  The combining JOIN type must be INNER or LEFT for a LATERAL reference.` Tiene lógica: en esos joins habría que producir filas del lado izquierdo que no existen."
+        },
+        {
+          "type": "h",
+          "text": "Pre-agregar con LATERAL: adiós a las sumas infladas"
+        },
+        {
+          "type": "p",
+          "text": "En la lección 3 el despacho se inflaba porque bajábamos al nivel de ítem y luego sumábamos datos del pedido. LATERAL permite lo contrario: **subir** el detalle al nivel del pedido antes de unirlo. Para cada pedido, una subconsulta suma sus ítems y devuelve una sola fila; así el resultado sigue teniendo una fila por pedido."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT p.id AS pedido, t.productos, p.costo_despacho,\n       t.productos + p.costo_despacho AS total\nFROM pedidos p\nCROSS JOIN LATERAL (\n  SELECT sum(i.cantidad * i.precio_unitario) AS productos\n  FROM pedido_items i\n  WHERE i.pedido_id = p.id\n) AS t\nWHERE p.id <= 3\nORDER BY p.id;\nSELECT sum(t.productos) AS productos, sum(p.costo_despacho) AS despacho\nFROM pedidos p\nCROSS JOIN LATERAL (\n  SELECT sum(i.cantidad * i.precio_unitario) AS productos\n  FROM pedido_items i\n  WHERE i.pedido_id = p.id\n) AS t;"
+        },
+        {
+          "type": "p",
+          "text": "Ahora el despacho total es el correcto ($1.087.650) y los productos suman $30.411.570, lo mismo que sumar `pedido_items` directamente. Detalle importante: un agregado **sin GROUP BY** siempre devuelve exactamente una fila (con `sum` NULL si no hubo ítems, sección 7). Por eso aquí `CROSS JOIN LATERAL` no puede perder pedidos: la subconsulta nunca devuelve 0 filas."
+        },
+        {
+          "type": "h",
+          "text": "Funciones que devuelven conjuntos en el FROM"
+        },
+        {
+          "type": "p",
+          "text": "Algunas funciones devuelven **varias filas**: `unnest(arreglo)` entrega un elemento por fila y `generate_series(inicio, fin, paso)` una fila por valor. En el FROM se comportan como tablas, y pueden usar columnas de las tablas anteriores **aunque no escribas LATERAL** (para funciones la palabra es opcional). `WITH ORDINALITY` agrega una columna `bigint` con la posición de cada fila, empezando en 1. Ejemplo chileno: separar los dos apellidos."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT c.id, c.apellido, a.apellido AS parte, a.n\nFROM clientes c\nCROSS JOIN LATERAL unnest(string_to_array(c.apellido, ' '))\n     WITH ORDINALITY AS a(apellido, n)\nWHERE c.id <= 2\nORDER BY c.id, a.n;\nSELECT a.apellido, count(*) AS personas\nFROM clientes c\nCROSS JOIN unnest(string_to_array(c.apellido, ' ')) AS a(apellido)\nGROUP BY a.apellido\nORDER BY personas DESC, a.apellido\nLIMIT 5;"
+        },
+        {
+          "type": "p",
+          "text": "En la primera consulta, `n = 1` es el apellido paterno y `n = 2` el materno. La segunda cuenta los apellidos más comunes contando paternos y maternos por igual; fíjate en que dice `CROSS JOIN unnest(…)` sin `LATERAL` y funciona igual. `generate_series` sirve para lo mismo que el CROSS JOIN de la lección 3: armar una grilla completa, por ejemplo todos los meses de un período, y rellenarla para que los meses sin ventas aparezcan con 0."
+        },
+        {
+          "type": "code",
+          "lang": "sql",
+          "run": true,
+          "dataset": "tienda",
+          "code": "SELECT m.mes::date AS mes, v.unidades\nFROM generate_series('2026-01-01'::date, '2026-06-01'::date, interval '1 month') AS m(mes)\nCROSS JOIN LATERAL (\n  SELECT coalesce(sum(i.cantidad), 0) AS unidades\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  JOIN productos pr   ON pr.id = i.producto_id\n  WHERE pr.categoria_id = 6\n    AND p.fecha >= m.mes\n    AND p.fecha <  m.mes + interval '1 month'\n) AS v\nORDER BY m.mes;"
+        },
+        {
+          "type": "p",
+          "text": "Unidades pedidas de la categoría Cocina por mes en 2026. Junio aparece con **0**: en junio no hubo ningún pedido de Cocina, y un `GROUP BY date_trunc('month', p.fecha)` sobre los pedidos simplemente no habría tenido fila para ese mes. `generate_series` con fechas e intervalo devuelve `timestamp with time zone` (medianoche en la zona de la sesión); por eso se convierte con `::date` para mostrarlo."
+        },
+        {
+          "type": "table",
+          "head": [
+            "Top-N por grupo con…",
+            "Cuántos por grupo",
+            "Grupos sin filas",
+            "Comentario"
+          ],
+          "rows": [
+            [
+              "`DISTINCT ON (grupo) … ORDER BY grupo, criterio`",
+              "Solo 1",
+              "Desaparecen (o NULL si partes de un LEFT JOIN)",
+              "Propio de PostgreSQL, muy compacto (sección 2)"
+            ],
+            [
+              "`CROSS JOIN LATERAL (… ORDER BY … LIMIT n)`",
+              "Los que quieras",
+              "Desaparecen",
+              "Aprovecha índices: puede leer solo n filas por grupo"
+            ],
+            [
+              "`LEFT JOIN LATERAL (…) ON true`",
+              "Los que quieras",
+              "Se conservan con NULL",
+              "El más completo"
+            ],
+            [
+              "`row_number() OVER (PARTITION BY …)`",
+              "Los que quieras",
+              "Según el join de partida",
+              "Funciones de ventana: sección 10"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "variant": "exam",
+          "text": "«¿Qué es LATERAL y para qué sirve?» Respuesta corta: permite que una subconsulta (o función) del FROM use columnas de los elementos anteriores del FROM, evaluándose para cada una de sus filas. Usos típicos: top-N por grupo, traer varias columnas de «la fila más reciente» de otra tabla y expandir arreglos con `unnest`. Complemento: se combina con CROSS JOIN / INNER JOIN / LEFT JOIN, nunca con RIGHT ni FULL."
+        },
+        {
+          "type": "callout",
+          "variant": "tip",
+          "text": "Rendimiento: un `LATERAL (… WHERE pr.categoria_id = c.id ORDER BY pr.precio DESC LIMIT 2)` vuela si existe un índice sobre `(categoria_id, precio DESC)`: PostgreSQL entra al índice en cada categoría, lee 2 entradas y sigue. Con millones de filas, eso es mucho más barato que ordenar la tabla completa. Lo verás en las secciones 14 y 15."
+        }
+      ]
+    }
+  ],
+  "exercises": [
+    {
+      "id": "s08-e1",
+      "title": "Cada producto con su categoría",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El catálogo web necesita mostrar, junto a cada producto, el **nombre** de su categoría y no el número `categoria_id`.",
+        "Devuelve los 49 productos con 3 columnas con **estos nombres exactos**: `sku`, `producto` (el nombre del producto) y `categoria` (el nombre de la categoría). Ordena por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT sku, nombre AS producto, categoria_id\nFROM productos\nORDER BY sku;",
+      "solution": "SELECT p.sku,\n       p.nombre AS producto,\n       c.nombre AS categoria\nFROM productos p\nJOIN categorias c ON c.id = p.categoria_id\nORDER BY p.sku;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "El nombre de la categoría vive en otra tabla: únela con `JOIN categorias c ON c.id = p.categoria_id`.",
+        "Las dos tablas tienen una columna `nombre`: califícalas (`p.nombre`, `c.nombre`) y ponle a cada una su alias con `AS`."
+      ],
+      "explain": "Es un join N-1: cada producto tiene exactamente una categoría (`categoria_id` es NOT NULL y clave foránea), así que el resultado tiene una fila por producto, 49. Si escribes `SELECT nombre …` sin calificar obtienes `column reference \"nombre\" is ambiguous`. Las 3 categorías padre sin productos propios (Tecnología, Hogar, Deportes) no aparecen, y está bien: la pregunta es por productos. Un `LEFT JOIN` daría aquí el mismo resultado, porque ningún producto queda sin categoría. Los `sku` son texto ASCII, así que la colación C los ordena igual que cualquier otra."
+    },
+    {
+      "id": "s08-e2",
+      "title": "La nómina completa, con departamento",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Personas quiere la nómina de los 55 empleados con el nombre de su departamento. El código de partida usa un JOIN y, misteriosamente, devuelve 54 filas.",
+        "Corrígelo para que aparezcan **todos** los empleados. Columnas con estos nombres: `id`, `nombre`, `apellido` y `departamento` (nombre del departamento; NULL si la persona no tiene uno). Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT e.id, e.nombre, e.apellido, d.nombre AS departamento\nFROM empleados e\nJOIN departamentos d ON d.id = e.departamento_id\nORDER BY e.id;",
+      "solution": "SELECT e.id, e.nombre, e.apellido, d.nombre AS departamento\nFROM empleados e\nLEFT JOIN departamentos d ON d.id = e.departamento_id\nORDER BY e.id;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Ejecuta el código de partida y busca qué `id` falta. Luego mira su `departamento_id`.",
+        "Al practicante (id 55) no se le ha asignado departamento: `departamento_id` es NULL y `NULL = d.id` nunca es verdadero, así que el INNER JOIN lo descarta.",
+        "Cambia `JOIN` por `LEFT JOIN`: conserva a todos los empleados aunque no tengan pareja en `departamentos`."
+      ],
+      "explain": "Un INNER JOIN pierde las filas cuya clave foránea es NULL, porque la condición `d.id = e.departamento_id` no es verdadera para ellas. `LEFT JOIN` las conserva con NULL en las columnas de `departamentos`. Equivalente: `FROM departamentos d RIGHT JOIN empleados e ON …` (mismas filas), aunque por convención se prefiere LEFT. Trampa relacionada: si después agregas `WHERE d.ciudad = 'Santiago'`, el practicante vuelve a desaparecer, porque su `d.ciudad` es NULL."
+    },
+    {
+      "id": "s08-e3",
+      "title": "El recorrido de la Línea 5",
+      "level": "facil",
+      "minutes": 6,
+      "mode": "query",
+      "dataset": "metro",
+      "prompt": [
+        "Para la pantalla de un tren de la Línea 5 necesitas las estaciones en el orden del recorrido.",
+        "Devuelve 3 columnas con estos nombres: `orden` (posición de la estación en la línea), `estacion` (nombre de la estación) y `comuna`, solo para la línea `'L5'`, ordenadas por `orden`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT orden, estacion_id\nFROM linea_estacion\nWHERE linea_id = 'L5'\nORDER BY orden;",
+      "solution": "SELECT le.orden, e.nombre AS estacion, e.comuna\nFROM linea_estacion le\nJOIN estaciones e ON e.id = le.estacion_id\nWHERE le.linea_id = 'L5'\nORDER BY le.orden;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "`linea_estacion` dice qué estación va en qué posición de cada línea; el nombre y la comuna están en `estaciones`.",
+        "Une con `JOIN estaciones e ON e.id = le.estacion_id` y deja el filtro `le.linea_id = 'L5'` en el WHERE."
+      ],
+      "explain": "`linea_estacion` es la tabla intermedia de la relación N-M entre líneas y estaciones (una estación de combinación, como Baquedano, está en dos líneas). Aquí solo necesitas un lado: filtras la línea y traes los datos de la estación. Salen 30 estaciones, de Plaza de Maipú a Vicente Valdés. `orden` es único dentro de cada línea (hay una restricción UNIQUE sobre `(linea_id, orden)`), así que el orden está totalmente determinado. Da lo mismo poner `le.linea_id = 'L5'` en el ON o en el WHERE porque es un INNER JOIN."
+    },
+    {
+      "id": "s08-e4",
+      "title": "Préstamos sin devolver",
+      "level": "facil",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "La biblioteca va a llamar a quienes tienen libros sin devolver. Un préstamo sin devolver tiene `fecha_devolucion` NULL.",
+        "Devuelve 4 columnas con estos nombres: `socio` (nombre del socio), `titulo` (del libro), `fecha_prestamo` y `fecha_limite`. Ordena por `fecha_prestamo` y, si hay empate, por el `id` del préstamo."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT socio_id, libro_id, fecha_prestamo, fecha_limite\nFROM prestamos\nWHERE fecha_devolucion IS NULL\nORDER BY fecha_prestamo, id;",
+      "solution": "SELECT s.nombre AS socio, l.titulo, p.fecha_prestamo, p.fecha_limite\nFROM prestamos p\nJOIN socios s ON s.id = p.socio_id\nJOIN libros l ON l.id = p.libro_id\nWHERE p.fecha_devolucion IS NULL\nORDER BY p.fecha_prestamo, p.id;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Parte de `prestamos` y agrega un JOIN por cada dato que te falta: `socios` para el nombre y `libros` para el título.",
+        "`JOIN socios s ON s.id = p.socio_id JOIN libros l ON l.id = p.libro_id`, y en el ORDER BY `p.fecha_prestamo, p.id`."
+      ],
+      "explain": "Son dos joins N-1 desde `prestamos`: cada préstamo tiene exactamente un socio y un libro, así que el resultado conserva una fila por préstamo sin devolver (22). Como `socio_id` y `libro_id` son NOT NULL y claves foráneas, INNER JOIN no pierde nada. El desempate por `p.id` importa: hay dos préstamos del 2026-06-22. Fíjate en que puedes ordenar por `p.id` aunque no lo muestres. Extensión natural: agregar `current_date - p.fecha_limite AS dias_atraso` para priorizar las llamadas."
+    },
+    {
+      "id": "s08-e5",
+      "title": "Pedidos por cliente, incluidos los ceros",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para segmentar clientes, marketing necesita cuántos pedidos tiene **cada uno de los 60 clientes**, incluidos los que nunca han comprado (con 0).",
+        "Columnas: `id`, `nombre`, `apellido` y `pedidos` (cantidad de pedidos del cliente, de cualquier estado). Ordena por `pedidos` de mayor a menor y, en caso de empate, por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.id, c.nombre, c.apellido\nFROM clientes c\nORDER BY c.id;",
+      "solution": "SELECT c.id, c.nombre, c.apellido, count(p.id) AS pedidos\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nGROUP BY c.id, c.nombre, c.apellido\nORDER BY pedidos DESC, c.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\b(left|right)\\s+(outer\\s+)?join\\b",
+          "msg": "Usa LEFT JOIN para conservar las filas sin pareja",
+          "name": "Usa LEFT JOIN"
+        }
+      ],
+      "hints": [
+        "Con `JOIN` los 9 clientes sin pedidos desaparecen: necesitas `LEFT JOIN pedidos p ON p.cliente_id = c.id`.",
+        "Agrupa por el cliente (`GROUP BY c.id, c.nombre, c.apellido`) y cuenta.",
+        "¿Te sale 1 para los clientes sin pedidos? Estás usando `count(*)`, que cuenta la fila completada con NULL. Usa `count(p.id)`."
+      ],
+      "explain": "El LEFT JOIN deja una fila por pedido (420) más una fila con NULL por cada cliente sin pedidos (9): 429 filas que el GROUP BY reduce a 60. La clave está en contar `p.id` (NULL en las filas completadas) y no `*`. Si usaste `JOIN`, obtienes 51 filas; si usaste `count(*)`, los 9 clientes aparecen con 1 pedido y el orden cambia. Como `c.id` es la clave primaria, bastaría `GROUP BY c.id` (dependencia funcional, sección 7). En la sección 9 verás otra forma: una subconsulta escalar `(SELECT count(*) FROM pedidos p WHERE p.cliente_id = c.id)` en el SELECT."
+    },
+    {
+      "id": "s08-e6",
+      "title": "Clientes que nunca han comprado",
+      "level": "medio",
+      "minutes": 8,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para una campaña de bienvenida con cupón de descuento, marketing necesita los clientes registrados que **no tienen ningún pedido**.",
+        "Resuélvelo con `NOT EXISTS`. Columnas: `id`, `nombre`, `apellido` y `email`. Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.id, c.nombre, c.apellido, c.email\nFROM clientes c\nORDER BY c.id;",
+      "solution": "SELECT c.id, c.nombre, c.apellido, c.email\nFROM clientes c\nWHERE NOT EXISTS (\n  SELECT 1\n  FROM pedidos p\n  WHERE p.cliente_id = c.id\n)\nORDER BY c.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bnot\\s+exists\\b",
+          "msg": "Resuélvelo con NOT EXISTS (anti-join)",
+          "name": "Usa NOT EXISTS"
+        }
+      ],
+      "hints": [
+        "Es un anti-join: «clientes para los que NO existe un pedido suyo».",
+        "`WHERE NOT EXISTS (SELECT 1 FROM pedidos p WHERE p.cliente_id = c.id)`: la subconsulta está correlacionada con el cliente de afuera."
+      ],
+      "explain": "Salen 9 clientes. `NOT EXISTS` es verdadero cuando la subconsulta no devuelve filas; el `SELECT 1` es convención (la lista del SELECT de un EXISTS no importa). Alternativas equivalentes aquí: `LEFT JOIN pedidos p ON p.cliente_id = c.id WHERE p.id IS NULL` y `WHERE c.id NOT IN (SELECT cliente_id FROM pedidos)`. Esta última funciona solo porque `pedidos.cliente_id` es NOT NULL: si la subconsulta pudiera traer un NULL, devolvería 0 filas. Error típico: olvidar la correlación (`WHERE NOT EXISTS (SELECT 1 FROM pedidos)`), que pregunta «¿no existe ningún pedido en toda la tabla?» y da 0 filas."
+    },
+    {
+      "id": "s08-e7",
+      "title": "Productos que nunca se han vendido",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Bodega quiere revisar los productos que **nunca han aparecido en un pedido** para decidir si liquidarlos.",
+        "Resuélvelo con la otra forma del anti-join: `LEFT JOIN … WHERE … IS NULL`. Columnas: `sku`, `producto` (nombre), `categoria` (nombre de la categoría) y `stock`. Ordena por `sku`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT p.sku, p.nombre AS producto, p.stock\nFROM productos p\nORDER BY p.sku;",
+      "solution": "SELECT p.sku, p.nombre AS producto, c.nombre AS categoria, p.stock\nFROM productos p\nJOIN categorias c        ON c.id = p.categoria_id\nLEFT JOIN pedido_items i ON i.producto_id = p.id\nWHERE i.producto_id IS NULL\nORDER BY p.sku;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bleft\\s+(outer\\s+)?join\\b",
+          "msg": "Usa LEFT JOIN pedido_items para conservar los productos sin ventas",
+          "name": "Usa LEFT JOIN"
+        },
+        {
+          "pattern": "\\bis\\s+null\\b",
+          "msg": "Quédate con las filas sin pareja preguntando IS NULL por una columna NOT NULL de pedido_items",
+          "name": "Usa IS NULL"
+        }
+      ],
+      "hints": [
+        "Une `productos` con `categorias` (INNER: todo producto tiene categoría) y con `pedido_items` usando LEFT JOIN.",
+        "Los productos sin ventas quedan con NULL en todas las columnas de `pedido_items`: filtra `WHERE i.producto_id IS NULL` (o `i.pedido_id IS NULL`).",
+        "Pregunta por una columna que no pueda ser NULL en los datos y pon el `IS NULL` en el WHERE, no en el ON: en el ON de un LEFT JOIN no descarta ningún producto."
+      ],
+      "explain": "Salen 3 productos: la funda para notebook, la olla a presión y el espejo redondo. El LEFT JOIN produce una fila por ítem vendido más una fila con NULL por cada producto sin ventas; el `WHERE i.producto_id IS NULL` se queda solo con estas últimas. Conviene probar una columna que no puede ser NULL en los datos (`producto_id` o `pedido_id`, que son la clave primaria del ítem). Equivalente con `NOT EXISTS (SELECT 1 FROM pedido_items i WHERE i.producto_id = p.id)`. Trampa: poner `AND i.producto_id IS NULL` en el ON en vez del WHERE devuelve los 49 productos, porque en un LEFT JOIN el ON nunca elimina filas de la izquierda."
+    },
+    {
+      "id": "s08-e8",
+      "title": "Cada empleado con su jefe",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Para el organigrama del intranet se necesita, para los 55 empleados, el nombre de su jefe directo.",
+        "Columnas con estos nombres: `empleado` (nombre y apellido separados por un espacio), `cargo` y `jefe` (nombre y apellido del jefe separados por un espacio; NULL para quien no tiene jefe). Ordena por el `id` del empleado."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT e.nombre || ' ' || e.apellido AS empleado, e.cargo, e.jefe_id\nFROM empleados e\nORDER BY e.id;",
+      "solution": "SELECT e.nombre || ' ' || e.apellido AS empleado,\n       e.cargo,\n       j.nombre || ' ' || j.apellido AS jefe\nFROM empleados e\nLEFT JOIN empleados j ON j.id = e.jefe_id\nORDER BY e.id;",
+      "ordered": true,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\bempleados\\b[\\s\\S]*\\bjoin\\s+empleados\\b",
+          "msg": "Une empleados consigo misma (self join) con dos alias",
+          "name": "Self join"
+        }
+      ],
+      "hints": [
+        "El jefe también es una fila de `empleados`: une la tabla consigo misma con dos alias, `e` (empleado) y `j` (jefe).",
+        "La condición es `j.id = e.jefe_id`: «la fila j es la del jefe de e».",
+        "Si te salen 54 filas, falta el gerente general: su `jefe_id` es NULL. Usa `LEFT JOIN`."
+      ],
+      "explain": "Es el self join clásico: la misma tabla en dos papeles. Con INNER JOIN el gerente general desaparece (54 filas); con LEFT JOIN aparece con `jefe` NULL, porque `j.nombre || ' ' || j.apellido` es NULL cuando `j` fue completado con NULL (concatenar con NULL da NULL). Si quisieras mostrar «(sin jefe)», usarías `coalesce(j.nombre || ' ' || j.apellido, '(sin jefe)')`. Error típico: escribir la condición al revés (`j.jefe_id = e.id`), que empareja a cada persona con sus subordinados y multiplica las filas."
+    },
+    {
+      "id": "s08-e9",
+      "title": "Quiénes compraron luces para bicicleta",
+      "level": "medio",
+      "minutes": 10,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Llegó un modelo nuevo de luces LED y quieren avisar a quienes compraron el modelo anterior, el producto de `sku` `'CIC-003'`.",
+        "Devuelve `id`, `nombre` y `apellido` de cada cliente que lo haya comprado **al menos una vez**, sin repetir clientes. Resuélvelo como semi-join, con `EXISTS` (o `IN` con subconsulta). Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.id, c.nombre, c.apellido\nFROM clientes c\nJOIN pedidos p      ON p.cliente_id = c.id\nJOIN pedido_items i ON i.pedido_id = p.id\nJOIN productos pr   ON pr.id = i.producto_id\nWHERE pr.sku = 'CIC-003'\nORDER BY c.id;",
+      "solution": "SELECT c.id, c.nombre, c.apellido\nFROM clientes c\nWHERE EXISTS (\n  SELECT 1\n  FROM pedidos p\n  JOIN pedido_items i ON i.pedido_id = p.id\n  JOIN productos pr   ON pr.id = i.producto_id\n  WHERE p.cliente_id = c.id\n    AND pr.sku = 'CIC-003'\n)\nORDER BY c.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bexists\\b|\\bin\\s*\\(\\s*select\\b",
+          "msg": "Resuélvelo como semi-join: EXISTS (o IN con subconsulta)",
+          "name": "Semi-join"
+        }
+      ],
+      "hints": [
+        "El código de partida devuelve 16 filas: hay clientes que compraron las luces en varios pedidos.",
+        "Deja `clientes` sola en el FROM y mueve los joins a una subconsulta: `WHERE EXISTS (SELECT 1 FROM pedidos p JOIN … WHERE p.cliente_id = c.id AND pr.sku = 'CIC-003')`.",
+        "Con IN: `WHERE c.id IN (SELECT p.cliente_id FROM pedidos p JOIN pedido_items i ON … JOIN productos pr ON … WHERE pr.sku = 'CIC-003')`."
+      ],
+      "explain": "10 clientes compraron las luces, en 16 líneas de pedido. El JOIN directo devuelve una fila por compra; el semi-join, una por cliente. `EXISTS` (correlacionado) e `IN` (no correlacionado) son equivalentes aquí y PostgreSQL puede ejecutar ambos como Semi Join. `SELECT DISTINCT c.id, c.nombre, c.apellido` con los joins también da el resultado correcto, pero multiplica y luego deduplica. Detalle: no importa el estado del pedido; si quisieras solo compras efectivas, agregarías `AND p.estado <> 'cancelado'` dentro de la subconsulta."
+    },
+    {
+      "id": "s08-e10",
+      "title": "Líneas que se cruzan",
+      "level": "medio",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "metro",
+      "prompt": [
+        "Para el mapa de combinaciones del metro necesitas cada **par de líneas** que comparten una estación, sin pares repetidos ni una línea emparejada consigo misma.",
+        "Columnas con estos nombres: `linea_a`, `linea_b` (con `linea_a` menor que `linea_b`, por ejemplo L1 y L5, nunca L5 y L1) y `estacion` (nombre de la estación compartida). Ordena por `linea_a`, `linea_b` y `estacion`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT linea_id, estacion_id\nFROM linea_estacion\nORDER BY estacion_id;",
+      "solution": "SELECT a.linea_id AS linea_a,\n       b.linea_id AS linea_b,\n       e.nombre   AS estacion\nFROM linea_estacion a\nJOIN linea_estacion b ON b.estacion_id = a.estacion_id\n                     AND a.linea_id < b.linea_id\nJOIN estaciones e     ON e.id = a.estacion_id\nORDER BY linea_a, linea_b, estacion;",
+      "ordered": true,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\blinea_estacion\\b[\\s\\S]*\\bjoin\\s+linea_estacion\\b",
+          "msg": "Une linea_estacion consigo misma (self join)",
+          "name": "Self join"
+        }
+      ],
+      "hints": [
+        "Dos filas de `linea_estacion` con el mismo `estacion_id` y distinta línea forman un par: une la tabla consigo misma con alias `a` y `b`.",
+        "Sin más condiciones, cada fila se empareja consigo misma (L1-L1) y cada par sale dos veces (L1-L5 y L5-L1). Exige `a.linea_id < b.linea_id`.",
+        "Agrega `JOIN estaciones e ON e.id = a.estacion_id` para el nombre."
+      ],
+      "explain": "Con solo `b.estacion_id = a.estacion_id` salen 130 filas: las 112 de cada fila consigo misma más 18 de pares en ambos sentidos. `a.linea_id <> b.linea_id` deja 18 (cada par dos veces); `a.linea_id < b.linea_id` deja las 9 combinaciones reales. Esta técnica (desigualdad estricta entre los dos alias) sirve para cualquier «pares sin repetir»: compañeros del mismo curso, productos comprados juntos, etc. El orden por nombre de estación solo desempata dentro de L1-L5 (Baquedano y San Pablo), sin tildes en la posición que decide, así que la colación C no influye."
+    },
+    {
+      "id": "s08-e11",
+      "title": "Quiénes no tienen a nadie a cargo",
+      "level": "dificil",
+      "minutes": 12,
+      "mode": "query",
+      "dataset": "rrhh",
+      "prompt": [
+        "Un colega escribió la consulta del código de partida para listar a los empleados que **no son jefes de nadie** (nadie tiene su `id` como `jefe_id`). Devuelve 0 filas, y es evidente que hay muchos.",
+        "Escribe la versión correcta con `NOT EXISTS` (o con `LEFT JOIN … IS NULL`). Columnas: `id`, `nombre`, `apellido` y `cargo`. Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT id, nombre, apellido, cargo\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados)\nORDER BY id;",
+      "solution": "SELECT e.id, e.nombre, e.apellido, e.cargo\nFROM empleados e\nWHERE NOT EXISTS (\n  SELECT 1\n  FROM empleados s\n  WHERE s.jefe_id = e.id\n)\nORDER BY e.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\bnot\\s+exists\\b|\\bleft\\s+(outer\\s+)?join\\b",
+          "msg": "Usa NOT EXISTS (o LEFT JOIN … IS NULL), que no sufren con los NULL",
+          "name": "Anti-join robusto"
+        }
+      ],
+      "hints": [
+        "Ejecuta `SELECT jefe_id FROM empleados WHERE jefe_id IS NULL;`. ¿Qué le hace ese valor a `id NOT IN (…)`?",
+        "`x NOT IN (1, 2, NULL)` es `x <> 1 AND x <> 2 AND x <> NULL`: nunca es verdadero.",
+        "`WHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id)`: «no existe un subordinado s cuyo jefe sea e»."
+      ],
+      "explain": "El gerente general tiene `jefe_id` NULL, así que la subconsulta del NOT IN contiene un NULL y la condición es NULL (no verdadera) para todos: 0 filas. `NOT EXISTS` da las 39 personas correctas porque no compara contra una lista; las filas con `jefe_id` NULL simplemente no cumplen `s.jefe_id = e.id`. Alternativas válidas: `LEFT JOIN empleados s ON s.jefe_id = e.id WHERE s.id IS NULL`, y también `NOT IN (SELECT jefe_id FROM empleados WHERE jefe_id IS NOT NULL)`, que funciona pero depende de acordarse del filtro cada vez. Por eso la regla profesional es: con subconsultas, `NOT EXISTS`, nunca `NOT IN`."
+    },
+    {
+      "id": "s08-e12",
+      "title": "Unidades vendidas en 2026 por categoría (las 13)",
+      "level": "dificil",
+      "minutes": 18,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Gerencia quiere un cuadro con **las 13 categorías**, incluidas las categorías padre que no tienen productos propios, y las unidades vendidas en 2026 de cada una.",
+        "Cuenta como vendidas las unidades (`pedido_items.cantidad`) de pedidos con `fecha` desde el `'2026-01-01'` (inclusive) cuyo `estado` sea distinto de `'cancelado'`. Una categoría sin ventas debe mostrar 0.",
+        "Columnas: `id` (de la categoría), `categoria` (nombre) y `unidades`. Ordena por `id`."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.id, c.nombre AS categoria\nFROM categorias c\nORDER BY c.id;",
+      "solution": "SELECT c.id,\n       c.nombre AS categoria,\n       coalesce(sum(i.cantidad), 0) AS unidades\nFROM categorias c\nLEFT JOIN productos p ON p.categoria_id = c.id\nLEFT JOIN (pedido_items i\n           JOIN pedidos pe ON pe.id = i.pedido_id\n                          AND pe.fecha >= '2026-01-01'\n                          AND pe.estado <> 'cancelado')\n       ON i.producto_id = p.id\nGROUP BY c.id, c.nombre\nORDER BY c.id;",
+      "ordered": true,
+      "hints": [
+        "Parte de `categorias` con LEFT JOIN hacia `productos`, `pedido_items` y `pedidos`. Si pones las condiciones de fecha y estado en el WHERE, ¿qué les pasa a Tecnología, Hogar y Deportes?",
+        "Si mueves las condiciones al ON de `LEFT JOIN pedidos`, las categorías vuelven, pero Libros aparece con 227 unidades en vez de 101: los ítems de 2025 siguen ahí, solo que con el pedido en NULL.",
+        "La condición debe filtrar los **ítems**, no solo los pedidos. Une primero ítems con pedidos, entre paréntesis, con las condiciones: `LEFT JOIN (pedido_items i JOIN pedidos pe ON pe.id = i.pedido_id AND …) ON i.producto_id = p.id`. Otra salida: `sum(i.cantidad) FILTER (WHERE pe.id IS NOT NULL)`."
+      ],
+      "explain": "Es la trampa de ON vs WHERE en su versión de varias tablas. (1) Con `WHERE pe.fecha >= … AND pe.estado <> 'cancelado'` salen 10 filas: el WHERE elimina las filas completadas con NULL y las 3 categorías padre desaparecen. (2) Con esas condiciones en el `ON` del `LEFT JOIN pedidos`, salen las 13 categorías pero con cifras infladas (Libros 227 en lugar de 101): el LEFT JOIN hacia `pedidos` nunca elimina ítems, solo pone NULL en las columnas del pedido cuando no cumple, y `sum(i.cantidad)` sigue sumando esos ítems. (3) Lo correcto es que la condición decida qué **ítems** cuentan: uniendo `(pedido_items JOIN pedidos … condiciones)` como bloque, un ítem de 2025 o de un pedido cancelado no forma parte del bloque y no llega a la suma. Alternativa equivalente sin paréntesis: dejar las condiciones en el ON de pedidos y sumar `sum(i.cantidad) FILTER (WHERE pe.id IS NOT NULL)`. Y el `coalesce(…, 0)` convierte en 0 la suma vacía (NULL) de las categorías sin ventas. Nota: `'2026-01-01'` se interpreta como la medianoche del 1 de enero en la zona horaria de la sesión (America/Santiago)."
+    },
+    {
+      "id": "s08-e13",
+      "title": "Los 2 productos más caros de cada categoría",
+      "level": "dificil",
+      "minutes": 14,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "Para la portada de cada sección de la tienda se destacan sus **2 productos más caros**. Si dos productos de una categoría costaran lo mismo, gana el de menor `id`.",
+        "Resuélvelo con `LATERAL`. Columnas: `categoria` (nombre), `producto` (nombre) y `precio`, solo para las categorías que tienen productos. Ordena por el `id` de la categoría y, dentro de cada categoría, por `precio` de mayor a menor (y por `id` del producto si hubiera empate)."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.nombre AS categoria, pr.nombre AS producto, pr.precio\nFROM categorias c\nJOIN productos pr ON pr.categoria_id = c.id\nORDER BY c.id, pr.precio DESC\nLIMIT 2;",
+      "solution": "SELECT c.nombre AS categoria, top.nombre AS producto, top.precio\nFROM categorias c\nCROSS JOIN LATERAL (\n  SELECT pr.id, pr.nombre, pr.precio\n  FROM productos pr\n  WHERE pr.categoria_id = c.id\n  ORDER BY pr.precio DESC, pr.id\n  LIMIT 2\n) AS top\nORDER BY c.id, top.precio DESC, top.id;",
+      "ordered": true,
+      "requires": [
+        {
+          "pattern": "\\blateral\\b",
+          "msg": "Resuélvelo con una subconsulta LATERAL",
+          "name": "Usa LATERAL"
+        }
+      ],
+      "hints": [
+        "El `LIMIT 2` del código de partida corta el resultado completo, no cada categoría. Necesitas un LIMIT **por categoría**.",
+        "Pon la búsqueda en una subconsulta del FROM que use `c.id`: `CROSS JOIN LATERAL (SELECT … FROM productos pr WHERE pr.categoria_id = c.id ORDER BY pr.precio DESC, pr.id LIMIT 2) AS top`.",
+        "Incluye `pr.id` en la subconsulta si quieres usarlo para ordenar afuera."
+      ],
+      "explain": "La subconsulta LATERAL se evalúa para cada categoría y devuelve sus 2 productos más caros; `CROSS JOIN` descarta las 3 categorías padre, que no tienen productos: 10 categorías × 2 = 20 filas. El desempate `pr.id` dentro del LATERAL hace que el top-2 sea determinista incluso con precios repetidos. Alternativas: `DISTINCT ON` solo da 1 por grupo; con funciones de ventana (sección 10) se escribe `row_number() OVER (PARTITION BY categoria_id ORDER BY precio DESC, id) <= 2`. Si quisieras que las categorías sin productos aparecieran con NULL, usarías `LEFT JOIN LATERAL (…) AS top ON true` (23 filas). Con un índice sobre `productos (categoria_id, precio DESC)`, la versión LATERAL lee solo 2 entradas por categoría."
+    },
+    {
+      "id": "s08-e14",
+      "title": "El último préstamo de cada libro",
+      "level": "dificil",
+      "minutes": 14,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "El catálogo en línea muestra, para cada libro, cuándo se prestó por última vez y a quién.",
+        "Para los **42 libros**, devuelve con estos nombres: `titulo`, `ultimo_prestamo` (la `fecha_prestamo` más reciente) y `socio` (nombre del socio de ese préstamo). Los libros nunca prestados aparecen con NULL en ambas columnas. Si un libro tuvo dos préstamos el mismo día, se considera último el de mayor `id` de préstamo.",
+        "Resuélvelo con `LATERAL` y ordena por el `id` del libro."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT l.titulo, max(p.fecha_prestamo) AS ultimo_prestamo\nFROM libros l\nJOIN prestamos p ON p.libro_id = l.id\nGROUP BY l.id, l.titulo\nORDER BY l.id;",
+      "solution": "SELECT l.titulo, u.fecha_prestamo AS ultimo_prestamo, u.socio\nFROM libros l\nLEFT JOIN LATERAL (\n  SELECT p.fecha_prestamo, s.nombre AS socio\n  FROM prestamos p\n  JOIN socios s ON s.id = p.socio_id\n  WHERE p.libro_id = l.id\n  ORDER BY p.fecha_prestamo DESC, p.id DESC\n  LIMIT 1\n) AS u ON true\nORDER BY l.id;",
+      "ordered": true,
+      "columns": true,
+      "requires": [
+        {
+          "pattern": "\\blateral\\b",
+          "msg": "Resuélvelo con LEFT JOIN LATERAL (…) ON true",
+          "name": "Usa LATERAL"
+        }
+      ],
+      "hints": [
+        "`max(fecha_prestamo)` te da la fecha, pero no el socio de ese préstamo. Necesitas la **fila completa** del préstamo más reciente.",
+        "Para cada libro: `LATERAL (SELECT … FROM prestamos p JOIN socios s … WHERE p.libro_id = l.id ORDER BY p.fecha_prestamo DESC, p.id DESC LIMIT 1)`.",
+        "Para no perder los 2 libros nunca prestados, usa `LEFT JOIN LATERAL (…) AS u ON true`."
+      ],
+      "explain": "El LATERAL trae, para cada libro, la fila de su préstamo más reciente junto con el nombre del socio (un join dentro de la subconsulta). `LEFT JOIN … ON true` conserva los libros sin préstamos (El obsceno pájaro de la noche y El laberinto de la soledad) con NULL; con `CROSS JOIN LATERAL` saldrían 40 filas. El desempate importa de verdad: «La reina Isabel cantaba rancheras» tuvo dos préstamos el 2026-04-25. Alternativa sin LATERAL: `SELECT DISTINCT ON (l.id) l.titulo, p.fecha_prestamo, s.nombre FROM libros l LEFT JOIN (prestamos p JOIN socios s ON s.id = p.socio_id) ON p.libro_id = l.id ORDER BY l.id, p.fecha_prestamo DESC, p.id DESC` (sección 2). Error típico: combinar `max(fecha_prestamo)` con `s.nombre` en un GROUP BY; eso no «engancha» el socio de la fecha máxima."
+    },
+    {
+      "id": "s08-e15",
+      "title": "Proyecto: ficha comercial de cada cliente",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "query",
+      "dataset": "tienda",
+      "prompt": [
+        "El equipo comercial va a cargar en su CRM una ficha por cliente. Considera **solo los pedidos no cancelados** (`estado <> 'cancelado'`).",
+        "Devuelve los **60 clientes** con estas columnas y nombres: `id`; `cliente` (nombre y apellido separados por un espacio); `pedidos` (cantidad de pedidos no cancelados); `total_pagado` (suma, sobre esos pedidos, de sus productos —`cantidad * precio_unitario`— más su `costo_despacho`; 0 si no tiene); y `ultimo_pedido` (fecha, como `date`, de su pedido no cancelado más reciente; NULL si no tiene).",
+        "Ordena por `total_pagado` de mayor a menor y, si hay empate, por `id`.",
+        "Cuidado: el despacho se cobra **una vez por pedido**, no una vez por producto."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT c.id, c.nombre || ' ' || c.apellido AS cliente\nFROM clientes c\nORDER BY c.id;",
+      "solution": "SELECT c.id,\n       c.nombre || ' ' || c.apellido AS cliente,\n       count(p.id) AS pedidos,\n       coalesce(sum(t.productos + p.costo_despacho), 0) AS total_pagado,\n       max(p.fecha)::date AS ultimo_pedido\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\n                   AND p.estado <> 'cancelado'\nLEFT JOIN LATERAL (\n  SELECT sum(i.cantidad * i.precio_unitario) AS productos\n  FROM pedido_items i\n  WHERE i.pedido_id = p.id\n) AS t ON true\nGROUP BY c.id, c.nombre, c.apellido\nORDER BY total_pagado DESC, c.id;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Empieza por `clientes c LEFT JOIN pedidos p ON p.cliente_id = c.id AND p.estado <> 'cancelado'`: la condición de estado va en el ON para no perder a nadie.",
+        "Si ahora unes `pedido_items` directamente, cada pedido se repite una vez por ítem: `count(p.id)` y la suma del despacho se inflan (la clienta 33 saldría con 50 pedidos en vez de 23).",
+        "Sube los ítems al nivel del pedido antes de unirlos: `LEFT JOIN LATERAL (SELECT sum(i.cantidad * i.precio_unitario) AS productos FROM pedido_items i WHERE i.pedido_id = p.id) AS t ON true`.",
+        "Para los clientes sin pedidos válidos, `sum(…)` es NULL: usa `coalesce(…, 0)`. `max(p.fecha)::date` da la fecha del último pedido."
+      ],
+      "explain": "La ficha mezcla dos granularidades: datos por pedido (cantidad, despacho, fecha) y datos por ítem (productos). Si bajas al nivel de ítem con un JOIN, todo lo que es «por pedido» se repite: `count(p.id)` cuenta ítems y el despacho se suma una vez por ítem (la clienta 33 saldría con $2.027.310 en lugar de $2.003.350). El LATERAL pre-agrega los ítems de cada pedido en una sola fila, así que el resultado sigue teniendo una fila por pedido y las sumas son correctas. Otros detalles: la condición `estado <> 'cancelado'` va en el ON (en el WHERE perderías a los clientes sin pedidos válidos, incluido Nicolás, el 24, que solo tiene pedidos cancelados); `count(p.id)` da 0 para esos clientes; y `coalesce` convierte en 0 la suma vacía. Alternativas: `count(DISTINCT p.id)` arregla el conteo, pero no la suma del despacho; con subconsultas o CTE (sección 9) también se puede pre-agregar. `max(p.fecha)::date` convierte el `timestamptz` a la fecha de Santiago."
+    },
+    {
+      "id": "s08-e16",
+      "title": "Proyecto: catálogo con autores y préstamos",
+      "level": "proyecto",
+      "minutes": 25,
+      "mode": "query",
+      "dataset": "biblioteca",
+      "prompt": [
+        "La biblioteca quiere publicar su catálogo con la popularidad de cada libro.",
+        "Para los **42 libros**, devuelve con estos nombres: `titulo`; `autores` (los nombres de sus autores en orden alfabético, separados por coma y espacio `', '`); `prestamos` (cantidad total de préstamos del libro, 0 si nunca se prestó); y `sin_devolver` (cuántos de esos préstamos tienen `fecha_devolucion` NULL).",
+        "Ordena por `prestamos` de mayor a menor y, si hay empate, por el `id` del libro.",
+        "Ojo con la antología de poesía chilena: tiene 5 autores y 6 préstamos."
+      ],
+      "starter": "-- Escribe tu consulta\nSELECT l.titulo\nFROM libros l\nORDER BY l.id;",
+      "solution": "SELECT l.titulo, au.autores, pr.prestamos, pr.sin_devolver\nFROM libros l\nCROSS JOIN LATERAL (\n  SELECT string_agg(a.nombre, ', ' ORDER BY a.nombre) AS autores\n  FROM libro_autor la\n  JOIN autores a ON a.id = la.autor_id\n  WHERE la.libro_id = l.id\n) AS au\nCROSS JOIN LATERAL (\n  SELECT count(*) AS prestamos,\n         count(*) FILTER (WHERE p.fecha_devolucion IS NULL) AS sin_devolver\n  FROM prestamos p\n  WHERE p.libro_id = l.id\n) AS pr\nORDER BY pr.prestamos DESC, l.id;",
+      "ordered": true,
+      "columns": true,
+      "hints": [
+        "Si unes `libro_autor` y `prestamos` a `libros` en la misma consulta, cada préstamo se combina con cada autor: la antología saldría con 30 préstamos (6 × 5) y con cada autor repetido 6 veces.",
+        "Calcula cada cosa por separado, a su propia granularidad: un LATERAL con `string_agg(a.nombre, ', ' ORDER BY a.nombre)` para los autores y otro con `count(*)` y `count(*) FILTER (WHERE …)` para los préstamos.",
+        "Un agregado sin GROUP BY siempre devuelve una fila, así que `CROSS JOIN LATERAL` no pierde los libros sin préstamos: su `count(*)` es 0."
+      ],
+      "explain": "Es el fan-out de dos relaciones «muchos» colgando de la misma tabla: libros → autores (N-M) y libros → préstamos (1-N). Unidas en un solo JOIN producen autores × préstamos filas por libro, así que cualquier conteo o lista se multiplica. La solución con dos LATERAL agrega cada relación por separado y une a `libros` una fila de cada una. Alternativa con un solo GROUP BY: `LEFT JOIN prestamos p …` y luego `string_agg(DISTINCT a.nombre, ', ' ORDER BY a.nombre)`, `count(DISTINCT p.id)` y `count(DISTINCT p.id) FILTER (WHERE p.fecha_devolucion IS NULL)`; funciona, pero primero multiplica las filas y luego las deduplica, y el DISTINCT dentro de `string_agg` exige que el ORDER BY use la misma expresión. Los dos libros sin préstamos cierran la lista con 0. La colación C no altera aquí el orden alfabético de los autores, porque las tildes no caen en la posición que decide."
+    }
+  ],
+  "labs": [],
+  "flashcards": [
+    {
+      "front": "`A INNER JOIN B ON cond`: ¿qué filas devuelve?",
+      "back": "Una fila por cada pareja (fila de A, fila de B) que cumple `cond`. Las filas de A o de B sin pareja desaparecen. `JOIN` a secas = `INNER JOIN`."
+    },
+    {
+      "front": "`A LEFT JOIN B ON cond`: ¿qué agrega respecto del INNER JOIN?",
+      "back": "Una fila por cada fila de A sin pareja, con NULL en todas las columnas de B. Nunca devuelve menos filas que A. `LEFT OUTER JOIN` es lo mismo."
+    },
+    {
+      "front": "`A RIGHT JOIN B` es equivalente a…",
+      "back": "`B LEFT JOIN A` (mismas filas; solo cambia el orden de las columnas con `SELECT *`). Por convención se escribe LEFT."
+    },
+    {
+      "front": "`FULL JOIN`: ¿qué conserva?",
+      "back": "Las parejas + las filas sin pareja de A (con NULL en B) + las filas sin pareja de B (con NULL en A). Útil para cuadrar dos listas; combina bien con `coalesce(a.clave, b.clave)`."
+    },
+    {
+      "front": "¿Cuántas filas tiene `A CROSS JOIN B`?",
+      "back": "|A| × |B|. Equivale a `A JOIN B ON true` y a `FROM A, B`. Ej.: 49 productos × 13 categorías = 637."
+    },
+    {
+      "front": "LEFT JOIN: condición sobre B en el `ON` vs en el `WHERE`",
+      "back": "En el ON restringe qué filas de B son pareja (A se conserva entera). En el WHERE elimina las filas completadas con NULL: el LEFT JOIN se vuelve INNER JOIN."
+    },
+    {
+      "front": "LEFT JOIN: ¿qué hace una condición sobre A (la izquierda) dentro del `ON`?",
+      "back": "No filtra A. Solo impide que esas filas tengan pareja: aparecen igual, con NULL en B. Para filtrar A, ponla en el WHERE."
+    },
+    {
+      "front": "Tras un LEFT JOIN, ¿`count(*)` o `count(b.id)`?",
+      "back": "`count(b.id)` (una columna NOT NULL de B). `count(*)` cuenta la fila completada con NULL como 1: un cliente sin pedidos saldría con 1."
+    },
+    {
+      "front": "¿Cómo saber si un NULL de B viene de «sin pareja» o de los datos?",
+      "back": "Pregunta por una columna de B que no puede ser NULL en los datos: su clave primaria o la columna del ON. Si es NULL, la puso el outer join."
+    },
+    {
+      "front": "Semi-join: qué es y cómo se escribe",
+      "back": "Filas de A con al menos una pareja en B, cada una una sola vez. `WHERE EXISTS (SELECT 1 FROM b WHERE b.a_id = a.id)` o `WHERE a.id IN (SELECT a_id FROM b)`."
+    },
+    {
+      "front": "Anti-join: dos formas seguras",
+      "back": "`WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.a_id = a.id)` y `LEFT JOIN b ON b.a_id = a.id WHERE b.id IS NULL` (probando una columna NOT NULL de B)."
+    },
+    {
+      "front": "¿Por qué `WHERE id NOT IN (SELECT jefe_id FROM empleados)` devuelve 0 filas?",
+      "back": "La subconsulta trae un NULL (el gerente general). `x NOT IN (…, NULL)` = `… AND x <> NULL`, que nunca es verdadero. Usa `NOT EXISTS` o filtra `jefe_id IS NOT NULL`."
+    },
+    {
+      "front": "`5 NOT IN (1, 2, NULL)` → ?   `5 IN (1, 5, NULL)` → ?",
+      "back": "NULL y true. IN necesita un solo verdadero; NOT IN necesita que todas las comparaciones `<>` sean verdaderas, y `5 <> NULL` es NULL."
+    },
+    {
+      "front": "¿Qué plan usa PostgreSQL para `NOT EXISTS` y para `NOT IN (subconsulta)`?",
+      "back": "NOT EXISTS → un nodo Anti Join (p. ej. `Hash Right Anti Join`). NOT IN → un Seq Scan con `Filter` sobre un `hashed SubPlan`: no puede convertirse en anti-join por la semántica de los NULL."
+    },
+    {
+      "front": "¿Importa qué pongas en el SELECT de un `EXISTS (SELECT …)`?",
+      "back": "No: EXISTS solo mira si hay al menos una fila. Por convención se escribe `SELECT 1`. EXISTS devuelve siempre true o false, nunca NULL."
+    },
+    {
+      "front": "Self join: ¿por qué los alias son obligatorios?",
+      "back": "Porque la misma tabla aparece dos veces en dos papeles (empleado `e`, jefe `j`). Sin alias: `ERROR:  table name \"empleados\" specified more than once`."
+    },
+    {
+      "front": "Self join del organigrama: ¿JOIN o LEFT JOIN hacia el jefe?",
+      "back": "LEFT JOIN: el gerente general tiene `jefe_id` NULL y con INNER JOIN desaparece (54 filas en vez de 55)."
+    },
+    {
+      "front": "Pares sin repetir con un self join (líneas del metro que se cruzan)",
+      "back": "`JOIN linea_estacion b ON b.estacion_id = a.estacion_id AND a.linea_id < b.linea_id`. Con `<>` cada par sale dos veces (18); con `<`, una (9)."
+    },
+    {
+      "front": "Fan-out: ¿qué es?",
+      "back": "Al unir con el lado «muchos», cada fila del lado «uno» se repite por cada hijo. Sumar una columna del lado «uno» (como `costo_despacho`) después del JOIN la multiplica."
+    },
+    {
+      "front": "¿Arregla `sum(DISTINCT p.costo_despacho)` una suma inflada por fan-out?",
+      "back": "No: junta los despachos de pedidos distintos que valen lo mismo. `count(DISTINCT p.id)` sí arregla un conteo. Para sumas, pre-agrega a la granularidad correcta (LATERAL, subconsulta)."
+    },
+    {
+      "front": "`clientes LEFT JOIN pedidos … JOIN pedido_items ON i.pedido_id = p.id`: ¿qué pasa con los clientes sin pedidos?",
+      "back": "Se pierden: el INNER JOIN siguiente exige `i.pedido_id = p.id` y `p.id` es NULL. Sigue con LEFT JOIN o une `(pedidos JOIN pedido_items)` entre paréntesis."
+    },
+    {
+      "front": "¿En qué orden se arman varios JOIN sin paréntesis?",
+      "back": "De izquierda a derecha. Los paréntesis cambian el orden: `A LEFT JOIN (B JOIN C ON …) ON …` arma B⋈C primero."
+    },
+    {
+      "front": "`JOIN … USING (col)`: ¿qué hace y qué columnas deja?",
+      "back": "Compara `a.col = b.col` (mismo nombre en ambas tablas). Con `SELECT *` deja `col` una vez y primero, luego el resto de A y el resto de B."
+    },
+    {
+      "front": "¿Por qué NATURAL JOIN es peligroso?",
+      "back": "Compara todas las columnas de igual nombre, sin que las veas. `clientes NATURAL JOIN pedidos` une por `id` (cliente 1 con pedido 1). Si alguien agrega una columna homónima, la consulta cambia en silencio."
+    },
+    {
+      "front": "NATURAL JOIN entre tablas sin columnas en común",
+      "back": "Se comporta como `CROSS JOIN` (producto cartesiano)."
+    },
+    {
+      "front": "`ERROR:  column reference \"id\" is ambiguous`",
+      "back": "La columna existe en más de una tabla del FROM. Califícala: `p.id` o `c.id`."
+    },
+    {
+      "front": "`invalid reference to FROM-clause entry for table \"categorias\"` con `HINT:  Perhaps you meant to reference the table alias \"c\".`",
+      "back": "Le pusiste alias a la tabla (`categorias c`): desde ahí solo existe `c`."
+    },
+    {
+      "front": "`LATERAL`: definición en una línea",
+      "back": "Permite que una subconsulta del FROM use columnas de los elementos anteriores del FROM; se evalúa para cada fila de ellos. Sin LATERAL: `HINT:  To reference that table, you must mark this subquery with LATERAL.`"
+    },
+    {
+      "front": "Top-N por grupo con LATERAL (plantilla)",
+      "back": "`FROM grupos g CROSS JOIN LATERAL (SELECT … FROM hijos h WHERE h.g_id = g.id ORDER BY criterio DESC, h.id LIMIT n) AS t`. Siempre con desempate."
+    },
+    {
+      "front": "¿Por qué `LEFT JOIN LATERAL (…) AS t ON true`?",
+      "back": "LEFT conserva las filas de la izquierda para las que la subconsulta no devuelve nada; `ON true` porque la sintaxis del LEFT JOIN exige condición y el filtro ya está adentro."
+    },
+    {
+      "front": "¿Con qué tipos de join se puede usar una referencia LATERAL?",
+      "back": "CROSS, INNER y LEFT. Con RIGHT o FULL: `DETAIL:  The combining JOIN type must be INNER or LEFT for a LATERAL reference.`"
+    },
+    {
+      "front": "Funciones en el FROM (`unnest`, `generate_series`) y `WITH ORDINALITY`",
+      "back": "Pueden usar columnas anteriores sin escribir LATERAL (es opcional para funciones). `WITH ORDINALITY` agrega una columna bigint con la posición, desde 1."
+    },
+    {
+      "front": "`FULL JOIN … ON a.x < b.y`",
+      "back": "Error: `FULL JOIN is only supported with merge-joinable or hash-joinable join conditions`. FULL JOIN requiere, en la práctica, igualdades."
+    },
+    {
+      "front": "`FROM a, b JOIN c ON c.x = a.x`: ¿por qué falla?",
+      "back": "JOIN se une con más fuerza que la coma: el ON solo ve a `b` y `c`. Error: `invalid reference to FROM-clause entry for table \"a\"`. Usa JOIN explícitos en todo el FROM."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "s08-q1",
+      "type": "single",
+      "q": "Tienda Andes tiene 49 productos y 13 categorías. ¿Cuántas filas devuelve esta consulta?\n\n```sql\nSELECT count(*) FROM productos, categorias;\n```",
+      "options": [
+        "49",
+        "13",
+        "62",
+        "637"
+      ],
+      "answer": [
+        3
+      ],
+      "explain": "Sin condición, la coma produce el producto cartesiano: cada producto con cada categoría, 49 × 13 = 637. Es el error típico de olvidar la condición en la sintaxis antigua; con `JOIN … ON` es imposible olvidarla (JOIN sin ON es un error de sintaxis)."
+    },
+    {
+      "id": "s08-q2",
+      "type": "single",
+      "q": "Hay 60 clientes y 420 pedidos; `pedidos.cliente_id` es NOT NULL y clave foránea, y 9 clientes no tienen pedidos. ¿Cuántas filas devuelve?\n\n```sql\nSELECT count(*)\nFROM clientes c\nJOIN pedidos p ON p.cliente_id = c.id;\n```",
+      "options": [
+        "60",
+        "51",
+        "420",
+        "429"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Cada pedido tiene exactamente un cliente, así que hay una fila por pedido: 420. Los 9 clientes sin pedidos no aparecen, y los demás se repiten tantas veces como pedidos tengan (en total aparecen 51 clientes distintos)."
+    },
+    {
+      "id": "s08-q3",
+      "type": "single",
+      "q": "Con los mismos datos (60 clientes, 420 pedidos, 9 clientes sin pedidos), ¿cuántas filas devuelve?\n\n```sql\nSELECT count(*)\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id;\n```",
+      "options": [
+        "60",
+        "420",
+        "429",
+        "480"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "El LEFT JOIN es el INNER JOIN (420 filas) más una fila con NULL por cada cliente sin pareja (9): 429."
+    },
+    {
+      "id": "s08-q4",
+      "type": "single",
+      "q": "Hay 24 pedidos cancelados que pertenecen a 20 clientes distintos (de 60). ¿Cuántas filas devuelve?\n\n```sql\nSELECT count(*)\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\n                   AND p.estado = 'cancelado';\n```",
+      "options": [
+        "24",
+        "60",
+        "64",
+        "84"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Los 20 clientes con cancelaciones aportan 24 filas (una por pedido cancelado) y los otros 40 clientes aparecen una vez cada uno con NULL: 24 + 40 = 64. La condición en el ON solo restringe qué pedidos cuentan como pareja; no elimina clientes."
+    },
+    {
+      "id": "s08-q5",
+      "type": "single",
+      "q": "Misma situación que la pregunta anterior, pero con la condición en el WHERE:\n\n```sql\nSELECT count(*)\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE p.estado = 'cancelado';\n```\n\n¿Cuántas filas devuelve?",
+      "options": [
+        "24",
+        "20",
+        "60",
+        "64"
+      ],
+      "answer": [
+        0
+      ],
+      "explain": "El WHERE se aplica después del join y descarta toda fila cuyo `p.estado` no sea 'cancelado', incluidas las completadas con NULL. Quedan solo los 24 pedidos cancelados: el LEFT JOIN se comportó como un INNER JOIN (PostgreSQL incluso lo ejecuta como tal)."
+    },
+    {
+      "id": "s08-q6",
+      "type": "single",
+      "q": "Diego (id 7) no tiene pedidos. ¿Qué muestran las dos columnas para él?\n\n```sql\nSELECT c.id, count(*) AS a, count(p.id) AS b\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nWHERE c.id = 7\nGROUP BY c.id;\n```",
+      "options": [
+        "a = 0, b = 0",
+        "a = 1, b = 0",
+        "a = 1, b = 1",
+        "a = 0, b = NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El LEFT JOIN crea una fila para Diego con NULL en las columnas de pedidos. `count(*)` cuenta filas (1); `count(p.id)` cuenta valores no NULL de `p.id` (0). Para contar hijos incluyendo el cero, cuenta una columna NOT NULL de la tabla de la derecha."
+    },
+    {
+      "id": "s08-q7",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas devuelven correctamente los clientes sin ningún pedido? (`pedidos.cliente_id` es NOT NULL; los pedidos pendientes tienen `metodo_pago` NULL).",
+      "options": [
+        "`SELECT c.id FROM clientes c WHERE NOT EXISTS (SELECT 1 FROM pedidos p WHERE p.cliente_id = c.id);`",
+        "`SELECT c.id FROM clientes c LEFT JOIN pedidos p ON p.cliente_id = c.id WHERE p.id IS NULL;`",
+        "`SELECT c.id FROM clientes c LEFT JOIN pedidos p ON p.cliente_id = c.id WHERE p.metodo_pago IS NULL;`",
+        "`SELECT c.id FROM clientes c WHERE c.id NOT IN (SELECT cliente_id FROM pedidos);`",
+        "`SELECT c.id FROM clientes c JOIN pedidos p ON p.cliente_id = c.id WHERE p.id IS NULL;`"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ],
+      "explain": "NOT EXISTS y el LEFT JOIN que prueba la clave primaria `p.id` son anti-joins correctos. NOT IN funciona aquí porque `cliente_id` es NOT NULL (no hay NULL que lo arruine). Probar `metodo_pago IS NULL` cuela a los clientes con pedidos pendientes (12 filas en vez de 9). Y un INNER JOIN nunca produce `p.id` NULL: devuelve 0 filas."
+    },
+    {
+      "id": "s08-q8",
+      "type": "single",
+      "q": "En rrhh, el gerente general tiene `jefe_id` NULL. ¿Qué devuelve esta consulta?\n\n```sql\nSELECT count(*)\nFROM empleados\nWHERE id NOT IN (SELECT jefe_id FROM empleados);\n```",
+      "options": [
+        "39: los empleados que no son jefes",
+        "16: los jefes",
+        "0",
+        "Un error, porque la subconsulta contiene NULL"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "La subconsulta incluye un NULL. `id NOT IN (…, NULL)` equivale a `… AND id <> NULL`, que es NULL para todo `id`: ninguna fila pasa el WHERE. Con `NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id)` salen las 39 personas correctas. No hay error ni advertencia: por eso la trampa es tan peligrosa."
+    },
+    {
+      "id": "s08-q9",
+      "type": "single",
+      "q": "¿Qué devuelve `SELECT 5 NOT IN (1, 2, NULL);`?",
+      "options": [
+        "true",
+        "false",
+        "NULL",
+        "Un error de tipos"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Se expande a `5 <> 1 AND 5 <> 2 AND 5 <> NULL` → `true AND true AND NULL` → NULL. En un WHERE, NULL equivale a descartar la fila."
+    },
+    {
+      "id": "s08-q10",
+      "type": "yesno",
+      "q": "Sobre IN, NOT IN y EXISTS, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`NOT EXISTS` da el resultado correcto aunque la columna comparada en la subconsulta tenga NULL.",
+          "answer": true
+        },
+        {
+          "text": "`5 IN (1, 5, NULL)` es verdadero.",
+          "answer": true
+        },
+        {
+          "text": "`x NOT IN (subconsulta)` es verdadero si la subconsulta no devuelve filas.",
+          "answer": true
+        },
+        {
+          "text": "`EXISTS (SELECT NULL)` devuelve NULL.",
+          "answer": false
+        },
+        {
+          "text": "Agregar `WHERE jefe_id IS NOT NULL` dentro de la subconsulta arregla el `NOT IN` del organigrama.",
+          "answer": true
+        }
+      ],
+      "explain": "NOT EXISTS pregunta si existe una fila que cumpla la condición; las filas con NULL simplemente no la cumplen. IN solo necesita un verdadero. NOT IN contra un conjunto vacío es verdadero. EXISTS solo mira si hay filas, no su contenido: `SELECT NULL` devuelve una fila, así que es true (EXISTS nunca es NULL). Quitar los NULL de la subconsulta arregla el NOT IN, pero hay que acordarse cada vez."
+    },
+    {
+      "id": "s08-q11",
+      "type": "single",
+      "q": "`clientes` y `pedidos` solo tienen en común la columna `id`. ¿Qué hace esta consulta?\n\n```sql\nSELECT count(*) FROM clientes NATURAL JOIN pedidos;\n```",
+      "options": [
+        "Une cada pedido con su cliente por `cliente_id`: 420 filas",
+        "Da error porque no hay columnas en común",
+        "Une `clientes.id = pedidos.id`: el cliente 1 con el pedido 1, etc. (60 filas sin sentido)",
+        "Hace un producto cartesiano: 25.200 filas"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "NATURAL JOIN arma un USING con todas las columnas de igual nombre: aquí solo `id`. Empareja el cliente 1 con el pedido 1 (que es del cliente 26), sin error. Si no hubiera ninguna columna en común, sí sería un producto cartesiano."
+    },
+    {
+      "id": "s08-q12",
+      "type": "single",
+      "q": "¿Por qué `SELECT count(*) FROM productos NATURAL JOIN categorias;` devuelve 0?",
+      "options": [
+        "Porque NATURAL JOIN solo funciona con claves foráneas declaradas",
+        "Porque compara `id` y `nombre` (las dos columnas comunes): exige que un producto tenga el mismo id y el mismo nombre que su categoría",
+        "Porque las tablas no tienen columnas en común",
+        "Porque falta la palabra INNER"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Ambas tablas tienen `id` y `nombre`. NATURAL JOIN los compara todos a la vez y ninguna fila cumple. Ni siquiera mira `categoria_id`: NATURAL no sabe nada de claves foráneas, solo de nombres de columna."
+    },
+    {
+      "id": "s08-q13",
+      "type": "single",
+      "q": "¿Qué error produce esta consulta y cómo se arregla?\n\n```sql\nSELECT id, nombre\nFROM productos\nJOIN categorias ON categorias.id = productos.categoria_id;\n```",
+      "options": [
+        "`syntax error`: falta `INNER`",
+        "`column reference \"id\" is ambiguous`: hay que calificar las columnas (`productos.id`, `productos.nombre`…)",
+        "`relation \"categorias\" does not exist`",
+        "Ninguno: PostgreSQL toma `id` de la primera tabla"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "`id` (y también `nombre`) existe en ambas tablas, y PostgreSQL no adivina. Califícalas con el nombre de la tabla o su alias."
+    },
+    {
+      "id": "s08-q14",
+      "type": "single",
+      "q": "¿Qué pasa con esta consulta?\n\n```sql\nSELECT pr.nombre\nFROM productos pr\nJOIN categorias c ON categorias.id = pr.categoria_id;\n```",
+      "options": [
+        "Funciona: el nombre de la tabla sigue disponible junto al alias",
+        "Falla con `invalid reference to FROM-clause entry for table \"categorias\"` y un HINT que sugiere usar el alias `c`",
+        "Falla con `column reference \"id\" is ambiguous`",
+        "Devuelve un producto cartesiano"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Al escribir `categorias c`, dentro de la consulta la tabla se llama solo `c`. PostgreSQL lo detecta y sugiere: `HINT:  Perhaps you meant to reference the table alias \"c\".`"
+    },
+    {
+      "id": "s08-q15",
+      "type": "single",
+      "q": "En rrhh, el practicante tiene `departamento_id` NULL. Quieres listar a los 55 empleados con el nombre de su departamento. ¿Qué FROM usas?",
+      "options": [
+        "`FROM empleados e JOIN departamentos d ON d.id = e.departamento_id`",
+        "`FROM empleados e LEFT JOIN departamentos d ON d.id = e.departamento_id`",
+        "`FROM empleados e, departamentos d`",
+        "`FROM departamentos d LEFT JOIN empleados e ON e.departamento_id = d.id`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La tabla que quieres conservar entera (empleados) va a la izquierda de un LEFT JOIN. El INNER JOIN pierde al practicante (NULL = d.id nunca es verdadero). La última opción conserva todos los departamentos, no todos los empleados: el practicante no aparecería."
+    },
+    {
+      "id": "s08-q16",
+      "type": "single",
+      "q": "En rrhh hay 55 empleados (uno sin departamento) y 6 departamentos, todos con empleados. Si se agrega un departamento Legal sin empleados, ¿cuántas filas devuelve `empleados FULL JOIN departamentos ON d.id = e.departamento_id`?",
+      "options": [
+        "54",
+        "55",
+        "56",
+        "61"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "54 parejas + el practicante sin departamento + Legal sin empleados = 56. El LEFT daría 55 (con el practicante) y el RIGHT 55 (con Legal)."
+    },
+    {
+      "id": "s08-q17",
+      "type": "multi",
+      "q": "¿Cuáles de estas consultas devuelven las mismas filas que `SELECT … FROM productos pr JOIN categorias c ON c.id = pr.categoria_id`?",
+      "options": [
+        "`… FROM productos pr INNER JOIN categorias c ON c.id = pr.categoria_id`",
+        "`… FROM productos pr, categorias c WHERE c.id = pr.categoria_id`",
+        "`… FROM productos pr CROSS JOIN categorias c WHERE c.id = pr.categoria_id`",
+        "`… FROM productos pr JOIN categorias c ON true`",
+        "`… FROM productos pr NATURAL JOIN categorias c`"
+      ],
+      "answer": [
+        0,
+        1,
+        2
+      ],
+      "explain": "`JOIN` es `INNER JOIN`; la coma y el CROSS JOIN con la condición en el WHERE dan el mismo INNER JOIN (en un inner join, ON y WHERE son intercambiables). `ON true` es el producto cartesiano (637 filas) y el NATURAL JOIN compara `id` y `nombre` (0 filas)."
+    },
+    {
+      "id": "s08-q18",
+      "type": "single",
+      "q": "Los pedidos registran $1.087.650 en despachos. ¿Por qué esta consulta da $1.558.650?\n\n```sql\nSELECT sum(p.costo_despacho)\nFROM pedidos p\nJOIN pedido_items i ON i.pedido_id = p.id;\n```",
+      "options": [
+        "Porque `sum` cuenta dos veces los NULL",
+        "Porque el JOIN deja una fila por ítem y el despacho de cada pedido se suma una vez por cada uno de sus ítems",
+        "Porque faltan los pedidos sin ítems",
+        "Porque la columna es integer y hay desbordamiento"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Es el fan-out: tras unir con el detalle, la granularidad es «ítem», y cada dato del pedido se repite en cada ítem. Suma cada medida a su granularidad: el despacho desde `pedidos`, los productos desde `pedido_items` (o pre-agrega con LATERAL)."
+    },
+    {
+      "id": "s08-q19",
+      "type": "single",
+      "q": "Para arreglar la suma inflada del despacho, alguien propone `sum(DISTINCT p.costo_despacho)`. ¿Qué pasa?",
+      "options": [
+        "Funciona: suma cada pedido una vez",
+        "Falla con un error de sintaxis",
+        "Da un número demasiado chico: junta los despachos de pedidos distintos que cuestan lo mismo (todos los de $3.990 cuentan una sola vez)",
+        "Da lo mismo que sin DISTINCT"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "DISTINCT actúa sobre los **valores**, no sobre los pedidos. Hay muchos pedidos con el mismo costo de despacho, así que se suma cada monto distinto una sola vez. `count(DISTINCT p.id)` sí arregla un conteo de pedidos, porque ahí el valor identifica al pedido."
+    },
+    {
+      "id": "s08-q20",
+      "type": "single",
+      "q": "9 de los 60 clientes no tienen pedidos. ¿Cuántos clientes distintos aparecen aquí?\n\n```sql\nSELECT count(DISTINCT c.id)\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\nJOIN pedido_items i ON i.pedido_id = p.id;\n```",
+      "options": [
+        "60",
+        "51",
+        "9",
+        "0"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El LEFT JOIN rescata a los 9 clientes con `p.id` NULL, pero el INNER JOIN siguiente exige `i.pedido_id = p.id` y los descarta. Solución: `LEFT JOIN pedido_items` también, o `LEFT JOIN (pedidos p JOIN pedido_items i ON …) ON p.cliente_id = c.id`."
+    },
+    {
+      "id": "s08-q21",
+      "type": "single",
+      "q": "¿Qué ocurre con `SELECT * FROM empleados JOIN empleados ON empleados.id = empleados.jefe_id;`?",
+      "options": [
+        "Funciona como un self join",
+        "`ERROR:  table name \"empleados\" specified more than once`",
+        "Devuelve un producto cartesiano",
+        "Devuelve solo al gerente general"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Para usar la misma tabla dos veces hay que darle un alias distinto a cada aparición: `FROM empleados e JOIN empleados j ON j.id = e.jefe_id`."
+    },
+    {
+      "id": "s08-q22",
+      "type": "single",
+      "q": "rrhh tiene 55 empleados y solo el gerente general no tiene jefe. ¿Cuántas filas devuelve?\n\n```sql\nSELECT count(*)\nFROM empleados e\nJOIN empleados j ON j.id = e.jefe_id;\n```",
+      "options": [
+        "55",
+        "54",
+        "16",
+        "3025"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Cada empleado con jefe tiene exactamente una pareja (su jefe); el gerente general (`jefe_id` NULL) no tiene y el INNER JOIN lo descarta. Con LEFT JOIN serían 55."
+    },
+    {
+      "id": "s08-q23",
+      "type": "single",
+      "q": "`linea_estacion` tiene 112 filas y 9 estaciones de combinación (cada una en 2 líneas). ¿Cuántas filas devuelve?\n\n```sql\nSELECT count(*)\nFROM linea_estacion a\nJOIN linea_estacion b ON b.estacion_id = a.estacion_id\n                     AND a.linea_id <> b.linea_id;\n```",
+      "options": [
+        "9",
+        "18",
+        "112",
+        "130"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Cada estación de combinación produce el par en los dos sentidos (L1-L5 y L5-L1): 9 × 2 = 18. Con `a.linea_id < b.linea_id` quedarían 9; sin la condición sobre la línea, 130 (112 de cada fila consigo misma + 18)."
+    },
+    {
+      "id": "s08-q24",
+      "type": "single",
+      "q": "Esta consulta falla con `invalid reference to FROM-clause entry for table \"c\"`. ¿Cómo se arregla?\n\n```sql\nSELECT c.nombre, t.nombre\nFROM categorias c,\n     (SELECT nombre FROM productos\n      WHERE categoria_id = c.id\n      ORDER BY precio DESC LIMIT 2) AS t;\n```",
+      "options": [
+        "Cambiando la coma por `NATURAL JOIN`",
+        "Anteponiendo `LATERAL` a la subconsulta",
+        "Moviendo el `ORDER BY` fuera de la subconsulta",
+        "Poniendo la subconsulta en el WHERE"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Sin LATERAL, cada elemento del FROM se evalúa por separado y no puede ver `c`. El propio HINT lo dice: `To reference that table, you must mark this subquery with LATERAL.`"
+    },
+    {
+      "id": "s08-q25",
+      "type": "single",
+      "q": "Hay 13 categorías; 10 tienen productos (todas con al menos 4) y 3 no tienen. ¿Cuántas filas devuelve?\n\n```sql\nSELECT c.nombre, t.nombre\nFROM categorias c\nLEFT JOIN LATERAL (\n  SELECT pr.nombre FROM productos pr\n  WHERE pr.categoria_id = c.id\n  ORDER BY pr.precio DESC, pr.id LIMIT 2\n) AS t ON true;\n```",
+      "options": [
+        "20",
+        "23",
+        "26",
+        "49"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Las 10 categorías con productos aportan 2 filas cada una (20) y las 3 sin productos aparecen una vez con NULL gracias al LEFT JOIN: 23. Con `CROSS JOIN LATERAL` serían 20."
+    },
+    {
+      "id": "s08-q26",
+      "type": "single",
+      "q": "¿Qué pasa con `FROM libros l LEFT JOIN LATERAL (SELECT …) AS u` sin nada más?",
+      "options": [
+        "Funciona: el ON es opcional con LATERAL",
+        "Es un error de sintaxis: el LEFT JOIN exige una condición, por eso se escribe `ON true`",
+        "Se convierte en CROSS JOIN",
+        "Se ignora el LEFT"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "LEFT JOIN siempre necesita `ON` (o `USING`). Como el filtro ya va dentro de la subconsulta, se usa `ON true`. `CROSS JOIN LATERAL`, en cambio, no lleva condición."
+    },
+    {
+      "id": "s08-q27",
+      "type": "yesno",
+      "q": "Sobre LATERAL, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "Una función en el FROM, como `unnest(string_to_array(c.apellido, ' '))`, puede usar columnas de tablas anteriores sin escribir LATERAL.",
+          "answer": true
+        },
+        {
+          "text": "Se puede usar una referencia LATERAL dentro de un FULL JOIN.",
+          "answer": false
+        },
+        {
+          "text": "Conceptualmente, una subconsulta LATERAL se evalúa una vez por cada fila de lo que está a su izquierda.",
+          "answer": true
+        },
+        {
+          "text": "`CROSS JOIN LATERAL (SELECT count(*) FROM …)` puede hacer desaparecer filas de la izquierda.",
+          "answer": false
+        },
+        {
+          "text": "Dentro de un LATERAL con `LIMIT`, conviene desempatar el `ORDER BY` con una columna única.",
+          "answer": true
+        }
+      ],
+      "explain": "Para funciones LATERAL es opcional. Con RIGHT o FULL falla (`The combining JOIN type must be INNER or LEFT for a LATERAL reference`). Un agregado sin GROUP BY siempre devuelve exactamente una fila, así que un CROSS JOIN LATERAL con `count(*)` nunca pierde filas. Y sin desempate, un top-N con empates no es determinista."
+    },
+    {
+      "id": "s08-q28",
+      "type": "single",
+      "q": "¿Qué agrega `WITH ORDINALITY` en `unnest(string_to_array(c.apellido, ' ')) WITH ORDINALITY AS a(apellido, n)`?",
+      "options": [
+        "Ordena los apellidos alfabéticamente",
+        "Una columna bigint `n` con la posición de cada elemento, empezando en 1",
+        "Elimina los elementos repetidos",
+        "Numera los clientes"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "WITH ORDINALITY numera las filas que devuelve la función, desde 1. Aquí `n = 1` es el apellido paterno y `n = 2` el materno."
+    },
+    {
+      "id": "s08-q29",
+      "type": "single",
+      "q": "En un INNER JOIN, ¿cambia el resultado si mueves una condición del `ON` al `WHERE`?",
+      "options": [
+        "Sí, siempre",
+        "No: en un inner join ON y WHERE son equivalentes",
+        "Solo si la condición usa columnas de la tabla de la izquierda",
+        "Solo si hay NULL"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "En un INNER JOIN una fila sin pareja se descarta igual en ambos casos. La diferencia aparece solo en los outer joins, donde el ON se procesa antes de completar con NULL y el WHERE después."
+    },
+    {
+      "id": "s08-q30",
+      "type": "single",
+      "q": "¿Qué hace esta consulta con los 17 clientes que no son de la Región Metropolitana?\n\n```sql\nSELECT c.id, p.id\nFROM clientes c\nLEFT JOIN pedidos p ON p.cliente_id = c.id\n                   AND c.region = 'Metropolitana';\n```",
+      "options": [
+        "Los elimina del resultado",
+        "Los muestra con todos sus pedidos",
+        "Los muestra una vez cada uno, con NULL en las columnas de pedidos",
+        "Produce un error por usar una columna de c en el ON"
+      ],
+      "answer": [
+        2
+      ],
+      "explain": "Una condición sobre la tabla de la izquierda dentro del ON de un LEFT JOIN no la filtra: solo impide que esas filas tengan pareja. El LEFT JOIN las conserva igual, completadas con NULL. Para filtrar clientes, la condición va en el WHERE."
+    },
+    {
+      "id": "s08-q31",
+      "type": "multi",
+      "q": "En `FROM clientes c LEFT JOIN pedidos p ON p.cliente_id = c.id`, ¿cuáles de estas condiciones del WHERE conservan a los clientes sin pedidos (siempre que cumplan el filtro)?",
+      "options": [
+        "`WHERE c.region = 'Metropolitana'`",
+        "`WHERE c.fecha_registro >= '2025-01-01'`",
+        "`WHERE p.estado = 'entregado'`",
+        "`WHERE p.fecha >= '2026-01-01'`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "Las condiciones sobre la tabla conservada (c) filtran clientes y no tocan las filas completadas con NULL. Las condiciones sobre p son NULL (no verdaderas) en esas filas y las eliminan: el LEFT JOIN se vuelve INNER. Si querías restringir los pedidos, esas condiciones van en el ON."
+    },
+    {
+      "id": "s08-q32",
+      "type": "single",
+      "q": "`pedidos p RIGHT JOIN clientes c ON c.id = p.cliente_id` es equivalente a…",
+      "options": [
+        "`pedidos p LEFT JOIN clientes c ON c.id = p.cliente_id`",
+        "`clientes c LEFT JOIN pedidos p ON c.id = p.cliente_id`",
+        "`clientes c JOIN pedidos p ON c.id = p.cliente_id`",
+        "`clientes c FULL JOIN pedidos p ON c.id = p.cliente_id`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "RIGHT JOIN conserva todas las filas de la tabla de la derecha (clientes). Es lo mismo que poner clientes a la izquierda de un LEFT JOIN. Las dos devuelven 429 filas."
+    },
+    {
+      "id": "s08-q33",
+      "type": "single",
+      "q": "¿Qué responde PostgreSQL a `SELECT * FROM productos pr FULL JOIN categorias c ON c.id < pr.categoria_id;`?",
+      "options": [
+        "El producto cartesiano filtrado",
+        "`ERROR:  FULL JOIN is only supported with merge-joinable or hash-joinable join conditions`",
+        "Lo mismo que un LEFT JOIN",
+        "Una advertencia y 0 filas"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El FULL JOIN solo se puede ejecutar con Merge Join o Hash Join, que requieren condiciones de igualdad. LEFT y RIGHT JOIN aceptan cualquier condición (se pueden ejecutar con Nested Loop)."
+    },
+    {
+      "id": "s08-q34",
+      "type": "single",
+      "q": "¿Cómo quedan las columnas de `SELECT * FROM prestamos JOIN libro_autor USING (libro_id);`?",
+      "options": [
+        "Dos columnas `libro_id`, una de cada tabla",
+        "Una sola `libro_id`, al principio; luego el resto de `prestamos` y luego `autor_id`",
+        "Una sola `libro_id`, al final",
+        "Error: USING no admite `SELECT *`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "JOIN USING produce una columna por cada columna del USING (en el orden listado), seguida de las demás columnas de la izquierda y luego las de la derecha. Con `ON` saldrían las dos `libro_id`."
+    },
+    {
+      "id": "s08-q35",
+      "type": "single",
+      "q": "¿Por qué falla `SELECT count(*) FROM clientes JOIN pedidos USING (cliente_id);`?",
+      "options": [
+        "Porque USING solo acepta claves primarias",
+        "Porque `clientes` no tiene una columna `cliente_id`: USING exige el mismo nombre en ambas tablas",
+        "Porque falta el alias",
+        "No falla: une por la clave foránea"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El error es `column \"cliente_id\" specified in USING clause does not exist in left table`. En clientes la columna se llama `id`. Para unir columnas de nombres distintos se usa `ON c.id = p.cliente_id`."
+    },
+    {
+      "id": "s08-q36",
+      "type": "single",
+      "q": "¿Por qué falla esta consulta?\n\n```sql\nSELECT count(*)\nFROM productos pr, pedido_items i\nJOIN categorias c ON c.id = pr.categoria_id;\n```",
+      "options": [
+        "Porque no se pueden mezclar comas y JOIN en un mismo FROM",
+        "Porque JOIN se une con más fuerza que la coma: el ON solo ve `pedido_items` y `categorias`, no `pr`",
+        "Porque falta un WHERE",
+        "Porque `categorias` no tiene la columna `id`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "El FROM se lee como `productos pr, (pedido_items i JOIN categorias c ON …)`. Dentro de ese join, `pr` no es visible: `invalid reference to FROM-clause entry for table \"pr\"`. Mezclar comas y JOIN se puede, pero confunde: usa JOIN explícitos en todo el FROM."
+    },
+    {
+      "id": "s08-q37",
+      "type": "single",
+      "q": "Al pedir `EXPLAIN` de una consulta con `WHERE NOT EXISTS (SELECT 1 FROM empleados s WHERE s.jefe_id = e.id)`, ¿qué tipo de nodo esperas ver?",
+      "options": [
+        "`Seq Scan` con `Filter: (NOT (hashed SubPlan 1))`",
+        "Un nodo Anti Join, por ejemplo `Hash Right Anti Join`",
+        "`Nested Loop Left Join`",
+        "`CROSS JOIN`"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "PostgreSQL convierte NOT EXISTS en un anti-join de verdad. El filtro con `hashed SubPlan` es lo que aparece con `NOT IN (subconsulta)`, que no puede convertirse por la semántica de los NULL."
+    },
+    {
+      "id": "s08-q38",
+      "type": "single",
+      "q": "Hay 63 pedidos pagados por transferencia, de 33 clientes distintos. ¿Cuántas filas devuelve?\n\n```sql\nSELECT c.id\nFROM clientes c\nWHERE EXISTS (SELECT 1 FROM pedidos p\n              WHERE p.cliente_id = c.id\n                AND p.metodo_pago = 'transferencia');\n```",
+      "options": [
+        "63",
+        "33",
+        "60",
+        "1"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "Es un semi-join: cada cliente aparece una vez si tiene al menos un pedido que cumpla. Un JOIN devolvería 63 (una fila por pedido)."
+    },
+    {
+      "id": "s08-q39",
+      "type": "yesno",
+      "q": "Sobre la sintaxis básica de los joins, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "`JOIN` sin tipo es un INNER JOIN.",
+          "answer": true
+        },
+        {
+          "text": "`LEFT JOIN` y `LEFT OUTER JOIN` son lo mismo.",
+          "answer": true
+        },
+        {
+          "text": "Sin WHERE, un `A LEFT JOIN B` puede devolver menos filas que A.",
+          "answer": false
+        },
+        {
+          "text": "`A JOIN B` sin `ON` ni `USING` produce un producto cartesiano.",
+          "answer": false
+        },
+        {
+          "text": "El `ON` puede contener cualquier expresión booleana, no solo igualdades.",
+          "answer": true
+        }
+      ],
+      "explain": "INNER es el tipo por defecto y OUTER es opcional. Un LEFT JOIN garantiza al menos una fila por cada fila de A. `JOIN` sin condición es un error de sintaxis (el producto cartesiano se pide con `CROSS JOIN` o con `ON true`). Y el ON acepta cualquier condición: `ON c.id = p.cliente_id AND p.estado <> 'cancelado'`, rangos con BETWEEN, etc."
+    },
+    {
+      "id": "s08-q40",
+      "type": "single",
+      "q": "La antología tiene 5 autores y 6 préstamos. ¿Cuánto vale `count(*)` para ella aquí?\n\n```sql\nSELECT l.titulo, count(*)\nFROM libros l\nJOIN libro_autor la ON la.libro_id = l.id\nJOIN prestamos p    ON p.libro_id = l.id\nWHERE l.id = 41\nGROUP BY l.titulo;\n```",
+      "options": [
+        "5",
+        "6",
+        "11",
+        "30"
+      ],
+      "answer": [
+        3
+      ],
+      "explain": "Dos relaciones «muchos» colgando del mismo libro se multiplican: cada préstamo se combina con cada autor, 6 × 5 = 30 filas. Para contar préstamos, agrégalos por separado (LATERAL) o usa `count(DISTINCT p.id)`."
+    },
+    {
+      "id": "s08-q41",
+      "type": "multi",
+      "q": "¿Cuáles obtienen el último pedido de cada cliente, **incluidos** los clientes sin pedidos?",
+      "options": [
+        "`FROM clientes c LEFT JOIN LATERAL (SELECT … FROM pedidos p WHERE p.cliente_id = c.id ORDER BY p.fecha DESC, p.id DESC LIMIT 1) u ON true`",
+        "`SELECT DISTINCT ON (c.id) … FROM clientes c LEFT JOIN pedidos p ON p.cliente_id = c.id ORDER BY c.id, p.fecha DESC, p.id DESC`",
+        "`FROM clientes c CROSS JOIN LATERAL (SELECT … FROM pedidos p WHERE p.cliente_id = c.id ORDER BY p.fecha DESC LIMIT 1) u`",
+        "`FROM clientes c JOIN pedidos p ON p.cliente_id = c.id ORDER BY p.fecha DESC LIMIT 1`"
+      ],
+      "answer": [
+        0,
+        1
+      ],
+      "explain": "LEFT JOIN LATERAL y DISTINCT ON sobre un LEFT JOIN conservan a los clientes sin pedidos (con NULL). CROSS JOIN LATERAL los descarta (51 filas en vez de 60). La última devuelve una sola fila en total: el pedido más reciente de toda la tienda."
+    },
+    {
+      "id": "s08-q42",
+      "type": "single",
+      "q": "En rrhh, solo el departamento Personas no tiene a nadie que gane más de $5.000.000 (los otros 5 tienen exactamente una persona así). ¿Cuántas filas devuelve?\n\n```sql\nSELECT d.nombre, e.nombre\nFROM departamentos d\nLEFT JOIN empleados e ON e.departamento_id = d.id\n                     AND e.sueldo > 5000000;\n```",
+      "options": [
+        "5",
+        "6",
+        "55",
+        "0"
+      ],
+      "answer": [
+        1
+      ],
+      "explain": "La condición de sueldo está en el ON: restringe las parejas, pero los 6 departamentos se conservan. Cinco tienen una pareja cada uno y Personas aparece con NULL: 6 filas. Con la condición en el WHERE serían 5."
+    },
+    {
+      "id": "s08-q43",
+      "type": "yesno",
+      "q": "Sobre granularidad y fan-out, indica verdadero o falso.",
+      "statements": [
+        {
+          "text": "Después de `pedidos JOIN pedido_items`, el resultado tiene una fila por ítem.",
+          "answer": true
+        },
+        {
+          "text": "`count(DISTINCT p.id)` cuenta correctamente los pedidos después de unir con los ítems.",
+          "answer": true
+        },
+        {
+          "text": "Un LATERAL con `sum(…)` sin GROUP BY permite sumar los ítems de cada pedido sin multiplicar las filas del pedido.",
+          "answer": true
+        },
+        {
+          "text": "El fan-out solo ocurre con LEFT JOIN, nunca con INNER JOIN.",
+          "answer": false
+        }
+      ],
+      "explain": "El fan-out depende de la cardinalidad (1-N), no del tipo de join. Contar con DISTINCT la clave del lado «uno» corrige los conteos; para sumas, lo limpio es pre-agregar el detalle (LATERAL o subconsultas) y luego unir."
+    }
+  ],
+  "sources": [
+    {
+      "title": "Documentación de PostgreSQL 18: Expresiones de tabla (FROM, tipos de JOIN, ON/USING/NATURAL, LATERAL)",
+      "url": "https://www.postgresql.org/docs/18/queries-table-expressions.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Tutorial, joins entre tablas",
+      "url": "https://www.postgresql.org/docs/18/tutorial-join.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: SELECT (cláusula FROM y join_type)",
+      "url": "https://www.postgresql.org/docs/18/sql-select.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Expresiones con subconsultas (EXISTS, IN, NOT IN)",
+      "url": "https://www.postgresql.org/docs/18/functions-subquery.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Funciones que devuelven conjuntos (generate_series)",
+      "url": "https://www.postgresql.org/docs/18/functions-srf.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Funciones de arreglos (unnest, string_to_array)",
+      "url": "https://www.postgresql.org/docs/18/functions-array.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Funciones de agregado (count, sum, string_agg)",
+      "url": "https://www.postgresql.org/docs/18/functions-aggregate.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Operadores lógicos (lógica de tres valores)",
+      "url": "https://www.postgresql.org/docs/18/functions-logical.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: Usar EXPLAIN",
+      "url": "https://www.postgresql.org/docs/18/using-explain.html"
+    },
+    {
+      "title": "Documentación de PostgreSQL 18: psql (\\pset null)",
+      "url": "https://www.postgresql.org/docs/18/app-psql.html"
+    }
+  ]
+}

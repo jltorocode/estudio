@@ -1,0 +1,2931 @@
+{
+ "id": "s12",
+ "order": 12,
+ "title": "Git por dentro",
+ "domain": "avanzado",
+ "summary": "Abrimos la carpeta .git: la base de datos de objetos (blob, tree, commit y tag), cómo se calculan los hashes SHA-1 y SHA-256, el index, las referencias y HEAD, los packfiles con sus deltas y las herramientas de integridad. Construirás commits a mano solo con comandos plumbing y rescatarás un repositorio dañado.",
+ "goal": "Crear un commit completo solo con comandos plumbing (hash-object, update-index o mktree, write-tree, commit-tree y update-ref) y reparar refs rotas y objetos perdidos con cat-file, fsck, symbolic-ref y update-ref.",
+ "objectives": [
+  "Calcular el hash de un contenido con git hash-object y explicar de qué bytes depende",
+  "Inspeccionar blobs, árboles, commits y etiquetas anotadas con git cat-file y git ls-tree",
+  "Leer y modificar el index con git ls-files -s y git update-index",
+  "Construir un commit sin porcelana encadenando hash-object, update-index, write-tree, commit-tree y update-ref",
+  "Mover, crear y borrar referencias de forma segura con git update-ref y git symbolic-ref",
+  "Medir y empaquetar un repositorio con count-objects, gc y verify-pack, e interpretar los deltas",
+  "Encontrar objetos colgantes con git fsck y recuperar commits, etiquetas y archivos perdidos",
+  "Crear un repositorio SHA-256 y describir el estado de la transición desde SHA-1"
+ ],
+ "lessons": [
+  {
+   "id": "s12-l1",
+   "title": "La base de datos de objetos",
+   "minutes": 20,
+   "goals": [
+    "Describir qué guarda cada parte de la carpeta .git (objects, refs, HEAD, index)",
+    "Calcular el hash de un contenido con git hash-object y guardarlo con -w",
+    "Inspeccionar cualquier objeto con git cat-file -t, -s, -p y -e",
+    "Distinguir los comandos porcelain de los comandos plumbing"
+   ],
+   "takeaways": [
+    "En su núcleo, Git es un almacén clave-valor: le entregas un contenido y te devuelve su hash, que es su única dirección.",
+    "El hash se calcula sobre «tipo tamaño\\0contenido»: el mismo contenido produce el mismo hash en cualquier computador y en cualquier momento.",
+    "Un blob guarda solo el contenido del archivo: ni su nombre ni sus permisos.",
+    "Los objetos sueltos viven en .git/objects/xx/yyyy…, comprimidos con zlib: se leen con git cat-file, no con cat.",
+    "Porcelain = comandos para personas (commit, switch…); plumbing = piezas internas de salida estable, pensadas para scripts (hash-object, cat-file…)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora usaste Git «desde afuera»: add, commit, switch, merge, rebase, reflog. En esta sección abrimos el capó. La buena noticia es que el modelo interno de Git es sorprendentemente pequeño —cuatro tipos de objetos, unas cuantas referencias y un archivo de índice— y, cuando lo dominas, los comandos que ya conoces se vuelven obvios: un commit es un objeto, una rama es un archivo con un hash, `reset` mueve ese archivo y `rebase` crea objetos nuevos. La propia página de manual de Git lo resume con humor: «git - the stupid content tracker»."
+    },
+    {
+     "type": "h",
+     "text": "Porcelain y plumbing"
+    },
+    {
+     "type": "p",
+     "text": "Git tiene dos familias de comandos. Los **porcelain** (porcelana) son los de todos los días: pensados para personas, con mensajes amables y opciones cómodas; su salida puede cambiar entre versiones. Los **plumbing** (cañerías) son las piezas de bajo nivel sobre las que se construyen los anteriores: hacen una sola cosa, reciben y devuelven hashes y su salida es estable, ideal para scripts. La metáfora viene del baño: la porcelana es lo que ves; las cañerías, lo que hace que todo funcione."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Lo que haces con porcelain",
+      "Lo que ocurre por debajo (plumbing, simplificado)"
+     ],
+     "rows": [
+      [
+       "git add archivo",
+       "git hash-object -w archivo + git update-index --add archivo"
+      ],
+      [
+       "git commit -m \"…\"",
+       "git write-tree → git commit-tree → git update-ref (más hooks y reflog)"
+      ],
+      [
+       "git branch nueva",
+       "git update-ref refs/heads/nueva HEAD"
+      ],
+      [
+       "git switch rama",
+       "git read-tree -m -u HEAD rama (index y trabajo) + git symbolic-ref HEAD refs/heads/rama"
+      ],
+      [
+       "git tag -a v1 -m \"…\"",
+       "git mktag (crea el objeto tag) + git update-ref refs/tags/v1"
+      ],
+      [
+       "git log",
+       "git rev-list (recorre el grafo) + git cat-file (lee cada commit)"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Un vistazo a la carpeta .git"
+    },
+    {
+     "type": "p",
+     "text": "Todo el repositorio —historia, ramas, configuración— vive en `.git`. El directorio de trabajo es solo una copia de una de las instantáneas. Mira qué hay dentro de un repositorio con un único commit:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo demo\nfecha '2026-09-01 10:00'\ncommit_archivo saludo.txt 'hola' 'Primer commit'",
+     "cwd": "demo",
+     "code": "ls -a .git\ncat .git/HEAD\ncat .git/refs/heads/main\nls .git/objects\ngit cat-file -t main"
+    },
+    {
+     "type": "p",
+     "text": "Fíjate: `HEAD` dice qué rama tienes puesta, la rama `main` es un archivo con un hash y en `.git/objects` hay tres carpetas de dos caracteres: el commit, su árbol y el blob de saludo.txt. Con un solo commit, el repositorio completo son tres objetos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Elemento",
+      "Qué es"
+     ],
+     "rows": [
+      [
+       "objects/",
+       "La base de datos de objetos (blobs, trees, commits, tags), sueltos o en packfiles (objects/pack)."
+      ],
+      [
+       "refs/heads/, refs/tags/, refs/remotes/",
+       "Las referencias: archivos que contienen un hash (ramas, etiquetas, ramas remotas)."
+      ],
+      [
+       "HEAD",
+       "Qué tienes «puesto»: normalmente `ref: refs/heads/main`; en HEAD separado, un hash."
+      ],
+      [
+       "index",
+       "El área de preparación: un archivo binario con la lista de rutas del próximo commit."
+      ],
+      [
+       "logs/",
+       "Los reflogs: el historial de a dónde apuntó cada ref (s10)."
+      ],
+      [
+       "config",
+       "La configuración local del repositorio."
+      ],
+      [
+       "packed-refs",
+       "Refs empaquetadas en un solo archivo (aparece tras git gc o git pack-refs)."
+      ],
+      [
+       "hooks/, info/exclude, description",
+       "Scripts de ganchos (s13), patrones para ignorar archivos solo en tu copia y una descripción que usa gitweb."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Un almacén clave-valor direccionado por contenido"
+    },
+    {
+     "type": "p",
+     "text": "El corazón de Git es una base de datos **direccionada por contenido** (content-addressable): le entregas un contenido y te devuelve una clave —su hash— con la que puedes recuperarlo cuando quieras. La clave no es un número correlativo ni un nombre elegido por alguien: se calcula a partir del propio contenido."
+    },
+    {
+     "type": "p",
+     "text": "Para un archivo, Git arma un encabezado con el tipo de objeto (`blob`), un espacio, el tamaño en bytes y un byte nulo (`\\0`); le pega el contenido y calcula el SHA-1 del conjunto. Para el texto «hola» más su salto de línea (5 bytes) calcula el SHA-1 de `blob 5\\0hola\\n` y obtiene `5c1b14949828006ed75a3e8858957f86a2f7e2eb`. Después comprime todo con zlib y lo guarda en `.git/objects/5c/1b14949828006ed75a3e8858957f86a2f7e2eb`: los 2 primeros caracteres del hash son la carpeta y los 38 restantes, el nombre del archivo."
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo se guarda un blob",
+     "mermaid": "flowchart LR\n  A[\"Contenido<br/>hola + salto de línea\"] --> B[\"Encabezado + contenido<br/>blob 5, byte nulo, hola\"]\n  B --> C[\"SHA-1<br/>5c1b1494…\"]\n  B --> D[\"Compresión zlib\"]\n  C --> E[\".git/objects/5c/1b1494…\"]\n  D --> E"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo demo",
+     "cwd": "demo",
+     "code": "# Sin -w solo calcula el hash\necho 'hola' | git hash-object --stdin\n# Sin salto de línea es OTRO contenido y otro hash\nprintf 'hola' | git hash-object --stdin\n# Con -w además lo escribe en la base de objetos\necho 'hola' | git hash-object -w --stdin\nls .git/objects/5c\ngit cat-file -t 5c1b149\ngit cat-file -s 5c1b149\ngit cat-file -p 5c1b149\ngit cat-file -e 5c1b149 && echo 'el objeto existe'\n# El blob existe, pero no forma parte de ningún commit ni del index\ngit status"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿No me crees? En la terminal de tu computador (la de práctica no admite `\\0`) puedes calcular el mismo hash sin Git: `printf 'blob 5\\0hola\\n' | shasum` en macOS o `… | sha1sum` en Linux. Obtendrás `5c1b14949828006ed75a3e8858957f86a2f7e2eb`, igual que cualquier persona del mundo que guarde «hola» en Git."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Mismo contenido, mismo hash:** dos personas que clonan el mismo repositorio tienen exactamente los mismos objetos con los mismos nombres.",
+      "**Deduplicación gratis:** un contenido se guarda una sola vez aunque aparezca en 100 archivos o en 1000 commits.",
+      "**Integridad:** si un bit de un objeto se corrompe, su hash ya no coincide y Git lo detecta.",
+      "**El nombre no está en el blob:** renombrar un archivo no crea un blob nuevo; el nombre vive en el árbol (lección 2)."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo demo",
+     "cwd": "demo",
+     "code": "echo 'hola' > saludo.txt\ncp saludo.txt copia.txt\n# Dos archivos, mismo contenido: mismo hash\ngit hash-object saludo.txt\ngit hash-object copia.txt\ngit add .\n# El index tiene dos rutas que apuntan al MISMO blob\ngit ls-files -s\nls .git/objects"
+    },
+    {
+     "type": "h",
+     "text": "git cat-file: para leer cualquier objeto"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "git cat-file -t <obj>",
+       "Muestra el tipo: blob, tree, commit o tag."
+      ],
+      [
+       "git cat-file -s <obj>",
+       "Muestra el tamaño del contenido en bytes (sin el encabezado)."
+      ],
+      [
+       "git cat-file -p <obj>",
+       "Muestra el contenido «bonito» según el tipo (pretty-print)."
+      ],
+      [
+       "git cat-file -e <obj>",
+       "No imprime nada: termina con código 0 si el objeto existe y es válido."
+      ],
+      [
+       "git cat-file blob <obj>",
+       "Muestra el contenido en bruto exigiendo que sea de ese tipo."
+      ],
+      [
+       "echo <obj> | git cat-file --batch-check",
+       "Tipo y tamaño de muchos objetos a la vez (ideal para scripts)."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No uses `cat` sobre un archivo de `.git/objects`: verás bytes ilegibles porque está comprimido con zlib. Y no edites ni borres objetos a mano: un solo byte distinto y el objeto queda corrupto. Para leer, `git cat-file`; para escribir, `git hash-object -w`."
+    },
+    {
+     "type": "p",
+     "text": "Como en `git log`, puedes abreviar un hash a sus primeros caracteres (mínimo 4) mientras no sea ambiguo dentro del repositorio. Y en todos estos comandos puedes usar nombres en lugar de hashes: `main`, `HEAD~2`, `v1.0`… Git los traduce a un hash antes de leer el objeto."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Objeto",
+       "en": "object",
+       "def": "Unidad de almacenamiento de Git (blob, tree, commit o tag), identificada por el hash de su contenido."
+      },
+      {
+       "term": "Blob",
+       "en": "binary large object",
+       "def": "Objeto que guarda el contenido de un archivo, sin nombre ni permisos."
+      },
+      {
+       "term": "Hash / ID de objeto",
+       "en": "object ID (OID)",
+       "def": "Resumen SHA-1 (40 caracteres hex) o SHA-256 (64) de «tipo tamaño\\0contenido»; es la dirección del objeto."
+      },
+      {
+       "term": "Objeto suelto",
+       "en": "loose object",
+       "def": "Objeto guardado en su propio archivo comprimido en .git/objects/xx/…"
+      },
+      {
+       "term": "Plumbing / porcelain",
+       "en": "plumbing / porcelain",
+       "def": "Comandos internos de bajo nivel y salida estable / comandos pensados para el uso diario."
+      }
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: «¿Qué hace `git hash-object archivo` sin opciones?». Solo **calcula** e imprime el hash; no guarda nada. Con `-w` escribe el objeto en `.git/objects`. Y recuerda: el hash depende únicamente del contenido (y del tipo), nunca del nombre del archivo ni de la fecha."
+    }
+   ]
+  },
+  {
+   "id": "s12-l2",
+   "title": "Árboles, commits y etiquetas: la instantánea",
+   "minutes": 25,
+   "goals": [
+    "Recorrer un commit hasta sus blobs con git cat-file -p y git ls-tree",
+    "Interpretar los modos de las entradas de un árbol (100644, 100755, 120000, 040000, 160000)",
+    "Explicar por qué cada commit es una instantánea completa y aun así el repositorio ocupa poco",
+    "Diferenciar a nivel de objetos una etiqueta ligera de una anotada"
+   ],
+   "takeaways": [
+    "Un tree es una lista de entradas «modo tipo hash nombre»: ahí viven los nombres de archivo, las carpetas y el bit de ejecución.",
+    "Un commit apunta a UN árbol raíz (la instantánea completa), a cero o más padres y guarda autor, committer y mensaje. No contiene diferencias.",
+    "Lo que no cambia se reutiliza: mismo contenido, mismo blob; misma carpeta, mismo subárbol. Por eso las instantáneas completas salen baratas.",
+    "Como cada hash depende de los hashes que contiene, cambiar un byte del pasado cambiaría todos los commits posteriores: la historia es a prueba de manipulaciones.",
+    "Una etiqueta ligera es solo una ref; una anotada es un objeto tag (con autor, fecha y mensaje) que puede apuntar a cualquier objeto."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un blob es solo contenido. Para tener un proyecto hacen falta nombres, carpetas y permisos (eso es un **árbol**), y para tener historia hace falta saber quién, cuándo y a partir de qué versión (eso es un **commit**). Sigamos un commit real hasta sus archivos."
+    },
+    {
+     "type": "diagram",
+     "title": "Del commit a los archivos",
+     "mermaid": "flowchart TD\n  C2[\"commit ab004b4<br/>Agrega moneda\"] -->|tree| T[\"tree 5ed9542 (raíz)\"]\n  C2 -.->|parent| C1[\"commit 121989b<br/>Primer commit\"]\n  T -->|\"100644 LEEME.md\"| B1[\"blob defa1c0\"]\n  T -->|\"100755 deploy.sh\"| B2[\"blob bc64f68\"]\n  T -->|\"040000 src\"| TS[\"tree 74e5e72\"]\n  TS -->|\"100644 app.js\"| B3[\"blob 8472c73\"]\n  TS -->|\"100644 util.js\"| B4[\"blob 9fdc0ef\"]"
+    },
+    {
+     "type": "h",
+     "text": "El árbol (tree)"
+    },
+    {
+     "type": "p",
+     "text": "Un tree equivale a una carpeta: una lista ordenada de entradas, cada una con **modo**, **tipo**, **hash** y **nombre**. Las entradas de archivos apuntan a blobs; las de subcarpetas, a otros trees. Internamente cada entrada se guarda como «modo nombre\\0» seguido del hash en binario; `git cat-file -p` y `git ls-tree` te la muestran legible. Ejecuta esta demostración y compara la salida con el diagrama de arriba:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir LEEME.md '# Tienda'\nescribir deploy.sh '#!/bin/sh\necho desplegando'\nchmod +x deploy.sh\nescribir src/app.js 'console.log(\"hola\");'\nescribir src/util.js 'export const iva = 0.19;'\ngit add .\ngit commit -q -m 'Primer commit'\nfecha '2026-09-02 10:00'\nescribir src/util.js 'export const iva = 0.19;\nexport const moneda = \"CLP\";'\ngit commit -q -am 'Agrega moneda'",
+     "cwd": "tienda",
+     "code": "git cat-file -p HEAD\ngit cat-file -p HEAD^{tree}\ngit ls-tree HEAD:src\ngit ls-tree -r -t HEAD\ngit ls-tree -l HEAD\ngit cat-file -p HEAD:src/util.js\ngit rev-parse HEAD:src"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Modo",
+      "Tipo",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "100644",
+       "blob",
+       "Archivo normal."
+      ],
+      [
+       "100755",
+       "blob",
+       "Archivo ejecutable (Git solo registra el bit de ejecución, no los permisos completos)."
+      ],
+      [
+       "120000",
+       "blob",
+       "Enlace simbólico: el blob contiene la ruta de destino."
+      ],
+      [
+       "040000",
+       "tree",
+       "Subcarpeta."
+      ],
+      [
+       "160000",
+       "commit",
+       "Gitlink: el commit de un submódulo (lo verás en s14)."
+      ]
+     ]
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción de git ls-tree",
+      "Efecto"
+     ],
+     "rows": [
+      [
+       "(sin opciones)",
+       "Lista un solo nivel del árbol."
+      ],
+      [
+       "-r",
+       "Recursivo: baja por todas las subcarpetas y muestra solo blobs."
+      ],
+      [
+       "-t",
+       "Con -r, muestra también las entradas de los subárboles."
+      ],
+      [
+       "-l / --long",
+       "Agrega el tamaño de cada blob."
+      ],
+      [
+       "--name-only / --object-only",
+       "Solo nombres / solo hashes (útil en scripts)."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Sintaxis que vale oro: `HEAD:ruta` es el objeto de esa ruta en ese commit (`HEAD:src/util.js` es un blob; `HEAD:src`, un tree). `HEAD^{tree}` «pela» el commit hasta su árbol raíz. Y `:ruta` (dos puntos sin nada antes) es la versión que está en el index."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Git no guarda carpetas vacías: un tree solo existe si contiene algo. Por eso los equipos agregan un archivo vacío (por convención `.gitkeep`) cuando necesitan que una carpeta exista en el repositorio."
+    },
+    {
+     "type": "h",
+     "text": "El objeto commit"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Línea",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "tree <hash>",
+       "El árbol raíz: la instantánea COMPLETA del proyecto en ese momento."
+      ],
+      [
+       "parent <hash>",
+       "El commit anterior. El primer commit no tiene; un merge tiene dos o más."
+      ],
+      [
+       "author Nombre <correo> 1788354000 -0300",
+       "Quién escribió el cambio y cuándo: segundos desde el 1-1-1970 (UTC) más la zona horaria."
+      ],
+      [
+       "committer Nombre <correo> … ",
+       "Quién creó este commit en el repositorio; cambia al hacer rebase, cherry-pick o amend aunque el autor se mantenga."
+      ],
+      [
+       "gpgsig … (opcional)",
+       "Firma criptográfica del commit (s13)."
+      ],
+      [
+       "(línea en blanco) + mensaje",
+       "El mensaje completo: asunto, línea en blanco y cuerpo."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué hay dentro de un commit? Un árbol, cero o más padres, autor, committer (cada uno con fecha) y mensaje. **No** contiene diferencias ni el nombre de la rama: `git show` calcula el diff al vuelo comparando el árbol del commit con el de su padre."
+    },
+    {
+     "type": "h",
+     "text": "Instantáneas completas que ocupan poco"
+    },
+    {
+     "type": "p",
+     "text": "Si cada commit apunta a un árbol completo, ¿no ocupa muchísimo? No, porque los objetos se comparten. Si un archivo no cambió, su blob tiene el mismo hash y el árbol nuevo simplemente vuelve a apuntar a él. Lo mismo con carpetas enteras: si nada cambió dentro, el subárbol tiene el mismo hash y se reutiliza. En el ejemplo, «Agrega moneda» modificó solo `src/util.js`, así que creó exactamente 4 objetos: el blob nuevo de util.js, el tree nuevo de src/, el tree raíz nuevo y el commit."
+    },
+    {
+     "type": "diagram",
+     "title": "Dos commits que comparten objetos",
+     "mermaid": "flowchart TD\n  C1[\"commit 121989b\"] --> T1[\"tree raíz 1\"]\n  C2[\"commit ab004b4\"] --> T2[\"tree raíz 2\"]\n  C2 -.->|parent| C1\n  T1 --> L[\"blob LEEME.md\"]\n  T2 --> L\n  T1 --> D[\"blob deploy.sh\"]\n  T2 --> D\n  T1 --> S1[\"tree src 1\"]\n  T2 --> S2[\"tree src 2\"]\n  S1 --> A[\"blob app.js\"]\n  S2 --> A\n  S1 --> U1[\"blob util.js v1\"]\n  S2 --> U2[\"blob util.js v2\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir LEEME.md '# Tienda'\nescribir deploy.sh '#!/bin/sh\necho desplegando'\nchmod +x deploy.sh\nescribir src/app.js 'console.log(\"hola\");'\nescribir src/util.js 'export const iva = 0.19;'\ngit add .\ngit commit -q -m 'Primer commit'\nfecha '2026-09-02 10:00'\nescribir src/util.js 'export const iva = 0.19;\nexport const moneda = \"CLP\";'\ngit commit -q -am 'Agrega moneda'",
+     "cwd": "tienda",
+     "code": "# Mismos hashes para LEEME.md y deploy.sh; solo cambia el subárbol src\ngit ls-tree HEAD~1\ngit ls-tree HEAD\n# Dentro de src, app.js se reutiliza\ngit ls-tree HEAD~1:src\ngit ls-tree HEAD:src\n# 7 objetos del primer commit + 4 del segundo = 11\ngit count-objects -v"
+    },
+    {
+     "type": "h",
+     "text": "La historia es un grafo de hashes"
+    },
+    {
+     "type": "p",
+     "text": "Cada commit guarda el hash de sus padres, así que la historia forma un **grafo dirigido acíclico** (DAG): las flechas siempre apuntan hacia atrás en el tiempo y nunca forman ciclos. Un commit conoce a sus padres, pero no a sus hijos. Y como el hash de un commit depende de su árbol y de sus padres —y el de ellos, de los suyos— cambiar un solo byte de un commit antiguo cambiaría su hash y el de todos los que vienen después. Es la misma idea de un árbol de Merkle: por eso la historia de Git es a prueba de manipulaciones y por eso `amend` o `rebase` «crean commits nuevos»: los existentes no se pueden modificar."
+    },
+    {
+     "type": "diagram",
+     "title": "Un DAG: cada commit apunta a sus padres",
+     "mermaid": "gitGraph\n  commit id: \"a1f3\"\n  commit id: \"b7c2\"\n  branch feature\n  checkout feature\n  commit id: \"c9d4\"\n  checkout main\n  commit id: \"d2e8\"\n  merge feature id: \"e5f1\"\n  commit id: \"f0a6\""
+    },
+    {
+     "type": "h",
+     "text": "Etiquetas anotadas: el cuarto tipo de objeto"
+    },
+    {
+     "type": "p",
+     "text": "Una etiqueta **ligera** es solo una referencia (`.git/refs/tags/v1.0-ligera` contiene el hash de un commit). Una etiqueta **anotada** crea además un objeto `tag` con: el objeto al que apunta (`object`), su tipo (`type`), el nombre (`tag`), quién la creó y cuándo (`tagger`) y un mensaje (y opcionalmente una firma). La ref `refs/tags/v1.0` apunta a ese objeto tag, no directamente al commit."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo lanzamiento\nfecha '2026-09-01 10:00'\ncommit_archivo app.js 'console.log(1);' 'Primer commit'",
+     "cwd": "lanzamiento",
+     "code": "git tag v1.0-ligera\ngit tag -a v1.0 -m \"Primera versión estable\"\ngit cat-file -t v1.0-ligera\ngit cat-file -t v1.0\ngit cat-file -p v1.0\ncat .git/refs/tags/v1.0-ligera\ncat .git/refs/tags/v1.0\n# Pelar la etiqueta: objeto tag -> commit -> árbol\ngit rev-parse v1.0 v1.0^{} v1.0^{commit} v1.0^{tree}"
+    },
+    {
+     "type": "p",
+     "text": "`v1.0^{}` y `v1.0^{commit}` «pelan» (peel) la etiqueta hasta el objeto que no es tag; `^{tree}` sigue hasta el árbol. Esta distinción importa cuando trabajas con plumbing: como verás en la lección 4, una rama solo puede apuntar a commits, así que a veces tendrás que escribir `v1.0^{commit}`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Una etiqueta (y en general una ref) puede apuntar a **cualquier** objeto, no solo a commits. El libro Pro Git cuenta que el mantenedor de Git guardó su llave pública GPG como un blob y lo etiquetó (`junio-gpg-pub`) para que cualquiera pueda obtenerla desde el repositorio."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Árbol",
+       "en": "tree",
+       "def": "Objeto que lista entradas (modo, tipo, hash, nombre): representa una carpeta."
+      },
+      {
+       "term": "Commit",
+       "en": "commit",
+       "def": "Objeto con un árbol raíz, padres, autor, committer y mensaje: una instantánea con contexto."
+      },
+      {
+       "term": "Etiqueta anotada",
+       "en": "annotated tag",
+       "def": "Objeto tag con destino, nombre, autor, fecha y mensaje."
+      },
+      {
+       "term": "Pelar",
+       "en": "peel",
+       "def": "Seguir una etiqueta (o commit) hasta el objeto de otro tipo: v1.0^{commit}, HEAD^{tree}."
+      },
+      {
+       "term": "DAG",
+       "en": "directed acyclic graph",
+       "def": "Grafo dirigido sin ciclos: la forma de la historia de Git."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s12-l3",
+   "title": "El index y un commit hecho a mano",
+   "minutes": 30,
+   "goals": [
+    "Leer el index con git ls-files -s e interpretar sus columnas y etapas",
+    "Registrar contenido en el index sin archivos con git update-index --add --cacheinfo",
+    "Crear árboles y commits con git write-tree, git mktree y git commit-tree",
+    "Apuntar una rama a un commit nuevo con git update-ref"
+   ],
+   "takeaways": [
+    "El index (.git/index) es un archivo binario con la lista ordenada de rutas del próximo árbol: modo, hash del blob, etapa y ruta, más datos de stat para ir rápido.",
+    "git add = hash-object -w + update-index --add; git commit = write-tree + commit-tree + update-ref.",
+    "git write-tree convierte el index en árboles; git commit-tree envuelve un árbol en un commit pero no mueve ninguna rama.",
+    "Un commit recién creado sin ninguna ref que lo alcance queda «colgante»: existe, pero git log no lo muestra.",
+    "Los hashes de blobs y árboles son reproducibles; el de un commit depende además del autor, las fechas y el mensaje."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "En s02 conociste el área de preparación como «lo que irá en el próximo commit». Ahora verás qué es físicamente: el archivo binario `.git/index`. Contiene una entrada por archivo, ordenada por ruta, con su modo, el hash del blob, un número de **etapa** y la ruta. Además guarda datos del sistema de archivos (fechas de modificación, tamaño, inodo…) que permiten a `git status` saber sin leer cada archivo si algo cambió."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace cada comando plumbing",
+     "mermaid": "flowchart LR\n  W[\"Directorio de trabajo\"] -->|\"hash-object -w\"| O[(\"Base de objetos\")]\n  W -->|\"update-index --add\"| I[\"Index\"]\n  I -->|\"write-tree\"| TR[\"tree\"]\n  TR -->|\"commit-tree\"| CM[\"commit\"]\n  CM -->|\"update-ref\"| RF[\"refs/heads/main\"]\n  H[\"HEAD\"] -->|\"symbolic-ref\"| RF\n  TR --> O\n  CM --> O"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 10:00'\nescribir LEEME.md '# Tienda'\nescribir deploy.sh '#!/bin/sh\necho desplegando'\nchmod +x deploy.sh\nescribir src/app.js 'console.log(\"hola\");'\nescribir src/util.js 'export const iva = 0.19;'\ngit add .\ngit commit -q -m 'Primer commit'\nfecha '2026-09-02 10:00'\nescribir src/util.js 'export const iva = 0.19;\nexport const moneda = \"CLP\";'\ngit commit -q -am 'Agrega moneda'\necho '# Tienda Andes' > LEEME.md\ngit add LEEME.md",
+     "cwd": "tienda",
+     "code": "# modo  hash-del-blob  etapa  ruta\ngit ls-files -s\n# Compara con el último commit: LEEME.md tiene otro blob en el index\ngit ls-tree -r HEAD\n# Los datos de stat que usa git status para ir rápido\ngit ls-files --debug LEEME.md"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Columna de ls-files -s",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "100644",
+       "Modo del archivo (igual que en los árboles)."
+      ],
+      [
+       "hash",
+       "El blob con el contenido preparado."
+      ],
+      [
+       "0 / 1 / 2 / 3",
+       "Etapa: 0 = normal. Durante un conflicto: 1 = versión base común, 2 = «ours» (HEAD), 3 = «theirs» (la rama que fusionas)."
+      ],
+      [
+       "ruta",
+       "Ruta completa desde la raíz (el index no tiene carpetas: son parte del nombre)."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Las etapas explican por fin qué es un conflicto por dentro: el index guarda las tres versiones del archivo a la vez y `git add` las reemplaza por una sola entrada en etapa 0. Con la sintaxis `:n:ruta` puedes leer cada una:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo precios\nfecha '2026-09-01 10:00'\ncommit_archivo precio.txt 'café: 3000' 'Precio inicial'\ngit switch -q -c feature\nfecha '2026-09-02 10:00'\ncommit_archivo precio.txt 'café: 3500' 'Sube a 3500'\ncommit_archivo extra.txt 'solo en feature' 'Agrega extra'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo precio.txt 'café: 3200' 'Sube a 3200'\ngit tag -a v1.0 -m 'Versión 1.0'",
+     "cwd": "precios",
+     "code": "git merge feature\ngit ls-files -s\ngit cat-file -p :1:precio.txt\ngit cat-file -p :2:precio.txt\ngit cat-file -p :3:precio.txt\ngit merge --abort\ngit ls-files -s"
+    },
+    {
+     "type": "h",
+     "text": "Un commit sin git add ni git commit"
+    },
+    {
+     "type": "p",
+     "text": "Ahora el truco de magia: crear un commit usando solo plumbing, en un repositorio recién creado y sin escribir ningún archivo en el directorio de trabajo. Los hashes del blob y del árbol te saldrán idénticos a los de esta página, porque dependen solo del contenido:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo taller",
+     "cwd": "taller",
+     "code": "# 1. Blob (sin archivo: desde la tubería)\nprintf 'Taller de Git\\n' | git hash-object -w --stdin\n# 2. Registrarlo en el index con nombre y modo\ngit update-index --add --cacheinfo 100644,a6d801a17cc41588e971fbf2a6818bac9a604c24,LEEME.md\ngit ls-files -s\n# AD = agregado en el index, pero no existe en el disco\ngit status --short\n# 3. Del index a un árbol\ngit write-tree\ngit cat-file -p eb8067dc76442c5785da248545481d12c540f390\n# 4. Del árbol a un commit (sin -p: es un commit raíz)\ngit commit-tree eb8067dc76442c5785da248545481d12c540f390 -m \"Primer commit hecho a mano\"\n# La rama main todavía no existe: nadie apunta al commit\ngit log --oneline\ngit fsck"
+    },
+    {
+     "type": "p",
+     "text": "`git commit-tree` imprimió el hash del commit nuevo (cambia en cada ejecución, porque incluye la fecha y hora actuales), pero `git log` dice que la rama no tiene commits y `git fsck` lo reporta como **dangling commit**: el objeto existe, pero ninguna referencia llega a él. El último paso es mover la rama con el hash que te imprimió commit-tree:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "code": "git update-ref refs/heads/main <hash-que-imprimió-commit-tree>\ngit log --oneline\ngit status --short        #  D LEEME.md: está en el commit y en el index, pero no en el disco\ngit checkout-index -a     # escribe en el disco los archivos del index\ngit status --short        # limpio"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Para qué sirve"
+     ],
+     "rows": [
+      [
+       "git update-index --add archivo",
+       "Crea el blob de un archivo del disco y lo registra en el index (lo que hace git add)."
+      ],
+      [
+       "git update-index --add --cacheinfo modo,hash,ruta",
+       "Registra en el index un blob que ya existe, sin necesitar el archivo."
+      ],
+      [
+       "git update-index --remove / --force-remove ruta",
+       "Quita una ruta del index: --remove solo si el archivo ya no existe en el disco; --force-remove aunque exista."
+      ],
+      [
+       "git write-tree",
+       "Escribe los árboles que describe el index e imprime el hash del árbol raíz."
+      ],
+      [
+       "git read-tree <árbol>",
+       "Lo contrario: carga un árbol en el index (con --reset -u o -m -u actualiza también el disco)."
+      ],
+      [
+       "git checkout-index -a",
+       "Escribe en el disco los archivos del index (sin sobrescribir los existentes, salvo con -f)."
+      ],
+      [
+       "git commit-tree <árbol> [-p <padre>…] -m \"…\"",
+       "Crea un commit y muestra su hash. Varios -p = commit de merge; el mensaje también puede venir de -F o de la entrada estándar."
+      ],
+      [
+       "git update-ref <ref> <nuevo> [<anterior>]",
+       "Mueve una referencia de forma segura (lección 4)."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos trampas de `--cacheinfo`: exige el hash **completo** (40 caracteres; no acepta abreviaturas ni nombres como `HEAD:LEEME.md`, y responde «option 'cacheinfo' expects <mode>,<sha1>,<path>») y **no comprueba** que el blob exista. Si te equivocas en un carácter, `update-index` no se queja y el error aparece después, cuando `git write-tree` falla con «error: invalid object … / fatal: git-write-tree: error building trees». Copia el hash completo que te imprimió `hash-object` (o `git rev-parse`)."
+    },
+    {
+     "type": "h",
+     "text": "El commit también es texto"
+    },
+    {
+     "type": "p",
+     "text": "Un commit no es más que un objeto de texto con el formato que viste en la lección 2. Si escribes esos bytes tú mismo con `git hash-object -t commit -w --stdin`, obtienes un commit perfectamente válido, y como fijas las fechas, su hash es reproducible: el mismo que obtendría `git commit-tree` con esa misma fecha. `hash-object` revisa el formato antes de escribir (si falta la línea `author`, responde «object fails fsck» y no guarda nada), aunque no comprueba que el árbol y el padre existan; por eso, en un repositorio real, `commit-tree` es la opción segura:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo taller\nb=$(printf 'Taller de Git\\n' | git hash-object -w --stdin)\ngit update-index --add --cacheinfo 100644,$b,LEEME.md",
+     "cwd": "taller",
+     "code": "git ls-files -s\ngit write-tree\nprintf 'tree eb8067dc76442c5785da248545481d12c540f390\\nauthor Alumno <alumno@cuaderno.local> 1790521200 -0300\\ncommitter Alumno <alumno@cuaderno.local> 1790521200 -0300\\n\\nPrimer commit hecho a mano\\n' | git hash-object -t commit -w --stdin\ngit update-ref refs/heads/main aada34447ce3e2b53359254112142e64dca7e2a3\ngit log --format=fuller\ngit status --short\ngit checkout-index -a\ngit status --short\nls"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En la terminal de tu computador (la de práctica no admite variables de entorno) puedes fijar las fechas de commit-tree: `GIT_AUTHOR_DATE='2026-09-27 12:00 -0300' GIT_COMMITTER_DATE='2026-09-27 12:00 -0300' git commit-tree <árbol> -m 'Primer commit hecho a mano'` produce exactamente el hash de esta demostración: mismos bytes, mismo hash."
+    },
+    {
+     "type": "h",
+     "text": "Árboles sin tocar el index: git mktree"
+    },
+    {
+     "type": "p",
+     "text": "`write-tree` necesita el index. Si no quieres tocarlo (por ejemplo, porque tienes trabajo preparado a medias), `git mktree` construye un árbol a partir de líneas en el formato de `git ls-tree`: «modo tipo hash», un TAB y el nombre, con los hashes completos (no hace falta ordenarlas: mktree las ordena). Solo crea un nivel: para subcarpetas, primero armas el árbol de la subcarpeta y luego lo usas como entrada `040000 tree` del árbol padre."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetas\nfecha '2026-09-01 10:00'\ncommit_archivo LEEME.md '# Recetas chilenas' 'Primer commit'",
+     "cwd": "recetas",
+     "code": "git ls-tree HEAD\nprintf '100644 blob 5131937f3468c0ba18d5e6e27894eaaf94c6d566\\tLEEME.md\\n100644 blob 5131937f3468c0ba18d5e6e27894eaaf94c6d566\\tCOPIA.md\\n' | git mktree\ngit ls-tree 0c76c36c4360cb19fadbe6ce7615a2d0f1cebc7f\n# El index y el directorio de trabajo no cambiaron\ngit status --short"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Esto no es solo un ejercicio académico: la API REST de GitHub tiene una sección «Git database» con endpoints para crear blobs, trees, commits y referencias. Una integración puede crear un commit sin clonar el repositorio siguiendo los mismos pasos de esta lección: blob → árbol → commit → mover la ref."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Index",
+       "en": "index / staging area / cache",
+       "def": "Archivo .git/index con la lista ordenada de rutas (modo, blob, etapa) que formarán el próximo árbol."
+      },
+      {
+       "term": "Etapa",
+       "en": "stage",
+       "def": "Número de la entrada del index: 0 normal; 1, 2 y 3 durante un conflicto (base, ours, theirs)."
+      },
+      {
+       "term": "Commit colgante",
+       "en": "dangling commit",
+       "def": "Commit que existe en la base de objetos pero al que no apunta ninguna ref ni otro commit."
+      },
+      {
+       "term": "cacheinfo",
+       "en": "cacheinfo",
+       "def": "Forma de update-index que registra modo, hash y ruta directamente, sin archivo en el disco."
+      }
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si te preguntan «¿qué comandos plumbing equivalen a `git commit`?», la respuesta es `git write-tree` (index → árbol), `git commit-tree` (árbol → commit) y `git update-ref` (mover la rama). Y un detalle que suele preguntarse: `commit-tree` NO mueve ninguna rama."
+    }
+   ]
+  },
+  {
+   "id": "s12-l4",
+   "title": "Referencias, HEAD y packed-refs",
+   "minutes": 25,
+   "goals": [
+    "Crear, mover y borrar refs con git update-ref, incluida la verificación del valor anterior",
+    "Consultar y cambiar HEAD con git symbolic-ref",
+    "Explicar en qué orden resuelve Git un nombre como main, v1.0 u origin/main",
+    "Localizar una ref suelta o empaquetada en .git/refs y .git/packed-refs"
+   ],
+   "takeaways": [
+    "Una rama guardada como archivo suelto ocupa 41 bytes: los 40 caracteres del hash de un commit y un salto de línea.",
+    "HEAD suele ser una ref simbólica («ref: refs/heads/main»); en HEAD separado contiene directamente un hash.",
+    "git update-ref es la forma segura de mover refs: valida el objeto, bloquea el archivo, anota el reflog y puede exigir el valor anterior.",
+    "Para resolver un nombre, Git prueba en orden: .git/<nombre>, refs/, refs/tags/, refs/heads/, refs/remotes/ y refs/remotes/<nombre>/HEAD.",
+    "git pack-refs (y git gc) mueven las refs a .git/packed-refs; si existe un archivo suelto con el mismo nombre, manda el archivo suelto."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los objetos son inmutables y se nombran por su hash. Para que las personas puedan trabajar hacen falta nombres que se muevan: las **referencias** (refs). Una ref es un archivo de texto dentro de `.git/refs` que contiene un hash. Crear una rama es crear un archivo; hacer un commit es reescribir ese archivo con el hash nuevo. Nada más."
+    },
+    {
+     "type": "diagram",
+     "title": "HEAD, ramas y etiquetas del repositorio de la demostración",
+     "mermaid": "flowchart LR\n  H[\"HEAD<br/>ref: refs/heads/main\"] --> M[\"refs/heads/main\"]\n  M --> C3[\"commit 4d5ada3<br/>Sube a 3200\"]\n  F[\"refs/heads/feature\"] --> C4[\"commit 251876c<br/>Agrega extra\"]\n  TG[\"refs/tags/v1.0\"] --> TO[\"objeto tag a11d70b\"]\n  TO --> C3\n  C3 --> C2[\"commit 2607457<br/>Precio inicial\"]\n  C4 --> C5[\"commit 4c52ad9<br/>Sube a 3500\"]\n  C5 --> C2"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo precios\nfecha '2026-09-01 10:00'\ncommit_archivo precio.txt 'café: 3000' 'Precio inicial'\ngit switch -q -c feature\nfecha '2026-09-02 10:00'\ncommit_archivo precio.txt 'café: 3500' 'Sube a 3500'\ncommit_archivo extra.txt 'solo en feature' 'Agrega extra'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo precio.txt 'café: 3200' 'Sube a 3200'\ngit tag -a v1.0 -m 'Versión 1.0'",
+     "cwd": "precios",
+     "code": "cat .git/HEAD\ngit symbolic-ref HEAD\ngit symbolic-ref --short HEAD\ncat .git/refs/heads/main\ngit rev-parse main\ngit show-ref\nls .git/refs/heads .git/refs/tags"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Espacio de nombres",
+      "Qué contiene"
+     ],
+     "rows": [
+      [
+       "refs/heads/",
+       "Ramas locales."
+      ],
+      [
+       "refs/tags/",
+       "Etiquetas (ligeras: apuntan al commit; anotadas: al objeto tag)."
+      ],
+      [
+       "refs/remotes/<remoto>/",
+       "Ramas remotas (de seguimiento): las actualiza fetch; se consideran de solo lectura."
+      ],
+      [
+       "refs/stash",
+       "La pila de stash (sus entradas viven en el reflog de esta ref)."
+      ],
+      [
+       "refs/notes/, refs/replace/",
+       "Notas y reemplazos (s15)."
+      ],
+      [
+       "HEAD, ORIG_HEAD, FETCH_HEAD, MERGE_HEAD, CHERRY_PICK_HEAD…",
+       "Refs en la raíz de .git que escriben algunas operaciones. FETCH_HEAD y MERGE_HEAD son «pseudo-refs»: se leen como cualquier ref, pero update-ref no puede escribirlas."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "git update-ref: mover punteros con seguridad"
+    },
+    {
+     "type": "p",
+     "text": "Podrías escribir un hash en `.git/refs/heads/x` con `echo`, pero `git update-ref` hace lo mismo con red de seguridad: comprueba que el objeto existe (y que es un commit si la ref es una rama), bloquea la ref mientras escribe (`.lock`), deja una entrada en el reflog y, si le das un tercer argumento, solo actualiza si la ref todavía tiene ese valor. Es una operación de «comparar y cambiar»: si otra persona o proceso movió la rama entretanto, falla en vez de pisar su trabajo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo precios\nfecha '2026-09-01 10:00'\ncommit_archivo precio.txt 'café: 3000' 'Precio inicial'\ngit switch -q -c feature\nfecha '2026-09-02 10:00'\ncommit_archivo precio.txt 'café: 3500' 'Sube a 3500'\ncommit_archivo extra.txt 'solo en feature' 'Agrega extra'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo precio.txt 'café: 3200' 'Sube a 3200'\ngit tag -a v1.0 -m 'Versión 1.0'",
+     "cwd": "precios",
+     "code": "git update-ref refs/heads/experimento HEAD~1\ngit branch -v\n# Solo si experimento sigue en HEAD~1: funciona\ngit update-ref refs/heads/experimento HEAD HEAD~1\n# Ahora el valor anterior ya no coincide: falla sin tocar nada\ngit update-ref refs/heads/experimento HEAD~1 HEAD~1\n# Una rama no puede apuntar a un objeto tag\ngit update-ref refs/heads/experimento v1.0\ngit update-ref refs/heads/experimento v1.0^{commit}\ngit update-ref -d refs/heads/experimento\ngit reflog show main"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Forma",
+      "Efecto"
+     ],
+     "rows": [
+      [
+       "git update-ref <ref> <nuevo>",
+       "Crea o mueve la ref (sigue las refs simbólicas: `git update-ref HEAD x` mueve la rama actual)."
+      ],
+      [
+       "git update-ref <ref> <nuevo> <anterior>",
+       "Solo si la ref vale <anterior>. Con 40 ceros como <anterior>: solo si la ref NO existe."
+      ],
+      [
+       "git update-ref -d <ref> [<anterior>]",
+       "Borra la ref (opcionalmente verificando su valor)."
+      ],
+      [
+       "-m \"motivo\"",
+       "Texto que queda en el reflog."
+      ],
+      [
+       "--no-deref",
+       "Sobrescribe la propia ref simbólica (por ejemplo HEAD) en vez de la rama a la que apunta."
+      ],
+      [
+       "--stdin",
+       "Lee muchas órdenes (update, create, delete, verify…) y las aplica en una sola transacción."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Error clásico: `git update-ref refs/heads/release v2.0` cuando v2.0 es una etiqueta anotada. Git responde «trying to write non-commit object … to branch»: el nombre v2.0 se resuelve al objeto tag, y una rama solo puede apuntar a commits. Usa `v2.0^{commit}`. (La porcelana, como `git branch -f release v2.0`, pela la etiqueta sola.)"
+    },
+    {
+     "type": "h",
+     "text": "git symbolic-ref: HEAD por dentro"
+    },
+    {
+     "type": "p",
+     "text": "HEAD es una ref **simbólica**: en vez de un hash contiene el nombre de otra ref. `git symbolic-ref HEAD` la lee; `git symbolic-ref HEAD refs/heads/otra` la cambia. Pero ojo: eso es solo la mitad de `git switch`. El index y el directorio de trabajo no se tocan, así que Git compara la instantánea de la nueva rama con los archivos que tienes y ve «cambios»:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo precios\nfecha '2026-09-01 10:00'\ncommit_archivo precio.txt 'café: 3000' 'Precio inicial'\ngit switch -q -c feature\nfecha '2026-09-02 10:00'\ncommit_archivo precio.txt 'café: 3500' 'Sube a 3500'\ncommit_archivo extra.txt 'solo en feature' 'Agrega extra'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo precio.txt 'café: 3200' 'Sube a 3200'\ngit tag -a v1.0 -m 'Versión 1.0'",
+     "cwd": "precios",
+     "code": "git status --short\ngit symbolic-ref HEAD refs/heads/feature\n# ¡Parece que borraste extra.txt y cambiaste precio.txt!\ngit status --short\ngit symbolic-ref HEAD refs/heads/main\ngit status --short\n# Solo acepta destinos dentro de refs/\ngit symbolic-ref HEAD feature\n# En HEAD separado, .git/HEAD contiene un hash\ngit switch --detach HEAD~1\ncat .git/HEAD\ngit symbolic-ref -q HEAD || echo 'HEAD separado'\ngit switch main"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En scripts, `git symbolic-ref -q --short HEAD` es la forma estable de saber en qué rama estás: imprime el nombre, o termina con código 1 y sin mensaje si HEAD está separado. Y en un repositorio **bare** (un servidor), su HEAD define qué rama quedará activa en quien lo clone: por eso `git symbolic-ref HEAD refs/heads/main` es el arreglo cuando un servidor antiguo sigue apuntando a `master`."
+    },
+    {
+     "type": "h",
+     "text": "¿Cómo encuentra Git la ref que nombras?"
+    },
+    {
+     "type": "list",
+     "items": [
+      "1. `.git/<nombre>` (útil sobre todo para HEAD, FETCH_HEAD, ORIG_HEAD, MERGE_HEAD, REBASE_HEAD…).",
+      "2. `refs/<nombre>`.",
+      "3. `refs/tags/<nombre>`.",
+      "4. `refs/heads/<nombre>`.",
+      "5. `refs/remotes/<nombre>`.",
+      "6. `refs/remotes/<nombre>/HEAD` (por eso `origin` a secas significa la rama por defecto del remoto)."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Si tienes una etiqueta y una rama con el mismo nombre, Git avisa «warning: refname 'x' is ambiguous.» y, al resolver una revisión (`git log x`, `git rev-parse x`), aplica la regla 3: elige la etiqueta. Los comandos que esperan una rama, como `git switch x`, usan la rama. Para evitar dudas, usa el nombre completo: `heads/x`, `tags/x` o `refs/heads/x`."
+    },
+    {
+     "type": "h",
+     "text": "packed-refs: muchas refs en un solo archivo"
+    },
+    {
+     "type": "p",
+     "text": "Con miles de etiquetas, un archivo por ref desperdicia espacio y es lento. `git pack-refs --all` (que `git gc` ejecuta por ti) las mueve al archivo `.git/packed-refs`: una línea «hash nombre» por ref, y para las etiquetas anotadas una línea extra que empieza con `^` con el commit ya pelado. Cuando una rama empaquetada vuelve a moverse, Git crea de nuevo su archivo suelto, que **tiene prioridad** sobre la línea (ya obsoleta) de packed-refs."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo precios\nfecha '2026-09-01 10:00'\ncommit_archivo precio.txt 'café: 3000' 'Precio inicial'\ngit switch -q -c feature\nfecha '2026-09-02 10:00'\ncommit_archivo precio.txt 'café: 3500' 'Sube a 3500'\ncommit_archivo extra.txt 'solo en feature' 'Agrega extra'\ngit switch -q main\nfecha '2026-09-03 10:00'\ncommit_archivo precio.txt 'café: 3200' 'Sube a 3200'\ngit tag -a v1.0 -m 'Versión 1.0'",
+     "cwd": "precios",
+     "code": "ls .git/refs/heads .git/refs/tags\ngit pack-refs --all\nls .git/refs/heads .git/refs/tags\ncat .git/packed-refs\ngit commit --allow-empty -m \"Commit vacío\"\n# main vuelve a tener archivo suelto; packed-refs conserva el valor viejo\nls .git/refs/heads\ncat .git/packed-refs\ngit rev-parse main"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Por eso no conviene leer `.git/refs/heads/*` directamente en scripts: la rama puede estar solo en packed-refs (o en el formato **reftable**, disponible desde Git 2.45 con `git init --ref-format=reftable`; `git refs migrate` convierte un repositorio existente desde 2.46, y Git 3.0 planea usarlo por defecto). Usa `git rev-parse`, `git show-ref` o `git for-each-ref`, que funcionan con cualquier formato."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Referencia",
+       "en": "ref",
+       "def": "Nombre legible (refs/heads/main, refs/tags/v1.0…) que guarda el hash de un objeto."
+      },
+      {
+       "term": "Ref simbólica",
+       "en": "symbolic ref",
+       "def": "Ref que apunta a otra ref en vez de a un hash; el caso típico es HEAD."
+      },
+      {
+       "term": "Pseudo-ref",
+       "en": "pseudoref",
+       "def": "Ref especial de la raíz de .git (FETCH_HEAD, MERGE_HEAD) que se lee como una ref pero no se escribe con update-ref."
+      },
+      {
+       "term": "packed-refs",
+       "en": "packed refs",
+       "def": "Archivo que guarda muchas refs juntas; los archivos sueltos tienen prioridad sobre él."
+      },
+      {
+       "term": "reftable",
+       "en": "reftable",
+       "def": "Formato binario alternativo para guardar refs (Git 2.45+), futuro formato por defecto."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s12-l5",
+   "title": "Almacenamiento: objetos sueltos, packfiles y deltas",
+   "minutes": 20,
+   "goals": [
+    "Medir el almacenamiento de un repositorio con git count-objects -v",
+    "Empaquetar un repositorio con git gc y enumerar lo que hace",
+    "Leer la salida de git verify-pack -v e identificar los objetos guardados como delta"
+   ],
+   "takeaways": [
+    "Los objetos nacen «sueltos» (un archivo zlib por objeto); git gc los reúne en un packfile (.pack) con su índice (.idx).",
+    "Dentro de un pack, Git guarda versiones parecidas como deltas; normalmente deja completa la versión más reciente, que es la que más se consulta.",
+    "Los deltas son un detalle de almacenamiento: el modelo sigue siendo de instantáneas completas.",
+    "git gc no borra enseguida lo inalcanzable: respeta un período de gracia de 2 semanas y, desde Git 2.41, lo guarda en un cruft pack.",
+    "gc también empaqueta refs y expira entradas antiguas del reflog (90 días; 30 si ya no son alcanzables)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Cada `git add` y cada `git commit` crean objetos **sueltos**: un archivo comprimido por objeto. Es rápido para escribir, pero con miles de objetos desperdicia espacio (cada archivo ocupa al menos un bloque del disco) y no aprovecha que dos versiones de un archivo se parecen muchísimo. Para eso existen los **packfiles**: `git gc` junta los objetos en un solo archivo `.pack`, acompañado de un índice `.idx` para encontrar cada objeto rápidamente. (Los objetos también viajan empaquetados cuando haces push, fetch o clone.)"
+    },
+    {
+     "type": "diagram",
+     "title": "De objetos sueltos a un packfile",
+     "mermaid": "flowchart LR\n  subgraph Sueltos[\"objects/ (sueltos)\"]\n    O1[\"f9/88396… blob v2\"]\n    O2[\"a6/79fb8… blob v1\"]\n    O3[\"… commits y trees\"]\n  end\n  Sueltos -->|\"git gc\"| P[\"pack-….pack\"]\n  Sueltos -->|\"git gc\"| X[\"pack-….idx (y .rev)\"]\n  P --> F[\"blob v2: completo\"]\n  P --> DL[\"blob v1: delta sobre v2\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo bodega\ni=1\nwhile [ $i -le 300 ]; do printf 'producto-%03d;stock;%d\\n' $i $((i*7)) >> inventario.csv; i=$((i+1)); done\nfecha '2026-09-01 10:00'\ngit add inventario.csv\ngit commit -q -m 'Inventario inicial'\nfecha '2026-09-02 10:00'\nprintf 'producto-301;stock;12\\n' >> inventario.csv\ngit commit -q -am 'Agrega producto 301'",
+     "cwd": "bodega",
+     "code": "git count-objects -v\nls .git/objects\ngit gc\ngit count-objects -v\nls .git/objects/pack\ngit verify-pack -v .git/objects/pack/pack-*.idx\n# ¿Cuál es cada versión de inventario.csv?\ngit rev-parse HEAD:inventario.csv HEAD~1:inventario.csv"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Campo de count-objects -v",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "count / size",
+       "Número de objetos sueltos y espacio que ocupan (KiB)."
+      ],
+      [
+       "in-pack / packs / size-pack",
+       "Objetos dentro de packs, número de packs y su tamaño (KiB)."
+      ],
+      [
+       "prune-packable",
+       "Objetos sueltos que ya están también en un pack (git prune-packed los quita)."
+      ],
+      [
+       "garbage / size-garbage",
+       "Archivos en la base de objetos que no son objetos ni packs válidos."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Leer git verify-pack -v"
+    },
+    {
+     "type": "p",
+     "text": "`git verify-pack` comprueba un pack y, con `-v`, lista su contenido: una línea por objeto con «hash tipo tamaño tamaño-en-el-pack desplazamiento». Los objetos guardados como **delta** agregan dos columnas: la profundidad de la cadena y el hash del objeto **base** sobre el que se calcula la diferencia. Al final muestra un resumen: cuántos no son delta («non delta») y cuántos hay en cadenas de cada largo («chain length = 1: N objects»)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Columna",
+      "Ejemplo",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "1",
+       "a679fb8…",
+       "Hash del objeto."
+      ],
+      [
+       "2",
+       "blob",
+       "Tipo."
+      ],
+      [
+       "3",
+       "7",
+       "Tamaño sin comprimir: del objeto completo o, si es un delta, de los datos del delta."
+      ],
+      [
+       "4",
+       "18",
+       "Bytes que ocupa realmente dentro del pack (comprimido)."
+      ],
+      [
+       "5",
+       "1842",
+       "Desplazamiento (offset) dentro del .pack."
+      ],
+      [
+       "6 (solo deltas)",
+       "1",
+       "Profundidad de la cadena de deltas."
+      ],
+      [
+       "7 (solo deltas)",
+       "f988396…",
+       "Objeto base del delta."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En la demostración (la tabla usa sus valores), la versión nueva de `inventario.csv` (f988396, 7065 bytes) queda completa y ocupa 1446 bytes comprimida, mientras que la versión antigua (a679fb8) se guarda como un delta de apenas 7 bytes calculado **a partir de la nueva**. Pro Git lo explica así: la versión más reciente es la que más probablemente necesitarás, así que es la que se deja intacta. Para buscar candidatos, Git ordena los objetos por tipo, tamaño y (opcionalmente) nombre, y prueba deltas dentro de una ventana de objetos vecinos (por defecto 10), con cadenas de hasta 50 de profundidad. Los números exactos pueden variar un poco según tu versión de Git y de zlib. Pista: la última línea que imprime `git gc`, «Total 6 (delta 1)…», ya anunciaba cuántos objetos entraron al pack y cuántos quedaron como delta."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Git guarda instantáneas o diferencias? **Conceptualmente, instantáneas**: cada commit apunta a un árbol completo y así razonan todos los comandos. **Físicamente**, dentro de los packfiles, comprime con deltas. No mezcles los dos niveles en una respuesta de examen."
+    },
+    {
+     "type": "h",
+     "text": "Qué hace git gc"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Empaqueta los objetos (`git repack`), reutilizando o recalculando deltas.",
+      "Empaqueta las refs en `.git/packed-refs` (`git pack-refs --all`).",
+      "Expira entradas antiguas del reflog: 90 días (`gc.reflogExpire`) o 30 si ya no son alcanzables desde la punta de la rama (`gc.reflogExpireUnreachable`).",
+      "Elimina objetos inalcanzables más antiguos que `gc.pruneExpire` (por defecto 2 semanas). Los más recientes se conservan; desde Git 2.41 se guardan en un **cruft pack** (un pack con un archivo `.mtimes` que recuerda la antigüedad de cada objeto) en vez de dejarlos sueltos.",
+      "Otras limpiezas: datos viejos de rerere, worktrees borrados, etc."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo pruebas\nfecha '2026-09-01 10:00'\ncommit_archivo app.js 'console.log(1);' 'Primer commit'\nfecha '2026-09-02 10:00'\ncommit_archivo app.js 'console.log(2);' 'Segundo commit'\ngit reset -q --hard HEAD~1\necho 'borrador que nunca se confirmó' | git hash-object -w --stdin >/dev/null",
+     "cwd": "pruebas",
+     "code": "# Un commit deshecho con reset --hard y un blob que nunca se confirmó\ngit count-objects -v\ngit gc\n# count 0, pero packs: 2 -> el que tiene .mtimes es el cruft pack\ngit count-objects -v\nls .git/objects/pack\ngit fsck --no-reflogs"
+    },
+    {
+     "type": "p",
+     "text": "El commit deshecho sigue protegido por el reflog, así que gc lo trata como alcanzable y lo guarda en el pack normal. El blob, que nada referencia, va al cruft pack (el que tiene archivo `.mtimes`): sigue ahí, recuperable, hasta que cumpla dos semanas de antigüedad."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Casi nunca necesitas ejecutar `git gc` a mano: después de operaciones como commit, merge o fetch, Git lanza `git maintenance run --auto`, que ejecuta un gc liviano cuando hay más de unos 6700 objetos sueltos (`gc.auto`) o más de 50 packs (`gc.autoPackLimit`). `git gc --aggressive` recalcula todos los deltas con una ventana mayor (250): tarda mucho más y rara vez vale la pena."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git gc --prune=now` borra de inmediato todos los objetos inalcanzables: adiós a la posibilidad de rescatar commits colgantes o blobs que solo llegaron al index. Úsalo solo cuando tengas claro que no hay nada que recuperar (por ejemplo, después de purgar un secreto, s15)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Packfile",
+       "en": "packfile",
+       "def": "Archivo .pack que contiene muchos objetos comprimidos, con su índice .idx."
+      },
+      {
+       "term": "Delta",
+       "en": "delta",
+       "def": "Representación de un objeto como diferencias respecto de otro objeto base del mismo pack."
+      },
+      {
+       "term": "Cruft pack",
+       "en": "cruft pack",
+       "def": "Pack de objetos inalcanzables recientes, con un archivo .mtimes; reemplaza a los objetos sueltos (Git 2.41+ por defecto)."
+      },
+      {
+       "term": "Recolección de basura",
+       "en": "garbage collection (gc)",
+       "def": "Mantenimiento que empaqueta objetos y refs, expira reflogs y elimina lo inalcanzable antiguo."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s12-l6",
+   "title": "Integridad, objetos perdidos y SHA-256",
+   "minutes": 25,
+   "goals": [
+    "Detectar objetos colgantes e inalcanzables con git fsck",
+    "Recuperar un commit o un archivo perdido a partir de su hash",
+    "Reparar una ref dañada usando el reflog y git update-ref",
+    "Crear un repositorio SHA-256 y describir el estado de la transición desde SHA-1"
+   ],
+   "takeaways": [
+    "Git considera vivo todo lo alcanzable desde las refs, los reflogs y el index; el resto es inalcanzable y gc lo eliminará tras el período de gracia.",
+    "«dangling» significa que nada apunta directamente a ese objeto: es el punto de partida para rescatar trabajo.",
+    "git fsck --lost-found copia los commits colgantes a .git/lost-found/commit y el contenido de los blobs a .git/lost-found/other.",
+    "Si una ref queda dañada, su reflog (.git/logs/refs/…) guarda los hashes que tuvo: borra el archivo roto y recréala con update-ref.",
+    "SHA-1 (con detección de colisiones) sigue siendo el formato por defecto en Git 2.50; SHA-256 existe desde 2.29, pero todavía no interopera con repositorios SHA-1."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un objeto está **vivo** si se puede llegar a él partiendo de alguna raíz: las refs (ramas, etiquetas, remotas, stash), los reflogs y el index. Desde un commit se llega a sus padres y a su árbol; desde un árbol, a sus blobs y subárboles. Todo lo que no se alcanza así es **inalcanzable** (unreachable). Si además ningún otro objeto lo menciona, `git fsck` lo llama **colgante** (dangling): es la punta de una cadena perdida, justo lo que te interesa para rescatar algo."
+    },
+    {
+     "type": "diagram",
+     "title": "Alcanzable, inalcanzable y colgante",
+     "mermaid": "flowchart LR\n  R[\"refs, reflogs e index\"] --> C2[\"commit B (main)\"]\n  C2 --> C1[\"commit A\"]\n  C2 --> T2[\"tree\"]\n  T2 --> B1[\"blob\"]\n  X2[\"commit Y: dangling\"] --> X1[\"commit X: unreachable\"]\n  X1 --> C1\n  BL[\"blob suelto: dangling\"]"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo pruebas\nfecha '2026-09-01 10:00'\ncommit_archivo app.js 'console.log(1);' 'Primer commit'\nfecha '2026-09-02 10:00'\ncommit_archivo app.js 'console.log(2);' 'Commit que luego deshice'\ngit reset -q --hard HEAD~1\nfecha '2026-09-03 10:00'\ngit commit-tree 'HEAD^{tree}' -m 'Commit creado con commit-tree y nunca publicado' >/dev/null\nescribir notas.txt 'ideas sueltas'\ngit add notas.txt\ngit rm -q --cached notas.txt\nrm notas.txt",
+     "cwd": "pruebas",
+     "code": "# Por defecto el reflog cuenta como raíz: el commit deshecho no aparece\ngit fsck\n# Sin reflogs, aparece también el commit deshecho con reset --hard\ngit fsck --no-reflogs\ngit fsck --unreachable --no-reflogs\n# Copia lo colgante a .git/lost-found (esta opción ignora los reflogs)\ngit fsck --lost-found\nls .git/lost-found/commit .git/lost-found/other\ncat .git/lost-found/other/*"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Mensaje de git fsck",
+      "Qué significa"
+     ],
+     "rows": [
+      [
+       "dangling <tipo> <hash>",
+       "El objeto existe y nada lo menciona. Candidato a rescate (o basura que gc eliminará)."
+      ],
+      [
+       "unreachable <tipo> <hash>",
+       "(Con --unreachable) el objeto no se alcanza desde ninguna raíz, aunque otro objeto perdido lo mencione."
+      ],
+      [
+       "missing <tipo> <hash>",
+       "Algo apunta a un objeto que no está: corrupción real; hay que traerlo de otro clon o de un respaldo."
+      ],
+      [
+       "broken link from … to …",
+       "Un objeto referencia a otro que falta o es de un tipo incorrecto."
+      ],
+      [
+       "hash mismatch <hash>",
+       "El contenido no coincide con su nombre: el archivo del objeto se corrompió."
+      ],
+      [
+       "error: refs/heads/x: badRefContent",
+       "El archivo de la ref no contiene un hash válido (por ejemplo, quedó vacío)."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Cómo rescatar según lo que perdiste: un **commit** colgante se recupera creando una ref que lo apunte (`git update-ref refs/heads/rescate <hash>` o `git branch rescate <hash>`); una **etiqueta anotada** borrada deja un «dangling tag» que recuperas con `git update-ref refs/tags/v1.0 <hash-del-tag>`; y un **blob** (un archivo que llegó al index pero nunca a un commit) lo lees con `git cat-file -p <hash>` o lo copias desde `.git/lost-found/other/<hash>`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Esto complementa el reflog de s10: el reflog recuerda a dónde apuntaron HEAD y las ramas, pero no sabe nada de ramas borradas (su reflog se borra con ellas), de etiquetas eliminadas ni de archivos que solo pasaron por el index. `git fsck` mira directamente la base de objetos, así que encuentra todo lo que gc todavía no eliminó."
+    },
+    {
+     "type": "h",
+     "text": "Reparar una ref dañada"
+    },
+    {
+     "type": "p",
+     "text": "Un corte de luz o un disco que falla justo mientras Git escribe puede dejar el archivo de una rama vacío o con basura. Los objetos están bien, pero `git log` falla y `git status` cree que no hay commits. La reparación usa lo que ya sabes: el reflog de la rama es un archivo de texto (`.git/logs/refs/heads/main`) cuya última línea dice «hash-anterior hash-nuevo autor fecha motivo». Como `git update-ref` se niega a tocar una ref ilegible («reference broken»), primero se borra el archivo dañado:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo caja\nfecha '2026-09-10 10:00'\ncommit_archivo ventas.csv 'fecha;total' 'Primer commit'\nfecha '2026-09-11 10:00'\nanexar ventas.csv '2026-09-11;125990'\ngit commit -q -am 'Registra ventas del 11'\n: > .git/refs/heads/main",
+     "cwd": "caja",
+     "code": "git status\ngit log\ngit fsck\ntail -n 2 .git/logs/refs/heads/main\nrm .git/refs/heads/main\ngit update-ref refs/heads/main b00cdcc80163a15c62a6da0972d26965bdea8ccf\ngit status\ngit log --oneline"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Antes de reparar nada, haz una copia de la carpeta `.git` completa (en tu computador: `cp -r .git ../respaldo-git`). Y ojo con packed-refs: si la rama también figura ahí con un valor antiguo, al borrar el archivo suelto la rama «revive» con ese valor viejo. Comprueba siempre el resultado con `git rev-parse` y `git log` antes de seguir."
+    },
+    {
+     "type": "h",
+     "text": "SHA-1, SHAttered y SHA-256"
+    },
+    {
+     "type": "p",
+     "text": "Git nació en 2005 usando SHA-1. En febrero de 2017, el ataque **SHAttered** (Google y CWI Ámsterdam) mostró dos PDF distintos con el mismo SHA-1. Git reaccionó en la versión 2.13 adoptando por defecto **SHA-1DC**, una implementación que detecta los patrones de ese tipo de ataque y se niega a aceptar esos objetos. Aun así, SHA-1 se considera débil, y a fines de 2018 el proyecto eligió **SHA-256** como sucesor."
+    },
+    {
+     "type": "diagram",
+     "title": "De SHA-1 a SHA-256",
+     "mermaid": "timeline\n  title De SHA-1 a SHA-256\n  2005 : Git nace usando SHA-1\n  2017 : SHAttered demuestra una colisión práctica de SHA-1 : Git 2.13 adopta SHA-1DC por defecto\n  2018 : El proyecto elige SHA-256 como sucesor\n  2020 : Git 2.29 permite crear repositorios SHA-256 (experimental)\n  2023 : Git 2.42 deja de considerarlos experimentales\n  2025 : Git 2.51 anuncia SHA-256 y reftable por defecto para Git 3.0"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "",
+     "cwd": "",
+     "code": "git init --object-format=sha256 moderno\ncd moderno\necho 'hola' | git hash-object --stdin\ngit rev-parse --show-object-format\ncat .git/config\necho 'hola' > saludo.txt\ngit add saludo.txt\ngit commit -m \"Primer commit SHA-256\"\ngit cat-file -p HEAD\ncd ..\ngit init clasico\ncd clasico\necho 'hola' | git hash-object --stdin\ngit rev-parse --show-object-format"
+    },
+    {
+     "type": "list",
+     "items": [
+      "El formato se elige al crear el repositorio (`git init --object-format=sha256`, o `init.defaultObjectFormat` en la configuración) y queda anotado en `.git/config` como `extensions.objectformat = sha256` con `repositoryformatversion = 1`, para que un Git antiguo se niegue a abrirlo en vez de corromperlo.",
+      "Los hashes SHA-256 tienen 64 caracteres hexadecimales en vez de 40.",
+      "La documentación de Git 2.50 lo dice claro: por ahora **no hay interoperabilidad** entre repositorios SHA-256 y SHA-1 (no puedes hacer push ni fetch entre ellos). El trabajo de compatibilidad (`extensions.compatObjectFormat`) sigue en curso.",
+      "A mediados de 2026, GitHub todavía no aceptaba repositorios SHA-256; GitLab los ofrece de forma experimental y Forgejo/Codeberg los admite. Git 3.0 (aún sin fecha) planea usar SHA-256 por defecto en los repositorios nuevos."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Para el examen: SHA-1 produce 40 caracteres hex (160 bits) y SHA-256, 64 (256 bits); Git 2.50 sigue creando repositorios SHA-1 por defecto; SHA-256 se elige con `--object-format=sha256` al hacer `git init` y hoy no puede intercambiar objetos con repositorios SHA-1."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Alcanzable",
+       "en": "reachable",
+       "def": "Objeto al que se llega desde una ref, un reflog o el index siguiendo padres, árboles y blobs."
+      },
+      {
+       "term": "Colgante",
+       "en": "dangling",
+       "def": "Objeto que existe pero al que ningún otro objeto ni ref apunta directamente."
+      },
+      {
+       "term": "git fsck",
+       "en": "file system check",
+       "def": "Verifica la integridad y conectividad de la base de objetos y reporta lo inalcanzable."
+      },
+      {
+       "term": "SHA-1DC",
+       "en": "SHA-1 collision detection",
+       "def": "Implementación de SHA-1 que detecta intentos de colisión como SHAttered (por defecto desde Git 2.13)."
+      },
+      {
+       "term": "Formato de objetos",
+       "en": "object format",
+       "def": "Función de hash del repositorio: sha1 (por defecto) o sha256."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s12-e1",
+   "title": "¿Qué es cada hash?",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Una compañera pegó en el chat del equipo cuatro hashes abreviados del repositorio `biblioteca`, pero no dijo qué es cada uno:",
+    "```bash\n1) c3c61d9\n2) cee9987\n3) 2756160\n4) 065c1ae\n```",
+    "Averigua el tipo de cada objeto con `git cat-file` y crea el archivo `~/tipos.txt` (en tu carpeta personal, fuera del repositorio) con una línea por hash, en el mismo orden, escribiendo el tipo tal como lo muestra Git: `blob`, `tree`, `commit` o `tag`.",
+    "Agrega una quinta línea con el **tamaño en bytes** del objeto número 1 (solo el número).",
+    "Recuerda: `echo texto > archivo` crea (o reemplaza) el archivo y `echo texto >> archivo` agrega una línea al final."
+   ],
+   "setup": "nuevo_repo biblioteca\nautor 'Carla Rojas' 'carla@biblioteca.cl'\nfecha '2026-09-01 09:00'\nescribir LEEME.md '# Biblioteca municipal'\nescribir catalogo/libros.csv 'titulo;autor\nCien años de soledad;García Márquez\nLos detectives salvajes;Bolaño'\ngit add .\ngit commit -q -m 'Catálogo inicial'\nfecha '2026-09-02 09:00'\nanexar catalogo/libros.csv 'Poema de Chile;Mistral'\ngit commit -q -am 'Agrega libro de Mistral'\ngit tag -a v1.0 -m 'Primera versión del catálogo'\nyo",
+   "cwd": "biblioteca",
+   "checks": [
+    {
+     "name": "Existe ~/tipos.txt con 5 líneas",
+     "script": "f=\"$HOME/tipos.txt\"\n[ -f \"$f\" ] || falla \"No encuentro ~/tipos.txt (créalo con echo … > ~/tipos.txt)\"\n[ \"$(grep -c . \"$f\")\" -ge 5 ] || falla \"~/tipos.txt debe tener 5 líneas: los 4 tipos y un tamaño\""
+    },
+    {
+     "name": "Los tipos de las líneas 1 a 4 son correctos",
+     "script": "f=\"$HOME/tipos.txt\"\n[ -f \"$f\" ] || falla \"Falta ~/tipos.txt\"\nn=1\nfor h in c3c61d95d7f7895b7bac369eb491d7105ce19fa0 cee998750c13e8bf21cc8857936e63c81cd51037 2756160d19c37ce7a449a0dcacaff038a1f84aff 065c1aea6202d12c061f07ed5736459f08be9f19; do\n  esperado=$(git cat-file -t $h)\n  dado=$(sed -n \"${n}p\" \"$f\" | tr -d ' \\r\\t')\n  [ \"$dado\" = \"$esperado\" ] || falla \"La línea $n («${dado}») no es el tipo del objeto número $n\"\n  n=$((n+1))\ndone"
+    },
+    {
+     "name": "El tamaño de la línea 5 es correcto",
+     "script": "f=\"$HOME/tipos.txt\"\ndado=$(sed -n 5p \"$f\" 2>/dev/null | tr -d ' \\r\\t')\n[ \"$dado\" = \"$(git cat-file -s c3c61d95d7f7895b7bac369eb491d7105ce19fa0)\" ] || falla \"La línea 5 debe ser el tamaño en bytes del objeto número 1 (solo el número)\""
+    }
+   ],
+   "solution": [
+    "git cat-file -t c3c61d9",
+    "git cat-file -t cee9987",
+    "git cat-file -t 2756160",
+    "git cat-file -t 065c1ae",
+    "git cat-file -s c3c61d9",
+    "echo blob > ~/tipos.txt",
+    "echo tag >> ~/tipos.txt",
+    "echo commit >> ~/tipos.txt",
+    "echo tree >> ~/tipos.txt",
+    "echo 23 >> ~/tipos.txt",
+    "cat ~/tipos.txt"
+   ],
+   "hints": [
+    "`git cat-file -t <hash>` responde el tipo; `git cat-file -s <hash>` el tamaño; `-p` muestra el contenido.",
+    "Un hash abreviado funciona igual que el completo mientras sea único en el repositorio (mínimo 4 caracteres).",
+    "Si quieres verlo todo de una vez: `printf 'hash1\\nhash2\\n' | git cat-file --batch-check` imprime «hash tipo tamaño» por línea."
+   ],
+   "explain": "Los cuatro objetos son, en orden, un blob (el contenido de LEEME.md), un objeto tag (la etiqueta anotada v1.0), un commit («Catálogo inicial») y un tree (el árbol raíz del último commit). git cat-file -t lee el encabezado «tipo tamaño» del objeto sin mostrarte su contenido. El tamaño del blob (23) es el del contenido sin el encabezado: los caracteres de «# Biblioteca municipal» más el salto de línea. Alternativas: git cat-file -p <hash> muestra el contenido y el formato delata el tipo (un tree lista entradas; un commit empieza por «tree …»; un tag, por «object …»); y para muchos objetos a la vez, printf con los hashes | git cat-file --batch-check es la herramienta de los scripts."
+  },
+  {
+   "id": "s12-e2",
+   "title": "Tu primer blob, sin archivos",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Quieres comprobar con tus propios ojos que Git guarda **contenidos**, no archivos. En el repositorio `diario`, guarda en la base de objetos un blob cuyo contenido sea exactamente esta línea (con su salto de línea final, tal como la escribe `echo`):",
+    "```bash\nQuerido diario: hoy vi un blob por dentro.\n```",
+    "Hazlo **sin crear ningún archivo**, sin tocar el index y sin hacer commits.",
+    "Después crea una etiqueta ligera llamada `primer-blob` que apunte a ese blob (así queda referenciado y `git gc` nunca lo borrará) y muestra su contenido con `git cat-file -p primer-blob`."
+   ],
+   "setup": "nuevo_repo diario\nfecha '2026-09-03 21:00'\ncommit_archivo LEEME.md '# Mi diario de Git' 'Primer commit'",
+   "cwd": "diario",
+   "checks": [
+    {
+     "name": "El blob existe en la base de objetos",
+     "script": "h=$(echo 'Querido diario: hoy vi un blob por dentro.' | git hash-object --stdin)\ngit cat-file -e \"$h\" 2>/dev/null || falla \"Todavía no existe un blob con ese contenido exacto (¿usaste -w? ¿copiaste el texto idéntico, con el punto final?)\""
+    },
+    {
+     "name": "La etiqueta primer-blob apunta a ese blob",
+     "script": "h=$(echo 'Querido diario: hoy vi un blob por dentro.' | git hash-object --stdin)\nt=$(git rev-parse -q --verify refs/tags/primer-blob) || falla \"No existe la etiqueta primer-blob\"\n[ \"$t\" = \"$h\" ] || falla \"primer-blob existe, pero no apunta al blob con ese contenido (apunta a un $(git cat-file -t $t))\""
+    },
+    {
+     "name": "Sin archivos nuevos ni commits",
+     "script": "limpio \"Hay archivos nuevos o cambios: este ejercicio se hace sin crear archivos\"\n[ \"$(num_commits)\" = 1 ] || falla \"No hagas commits: el blob vive solo en la base de objetos\""
+    }
+   ],
+   "solution": [
+    "echo 'Querido diario: hoy vi un blob por dentro.' | git hash-object -w --stdin",
+    "git tag primer-blob 212aa999894454570e86f1c415a56262b480fac4",
+    "git cat-file -t primer-blob",
+    "git cat-file -p primer-blob",
+    "git status"
+   ],
+   "hints": [
+    "`git hash-object --stdin` lee el contenido desde una tubería: `echo 'texto' | git hash-object --stdin`.",
+    "Sin `-w` solo calcula el hash; con `-w` además escribe el objeto en `.git/objects`.",
+    "`git tag nombre <hash>` crea una etiqueta ligera que puede apuntar a cualquier objeto, también a un blob."
+   ],
+   "explain": "El hash de tu blob es 212aa999894454570e86f1c415a56262b480fac4: el mismo que obtendría cualquier persona que guarde ese texto en Git, porque se calcula sobre «blob <tamaño>\\0<contenido>». git status no muestra nada porque el blob no está en el index ni en ningún commit: solo existe en la base de objetos. Sin la etiqueta sería un «dangling blob» que git gc eliminaría pasado el período de gracia; con ella está referenciado. Las etiquetas pueden apuntar a cualquier objeto: el proyecto Git publica así la llave GPG de su mantenedor (junio-gpg-pub). Alternativa equivalente para el primer paso: printf '...\\n' | git hash-object -w --stdin."
+  },
+  {
+   "id": "s12-e3",
+   "title": "El index al descubierto",
+   "level": "facil",
+   "minutes": 10,
+   "prompt": [
+    "En `tienda` hay tres versiones distintas de `config.json`: la del último commit, la que está en el área de preparación y la del directorio de trabajo (por eso `git status --short` muestra `MM`).",
+    "Sin usar `git diff` ni `git show`, localiza con `git ls-files -s` el blob que está en el **index** y con `git ls-tree` el que guarda el **último commit**; revisa su contenido con `git cat-file -p` y crea dos etiquetas ligeras: `preparado`, que apunte al blob del index, y `confirmado`, que apunte al blob de HEAD.",
+    "No modifiques el archivo ni el index."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-04 10:00'\ncommit_archivo config.json '{\"moneda\": \"CLP\", \"iva\": 19}' 'Configuración inicial'\nescribir config.json '{\"moneda\": \"CLP\", \"iva\": 19, \"envio\": 3990}'\ngit add config.json\nescribir config.json '{\"moneda\": \"CLP\", \"iva\": 19, \"envio\": 4990}'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "preparado apunta al blob del index",
+     "script": "[ \"$(git rev-parse -q --verify refs/tags/preparado)\" = \"$(git rev-parse :config.json)\" ] || falla \"La etiqueta preparado no existe o no apunta al blob que está en el index (segunda columna de git ls-files -s)\""
+    },
+    {
+     "name": "confirmado apunta al blob del último commit",
+     "script": "[ \"$(git rev-parse -q --verify refs/tags/confirmado)\" = \"$(git rev-parse HEAD:config.json)\" ] || falla \"La etiqueta confirmado no existe o no apunta al blob de config.json en HEAD (mira git ls-tree HEAD)\""
+    },
+    {
+     "name": "El index y el archivo siguen igual",
+     "script": "[ \"$(git status --porcelain)\" = \"MM config.json\" ] || falla \"Cambiaste el index o el archivo: git status --short debería seguir mostrando MM config.json\""
+    }
+   ],
+   "solution": [
+    "git status --short",
+    "git ls-files -s",
+    "git cat-file -p d0ac983",
+    "git ls-tree HEAD",
+    "git cat-file -p 5dea33e",
+    "git tag preparado d0ac98360140fa1930968f80c4a4e6d8c97651ba",
+    "git tag confirmado 5dea33edcc73145d96589263b157ab5969649041",
+    "git status --short"
+   ],
+   "hints": [
+    "`git ls-files -s` muestra «modo hash etapa ruta» de cada entrada del index.",
+    "`git ls-tree HEAD` muestra las entradas del árbol del último commit; el hash de config.json es distinto al del index.",
+    "Crea cada etiqueta con `git tag <nombre> <hash>`: una etiqueta ligera puede apuntar a un blob."
+   ],
+   "explain": "El index contiene la versión con envío 3990 (la que preparaste con git add) y HEAD la versión original, sin envío; la versión con 4990 solo existe en el disco y todavía no tiene blob (git hash-object config.json te diría qué hash tendría, sin guardarlo). Atajos que vale la pena memorizar: `:config.json` es la ruta en el index (etapa 0) y `HEAD:config.json`, en el último commit; por eso `git tag preparado :config.json` y `git tag confirmado HEAD:config.json` también resuelven el ejercicio. Así es como `git diff --staged` compara HEAD con el index y `git diff` compara el index con el disco."
+  },
+  {
+   "id": "s12-e4",
+   "title": "Un repositorio con SHA-256",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Vas a crear tu primer repositorio con el formato de objetos **SHA-256**.",
+    "En tu carpeta personal (`~`), crea el repositorio `seguro` usando SHA-256, agrega un archivo `LEEME.md` con el texto `Repositorio con SHA-256` y confírmalo con el mensaje `Primer commit`.",
+    "Después mira el hash del commit con `git rev-parse HEAD` y el formato con `git rev-parse --show-object-format`, y compara el largo del hash con el de los repositorios que has usado hasta ahora."
+   ],
+   "setup": "",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "~/seguro es un repositorio SHA-256",
+     "script": "[ -d seguro ] || falla \"No existe la carpeta ~/seguro\"\nf=$(git -C seguro rev-parse --show-object-format 2>/dev/null) || falla \"~/seguro no es un repositorio de Git\"\n[ \"$f\" = sha256 ] || falla \"El repositorio usa $f: el formato se elige al crearlo con git init --object-format=sha256\""
+    },
+    {
+     "name": "Tiene el commit con LEEME.md",
+     "script": "h=$(git -C seguro rev-parse -q --verify HEAD) || falla \"Todavía no hay commits en ~/seguro\"\n[ \"$(printf %s \"$h\" | wc -c | tr -d ' ')\" = 64 ] || falla \"El hash de HEAD no tiene 64 caracteres\"\ngit -C seguro show HEAD:LEEME.md 2>/dev/null | grep -qF 'Repositorio con SHA-256' || falla \"El último commit no contiene LEEME.md con el texto pedido\"\n[ \"$(git -C seguro log -1 --format=%s)\" = \"Primer commit\" ] || falla \"El mensaje del commit debe ser «Primer commit»\""
+    },
+    {
+     "name": "No quedan cambios sin confirmar",
+     "script": "[ -z \"$(git -C seguro status --porcelain 2>/dev/null)\" ] || falla \"Quedan cambios sin confirmar en ~/seguro\""
+    }
+   ],
+   "solution": [
+    "git init --object-format=sha256 seguro",
+    "cd seguro",
+    "echo 'Repositorio con SHA-256' > LEEME.md",
+    "git add LEEME.md",
+    "git commit -m \"Primer commit\"",
+    "git rev-parse HEAD",
+    "git rev-parse --show-object-format",
+    "cat .git/config"
+   ],
+   "hints": [
+    "El formato de objetos se elige al crear el repositorio: mira las opciones de `git init`.",
+    "`git init --object-format=sha256 seguro` crea la carpeta y el repositorio de una vez.",
+    "El resto es el flujo de siempre: crear el archivo, `git add` y `git commit -m`."
+   ],
+   "explain": "Un hash SHA-256 tiene 64 caracteres hexadecimales (256 bits) frente a los 40 de SHA-1 (160 bits). En .git/config verás `repositoryformatversion = 1` y `[extensions] objectformat = sha256`: esa extensión hace que un Git antiguo se niegue a abrir el repositorio en vez de estropearlo. El formato no se puede cambiar después con un comando: habría que crear otro repositorio. Recuerda las limitaciones de Git 2.50: no hay interoperabilidad con repositorios SHA-1 (no puedes hacer push ni fetch entre ellos) y varias plataformas, entre ellas GitHub, todavía no los aceptan. Si quisieras que todos tus repositorios nuevos fueran SHA-256, existe `git config --global init.defaultObjectFormat sha256`."
+  },
+  {
+   "id": "s12-e5",
+   "title": "Un árbol sin tocar el disco",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Vas a construir la primera instantánea del repositorio `portafolio` (que todavía no tiene commits) **sin crear archivos**: todo ocurrirá en la base de objetos y en el index.",
+    "En el index debe quedar esta estructura (cada archivo con su salto de línea final):",
+    "```bash\nLEEME.md          ->  # Portafolio de Ana\ncss/estilos.css   ->  body { margin: 0; }\n```",
+    "Luego convierte el index en árboles con `git write-tree`. Si todo está bien, el hash del árbol raíz empezará por `561de12`: el mismo que obtendría cualquier persona del mundo con ese contenido. No hagas commit todavía."
+   ],
+   "setup": "nuevo_repo portafolio",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "El index tiene exactamente los dos archivos pedidos",
+     "script": "b1=$(echo '# Portafolio de Ana' | git hash-object --stdin)\nb2=$(echo 'body { margin: 0; }' | git hash-object --stdin)\nesperado=$(printf '100644 %s 0\\tLEEME.md\\n100644 %s 0\\tcss/estilos.css' \"$b1\" \"$b2\")\n[ \"$(git ls-files -s)\" = \"$esperado\" ] || falla \"El index no coincide: git ls-files -s debería mostrar LEEME.md y css/estilos.css (modo 100644) con los blobs del contenido pedido\""
+    },
+    {
+     "name": "Escribiste el árbol raíz con write-tree",
+     "script": "[ \"$(git cat-file -t 561de122066e0b05b0323132df65cefbb55089f6 2>/dev/null)\" = tree ] || falla \"Todavía no existe el árbol esperado (ejecuta git write-tree cuando el index esté listo)\""
+    },
+    {
+     "name": "No hay archivos en el directorio de trabajo",
+     "script": "[ ! -e LEEME.md ] && [ ! -e css ] || falla \"Este ejercicio se hace sin crear archivos: LEEME.md y css/ no deben existir en el disco\""
+    },
+    {
+     "name": "Todavía sin commits",
+     "script": "git rev-parse -q --verify HEAD >/dev/null && falla \"No hagas commit todavía: solo blobs, index y árbol\"\ntrue"
+    }
+   ],
+   "solution": [
+    "echo '# Portafolio de Ana' | git hash-object -w --stdin",
+    "git update-index --add --cacheinfo 100644,e42e9b3e016660e65527df06d5ac65b80fdb2611,LEEME.md",
+    "echo 'body { margin: 0; }' | git hash-object -w --stdin",
+    "git update-index --add --cacheinfo 100644,bc406f05614660340d90008ead85d26f50ea87db,css/estilos.css",
+    "git ls-files -s",
+    "git write-tree",
+    "git ls-tree -r -t 561de122066e0b05b0323132df65cefbb55089f6",
+    "git status --short"
+   ],
+   "hints": [
+    "Primero crea cada blob con `echo '…' | git hash-object -w --stdin` y copia el hash que imprime.",
+    "`git update-index --add --cacheinfo 100644,<hash>,ruta` registra en el index una ruta que no existe en el disco; la ruta puede incluir carpetas (css/estilos.css). Ojo: exige el hash completo de 40 caracteres.",
+    "Revisa con `git ls-files -s` y termina con `git write-tree`: crea el árbol de css/ y el árbol raíz de una vez."
+   ],
+   "explain": "El árbol raíz 561de122066e0b05b0323132df65cefbb55089f6 contiene LEEME.md y la entrada 040000 css, que apunta a un subárbol creado automáticamente por write-tree: el index no guarda carpetas, solo rutas completas, y write-tree reconstruye la jerarquía. git status --short muestra «AD»: agregado en el index (A) pero borrado en el disco (D), porque los archivos nunca existieron. Si ahora ejecutaras git checkout-index -a aparecerían en el disco. Alternativa sin index: git mktree, que construye un árbol (de un nivel) a partir de líneas en formato ls-tree. Y lo contrario de write-tree es git read-tree <árbol>, que carga un árbol en el index."
+  },
+  {
+   "id": "s12-e6",
+   "title": "Un commit con git commit-tree",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "En el repositorio `web`, el cliente pidió volver **exactamente** al diseño aprobado en la etiqueta `v1.0`, pero sin borrar la historia posterior. La idea: un commit nuevo encima de `main` cuyo árbol sea idéntico al de `v1.0`.",
+    "Créalo con `git commit-tree` (sin checkout, sin `git commit` y sin `git revert`), con estas características: árbol = el de `v1.0`; padre = el commit actual de `main`; mensaje = `Vuelve al diseño de v1.0`.",
+    "Tu jefa quiere revisarlo antes de publicarlo, así que **no muevas `main`**: por ahora basta con que el commit exista (quedará «colgante»). Compruébalo con `git cat-file -p` y con `git fsck`."
+   ],
+   "setup": "nuevo_repo web\nautor 'Diego Muñoz' 'diego@estudio.cl'\nfecha '2026-09-05 10:00'\nescribir index.html '<h1>Estudio Andes</h1>'\nescribir estilos.css 'body { background: white; }'\ngit add .\ngit commit -q -m 'Primer diseño'\ngit tag -a v1.0 -m 'Diseño aprobado por el cliente'\nfecha '2026-09-08 10:00'\nescribir estilos.css 'body { background: black; }'\ngit commit -q -am 'Diseño oscuro'\nfecha '2026-09-10 10:00'\nescribir index.html '<h1>Estudio Andes</h1>\n<p>Diseñamos en la cordillera</p>'\ngit commit -q -am 'Agrega slogan'\nyo",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "Existe un commit nuevo con el árbol de v1.0",
+     "script": "V1C=$(git rev-parse 'v1.0^{commit}'); V1T=$(git rev-parse 'v1.0^{tree}'); ok=\"\"\nfor h in $(git cat-file --batch-all-objects --batch-check='%(objecttype) %(objectname)' | awk '$1==\"commit\"{print $2}'); do\n  [ \"$h\" != \"$V1C\" ] && [ \"$(git rev-parse \"$h^{tree}\")\" = \"$V1T\" ] && ok=1\ndone\n[ -n \"$ok\" ] || falla \"No encuentro ningún commit nuevo cuyo árbol sea el de v1.0 (pista: v1.0^{tree})\""
+    },
+    {
+     "name": "Su único padre es el último commit de main",
+     "script": "V1C=$(git rev-parse 'v1.0^{commit}'); V1T=$(git rev-parse 'v1.0^{tree}'); ok=\"\"\nfor h in $(git cat-file --batch-all-objects --batch-check='%(objecttype) %(objectname)' | awk '$1==\"commit\"{print $2}'); do\n  [ \"$h\" != \"$V1C\" ] && [ \"$(git rev-parse \"$h^{tree}\")\" = \"$V1T\" ] && [ \"$(git log -1 --format=%P $h)\" = \"6ab29dea65adca2f49c620b3b6696fdd888ba862\" ] && ok=1\ndone\n[ -n \"$ok\" ] || falla \"El commit con el árbol de v1.0 debe tener como único padre el commit actual de main (usa -p)\""
+    },
+    {
+     "name": "El mensaje es «Vuelve al diseño de v1.0»",
+     "script": "V1T=$(git rev-parse 'v1.0^{tree}'); ok=\"\"\nfor h in $(git cat-file --batch-all-objects --batch-check='%(objecttype) %(objectname)' | awk '$1==\"commit\"{print $2}'); do\n  [ \"$(git rev-parse \"$h^{tree}\")\" = \"$V1T\" ] && [ \"$(git log -1 --format=%P $h)\" = \"6ab29dea65adca2f49c620b3b6696fdd888ba862\" ] && [ \"$(git log -1 --format=%s $h)\" = \"Vuelve al diseño de v1.0\" ] && ok=1\ndone\n[ -n \"$ok\" ] || falla \"No hay un commit con ese árbol, ese padre y el mensaje exacto «Vuelve al diseño de v1.0»\""
+    },
+    {
+     "name": "main no se movió y el directorio está limpio",
+     "script": "[ \"$(git rev-parse main)\" = \"6ab29dea65adca2f49c620b3b6696fdd888ba862\" ] || falla \"main se movió: en este ejercicio el commit debe quedar sin publicar\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "git cat-file -p v1.0",
+    "git cat-file -p v1.0^{commit}",
+    "git commit-tree v1.0^{tree} -p main -m \"Vuelve al diseño de v1.0\"",
+    "git fsck",
+    "git log --oneline --all"
+   ],
+   "hints": [
+    "`git rev-parse v1.0^{tree}` (o `git cat-file -p` de la etiqueta y luego del commit) te da el árbol de v1.0.",
+    "Sintaxis: `git commit-tree <árbol> -p <padre> -m \"mensaje\"`. A diferencia de update-index, aquí puedes usar nombres como `main` o `v1.0^{tree}` en lugar de hashes.",
+    "commit-tree imprime el hash del commit nuevo; `git fsck` lo mostrará como «dangling commit» porque ninguna ref lo apunta todavía."
+   ],
+   "explain": "Acabas de hacer un «revert de instantánea»: en vez de aplicar el inverso de cada cambio (lo que haría git revert commit por commit), fijas directamente el árbol final. El commit nuevo tiene el árbol de v1.0 y como padre la punta de main, así que la historia intermedia se conserva. Equivalente con porcelana: `git restore --source=v1.0 --staged --worktree .` seguido de `git commit`. El commit queda colgante: git log no lo muestra, pero sobrevive al menos dos semanas aunque nadie lo apunte (gc.pruneExpire). En el siguiente ejercicio lo publicarás con update-ref."
+  },
+  {
+   "id": "s12-e7",
+   "title": "Publica el commit colgante",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "Tu jefa aprobó el commit «Vuelve al diseño de v1.0» que se creó con `git commit-tree` en el repositorio `web`. Está en la base de objetos, pero ninguna ref lo apunta. Ojo: hay **otro** commit colgante, una prueba descartada.",
+    "1. Encuentra los commits colgantes con `git fsck` e inspecciónalos con `git cat-file -p` para identificar el correcto.",
+    "2. Publícalo en `main` con `git update-ref`, usando la forma segura de tres argumentos (valor nuevo y valor anterior esperado).",
+    "3. `update-ref` solo mueve el puntero: deja luego el index y el directorio de trabajo iguales al nuevo commit (aquí no tienes cambios propios, así que `git reset --hard` es seguro)."
+   ],
+   "setup": "nuevo_repo web\nautor 'Diego Muñoz' 'diego@estudio.cl'\nfecha '2026-09-05 10:00'\nescribir index.html '<h1>Estudio Andes</h1>'\nescribir estilos.css 'body { background: white; }'\ngit add .\ngit commit -q -m 'Primer diseño'\ngit tag -a v1.0 -m 'Diseño aprobado por el cliente'\nfecha '2026-09-08 10:00'\nescribir estilos.css 'body { background: black; }'\ngit commit -q -am 'Diseño oscuro'\nfecha '2026-09-10 10:00'\nescribir index.html '<h1>Estudio Andes</h1>\n<p>Diseñamos en la cordillera</p>'\ngit commit -q -am 'Agrega slogan'\nyo\nautor 'Diego Muñoz' 'diego@estudio.cl'\nfecha '2026-09-11 09:00'\ngit commit-tree 'HEAD~1^{tree}' -p main -m 'Prueba: diseño oscuro sin slogan' >/dev/null\nfecha '2026-09-11 09:30'\ngit commit-tree 'v1.0^{tree}' -p main -m 'Vuelve al diseño de v1.0' >/dev/null\necho 'notas de la reunión' | git hash-object -w --stdin >/dev/null\nyo",
+   "cwd": "web",
+   "checks": [
+    {
+     "name": "main apunta al commit aprobado",
+     "script": "m=$(git rev-parse main)\n[ \"$m\" = \"193f22ff8f05a3ccaf7958c5ef22a355e8e0b04e\" ] && falla \"main apunta a la prueba descartada: revisa el mensaje de cada commit colgante\"\n[ \"$m\" = \"1748d0d736eebd7d757cacd5e927b026f423eb22\" ] || falla \"main no apunta al commit colgante «Vuelve al diseño de v1.0»\""
+    },
+    {
+     "name": "La historia anterior se conserva",
+     "script": "[ \"$(git rev-parse main^)\" = \"6ab29dea65adca2f49c620b3b6696fdd888ba862\" ] && [ \"$(num_commits main)\" = 4 ] || falla \"main debería tener los 3 commits originales más el aprobado\""
+    },
+    {
+     "name": "Sigues en main con el directorio sincronizado",
+     "script": "en_rama main\nlimpio \"Quedan diferencias entre el commit y tu directorio o index (¿sincronizaste con git reset --hard?)\"\narchivo_tiene estilos.css 'white' \"estilos.css debería volver al fondo blanco de v1.0\""
+    }
+   ],
+   "solution": [
+    "git fsck",
+    "git cat-file -p 193f22f",
+    "git cat-file -p 1748d0d",
+    "git update-ref refs/heads/main 1748d0d736eebd7d757cacd5e927b026f423eb22 6ab29dea65adca2f49c620b3b6696fdd888ba862",
+    "git status --short",
+    "git reset --hard",
+    "git log --oneline"
+   ],
+   "hints": [
+    "`git fsck` lista los «dangling commit»; también aparece un «dangling blob» que no te interesa.",
+    "`git cat-file -p <hash>` muestra el mensaje y el árbol de cada candidato.",
+    "`git update-ref refs/heads/main <nuevo> <anterior>`: el anterior es el valor actual de main (`git rev-parse main`)."
+   ],
+   "explain": "La forma de tres argumentos de update-ref es un «comparar y cambiar»: solo mueve main si todavía apunta al valor que indicas, así que no pisas un commit que alguien más haya agregado mientras tanto. Después de moverla, git status muestra «cambios preparados»: el index y el disco siguen con el árbol anterior, así que, comparados con el nuevo HEAD, parecen cambios listos para confirmar (que desharían justo lo que publicaste). reset --hard (o `git restore --source=HEAD --staged --worktree .`) los alinea con el nuevo commit. Alternativas con porcelana que también mueven la rama: `git merge --ff-only <hash>` (es un avance rápido, porque el padre del commit aprobado es main) o `git reset --hard <hash>`. La prueba descartada seguirá colgante hasta que gc la elimine."
+  },
+  {
+   "id": "s12-e8",
+   "title": "El HEAD del servidor apunta al vacío",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "El servidor del equipo, `~/servidor/web.git` (un repositorio bare), se creó cuando la rama por defecto era `master`. Hoy todo el trabajo está en `main`, pero cada persona que clona recibe este aviso y queda en una rama vacía:",
+    "```bash\nwarning: remote HEAD refers to nonexistent ref, unable to checkout\n```",
+    "Pruébalo tú mismo desde `~` con `git clone servidor/web.git prueba`.",
+    "Arregla el **servidor** para que su HEAD apunte a `main`, sin crear ramas nuevas ni tocar los commits, y verifica con un clon nuevo que ahora quedas en `main` con los archivos."
+   ],
+   "setup": "git init -q --bare -b master servidor/web.git\nnuevo_repo equipo\nautor 'Valentina Soto' 'vale@estudio.cl'\nfecha '2026-09-06 11:00'\ncommit_archivo index.html '<h1>Estudio Andes</h1>' 'Primer commit'\nfecha '2026-09-07 11:00'\ncommit_archivo contacto.html '<p>hola@estudio.cl</p>' 'Agrega contacto'\ngit push -q ~/servidor/web.git main\ncd ~\nrm -rf equipo\nyo",
+   "cwd": "",
+   "checks": [
+    {
+     "name": "El HEAD del servidor apunta a refs/heads/main",
+     "script": "h=$(git -C servidor/web.git symbolic-ref HEAD 2>/dev/null)\n[ \"$h\" = refs/heads/main ] || falla \"El HEAD del servidor apunta a $h, no a refs/heads/main\""
+    },
+    {
+     "name": "Un clon nuevo queda en main con los archivos",
+     "script": "mkdir -p \"$TMPDIR\"; t=\"$TMPDIR/verifica-$$\"; rm -rf \"$t\"\ngit clone -q servidor/web.git \"$t\" >/dev/null 2>&1 || falla \"No se pudo clonar el servidor\"\nif [ \"$(git -C \"$t\" symbolic-ref --short HEAD)\" = main ] && [ -f \"$t/contacto.html\" ]; then rm -rf \"$t\"; else rm -rf \"$t\"; falla \"Un clon nuevo no queda en main con los archivos\"; fi"
+    },
+    {
+     "name": "No cambiaste los commits ni creaste master",
+     "script": "[ \"$(git -C servidor/web.git rev-parse main)\" = \"21a7a3b3641b246718f16d557d1a7a80bad4d761\" ] || falla \"La rama main del servidor cambió: solo había que corregir su HEAD\"\ngit -C servidor/web.git show-ref --verify -q refs/heads/master && falla \"Creaste una rama master en el servidor: corrige el HEAD en vez de agregar ramas\"\ntrue"
+    }
+   ],
+   "solution": [
+    "git clone servidor/web.git prueba",
+    "cat servidor/web.git/HEAD",
+    "git -C servidor/web.git branch",
+    "git -C servidor/web.git symbolic-ref HEAD refs/heads/main",
+    "git clone servidor/web.git prueba2",
+    "git -C prueba2 status"
+   ],
+   "hints": [
+    "Mira `cat servidor/web.git/HEAD`: ¿a qué rama apunta? ¿existe esa rama en el servidor?",
+    "En un repositorio bare no hay directorio de trabajo, pero sí HEAD: define la rama que queda activa en quien clona.",
+    "`git -C servidor/web.git symbolic-ref HEAD refs/heads/main` (o entra con `cd servidor/web.git`)."
+   ],
+   "explain": "Al clonar, Git pregunta al servidor a qué apunta su HEAD y deja esa rama como activa. Si el HEAD del servidor apunta a una rama que no existe, el clon se queda en una rama sin commits (tu clon «prueba» quedó en master vacía; `git switch main` lo arregla localmente). Crear una rama master en el servidor también haría desaparecer el aviso, pero sería un parche: el arreglo correcto es la ref simbólica. En GitHub o GitLab esto es la «rama por defecto» que se cambia desde la configuración web. En los clones que ya existían, `git remote set-head origin --auto` actualiza su origin/HEAD."
+  },
+  {
+   "id": "s12-e9",
+   "title": "Refs con cinturón de seguridad",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En `app`, la rama `release` sigue en la versión 1.9 y hay una ref de seguimiento obsoleta, `refs/remotes/origin/vieja`, de una rama que ya no existe en el servidor. Hazlo todo con `git update-ref` y sin cambiarte de `main`:",
+    "1. Mueve `release` al commit de la etiqueta anotada `v2.0`, **solo si** `release` sigue apuntando al commit de `v1.9` (usa el tercer argumento), y deja en el reflog el motivo `release: sube a v2.0` (opción `-m`).",
+    "2. Borra `refs/remotes/origin/vieja`.",
+    "Pista de experto: prueba primero `git update-ref refs/heads/release v2.0` y lee con atención el error."
+   ],
+   "setup": "nuevo_repo app\nautor 'Tomás Vera' 'tomas@app.cl'\nfecha '2026-09-01 10:00'\ncommit_archivo version.txt '1.9.0' 'Versión 1.9.0'\ngit tag -a v1.9 -m 'Release 1.9'\nfecha '2026-09-08 10:00'\ncommit_archivo version.txt '2.0.0' 'Versión 2.0.0'\ngit tag -a v2.0 -m 'Release 2.0'\nfecha '2026-09-09 10:00'\ncommit_archivo notas.md '# Notas del equipo' 'Agrega notas'\ngit branch release v1.9\ngit update-ref refs/remotes/origin/vieja HEAD~2\nyo",
+   "cwd": "app",
+   "checks": [
+    {
+     "name": "release apunta al commit de v2.0",
+     "script": "[ \"$(git rev-parse -q --verify refs/heads/release)\" = \"$(git rev-parse 'v2.0^{commit}')\" ] || falla \"release no apunta al commit de la etiqueta v2.0\""
+    },
+    {
+     "name": "El reflog de release registra el motivo",
+     "script": "[ \"$(git reflog show --format=%gs -n 1 refs/heads/release 2>/dev/null)\" = \"release: sube a v2.0\" ] || falla \"La última entrada del reflog de release no dice «release: sube a v2.0» (usa -m)\""
+    },
+    {
+     "name": "refs/remotes/origin/vieja ya no existe",
+     "script": "git show-ref --verify -q refs/remotes/origin/vieja && falla \"refs/remotes/origin/vieja todavía existe\"\ntrue"
+    },
+    {
+     "name": "Sigues en main, sin cambios",
+     "script": "en_rama main\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline --all",
+    "git update-ref -m \"release: sube a v2.0\" refs/heads/release v2.0^{commit} v1.9^{commit}",
+    "git update-ref -d refs/remotes/origin/vieja",
+    "git show-ref",
+    "git reflog show release"
+   ],
+   "hints": [
+    "v2.0 es una etiqueta anotada: su nombre se resuelve al objeto tag, no al commit. Una rama solo puede apuntar a commits.",
+    "Pela la etiqueta con `v2.0^{commit}` (y lo mismo para el valor anterior: `v1.9^{commit}`).",
+    "Borrar: `git update-ref -d <ref>`."
+   ],
+   "explain": "Sin pelar la etiqueta, Git responde «trying to write non-commit object … to branch 'refs/heads/release'»: el nombre v2.0 es el objeto tag. Con `v2.0^{commit}` update-ref recibe el commit. El tercer argumento hace la actualización condicional (si release ya no estuviera en v1.9, fallaría con «is at … but expected …») y -m deja el motivo en el reflog, que puedes ver con `git reflog show release`. Equivalentes con porcelana: `git branch -f release v2.0` (pela la etiqueta sola, pero no verifica el valor anterior) y, para la ref remota, `git branch -d -r origin/vieja` o, mejor, `git fetch --prune`, que borra todas las ramas remotas que ya no existen en el servidor."
+  },
+  {
+   "id": "s12-e10",
+   "title": "Empaqueta y mide",
+   "level": "medio",
+   "minutes": 12,
+   "prompt": [
+    "El repositorio `datos` guarda 25 días de lecturas de estaciones meteorológicas: un CSV que crece un poco cada día. Todavía no se ha empaquetado nunca.",
+    "1. Mide con `git count-objects -v` cuántos objetos sueltos hay.",
+    "2. Empaqueta el repositorio con `git gc`.",
+    "3. Comprueba el resultado con `git count-objects -v`, `ls .git/objects/pack` y `git verify-pack -v .git/objects/pack/pack-*.idx`.",
+    "4. Crea `~/informe.txt` con dos líneas: en la primera, cuántos objetos sueltos había **antes** de `git gc`; en la segunda, cuántos objetos del pack quedaron guardados **como delta** (en `verify-pack -v` son las líneas con 7 columnas; el resumen final los agrupa en «chain length = N: M objects»)."
+   ],
+   "setup": "nuevo_repo datos\ngit config pack.threads 1\nautor 'Ignacia Pino' 'ignacia@datos.cl'\ni=1\nwhile [ $i -le 300 ]; do printf 'estacion-%03d;Santiago;%d\\n' $i $((i*3)) >> lecturas.csv; i=$((i+1)); done\nfecha '2026-09-01 08:00'\ngit add lecturas.csv\ngit commit -q -m 'Lecturas iniciales'\nd=2\nwhile [ $d -le 25 ]; do\n  fecha \"2026-09-$(printf %02d $d) 08:00\"\n  printf 'estacion-%03d;Santiago;%d\\n' $((300+d)) $d >> lecturas.csv\n  git commit -q -am \"Lecturas del día $d\"\n  d=$((d+1))\ndone\nyo",
+   "cwd": "datos",
+   "checks": [
+    {
+     "name": "No quedan objetos sueltos",
+     "script": "c=$(git count-objects -v | sed -n 's/^count: //p')\n[ \"$c\" = 0 ] || falla \"Todavía hay $c objetos sueltos (¿ejecutaste git gc?)\""
+    },
+    {
+     "name": "Las refs están empaquetadas",
+     "script": "grep -q ' refs/heads/main$' .git/packed-refs 2>/dev/null || falla \"main no aparece en .git/packed-refs (git gc empaqueta también las refs)\""
+    },
+    {
+     "name": "Línea 1 del informe: objetos sueltos antes de gc",
+     "script": "[ \"$(sed -n 1p \"$HOME/informe.txt\" 2>/dev/null | tr -d ' \\r\\t')\" = \"75\" ] || falla \"La primera línea de ~/informe.txt no es el número de objetos sueltos que había antes de empaquetar\""
+    },
+    {
+     "name": "Línea 2 del informe: objetos guardados como delta",
+     "script": "n=0\nfor idx in .git/objects/pack/pack-*.idx; do\n  [ -e \"$idx\" ] || continue\n  [ -e \"$(dirname \"$idx\")/$(basename \"$idx\" .idx).mtimes\" ] && continue\n  k=$(git verify-pack -v \"$idx\" 2>/dev/null | awk 'NF==7 && ($2==\"commit\"||$2==\"tree\"||$2==\"blob\"||$2==\"tag\")' | wc -l | tr -d ' ')\n  n=$((n+k))\ndone\n[ \"$(sed -n 2p \"$HOME/informe.txt\" 2>/dev/null | tr -d ' \\r\\t')\" = \"$n\" ] || falla \"La segunda línea de ~/informe.txt no coincide con la cantidad de objetos delta que muestra git verify-pack -v\""
+    }
+   ],
+   "solution": [
+    "git count-objects -v",
+    "ls .git/objects",
+    "git gc",
+    "git count-objects -v",
+    "ls .git/objects/pack",
+    "git verify-pack -v .git/objects/pack/pack-*.idx",
+    "echo 75 > ~/informe.txt",
+    "echo 24 >> ~/informe.txt",
+    "cat ~/informe.txt"
+   ],
+   "hints": [
+    "Antes de gc, el campo `count` de `git count-objects -v` es el número de objetos sueltos: anótalo antes de empaquetar.",
+    "Después de gc, `count` es 0 y aparecen `in-pack` y `packs`. En `.git/objects/pack` verás el .pack, su .idx y un .rev.",
+    "En `git verify-pack -v`, los objetos delta tienen dos columnas extra (profundidad y objeto base). Súmalos en el resumen «chain length = …»."
+   ],
+   "explain": "Antes de gc había 75 objetos sueltos: 25 commits, 25 árboles y 25 versiones de lecturas.csv, cada uno en su propio archivo. git gc los metió en un único pack y guardó 24 objetos como delta: con Git 2.50, las 24 versiones antiguas del CSV quedan como deltas (de profundidad 1) sobre la única versión completa, la más reciente, tal como explica Pro Git. La propia salida de git gc lo adelantaba en su última línea: «Total 75 (delta 24)». También empaquetó las refs en .git/packed-refs (por eso desapareció .git/refs/heads/main). Tu número de deltas puede variar un poco con otra versión de Git: la comprobación lo calcula a partir de tu propio pack. Nota: el escenario fija pack.threads=1 solo para que el resultado sea reproducible."
+  },
+  {
+   "id": "s12-e11",
+   "title": "Un commit escrito byte a byte",
+   "level": "dificil",
+   "minutes": 20,
+   "prompt": [
+    "Reto de precisión: en `manual` vas a crear un commit **sin git add, git commit ni git commit-tree**, escribiendo tú mismo el objeto commit, y tiene que quedar con un hash exacto.",
+    "El commit nuevo debe ir encima del commit actual de `main` y agregar `notas.txt` con el contenido `Hecho a mano` (más salto de línea), conservando `LEEME.md`. Su contenido debe ser exactamente este, reemplazando los dos hashes por los reales (completos):",
+    "```bash\ntree <hash del árbol nuevo>\nparent <hash del commit actual de main>\nauthor Alumno <alumno@cuaderno.local> 1790521200 -0300\ncommitter Alumno <alumno@cuaderno.local> 1790521200 -0300\n\nAgrega notas hechas a mano\n```",
+    "(1790521200 son los segundos transcurridos desde el 1-1-1970 UTC hasta el 27-09-2026 a las 12:00 en la zona -03:00.)",
+    "Pasos: crea el blob, regístralo en el index, escribe el árbol, escribe el commit con `printf '…' | git hash-object -t commit -w --stdin` (cada salto de línea es `\\n`), mueve `main` con `git update-ref` verificando el valor anterior y, por último, crea `notas.txt` en el disco a partir del index.",
+    "Si lo haces perfecto, el hash del commit será `7511ace393c7772c419432697bcab8963f11af52`. Si no coincide, algún byte es distinto: los checks te dirán qué parte revisar."
+   ],
+   "setup": "nuevo_repo manual\nfecha '2026-09-20 18:00'\ncommit_archivo LEEME.md '# Manual de Git' 'Primer commit'",
+   "cwd": "manual",
+   "checks": [
+    {
+     "name": "main tiene un commit nuevo sobre el original",
+     "script": "[ \"$(git rev-parse main^ 2>/dev/null)\" = \"bea575e404f54f0d9c5a63a44cab8b79e2865a79\" ] || falla \"main debería apuntar a un commit nuevo cuyo padre sea el commit original\""
+    },
+    {
+     "name": "El árbol del commit es el correcto",
+     "script": "[ \"$(git rev-parse main)\" = \"bea575e404f54f0d9c5a63a44cab8b79e2865a79\" ] && falla \"main todavía apunta al commit original\"\n[ \"$(git rev-parse 'main^{tree}')\" = \"89a44c362ca42aea58981a3885928e8e7492ece7\" ] || falla \"El árbol no es el esperado: debe contener LEEME.md y notas.txt («Hecho a mano» + salto de línea)\""
+    },
+    {
+     "name": "Autor, committer y mensaje exactos",
+     "script": "[ \"$(git rev-parse main)\" = \"bea575e404f54f0d9c5a63a44cab8b79e2865a79\" ] && falla \"main todavía apunta al commit original\"\nc=$(git cat-file -p main)\necho \"$c\" | grep -qxF 'author Alumno <alumno@cuaderno.local> 1790521200 -0300' || falla \"La línea author no es exactamente la pedida\"\necho \"$c\" | grep -qxF 'committer Alumno <alumno@cuaderno.local> 1790521200 -0300' || falla \"La línea committer no es exactamente la pedida\"\n[ \"$(git log -1 --format=%B main)\" = \"Agrega notas hechas a mano\" ] || falla \"El mensaje no es exactamente «Agrega notas hechas a mano» (revisa la línea en blanco antes y el salto de línea final)\""
+    },
+    {
+     "name": "El hash es exactamente el pedido",
+     "script": "[ \"$(git rev-parse main)\" = \"bea575e404f54f0d9c5a63a44cab8b79e2865a79\" ] && falla \"main todavía apunta al commit original\"\n[ \"$(git rev-parse main)\" = \"7511ace393c7772c419432697bcab8963f11af52\" ] || falla \"Casi: el hash no coincide. Compara git cat-file -p main con el texto pedido (espacios, líneas extra, salto final)\""
+    },
+    {
+     "name": "notas.txt existe y el directorio está limpio",
+     "script": "archivo_tiene notas.txt 'Hecho a mano' \"Falta notas.txt en el disco (créalo desde el index con git checkout-index notas.txt)\"\nlimpio"
+    }
+   ],
+   "solution": [
+    "echo 'Hecho a mano' | git hash-object -w --stdin",
+    "git update-index --add --cacheinfo 100644,5056806efe1367f3c4b381a55eb0db41332e05a9,notas.txt",
+    "git write-tree",
+    "git rev-parse main",
+    "printf 'tree 89a44c362ca42aea58981a3885928e8e7492ece7\\nparent bea575e404f54f0d9c5a63a44cab8b79e2865a79\\nauthor Alumno <alumno@cuaderno.local> 1790521200 -0300\\ncommitter Alumno <alumno@cuaderno.local> 1790521200 -0300\\n\\nAgrega notas hechas a mano\\n' | git hash-object -t commit -w --stdin",
+    "git cat-file -p 7511ace",
+    "git update-ref refs/heads/main 7511ace393c7772c419432697bcab8963f11af52 bea575e404f54f0d9c5a63a44cab8b79e2865a79",
+    "git status --short",
+    "git checkout-index notas.txt",
+    "git status --short",
+    "git log --oneline"
+   ],
+   "hints": [
+    "Blob: `echo 'Hecho a mano' | git hash-object -w --stdin`; index: `git update-index --add --cacheinfo 100644,<blob>,notas.txt`; árbol: `git write-tree`. El padre es `git rev-parse main`.",
+    "Escribe el commit con printf entre comillas simples: `\\n` al final de cada línea de encabezado, `\\n\\n` antes del mensaje (la línea en blanco) y `\\n` al final del mensaje.",
+    "Publica con `git update-ref refs/heads/main <nuevo> <anterior>`; entonces git status mostrará «D notas.txt» (está en el index, no en el disco): `git checkout-index notas.txt` (o `git restore notas.txt`) lo crea."
+   ],
+   "explain": "Un commit es solo texto con un formato fijo; hash-object -t commit calcula el SHA-1 de «commit <tamaño>\\0» más ese texto, igual que con un blob, y antes de escribirlo revisa el formato (sin una línea author válida responde «object fails fsck» y no guarda nada). Como fijaste autor, fechas, árbol y padre, el hash es reproducible: cualquier persona obtiene el mismo. En tu computador podrías lograrlo también con commit-tree fijando las fechas: `GIT_AUTHOR_DATE='2026-09-27 12:00 -0300' GIT_COMMITTER_DATE='2026-09-27 12:00 -0300' git commit-tree <árbol> -p main -m 'Agrega notas hechas a mano'` (con user.name Alumno y user.email alumno@cuaderno.local). Nunca uses `hash-object --literally` para saltarte la validación: crearías objetos corruptos."
+  },
+  {
+   "id": "s12-e12",
+   "title": "Una rama dañada tras un corte de luz",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Se cortó la luz mientras trabajabas en `tienda` y, al volver, Git se comporta de forma alarmante: `git log` falla y `git status` dice que no hay commits y que todos tus archivos son nuevos.",
+    "Nada se ha perdido: los objetos están intactos, pero el archivo de la rama `main` quedó **vacío**. Tu misión:",
+    "1. Diagnostica con `git status`, `git log`, `git fsck` y mirando `.git/refs/heads/main`.",
+    "2. Encuentra el hash correcto en el reflog de la rama: `.git/logs/refs/heads/main` es un archivo de texto y su última línea es el último movimiento («hash-anterior hash-nuevo autor fecha motivo»).",
+    "3. Repara la ref para que `main` vuelva a su último commit, sin crear commits nuevos ni tocar tus archivos."
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Camila Reyes' 'camila@tienda.cl'\nfecha '2026-09-10 10:00'\ncommit_archivo productos.csv 'id;nombre;precio\n1;Café de grano;3500' 'Catálogo inicial'\nfecha '2026-09-11 10:00'\nanexar productos.csv '2;Té verde;2500'\ngit commit -q -am 'Agrega té verde'\nfecha '2026-09-12 10:00'\ncommit_archivo pagos.js 'export const pagar = () => \"ok\";' 'Agrega pago con tarjeta'\ngit switch -q -c feature/cupones\nfecha '2026-09-12 12:00'\ncommit_archivo cupones.js 'export const descuento = 0.1;' 'Agrega cupones'\ngit switch -q main\nyo\n: > .git/refs/heads/main",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "main apunta a su último commit",
+     "script": "[ \"$(git rev-parse -q --verify refs/heads/main 2>/dev/null)\" = \"4fcc3bc7903eab8ff52fedd3453fcb2254641b5e\" ] || falla \"main todavía no apunta al último commit que registra su reflog\""
+    },
+    {
+     "name": "git fsck no reporta errores",
+     "script": "out=$(git fsck 2>&1)\necho \"$out\" | grep -qiE '^(error|fatal)' && falla \"git fsck todavía reporta: $(echo \"$out\" | grep -iE '^(error|fatal)' | head -1)\"\ntrue"
+    },
+    {
+     "name": "HEAD sigue apuntando a main",
+     "script": "[ \"$(git symbolic-ref -q HEAD 2>/dev/null)\" = refs/heads/main ] || falla \"HEAD debería seguir apuntando a refs/heads/main\""
+    },
+    {
+     "name": "Directorio de trabajo limpio",
+     "script": "limpio \"git status debería decir que no hay nada que confirmar\""
+    },
+    {
+     "name": "feature/cupones sigue intacta",
+     "script": "[ \"$(git rev-parse -q --verify refs/heads/feature/cupones)\" = \"da21076fae15463a958eb7660163d8c2bb009b16\" ] || falla \"La rama feature/cupones cambió: solo había que reparar main\""
+    }
+   ],
+   "solution": [
+    "git status",
+    "git fsck",
+    "cat .git/refs/heads/main",
+    "tail -n 1 .git/logs/refs/heads/main",
+    "rm .git/refs/heads/main",
+    "git update-ref refs/heads/main 4fcc3bc7903eab8ff52fedd3453fcb2254641b5e",
+    "git status",
+    "git log --oneline --all"
+   ],
+   "hints": [
+    "`git fsck` señala exactamente qué ref está dañada («badRefContent»).",
+    "`tail -n 1 .git/logs/refs/heads/main`: el segundo hash de esa línea es el valor que tenía main tras la última operación.",
+    "Con la ref ilegible, `git update-ref` se niega («reference broken»): borra primero el archivo dañado con `rm .git/refs/heads/main` y luego crea la ref con `git update-ref refs/heads/main <hash>`."
+   ],
+   "explain": "Con el archivo de la rama vacío, Git no puede resolver main: HEAD apunta a una ref rota, así que status cree que no hay commits y ve todo el index como «nuevo». El reflog, en cambio, es un registro de texto que no se tocó: su última línea tiene el hash correcto. update-ref se niega a actualizar una ref que no puede leer, por eso primero se elimina el archivo dañado. Alternativa: `echo <hash> > .git/refs/heads/main` también funciona (una ref es un archivo de texto con un hash y un salto de línea), pero se salta el bloqueo y el reflog; úsala solo como último recurso. Otras fuentes del hash: `.git/logs/HEAD` o `git fsck --no-reflogs` (el commit aparecería como colgante). Y ojo: si la rama también estuviera en packed-refs, al borrar el archivo suelto «reviviría» con un valor antiguo; lo verás en el proyecto de esta sección."
+  },
+  {
+   "id": "s12-e13",
+   "title": "Rescata un capítulo que nunca se confirmó",
+   "level": "dificil",
+   "minutes": 15,
+   "prompt": [
+    "Estás escribiendo una novela en `novela`. Anoche agregaste `capitulo2.md` al index **dos veces** (primero un borrador y después la versión final, que termina con la palabra `FIN`), pero antes de hacer commit ejecutaste por error `git reset --hard`. El archivo desapareció del disco y nunca llegó a ningún commit.",
+    "La buena noticia: `git add` ya había guardado cada versión como blob en la base de objetos. Recupera la **versión final** como `capitulo2.md` (con su contenido exacto) y confírmala con el mensaje `Agrega capítulo 2`."
+   ],
+   "setup": "nuevo_repo novela\nfecha '2026-09-14 20:00'\ncommit_archivo capitulo1.md '# Capítulo 1\nEra una noche fría en Valparaíso.' 'Agrega capítulo 1'\nescribir capitulo2.md '# Capítulo 2 (borrador)\nEl ascensor subió lento.'\ngit add capitulo2.md\nescribir capitulo2.md '# Capítulo 2\nEl ascensor Artillería subió lento hacia el cerro.\nFIN'\ngit add capitulo2.md\ngit reset -q --hard",
+   "cwd": "novela",
+   "checks": [
+    {
+     "name": "capitulo2.md confirmado con la versión final",
+     "script": "b=$(git rev-parse -q --verify HEAD:capitulo2.md 2>/dev/null) || falla \"El último commit no contiene capitulo2.md\"\n[ \"$b\" = \"b115b865dfe1e38dd5509768655df1ef7352d857\" ] && falla \"Recuperaste el borrador: busca la versión que termina en FIN\"\n[ \"$b\" = \"51d34bca61ea84dff234a19f6712e99e560b308e\" ] || falla \"capitulo2.md no tiene exactamente el contenido de la versión final (¿lo reescribiste a mano?)\""
+    },
+    {
+     "name": "Mensaje del commit",
+     "script": "mensaje_es HEAD \"Agrega capítulo 2\""
+    },
+    {
+     "name": "Un solo commit nuevo sobre el capítulo 1",
+     "script": "[ \"$(git rev-parse HEAD~1 2>/dev/null)\" = \"598b0e78b5cb36813f4cfd91acf7dc036374f51e\" ] || falla \"Debería haber exactamente un commit nuevo encima de «Agrega capítulo 1»\""
+    },
+    {
+     "name": "Directorio de trabajo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git fsck",
+    "git fsck --lost-found",
+    "ls .git/lost-found/other",
+    "cat .git/lost-found/other/b115b865dfe1e38dd5509768655df1ef7352d857",
+    "cat .git/lost-found/other/51d34bca61ea84dff234a19f6712e99e560b308e",
+    "cp .git/lost-found/other/51d34bca61ea84dff234a19f6712e99e560b308e capitulo2.md",
+    "git add capitulo2.md",
+    "git commit -m \"Agrega capítulo 2\"",
+    "git log --oneline"
+   ],
+   "hints": [
+    "`git add` escribe el blob en .git/objects en ese mismo momento; `git reset --hard` borró el archivo y la entrada del index, pero no el blob.",
+    "`git fsck` lista los «dangling blob»; `git cat-file -p <hash>` muestra el contenido de cada uno.",
+    "`git fsck --lost-found` copia el contenido de cada blob colgante a `.git/lost-found/other/<hash>`: desde ahí puedes copiarlo con `cp`."
+   ],
+   "explain": "Los dos «dangling blob» son las dos versiones que preparaste: el borrador (sobrescrito en el index por la segunda versión) y la final (eliminada del index por reset --hard). Como nada los referencia, solo git fsck puede encontrarlos; el reflog no ayuda porque nunca llegaron a un commit. Alternativa 100 % plumbing: `git update-index --add --cacheinfo 100644,<hash>,capitulo2.md` y luego `git checkout-index capitulo2.md` (o `git restore capitulo2.md`) para escribirlo en el disco. En tu computador también podrías hacer `git cat-file -p <hash> > capitulo2.md`. Moraleja: `git add` frecuente es una red de seguridad; lo que nunca agregaste al index no deja rastro en .git. Y no esperes demasiado: estos blobs desaparecen con el primer gc que ocurra pasadas dos semanas."
+  },
+  {
+   "id": "s12-p1",
+   "title": "Proyecto: resucita un repositorio dañado",
+   "level": "proyecto",
+   "minutes": 30,
+   "prompt": [
+    "Te llaman para rescatar el repositorio `api` de otro equipo. Alguien «arregló» cosas editando `.git` a mano y ahora nada funciona. Lo que se sabe:",
+    "1. `HEAD` quedó apuntando a una rama con un error de tipeo.",
+    "2. El archivo de la rama `main` quedó vacío. Cuidado: `main` también aparece en `.git/packed-refs`, pero con un valor **antiguo**.",
+    "3. Alguien borró la rama `feature/pagos`, que tenía dos commits que nunca se fusionaron.",
+    "4. También borraron la etiqueta anotada `v1.0`, que apuntaba al primer commit.",
+    "Objetivo: `HEAD` en `main`; `main` en su último commit («Agrega LEEME»); `feature/pagos` recuperada en su último commit («Documenta reintentos de pago»); la etiqueta **anotada** `v1.0` de vuelta (el mismo objeto tag original, no una etiqueta nueva); y, al final, el repositorio empaquetado con `git gc` y sin errores ni objetos colgantes en `git fsck --no-reflogs`.",
+    "Herramientas: `cat`, `tail`, `git symbolic-ref`, `git fsck` (prueba también `--no-reflogs`), `git cat-file -p`, `git update-ref` y `git gc`."
+   ],
+   "setup": "nuevo_repo api\nautor 'Martina Fuentes' 'martina@api.cl'\nfecha '2026-09-15 09:00'\ncommit_archivo server.js 'console.log(\"API v1\");' 'Servidor inicial'\ngit tag -a v1.0 -m 'Primera versión estable'\nfecha '2026-09-16 09:00'\ncommit_archivo rutas.js 'module.exports = [\"/usuarios\"];' 'Agrega rutas'\ngit pack-refs --all\ngit switch -q -c feature/pagos\nfecha '2026-09-17 09:00'\ncommit_archivo pagos.js 'module.exports = { webpay: true };' 'Agrega pagos con Webpay'\nfecha '2026-09-17 11:00'\nanexar pagos.js '// TODO: reintentos'\ngit commit -q -am 'Documenta reintentos de pago'\ngit switch -q main\nfecha '2026-09-18 09:00'\ncommit_archivo LEEME.md '# API de la tienda' 'Agrega LEEME'\ngit branch -q -D feature/pagos\ngit tag -d v1.0 >/dev/null\n: > .git/refs/heads/main\nprintf 'ref: refs/heads/mian\\n' > .git/HEAD\nyo",
+   "cwd": "api",
+   "checks": [
+    {
+     "name": "HEAD apunta a refs/heads/main",
+     "script": "[ \"$(git symbolic-ref -q HEAD)\" = refs/heads/main ] || falla \"HEAD no apunta a refs/heads/main (mira cat .git/HEAD)\""
+    },
+    {
+     "name": "main está en su último commit",
+     "script": "m=$(git rev-parse -q --verify refs/heads/main 2>/dev/null)\n[ \"$m\" = \"f73b5ee1fb7d2edbb0c3a186acd08d93816f4f69\" ] && falla \"main quedó con el valor antiguo de packed-refs («Agrega rutas»): falta el último commit\"\n[ \"$m\" = \"dc467b6dcf5b2a15d46764557ff91e37c1104c60\" ] || falla \"main no apunta a «Agrega LEEME»\""
+    },
+    {
+     "name": "feature/pagos recuperada",
+     "script": "[ \"$(git rev-parse -q --verify refs/heads/feature/pagos)\" = \"4373eca78d48710c0e09991ac605a8b3a6d2c6a7\" ] || falla \"feature/pagos no existe o no apunta a «Documenta reintentos de pago»\""
+    },
+    {
+     "name": "v1.0 es la etiqueta anotada original",
+     "script": "t=$(git rev-parse -q --verify refs/tags/v1.0) || falla \"No existe la etiqueta v1.0\"\n[ \"$t\" = \"983a88a63b760dd803414be46b367c00f90e6c28\" ] || falla \"refs/tags/v1.0 no apunta al objeto tag original (búscalo como «dangling tag» en git fsck)\""
+    },
+    {
+     "name": "git fsck sin errores ni objetos colgantes",
+     "script": "out=$(git fsck --no-reflogs 2>&1)\necho \"$out\" | grep -qiE '^(error|fatal|missing|broken)' && falla \"git fsck todavía reporta errores\"\necho \"$out\" | grep -qE '^dangling (commit|tag)' && falla \"git fsck --no-reflogs todavía muestra commits o etiquetas colgantes\"\ntrue"
+    },
+    {
+     "name": "Repositorio empaquetado con git gc",
+     "script": "c=$(git count-objects -v | sed -n 's/^count: //p')\n[ \"$c\" = 0 ] || falla \"Quedan $c objetos sueltos: termina con git gc\""
+    },
+    {
+     "name": "Directorio de trabajo limpio",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "cat .git/HEAD",
+    "git symbolic-ref HEAD refs/heads/main",
+    "git fsck",
+    "cat .git/packed-refs",
+    "tail -n 1 .git/logs/refs/heads/main",
+    "rm .git/refs/heads/main",
+    "git log --oneline",
+    "git update-ref refs/heads/main dc467b6dcf5b2a15d46764557ff91e37c1104c60",
+    "git status",
+    "git fsck --no-reflogs",
+    "git cat-file -p 4373eca",
+    "git update-ref refs/heads/feature/pagos 4373eca78d48710c0e09991ac605a8b3a6d2c6a7",
+    "git cat-file -p 983a88a",
+    "git update-ref refs/tags/v1.0 983a88a63b760dd803414be46b367c00f90e6c28",
+    "git gc",
+    "git fsck --no-reflogs",
+    "git log --oneline --graph --all"
+   ],
+   "hints": [
+    "Empieza por lo más simple: `cat .git/HEAD` y corrígelo con `git symbolic-ref HEAD refs/heads/main`.",
+    "El reflog de main (`tail -n 1 .git/logs/refs/heads/main`) guarda su último valor. Si borras el archivo vacío, main «revive» con el valor viejo de packed-refs: después fíjala con `git update-ref`.",
+    "`git fsck --no-reflogs` muestra como colgantes los commits a los que solo llegan los reflogs (así aparece la rama borrada) y la etiqueta borrada como «dangling tag». Inspecciona cada uno con `git cat-file -p`.",
+    "Recrea cada ref con `git update-ref refs/heads/feature/pagos <hash>` y `git update-ref refs/tags/v1.0 <hash-del-objeto-tag>`. `git gc` fallará («bad object refs/heads/main») mientras quede alguna ref rota: déjalo para el final."
+   ],
+   "explain": "Orden lógico del rescate: (1) HEAD: `git symbolic-ref HEAD refs/heads/main` corrige la ref simbólica sin tocar archivos. (2) main: el reflog da el último valor; al borrar el archivo vacío, Git vuelve a leer la línea obsoleta de packed-refs («Agrega rutas»), y update-ref la reemplaza por el valor correcto con un archivo suelto nuevo (que tiene prioridad). (3) feature/pagos: al borrar una rama se borra su reflog, pero sus commits siguen en la base de objetos; como también estaban en el reflog de HEAD, git fsck a secas no los muestra y `git fsck --no-reflogs` sí. `git branch feature/pagos <hash>` sería equivalente. (4) v1.0: `git tag -d` borra la ref, no el objeto tag, que queda como «dangling tag»; apuntando la ref a ese mismo objeto recuperas la etiqueta anotada con su autor, fecha y mensaje originales (`git tag -a` crearía un objeto nuevo). (5) `git gc` empaqueta objetos y refs; si lo ejecutas antes de reparar las refs, falla. Lección profesional: antes de tocar un repositorio dañado, copia la carpeta .git completa; y usa siempre update-ref/symbolic-ref en vez de editar archivos a mano."
+  },
+  {
+   "id": "s12-p2",
+   "title": "Proyecto: hotfix sin tocar tu directorio de trabajo",
+   "level": "proyecto",
+   "minutes": 30,
+   "prompt": [
+    "Estás en plena refactorización en la rama `main` de `tienda`: tienes cambios sin preparar, un archivo preparado y otro sin seguimiento:",
+    "```bash\n M src/carrito.js\nA  src/descuentos.js\n?? notas-refactor.txt\n```",
+    "De pronto: ¡producción necesita la versión `2.3.1` ya! Debes crear en la rama `produccion` un commit que cambie **solo** `config/version.txt` de `2.3.0` a `2.3.1`, con el mensaje `Sube versión a 2.3.1` y cuyo padre sea el commit actual de `produccion`.",
+    "Condiciones: no puedes cambiarte de rama, ni usar stash, ni tocar tu index o tu directorio de trabajo (nada de `git add`, `update-index` ni archivos temporales). Como un robot de despliegue: solo objetos y refs.",
+    "Plan sugerido: inspecciona `produccion` con `git ls-tree`; crea el blob nuevo; construye el nuevo árbol de `config/` y luego el árbol raíz con `git mktree`, que lee líneas en formato ls-tree («modo tipo hash», un TAB y el nombre; con printf el TAB se escribe `\\t` y los hashes van completos); crea el commit con `git commit-tree`; y publícalo con `git update-ref` verificando el valor anterior.",
+    "Ejemplo de mktree: `printf '100644 blob <hash>\\tarchivo.txt\\n040000 tree <hash>\\tcarpeta\\n' | git mktree`"
+   ],
+   "setup": "nuevo_repo tienda\nautor 'Rodrigo Lagos' 'rodrigo@tienda.cl'\nfecha '2026-09-01 10:00'\nescribir LEEME.md '# Tienda en línea'\nescribir config/version.txt '2.3.0'\nescribir config/app.json '{\"moneda\": \"CLP\"}'\nescribir src/carrito.js 'export const total = (items) => items.length;'\ngit add .\ngit commit -q -m 'Versión 2.3.0'\ngit branch produccion\nfecha '2026-09-20 10:00'\nescribir src/carrito.js '// TODO: refactor\nexport const total = (items) => items.length;'\ngit commit -q -am 'Prepara refactor del carrito'\nyo\nescribir src/carrito.js '// refactor a medias\nexport const total = (items) => items.reduce((s, i) => s + i.precio, 0);'\nescribir src/descuentos.js 'export const aplicar = () => {};'\ngit add src/descuentos.js\nescribir notas-refactor.txt 'No olvidar los tests'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "produccion avanzó exactamente un commit",
+     "script": "[ \"$(git rev-parse produccion^ 2>/dev/null)\" = \"f1eee595b7a844efb017bffa65488c6f3fd5397a\" ] || falla \"produccion debe apuntar a un commit nuevo cuyo padre sea el commit original de produccion\""
+    },
+    {
+     "name": "config/version.txt dice 2.3.1 en produccion",
+     "script": "[ \"$(git show produccion:config/version.txt 2>/dev/null)\" = \"2.3.1\" ] || falla \"En produccion, config/version.txt no contiene 2.3.1\""
+    },
+    {
+     "name": "Nada más cambió en el árbol",
+     "script": "[ \"$(git rev-parse produccion)\" = \"f1eee595b7a844efb017bffa65488c6f3fd5397a\" ] && falla \"produccion todavía apunta al commit original\"\n[ \"$(git rev-parse 'produccion^{tree}')\" = \"dd01bb1143789640b443664ab174c8787975e5b3\" ] || falla \"El árbol de produccion cambió más de lo pedido: compara git ls-tree -r produccion con git ls-tree -r produccion^\""
+    },
+    {
+     "name": "Mensaje del commit",
+     "script": "mensaje_es produccion \"Sube versión a 2.3.1\""
+    },
+    {
+     "name": "Sigues en main y main no se movió",
+     "script": "en_rama main\n[ \"$(git rev-parse main)\" = \"1a8004a04570a3dbbd5edf235ea7756f7fd305e0\" ] || falla \"main se movió: el hotfix va solo en produccion\""
+    },
+    {
+     "name": "Tu index está intacto",
+     "script": "[ \"$(git ls-files -s | git hash-object --stdin)\" = \"72faec36f1b8ded9c28d86d69f474d56ed010b83\" ] || falla \"Tu index cambió (¿usaste git add o update-index?): tu trabajo preparado debía quedar como estaba\""
+    },
+    {
+     "name": "Tu directorio de trabajo está intacto",
+     "script": "[ \"$(git status --porcelain | git hash-object --stdin)\" = \"626f0e631b4fd32a7f381e9a8bb8d8ff405b2965\" ] && [ \"$(git hash-object src/carrito.js)\" = \"5cb62f14efe216eb8a2d285a760900551dd1a1f1\" ] || falla \"Tu directorio de trabajo cambió: debía quedar con tu refactor a medias (y sin archivos nuevos)\""
+    }
+   ],
+   "solution": [
+    "git status --short",
+    "git ls-tree produccion",
+    "git ls-tree produccion:config",
+    "echo '2.3.1' | git hash-object -w --stdin",
+    "printf '100644 blob 713fe3cd2a0947499ff5b5c410eb79e2c733ffaa\\tapp.json\\n100644 blob 2bf1c1ccf363acd53eaf92ef33a7f11f5f4557c2\\tversion.txt\\n' | git mktree",
+    "printf '100644 blob 106a9a83256e4561165996206084fd5a8180f013\\tLEEME.md\\n040000 tree 287d4edabfbc10ae6d1356e8fdd2bcc43bc8bc95\\tconfig\\n040000 tree b4622636978ab0558b1ac8006ec7de338e021185\\tsrc\\n' | git mktree",
+    "git rev-parse produccion",
+    "printf 'tree dd01bb1143789640b443664ab174c8787975e5b3\\nparent f1eee595b7a844efb017bffa65488c6f3fd5397a\\nauthor Alumno <alumno@cuaderno.local> 1790521200 -0300\\ncommitter Alumno <alumno@cuaderno.local> 1790521200 -0300\\n\\nSube versión a 2.3.1\\n' | git hash-object -t commit -w --stdin",
+    "git update-ref refs/heads/produccion 583b90c917cf57c01bd97caf0cf1c664d593145b f1eee595b7a844efb017bffa65488c6f3fd5397a",
+    "git log --oneline produccion",
+    "git diff --stat produccion^ produccion",
+    "git status --short"
+   ],
+   "hints": [
+    "`git ls-tree produccion` y `git ls-tree produccion:config` te dan todos los hashes que necesitas; solo version.txt cambia.",
+    "Nuevo blob: `echo '2.3.1' | git hash-object -w --stdin`. Árbol de config: mktree con app.json (mismo blob de antes) y version.txt (blob nuevo). Árbol raíz: mktree con LEEME.md, `040000 tree <config nuevo>\\tconfig` y el mismo árbol src.",
+    "`git commit-tree <árbol raíz> -p produccion -m \"Sube versión a 2.3.1\"` imprime el hash del commit; publícalo con `git update-ref refs/heads/produccion <nuevo> <anterior>`.",
+    "Comprueba con `git diff --stat produccion^ produccion`: solo debe aparecer config/version.txt."
+   ],
+   "explain": "Construiste el commit de abajo hacia arriba: blob → árbol de config (mktree) → árbol raíz (mktree, reutilizando los objetos de LEEME.md y src que no cambiaron) → commit → ref. Nunca tocaste el index ni el disco, así que tu refactor sigue exactamente como estaba; es la misma técnica que permite crear commits en un servidor sin directorio de trabajo (la API «Git database» de GitHub expone justo estos pasos: blobs, trees, commits y refs). La forma natural del paso del commit es `git commit-tree <árbol> -p produccion -m \"Sube versión a 2.3.1\"` y copiar el hash que imprime en el update-ref; la solución de referencia escribe el commit byte a byte (como en «Un commit escrito byte a byte») solo para que su hash sea reproducible. Alternativas con porcelana: `git worktree add ../hotfix produccion` (s14) o un clon aparte; ambas necesitan otro directorio de trabajo, mientras que el plumbing no. Recuerda después publicar con `git push origin produccion` si hubiera remoto."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Cuáles son los cuatro tipos de objetos de Git?",
+   "back": "blob (contenido de un archivo), tree (carpeta: entradas con modo, tipo, hash y nombre), commit (árbol + padres + autor/committer + mensaje) y tag (etiqueta anotada)."
+  },
+  {
+   "front": "¿Sobre qué bytes calcula Git el hash de un blob?",
+   "back": "Sobre «blob <tamaño>\\0<contenido>»: el tipo, un espacio, el tamaño en bytes, un byte nulo y el contenido. Por eso el hash depende solo del contenido (y del tipo)."
+  },
+  {
+   "front": "¿Dónde se guarda el objeto suelto 5c1b14949828006ed75a3e8858957f86a2f7e2eb?",
+   "back": "En .git/objects/5c/1b14949828006ed75a3e8858957f86a2f7e2eb: los 2 primeros caracteres son la carpeta y los 38 restantes el archivo, comprimido con zlib."
+  },
+  {
+   "front": "git hash-object archivo  vs  git hash-object -w archivo",
+   "back": "Sin -w solo calcula e imprime el hash. Con -w además escribe el blob en la base de objetos. --stdin lee el contenido desde una tubería."
+  },
+  {
+   "front": "git cat-file -t / -s / -p / -e",
+   "back": "-t: tipo del objeto; -s: tamaño del contenido; -p: contenido legible según el tipo; -e: no imprime nada, termina con 0 si el objeto existe y es válido."
+  },
+  {
+   "front": "¿Qué NO guarda un blob?",
+   "back": "Ni el nombre del archivo ni sus permisos ni la fecha: solo el contenido. El nombre y el modo viven en la entrada del árbol (y en el index)."
+  },
+  {
+   "front": "Modos de las entradas de un árbol",
+   "back": "100644 archivo normal · 100755 ejecutable · 120000 enlace simbólico · 040000 subárbol (carpeta) · 160000 gitlink (commit de un submódulo)."
+  },
+  {
+   "front": "¿Qué contiene un objeto commit?",
+   "back": "tree (árbol raíz), parent (0, 1 o más), author y committer con fecha y zona horaria, opcionalmente gpgsig, una línea en blanco y el mensaje. No contiene diffs ni el nombre de la rama."
+  },
+  {
+   "front": "Author vs committer",
+   "back": "Author: quien escribió el cambio. Committer: quien creó ese commit en el repositorio. Difieren tras rebase, cherry-pick, amend o al aplicar parches de otra persona."
+  },
+  {
+   "front": "Equivalente plumbing de git add archivo",
+   "back": "git hash-object -w archivo + git update-index --add --cacheinfo 100644,<hash>,archivo (o directamente git update-index --add archivo)."
+  },
+  {
+   "front": "Equivalente plumbing de git commit",
+   "back": "git write-tree (index → árbol) → git commit-tree <árbol> -p HEAD -m \"…\" (árbol → commit) → git update-ref refs/heads/<rama> <commit> (mover la rama)."
+  },
+  {
+   "front": "¿git commit-tree mueve alguna rama?",
+   "back": "No. Solo crea el objeto commit e imprime su hash. Hasta que una ref lo apunte (update-ref, branch, merge --ff-only…) es un commit colgante."
+  },
+  {
+   "front": "Columnas de git ls-files -s",
+   "back": "modo · hash del blob · etapa · ruta. Etapa 0 = normal; en un conflicto: 1 base común, 2 ours (HEAD), 3 theirs (la otra rama). Se leen con :1:ruta, :2:ruta, :3:ruta."
+  },
+  {
+   "front": "Dos trampas de update-index --cacheinfo",
+   "back": "Exige el hash completo (40 caracteres, sin nombres ni abreviaturas) y no comprueba que el blob exista: el error aparece después, en git write-tree."
+  },
+  {
+   "front": "¿Para qué sirve git mktree?",
+   "back": "Construye un árbol (de un nivel) desde líneas en formato ls-tree «modo tipo hash<TAB>nombre», sin tocar el index. Para subcarpetas, primero armas su árbol y lo usas como entrada 040000 tree."
+  },
+  {
+   "front": "git update-ref <ref> <nuevo> <anterior>",
+   "back": "Mueve la ref solo si todavía vale <anterior> («comparar y cambiar»); si no, falla con «is at … but expected …». 40 ceros como anterior = exigir que no exista. -d borra; -m deja un motivo en el reflog."
+  },
+  {
+   "front": "¿Por qué falla git update-ref refs/heads/release v2.0 si v2.0 es anotada?",
+   "back": "Porque v2.0 se resuelve al objeto tag y una rama solo puede apuntar a commits («trying to write non-commit object»). Solución: v2.0^{commit}."
+  },
+  {
+   "front": "git symbolic-ref HEAD refs/heads/x  vs  git switch x",
+   "back": "symbolic-ref solo cambia a qué rama apunta HEAD; no toca el index ni el directorio de trabajo (git status mostrará «cambios»). switch además actualiza index y archivos."
+  },
+  {
+   "front": "¿Qué contiene .git/HEAD?",
+   "back": "Normalmente «ref: refs/heads/main» (ref simbólica). En HEAD separado, directamente un hash. git symbolic-ref -q HEAD falla en silencio en ese caso."
+  },
+  {
+   "front": "Orden en que Git resuelve un nombre como x",
+   "back": ".git/x → refs/x → refs/tags/x → refs/heads/x → refs/remotes/x → refs/remotes/x/HEAD. Si hay etiqueta y rama con el mismo nombre, al resolver revisiones gana la etiqueta (con aviso «ambiguous»)."
+  },
+  {
+   "front": "¿Qué es .git/packed-refs y quién gana ante un conflicto?",
+   "back": "Un archivo con muchas refs («hash nombre», y «^hash» para etiquetas anotadas peladas). Lo crean pack-refs y gc. Si existe también el archivo suelto de la ref, manda el archivo suelto."
+  },
+  {
+   "front": "Packfile",
+   "back": "Archivo .pack con muchos objetos comprimidos, más su índice .idx (y .rev desde Git 2.41). Guarda versiones parecidas como deltas; suele dejar completa la versión más reciente."
+  },
+  {
+   "front": "git count-objects -v: count vs in-pack",
+   "back": "count = objetos sueltos (con size en KiB); in-pack = objetos dentro de packs (packs = cuántos packs, size-pack = su tamaño)."
+  },
+  {
+   "front": "Una línea de git verify-pack -v con 7 columnas",
+   "back": "Es un objeto guardado como delta: hash, tipo, tamaño, tamaño en el pack, offset, profundidad de la cadena y hash del objeto base."
+  },
+  {
+   "front": "¿Cuándo borra git gc los objetos inalcanzables?",
+   "back": "Solo los más antiguos que gc.pruneExpire (2 semanas por defecto). Los recientes se conservan (desde Git 2.41, en un cruft pack con archivo .mtimes). --prune=now los borra ya."
+  },
+  {
+   "front": "¿Cuánto duran las entradas del reflog?",
+   "back": "gc las expira a los 90 días (gc.reflogExpire) o a los 30 días si ya no son alcanzables desde la punta de la rama (gc.reflogExpireUnreachable)."
+  },
+  {
+   "front": "Dangling vs unreachable",
+   "back": "Unreachable: no se llega a él desde refs, reflogs ni index. Dangling: inalcanzable y además ningún otro objeto lo menciona (la punta de una cadena perdida)."
+  },
+  {
+   "front": "¿Por qué git fsck no muestra el commit que deshice con reset --hard?",
+   "back": "Porque por defecto los reflogs cuentan como raíces y ese commit sigue en el reflog. git fsck --no-reflogs sí lo muestra como colgante."
+  },
+  {
+   "front": "git fsck --lost-found",
+   "back": "Copia los objetos colgantes a .git/lost-found/commit/<hash> (commits) y .git/lost-found/other/<hash> (el CONTENIDO de los blobs, listo para copiar con cp). Al usarla, fsck no cuenta los reflogs como raíces."
+  },
+  {
+   "front": "El archivo de una rama quedó vacío. ¿Cómo se repara?",
+   "back": "Buscar el hash en el reflog (tail -n 1 .git/logs/refs/heads/rama), borrar el archivo roto (update-ref se niega: «reference broken») y ejecutar git update-ref refs/heads/rama <hash>."
+  },
+  {
+   "front": "SHA-256 en Git 2.50",
+   "back": "git init --object-format=sha256 (se elige al crear el repositorio); hashes de 64 caracteres; config con extensions.objectformat = sha256. Sin interoperabilidad con repositorios SHA-1 todavía."
+  },
+  {
+   "front": "SHAttered y SHA-1DC",
+   "back": "SHAttered (2017) produjo la primera colisión práctica de SHA-1. Git 2.13 adoptó por defecto SHA-1DC, que detecta ese tipo de ataques. Git 3.0 planea usar SHA-256 por defecto."
+  },
+  {
+   "front": "HEAD:ruta · :ruta · HEAD^{tree} · v1.0^{commit}",
+   "back": "Objeto de esa ruta en HEAD · versión de la ruta en el index (etapa 0) · árbol raíz del commit · etiqueta pelada hasta el commit."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s12-q1",
+   "type": "single",
+   "q": "En un repositorio vacío ejecutas:\n```bash\necho 'hola' | git hash-object --stdin\n```\n¿Qué ocurre?",
+   "options": [
+    "Imprime el hash y guarda el blob en .git/objects",
+    "Imprime el hash, pero no guarda nada",
+    "Falla porque no se indicó ningún archivo",
+    "Guarda el blob sin imprimir nada"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin -w, hash-object solo calcula el hash. Para escribir el objeto hay que agregar -w."
+  },
+  {
+   "id": "s12-q2",
+   "type": "single",
+   "q": "¿Por qué `echo 'hola'` y `printf 'hola'` producen hashes distintos al pasarlos por `git hash-object --stdin`?",
+   "options": [
+    "Porque echo agrega un salto de línea: el contenido es distinto",
+    "Porque Git incluye la fecha en el hash",
+    "Porque printf usa otra codificación",
+    "No es cierto: producen el mismo hash"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "echo termina con \\n y printf no: son 5 y 4 bytes. El hash depende solo del contenido exacto (y del tipo)."
+  },
+  {
+   "id": "s12-q3",
+   "type": "single",
+   "q": "¿Dónde queda registrado el nombre de un archivo confirmado?",
+   "options": [
+    "En el blob, junto al contenido",
+    "En la entrada del árbol que lo contiene",
+    "En la línea parent del commit",
+    "En .git/refs/heads"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El blob solo guarda contenido. El nombre y el modo están en la entrada del tree (y, mientras se prepara, en el index)."
+  },
+  {
+   "id": "s12-q4",
+   "type": "multi",
+   "q": "¿Qué contiene un objeto commit? (marca todas)",
+   "options": [
+    "El hash del árbol raíz",
+    "Los hashes de sus padres",
+    "Autor y committer con sus fechas",
+    "El diff respecto de su padre",
+    "El nombre de la rama en que se creó",
+    "El mensaje"
+   ],
+   "answer": [
+    0,
+    1,
+    2,
+    5
+   ],
+   "explain": "Un commit es árbol + padres + autor + committer + mensaje (y firma opcional). El diff se calcula al vuelo y la rama es una ref externa al commit."
+  },
+  {
+   "id": "s12-q5",
+   "type": "single",
+   "q": "Dos archivos distintos del proyecto, `a.txt` y `copia.txt`, tienen exactamente el mismo contenido. ¿Cuántos blobs crea `git add .`?",
+   "options": [
+    "Dos, uno por archivo",
+    "Uno: ambas entradas del index apuntan al mismo blob",
+    "Ninguno hasta el commit",
+    "Depende del nombre de los archivos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Mismo contenido, mismo hash, mismo objeto. Git deduplica de forma natural."
+  },
+  {
+   "id": "s12-q6",
+   "type": "single",
+   "q": "En un proyecto con `LEEME.md` en la raíz y `src/app.js` y `src/util.js`, haces un commit que solo modifica `src/util.js`. ¿Cuántos objetos nuevos crea ese commit?",
+   "options": [
+    "1",
+    "2",
+    "4",
+    "5 (todos los archivos se copian)"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Un blob nuevo (util.js), el árbol de src/ nuevo, el árbol raíz nuevo y el commit. LEEME.md y app.js se reutilizan."
+  },
+  {
+   "id": "s12-q7",
+   "type": "single",
+   "q": "¿Qué significa el modo `100755` en la salida de `git ls-tree`?",
+   "options": [
+    "Un archivo ejecutable",
+    "Una carpeta",
+    "Un enlace simbólico",
+    "Un submódulo"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "100644 archivo normal, 100755 ejecutable, 120000 enlace simbólico, 040000 carpeta, 160000 submódulo."
+  },
+  {
+   "id": "s12-q8",
+   "type": "single",
+   "q": "¿Qué muestra `git rev-parse HEAD:src`?",
+   "options": [
+    "El hash del commit que modificó src por última vez",
+    "El hash del árbol de la carpeta src en HEAD",
+    "El contenido de la carpeta src",
+    "Un error: rev-parse no acepta rutas"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "rev:ruta es el objeto de esa ruta en esa revisión: para una carpeta, un tree."
+  },
+  {
+   "id": "s12-q9",
+   "type": "single",
+   "q": "Durante un merge con conflicto, `git ls-files -s` muestra:\n```bash\n100644 f595bbe… 1\tprecio.txt\n100644 cc70448… 2\tprecio.txt\n100644 3b46024… 3\tprecio.txt\n```\n¿Qué es la entrada con etapa 2?",
+   "options": [
+    "La versión base común",
+    "La versión de tu rama actual (ours)",
+    "La versión de la rama que fusionas (theirs)",
+    "La versión del directorio de trabajo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Etapa 1 = base, 2 = ours (HEAD), 3 = theirs. Puedes leerla con git cat-file -p :2:precio.txt."
+  },
+  {
+   "id": "s12-q10",
+   "type": "multi",
+   "q": "¿Qué comandos plumbing, en conjunto, hacen lo mismo que `git commit -m \"…\"`? (marca todos)",
+   "options": [
+    "git write-tree",
+    "git commit-tree",
+    "git update-ref",
+    "git symbolic-ref",
+    "git hash-object -t tree"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "write-tree convierte el index en árbol, commit-tree crea el commit y update-ref mueve la rama. symbolic-ref no hace falta: HEAD ya apunta a la rama."
+  },
+  {
+   "id": "s12-q11",
+   "type": "single",
+   "q": "Ejecutas `git commit-tree 1a2b3c4 -p main -m \"Prueba\"` y aparece un hash. ¿Qué pasó con `main`?",
+   "options": [
+    "Avanzó al commit nuevo",
+    "Nada: el commit existe pero ninguna ref lo apunta todavía",
+    "Se creó una rama nueva llamada Prueba",
+    "Quedó en HEAD separado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "commit-tree solo crea el objeto. Para publicarlo: git update-ref refs/heads/main <nuevo> <anterior>."
+  },
+  {
+   "id": "s12-q12",
+   "type": "single",
+   "q": "Tras `git update-index --add --cacheinfo 100644,<hash>,LEEME.md` en un repositorio sin ese archivo en el disco, `git status --short` muestra `AD LEEME.md`. ¿Qué significa?",
+   "options": [
+    "Agregado en el index y borrado en el directorio de trabajo",
+    "Agregado y luego borrado del index",
+    "Conflicto de tipo add/delete",
+    "El blob no existe"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La primera columna es el index (A: agregado) y la segunda el directorio de trabajo (D: no está en el disco). git checkout-index LEEME.md lo crearía."
+  },
+  {
+   "id": "s12-q13",
+   "type": "single",
+   "q": "¿Qué responde Git a `git update-index --add --cacheinfo 100644,5c1b149,hola.txt`?",
+   "options": [
+    "Lo acepta: los hashes abreviados sirven en todas partes",
+    "error: option 'cacheinfo' expects <mode>,<sha1>,<path>",
+    "fatal: bad object 5c1b149",
+    "Lo acepta y crea el blob"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "--cacheinfo exige el hash completo. A diferencia de commit-tree, update-ref o cat-file, no resuelve abreviaturas ni nombres."
+  },
+  {
+   "id": "s12-q14",
+   "type": "single",
+   "q": "¿Qué comando construye un árbol a partir de líneas «modo tipo hash<TAB>nombre» sin tocar el index?",
+   "options": [
+    "git write-tree",
+    "git read-tree",
+    "git mktree",
+    "git update-index --index-info"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "mktree lee formato ls-tree y escribe un árbol (de un nivel). write-tree lee el index; read-tree lo escribe; --index-info modifica el index."
+  },
+  {
+   "id": "s12-q15",
+   "type": "single",
+   "q": "`git update-ref refs/heads/release v2.0` falla con «trying to write non-commit object … to branch». ¿Por qué?",
+   "options": [
+    "release está protegida",
+    "v2.0 es una etiqueta anotada: el nombre se resuelve al objeto tag, no al commit",
+    "Hace falta el tercer argumento",
+    "update-ref no acepta nombres, solo hashes"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una rama solo puede apuntar a commits. Hay que pelar la etiqueta: v2.0^{commit}."
+  },
+  {
+   "id": "s12-q16",
+   "type": "single",
+   "q": "¿Qué hace `git update-ref refs/heads/x A B`?",
+   "options": [
+    "Crea dos ramas, A y B",
+    "Mueve x a A solo si x vale B en ese momento",
+    "Mueve x a B y guarda A en el reflog",
+    "Fusiona A y B en x"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El tercer argumento es el valor anterior esperado: una actualización condicional (comparar y cambiar)."
+  },
+  {
+   "id": "s12-q17",
+   "type": "yesno",
+   "q": "Sobre referencias y HEAD, indica si cada afirmación es verdadera o falsa:",
+   "statements": [
+    {
+     "text": "Una rama es un archivo que contiene el hash de un commit.",
+     "answer": true
+    },
+    {
+     "text": "HEAD siempre contiene un hash de 40 caracteres.",
+     "answer": false
+    },
+    {
+     "text": "`git symbolic-ref HEAD refs/heads/feature` actualiza el directorio de trabajo con los archivos de feature.",
+     "answer": false
+    },
+    {
+     "text": "Si main está en packed-refs y además existe .git/refs/heads/main, Git usa el archivo suelto.",
+     "answer": true
+    }
+   ],
+   "explain": "HEAD suele ser simbólico («ref: refs/heads/main»); solo en HEAD separado contiene un hash. symbolic-ref no toca index ni archivos. El archivo suelto tiene prioridad sobre packed-refs."
+  },
+  {
+   "id": "s12-q18",
+   "type": "single",
+   "q": "Hay una etiqueta `x` y una rama `x` que apuntan a commits distintos. ¿A qué se resuelve `git log x`?",
+   "options": [
+    "A la rama (refs/heads/x)",
+    "A la etiqueta (refs/tags/x), con el aviso «refname 'x' is ambiguous»",
+    "Git se niega a continuar",
+    "Al commit más reciente de los dos"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El orden de gitrevisions prueba refs/tags/ antes que refs/heads/. Para evitar ambigüedades usa heads/x o tags/x."
+  },
+  {
+   "id": "s12-q19",
+   "type": "single",
+   "q": "Un servidor bare tiene solo la rama `main`, pero al clonarlo aparece «warning: remote HEAD refers to nonexistent ref, unable to checkout». ¿Cuál es el arreglo correcto?",
+   "options": [
+    "Crear una rama master en el servidor",
+    "Ejecutar en el servidor git symbolic-ref HEAD refs/heads/main",
+    "Borrar el archivo HEAD del servidor",
+    "Clonar con --bare"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El HEAD del servidor apunta a una rama inexistente (típicamente master). Corregir la ref simbólica es la solución; crear master sería un parche."
+  },
+  {
+   "id": "s12-q20",
+   "type": "single",
+   "q": "Tras `git gc`, `git count-objects -v` muestra `count: 0`, `in-pack: 75` y `packs: 1`. ¿Qué significa?",
+   "options": [
+    "Se borraron todos los objetos",
+    "No quedan objetos sueltos: los 75 están dentro de un único pack",
+    "Hay 75 objetos corruptos",
+    "El repositorio quedó vacío pero con un pack de respaldo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "count cuenta objetos sueltos; in-pack, los que están en packfiles; packs, cuántos .pack hay."
+  },
+  {
+   "id": "s12-q21",
+   "type": "single",
+   "q": "En la salida de `git verify-pack -v`, ¿qué indica una línea como esta?\n```bash\na679fb8… blob   7 18 1842 1 f988396…\n```",
+   "options": [
+    "Un blob de 7 bytes sin comprimir",
+    "Un blob guardado como delta de profundidad 1 sobre el objeto f988396…",
+    "Un blob corrupto",
+    "El blob número 1 del pack"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las líneas con 7 columnas son deltas: las dos últimas son la profundidad de la cadena y el objeto base. El 7 es el tamaño de los datos del delta."
+  },
+  {
+   "id": "s12-q22",
+   "type": "single",
+   "q": "Cuando Git guarda dos versiones de un archivo en un pack, ¿cuál suele quedar completa?",
+   "options": [
+    "La más antigua, porque es la original",
+    "La más reciente, porque es la que más se consulta",
+    "Ambas completas: los packs no usan deltas",
+    "Ninguna: se guardan solo diferencias respecto de un archivo vacío"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Pro Git lo explica así: la versión nueva se guarda intacta y la antigua como delta, porque lo más probable es que necesites acceder rápido a la reciente."
+  },
+  {
+   "id": "s12-q23",
+   "type": "yesno",
+   "q": "Sobre `git gc` en Git 2.50, verdadero o falso:",
+   "statements": [
+    {
+     "text": "Borra inmediatamente todos los commits colgantes.",
+     "answer": false
+    },
+    {
+     "text": "Expira entradas del reflog de más de 90 días (30 si ya no son alcanzables).",
+     "answer": true
+    },
+    {
+     "text": "Guarda los objetos inalcanzables recientes en un cruft pack en vez de dejarlos sueltos.",
+     "answer": true
+    },
+    {
+     "text": "`git gc --prune=now` puede impedir que recuperes un commit perdido.",
+     "answer": true
+    },
+    {
+     "text": "Envía los objetos empaquetados al remoto origin.",
+     "answer": false
+    }
+   ],
+   "explain": "gc respeta gc.pruneExpire (2 semanas) antes de borrar lo inalcanzable, y desde 2.41 lo guarda en un cruft pack. --prune=now borra ya. gc es local: no toca remotos."
+  },
+  {
+   "id": "s12-q24",
+   "type": "single",
+   "q": "Hiciste `git reset --hard HEAD~1` y ahora `git fsck` no muestra el commit que «perdiste». ¿Por qué?",
+   "options": [
+    "Porque reset --hard lo borró",
+    "Porque el reflog lo sigue alcanzando y fsck cuenta los reflogs como raíces",
+    "Porque fsck solo muestra blobs",
+    "Porque hace falta git gc primero"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Por defecto fsck considera vivos los objetos alcanzables desde los reflogs. Con --no-reflogs aparecerá como dangling commit."
+  },
+  {
+   "id": "s12-q25",
+   "type": "single",
+   "q": "¿Cuál es la diferencia entre un objeto «dangling» y uno «unreachable»?",
+   "options": [
+    "Son sinónimos",
+    "Todo dangling es inalcanzable, pero además ningún otro objeto lo menciona: es la punta de una cadena perdida",
+    "Dangling es un objeto corrupto; unreachable, uno sano",
+    "Unreachable solo se aplica a blobs"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un commit perdido es dangling; sus padres, también perdidos, son unreachable pero no dangling porque el primero los menciona."
+  },
+  {
+   "id": "s12-q26",
+   "type": "single",
+   "q": "Agregaste un archivo con `git add`, nunca lo confirmaste y luego lo perdiste con `git reset --hard`. ¿Dónde encuentras su contenido tras `git fsck --lost-found`?",
+   "options": [
+    "En .git/lost-found/commit/<hash>",
+    "En .git/lost-found/other/<hash>, con el contenido del blob",
+    "En .git/logs/HEAD",
+    "En ningún lado: reset --hard lo destruyó"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Para blobs, --lost-found escribe el contenido (no el nombre del objeto) en .git/lost-found/other/<hash>."
+  },
+  {
+   "id": "s12-q27",
+   "type": "single",
+   "q": "El archivo `.git/refs/heads/main` quedó vacío tras un corte de luz y `git update-ref refs/heads/main <hash>` responde «reference broken». ¿Qué haces?",
+   "options": [
+    "git init de nuevo",
+    "Borrar el archivo dañado y repetir git update-ref con el hash del reflog",
+    "git gc --prune=now",
+    "git commit --allow-empty"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "update-ref no toca una ref ilegible. Con el archivo roto eliminado, la crea normalmente. El hash sale de .git/logs/refs/heads/main."
+  },
+  {
+   "id": "s12-q28",
+   "type": "multi",
+   "q": "Sobre SHA-256 en Git 2.50, ¿qué afirmaciones son correctas? (marca todas)",
+   "options": [
+    "Sus hashes tienen 64 caracteres hexadecimales",
+    "Se elige al crear el repositorio con git init --object-format=sha256",
+    "Es el formato por defecto de los repositorios nuevos",
+    "Un repositorio SHA-256 puede hacer push a un servidor SHA-1",
+    "Queda anotado en .git/config como extensions.objectformat"
+   ],
+   "answer": [
+    0,
+    1,
+    4
+   ],
+   "explain": "SHA-1 sigue siendo el valor por defecto (Git 3.0 planea cambiarlo) y todavía no hay interoperabilidad entre repositorios SHA-1 y SHA-256."
+  },
+  {
+   "id": "s12-q29",
+   "type": "single",
+   "q": "¿Qué hizo Git tras el ataque SHAttered de 2017?",
+   "options": [
+    "Cambió de inmediato a SHA-256 por defecto",
+    "Adoptó en la versión 2.13 una implementación de SHA-1 con detección de colisiones (SHA-1DC)",
+    "Dejó de usar hashes",
+    "Pasó a MD5"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "SHA-1DC detecta los patrones de ese tipo de ataque. SHA-256 llegó después (2.29) como formato opcional."
+  },
+  {
+   "id": "s12-q30",
+   "type": "yesno",
+   "q": "Sobre etiquetas, verdadero o falso:",
+   "statements": [
+    {
+     "text": "Una etiqueta ligera crea un objeto tag en la base de objetos.",
+     "answer": false
+    },
+    {
+     "text": "`git cat-file -t v1.0` responde `tag` si v1.0 es anotada.",
+     "answer": true
+    },
+    {
+     "text": "Una etiqueta puede apuntar a un blob.",
+     "answer": true
+    },
+    {
+     "text": "`v1.0^{}` pela la etiqueta hasta el objeto que no es tag.",
+     "answer": true
+    },
+    {
+     "text": "`git tag -d v1.0` borra también el objeto tag de la base de objetos.",
+     "answer": false
+    }
+   ],
+   "explain": "La ligera es solo una ref. La anotada es un objeto tag, que queda colgante (dangling tag) si borras la ref, y puede recuperarse con update-ref."
+  },
+  {
+   "id": "s12-q31",
+   "type": "single",
+   "q": "¿Por qué `git commit --amend` o `git rebase` «crean commits nuevos» en vez de modificar los existentes?",
+   "options": [
+    "Por una decisión de interfaz de la porcelana",
+    "Porque el hash de un commit depende de todo su contenido (árbol, padres, fechas, mensaje): cambiar algo produce otro objeto",
+    "Porque los commits son archivos de solo lectura del sistema operativo",
+    "Porque así ocupan menos espacio"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los objetos son inmutables: se nombran por su contenido. Cambiar el padre o el mensaje da otro hash, y por eso cambian también los hashes de los descendientes."
+  },
+  {
+   "id": "s12-q32",
+   "type": "single",
+   "q": "Intentas escribir un commit a mano:\n```bash\nprintf 'tree 4b825dc…\\nautor Ana\\n\\nHola\\n' | git hash-object -t commit -w --stdin\n```\n¿Qué pasa?",
+   "options": [
+    "Crea el commit igual",
+    "Git se niega: «object fails fsck: missingAuthor…» y no escribe nada",
+    "Crea un blob",
+    "Lo guarda con un aviso"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "hash-object valida el formato del objeto antes de escribirlo. (Solo --literally se salta esa validación, y no debe usarse.)"
+  },
+  {
+   "id": "s12-q33",
+   "type": "multi",
+   "q": "¿Qué hace `git gc`? (marca todas)",
+   "options": [
+    "Empaqueta los objetos sueltos en un packfile",
+    "Empaqueta las refs en .git/packed-refs",
+    "Expira entradas antiguas de los reflogs",
+    "Elimina objetos inalcanzables más antiguos que el período de gracia",
+    "Reescribe la historia para quitar commits viejos",
+    "Hace push al remoto"
+   ],
+   "answer": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "explain": "gc es mantenimiento local: repack, pack-refs, reflog expire, prune y otras limpiezas. Nunca reescribe commits alcanzables ni se comunica con remotos."
+  },
+  {
+   "id": "s12-q34",
+   "type": "yesno",
+   "q": "Sobre porcelain y plumbing, verdadero o falso:",
+   "statements": [
+    {
+     "text": "Los comandos plumbing tienen una salida estable, pensada para scripts.",
+     "answer": true
+    },
+    {
+     "text": "git status es un comando plumbing.",
+     "answer": false
+    },
+    {
+     "text": "git add es equivalente a hash-object -w + update-index --add.",
+     "answer": true
+    },
+    {
+     "text": "En scripts conviene leer directamente .git/refs/heads/* en vez de usar git rev-parse.",
+     "answer": false
+    }
+   ],
+   "explain": "Las refs pueden estar en packed-refs o en reftable; rev-parse, show-ref y for-each-ref funcionan siempre. git status es porcelana (aunque tiene --porcelain para scripts)."
+  },
+  {
+   "id": "s12-q35",
+   "type": "single",
+   "q": "Ejecutas `cat .git/objects/5c/1b14949828006ed75a3e8858957f86a2f7e2eb` y ves caracteres ilegibles. ¿Por qué?",
+   "options": [
+    "El objeto está corrupto",
+    "Los objetos sueltos están comprimidos con zlib: se leen con git cat-file -p",
+    "Está cifrado con SHA-1",
+    "Es un packfile"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Cada objeto suelto es «tipo tamaño\\0contenido» comprimido con zlib. SHA-1 es un resumen, no un cifrado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Pro Git (2ª ed.) — 10.1 Plumbing and Porcelain",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain"
+  },
+  {
+   "title": "Pro Git (2ª ed.) — 10.2 Git Objects",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Git-Objects"
+  },
+  {
+   "title": "Pro Git (2ª ed.) — 10.3 Git References",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Git-References"
+  },
+  {
+   "title": "Pro Git (2ª ed.) — 10.4 Packfiles",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Packfiles"
+  },
+  {
+   "title": "Pro Git (2ª ed.) — 10.7 Maintenance and Data Recovery",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Maintenance-and-Data-Recovery"
+  },
+  {
+   "title": "Pro Git en español — capítulo 10, «Fontanería y porcelana»",
+   "url": "https://git-scm.com/book/es/v2/Los-entresijos-internos-de-Git-Fontaner%C3%ADa-y-porcelana"
+  },
+  {
+   "title": "git-hash-object",
+   "url": "https://git-scm.com/docs/git-hash-object"
+  },
+  {
+   "title": "git-cat-file",
+   "url": "https://git-scm.com/docs/git-cat-file"
+  },
+  {
+   "title": "git-ls-tree",
+   "url": "https://git-scm.com/docs/git-ls-tree"
+  },
+  {
+   "title": "git-ls-files",
+   "url": "https://git-scm.com/docs/git-ls-files"
+  },
+  {
+   "title": "git-update-index",
+   "url": "https://git-scm.com/docs/git-update-index"
+  },
+  {
+   "title": "git-write-tree",
+   "url": "https://git-scm.com/docs/git-write-tree"
+  },
+  {
+   "title": "git-mktree",
+   "url": "https://git-scm.com/docs/git-mktree"
+  },
+  {
+   "title": "git-commit-tree",
+   "url": "https://git-scm.com/docs/git-commit-tree"
+  },
+  {
+   "title": "git-update-ref",
+   "url": "https://git-scm.com/docs/git-update-ref"
+  },
+  {
+   "title": "git-symbolic-ref",
+   "url": "https://git-scm.com/docs/git-symbolic-ref"
+  },
+  {
+   "title": "git-pack-refs",
+   "url": "https://git-scm.com/docs/git-pack-refs"
+  },
+  {
+   "title": "git-count-objects",
+   "url": "https://git-scm.com/docs/git-count-objects"
+  },
+  {
+   "title": "git-gc",
+   "url": "https://git-scm.com/docs/git-gc"
+  },
+  {
+   "title": "git-repack (ventana y profundidad de deltas)",
+   "url": "https://git-scm.com/docs/git-repack"
+  },
+  {
+   "title": "git-verify-pack",
+   "url": "https://git-scm.com/docs/git-verify-pack"
+  },
+  {
+   "title": "git-fsck",
+   "url": "https://git-scm.com/docs/git-fsck"
+  },
+  {
+   "title": "git-maintenance",
+   "url": "https://git-scm.com/docs/git-maintenance"
+  },
+  {
+   "title": "git-init (--object-format, --ref-format)",
+   "url": "https://git-scm.com/docs/git-init"
+  },
+  {
+   "title": "gitrevisions (resolución de nombres, ^{tipo}, rev:ruta)",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "gitglossary (dangling, unreachable, pseudoref, symref)",
+   "url": "https://git-scm.com/docs/gitglossary"
+  },
+  {
+   "title": "gitformat-index (formato del index)",
+   "url": "https://git-scm.com/docs/gitformat-index"
+  },
+  {
+   "title": "gitrepository-layout",
+   "url": "https://git-scm.com/docs/gitrepository-layout"
+  },
+  {
+   "title": "hash-function-transition (SHA-1 → SHA-256)",
+   "url": "https://git-scm.com/docs/hash-function-transition"
+  },
+  {
+   "title": "BreakingChanges (planes para Git 3.0)",
+   "url": "https://git-scm.com/docs/BreakingChanges"
+  },
+  {
+   "title": "Notas de versión de Git 2.13 (SHA-1DC)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.13.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.29 (SHA-256 experimental)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.29.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.41 (cruft packs y .rev por defecto)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.41.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.42 (SHA-256 deja de ser experimental)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.42.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.45 (reftable)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.45.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.51 (SHA-256 y reftable por defecto en Git 3.0)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.51.0.adoc"
+  },
+  {
+   "title": "SHAttered — primera colisión práctica de SHA-1",
+   "url": "https://shattered.io/"
+  },
+  {
+   "title": "GitHub Docs — REST API: Git database",
+   "url": "https://docs.github.com/en/rest/git"
+  },
+  {
+   "title": "GitHub Community — solicitud de soporte SHA-256 (2025–2026)",
+   "url": "https://github.com/orgs/community/discussions/154056"
+  }
+ ]
+}

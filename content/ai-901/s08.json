@@ -1,0 +1,1825 @@
+{
+ "id": "s08",
+ "order": 8,
+ "title": "Visión por computadora y generación de imágenes y video",
+ "domain": "implement",
+ "summary": "Aprendes cómo un ordenador \"ve\" (píxeles, filtros, CNN, vision transformers y modelos multimodales), qué tareas de visión existen y cuándo usar un servicio especializado (Azure Vision, Face) o un modelo multimodal de Foundry. Después pasas a la práctica: interpretar imágenes con la Responses API, generar y editar imágenes con modelos GPT Image y crear video con Sora 2 mediante un flujo asíncrono. El examen combina preguntas de escenario → tarea con preguntas de código y de IA responsable (Face, deepfakes, Content Credentials).",
+ "objectives": [
+  "Identificar características y capacidades de los modelos de visión por computadora y de generación de imágenes (Identify features and capabilities of computer vision and image-generation models)",
+  "Interpretar entrada visual en prompts usando un modelo multimodal desplegado (Interpret visual input in prompts by using a deployed multimodal model)",
+  "Crear nuevas salidas visuales usando modelos generativos (Create new visual outputs by using generative models)",
+  "Construir una aplicación ligera que incluya capacidades de visión (Build a lightweight application that includes vision capabilities)"
+ ],
+ "goal": "Elegir la tarea y el enfoque de visión para cada escenario, interpretar imágenes con un modelo multimodal y generar imágenes con GPT Image y video con Sora 2, con al menos un 80 % en el test.",
+ "lessons": [
+  {
+   "id": "s08-l1",
+   "title": "Cómo \"ve\" un ordenador: píxeles, filtros, CNN y vision transformers",
+   "minutes": 14,
+   "goals": [
+    "Explicar cómo se representa una imagen como matriz de píxeles con canales RGB y cómo un kernel convolucional produce un feature map.",
+    "Describir cómo una CNN aprende los pesos de sus filtros durante el entrenamiento y asigna a cada imagen una etiqueta con su probabilidad.",
+    "Distinguir una CNN, un vision transformer (parches + atención) y un modelo multimodal (espacio de embeddings compartido entre visión y lenguaje)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La **visión por computadora** (*computer vision*) es el área de la IA que procesa entrada visual —imágenes, video o cámaras en directo— para extraer significado. Para entender por qué unos modelos son buenos clasificando y otros describiendo escenas, hay que empezar por cómo se representa una imagen dentro de un ordenador."
+    },
+    {
+     "type": "h",
+     "text": "Una imagen es una matriz de números"
+    },
+    {
+     "type": "p",
+     "text": "Para el ordenador, una imagen es un **array de valores de píxel**. En una imagen en escala de grises de 7×7 (su *resolución*), cada píxel vale entre `0` (negro) y `255` (blanco). Una imagen en color suele tener **tres canales** (*channels*): rojo, verde y azul (**RGB**). Cada canal es otra matriz del mismo tamaño; la combinación de los tres valores define el color de cada píxel (por ejemplo, R=255, G=255, B=0 es amarillo)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Concepto",
+      "Qué es",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "Píxel (*pixel*)",
+       "Unidad mínima de la imagen con un valor numérico",
+       "`0` = negro, `255` = blanco en escala de grises"
+      ],
+      [
+       "Resolución",
+       "Número de filas × columnas de píxeles",
+       "1024×1024, 1920×1080"
+      ],
+      [
+       "Canal (*channel*)",
+       "Capa de valores; RGB tiene 3 canales",
+       "Canal rojo, verde y azul"
+      ],
+      [
+       "Filtro / kernel",
+       "Pequeña matriz de pesos que se desliza sobre la imagen",
+       "Kernel 3×3 de detección de bordes"
+      ],
+      [
+       "Mapa de características (*feature map*)",
+       "Resultado de aplicar filtros: resalta rasgos",
+       "Bordes, texturas, formas"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Filtros y convoluciones"
+    },
+    {
+     "type": "p",
+     "text": "Un **filtro** se define con un **kernel** (por ejemplo 3×3). El kernel se **convoluciona** sobre la imagen: para cada parche de 3×3 píxeles se calcula una suma ponderada y el resultado se escribe en una nueva imagen. Con el kernel adecuado se obtienen efectos como detección de bordes, desenfoque o nitidez. Esto es *procesamiento de imagen*; la visión por computadora va más allá: quiere **extraer significado**."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Kernel de detección de bordes (Laplaciano):\n-1 -1 -1\n-1  8 -1\n-1 -1 -1\n\nZonas uniformes -> suma cercana a 0 (oscuro)\nCambios bruscos (bordes) -> valores altos (resaltados)",
+     "caption": "Ejemplo de kernel usado en el módulo de Microsoft Learn \"Introduction to computer vision concepts\"."
+    },
+    {
+     "type": "h",
+     "text": "Redes neuronales convolucionales (CNN)"
+    },
+    {
+     "type": "p",
+     "text": "Una **CNN** (*convolutional neural network*, red neuronal convolucional) es una arquitectura de *deep learning* que **aprende** los valores de sus filtros. Al entrenar, los kernels empiezan con pesos aleatorios; las predicciones se comparan con las etiquetas reales (la *loss*) y los pesos se ajustan época tras época hasta que los filtros extraen los rasgos que mejor distinguen las clases (por ejemplo manzana, plátano, naranja)."
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo simplificado de una CNN de clasificación",
+     "mermaid": "flowchart LR\n  A[\"Imagen RGB (matriz de píxeles)\"] --> B[\"Capas convolucionales (filtros aprendidos)\"]\n  B --> C[\"Feature maps\"]\n  C --> D[\"Pooling (reduce tamaño)\"]\n  D --> E[\"Flatten (vector 1D)\"]\n  E --> F[\"Red totalmente conectada\"]\n  F --> G[\"Softmax: probabilidad por clase\"]\n  G --> H[\"Etiqueta: plátano 0.82\"]",
+     "caption": "Los filtros empiezan con pesos aleatorios y se ajustan durante el entrenamiento para reducir la pérdida (loss)."
+    },
+    {
+     "type": "h",
+     "text": "Vision transformers (ViT) y modelos multimodales"
+    },
+    {
+     "type": "p",
+     "text": "Los **transformers** revolucionaron el procesamiento de lenguaje codificando tokens como *embeddings* (vectores) y usando **atención** (*attention*) para capturar el contexto. Un **vision transformer (ViT)** aplica la misma idea a imágenes: divide la imagen en **parches** de píxeles, convierte cada parche en un vector y usa atención para relacionar parches entre sí. Así aprende un \"vocabulario visual\" (color, forma, textura…) en el que rasgos que aparecen juntos (sombrero y cabeza) quedan cerca en el espacio vectorial."
+    },
+    {
+     "type": "p",
+     "text": "Un **modelo multimodal** combina un codificador de lenguaje y uno de visión entrenados con imágenes y sus descripciones, y usa **atención cruzada** (*cross-modal attention*) para crear un **espacio de embeddings compartido**. Gracias a ello puede describir imágenes que nunca vio, responder preguntas sobre una foto o leer un gráfico. Los modelos GPT con visión de Foundry (series GPT-4.1, GPT-5 y posteriores) son modelos multimodales."
+    },
+    {
+     "type": "diagram",
+     "title": "De la imagen al texto en un modelo multimodal",
+     "mermaid": "flowchart LR\n  I[\"Imagen\"] --> P[\"Parches de píxeles\"]\n  P --> VE[\"Codificador de visión (ViT)\"]\n  T[\"Texto del prompt\"] --> TE[\"Codificador de lenguaje\"]\n  VE --> S[\"Espacio de embeddings compartido (atención cruzada)\"]\n  TE --> S\n  S --> O[\"Respuesta en lenguaje natural: una persona con sombrero en un parque\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Enfoque",
+      "Cómo funciona",
+      "Fortaleza típica"
+     ],
+     "rows": [
+      [
+       "Procesamiento con filtros",
+       "Kernels fijos aplicados por convolución",
+       "Efectos (bordes, desenfoque); no \"entiende\""
+      ],
+      [
+       "CNN",
+       "Filtros aprendidos + red conectada + softmax",
+       "Clasificación y detección de objetos entrenadas para un dominio"
+      ],
+      [
+       "Vision transformer (ViT)",
+       "Parches + embeddings + atención",
+       "Representaciones visuales ricas y generales"
+      ],
+      [
+       "Modelo multimodal (LMM)",
+       "Codificadores de visión y lenguaje en un espacio compartido",
+       "Describir, razonar y responder preguntas sobre imágenes con texto libre"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda la cadena: **píxeles → filtros/kernels → feature maps → CNN → etiqueta con probabilidad**. Si una pregunta menciona *parches* y *atención*, habla de **vision transformers**; si menciona *combinar texto e imagen en la misma petición*, habla de **modelos multimodales**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa habitual: pensar que una CNN \"entiende\" conceptos. Solo aprende patrones numéricos que correlacionan con etiquetas. Del mismo modo, un ViT no sabe qué es un \"sombrero\": infiere relaciones entre rasgos visuales que suelen aparecer juntos."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Kernel",
+       "en": "Filter kernel",
+       "def": "Matriz pequeña de pesos que se convoluciona sobre la imagen para producir un feature map."
+      },
+      {
+       "term": "Convolución",
+       "en": "Convolution",
+       "def": "Operación que desliza un kernel sobre la imagen calculando sumas ponderadas por parche."
+      },
+      {
+       "term": "CNN",
+       "en": "Convolutional neural network",
+       "def": "Red de deep learning que aprende filtros para extraer rasgos y predecir etiquetas."
+      },
+      {
+       "term": "ViT",
+       "en": "Vision transformer",
+       "def": "Transformer que procesa parches de imagen como si fueran tokens usando atención."
+      },
+      {
+       "term": "Modelo multimodal",
+       "en": "Multimodal model / LMM",
+       "def": "Modelo que acepta (y a veces genera) varios tipos de datos: texto, imagen, audio, video."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "Para el ordenador, una imagen es una **matriz de valores de píxel** (0 = negro, 255 = blanco en escala de grises); una imagen en color tiene **tres canales** (RGB).",
+    "Un **filtro** (*kernel*) se **convoluciona** sobre la imagen y produce un **feature map** (bordes, texturas); con kernels fijos es procesamiento de imagen, no comprensión.",
+    "Una **CNN** **aprende** sus filtros (empiezan con pesos aleatorios y se ajustan para reducir la *loss*) y termina en *softmax*: una probabilidad por clase.",
+    "Pistas del enunciado: *parches* + *atención* = **vision transformer (ViT)**; texto e imagen en la misma petición = **modelo multimodal**, que une ambos en un **espacio de embeddings compartido**.",
+    "Trampa: ni una CNN ni un ViT \"entienden\" conceptos; aprenden patrones numéricos que se correlacionan con etiquetas o que suelen aparecer juntos."
+   ]
+  },
+  {
+   "id": "s08-l2",
+   "title": "Tareas de visión por computadora y servicios especializados (Azure Vision y Face)",
+   "minutes": 16,
+   "goals": [
+    "Asociar un escenario a la tarea de visión correcta: clasificación, detección de objetos, segmentación semántica o de instancias, OCR, captioning o tagging.",
+    "Identificar qué devuelve cada función de Image Analysis 4.0 en Azure Vision in Foundry Tools (Caption, Dense captions, Tags, Objects, People, Read, Smart crop).",
+    "Distinguir detección, verificación (1:1), identificación (1:N) y liveness en Azure Face, y explicar por qué su acceso es limitado."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El examen pregunta mucho del tipo \"dado este escenario, ¿qué tarea de visión necesitas?\". Memoriza qué **devuelve** cada tarea: una etiqueta para toda la imagen, cajas con confianza, píxeles, texto, caras o una frase."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tarea",
+      "Qué devuelve",
+      "Pregunta que responde"
+     ],
+     "rows": [
+      [
+       "Clasificación de imágenes (*image classification*)",
+       "Una (o varias) etiquetas para **toda** la imagen + probabilidad",
+       "¿De qué es esta imagen?"
+      ],
+      [
+       "Detección de objetos (*object detection*)",
+       "Cada objeto con **bounding box** (coordenadas del rectángulo) y **confidence score**",
+       "¿Qué objetos hay y dónde están?"
+      ],
+      [
+       "Segmentación semántica (*semantic segmentation*)",
+       "Una clase para **cada píxel**",
+       "¿Qué píxeles son \"árbol\" y cuáles \"cielo\"?"
+      ],
+      [
+       "Segmentación de instancias (*instance segmentation*)",
+       "Máscara de píxeles por **cada objeto individual**",
+       "¿Qué píxeles pertenecen al coche 1 y cuáles al coche 2?"
+      ],
+      [
+       "OCR / Read",
+       "Texto extraído (líneas, palabras) y su posición",
+       "¿Qué texto aparece en la imagen?"
+      ],
+      [
+       "Detección de caras (*face detection*)",
+       "Rectángulo de cada cara (y atributos opcionales)",
+       "¿Hay caras y dónde?"
+      ],
+      [
+       "Reconocimiento facial (*face recognition*)",
+       "Identidad: verificación 1:1 o identificación 1:N",
+       "¿Quién es esta persona? / ¿Son la misma persona?"
+      ],
+      [
+       "Captioning",
+       "Una frase legible que describe la imagen",
+       "Describe esta foto"
+      ],
+      [
+       "Dense captions",
+       "Varias frases, cada una con su bounding box",
+       "Describe cada región de la imagen"
+      ],
+      [
+       "Tagging",
+       "Lista de etiquetas (objetos, escenario, acciones) con confianza",
+       "¿Qué palabras clave describen la imagen?"
+      ],
+      [
+       "Smart crop",
+       "Región de interés para una relación de aspecto dada",
+       "¿Cómo recorto la miniatura sin perder lo importante?"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Tabla escenario → tarea"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escenario",
+      "Tarea"
+     ],
+     "rows": [
+      [
+       "Ordenar fotos en \"comida\", \"animales\" o \"paisajes\"",
+       "Clasificación de imágenes"
+      ],
+      [
+       "Contar coches, bicis y peatones con su posición en una imagen de tráfico",
+       "Detección de objetos"
+      ],
+      [
+       "Marcar cada píxel del tumor o de la carretera para un vehículo autónomo",
+       "Segmentación semántica"
+      ],
+      [
+       "Separar cada persona de una foto de grupo con su propia silueta",
+       "Segmentación de instancias"
+      ],
+      [
+       "Leer matrículas, tickets o carteles",
+       "OCR (Read)"
+      ],
+      [
+       "Difuminar caras en un video por privacidad",
+       "Detección de caras (*face redaction*)"
+      ],
+      [
+       "Desbloquear una app comparando un selfie con la foto del DNI",
+       "Verificación facial 1:1 (Face, acceso limitado) + liveness"
+      ],
+      [
+       "Generar texto alternativo (*alt text*) para accesibilidad",
+       "Captioning"
+      ],
+      [
+       "Añadir palabras clave buscables a un catálogo de fotos",
+       "Tagging"
+      ],
+      [
+       "Preguntar \"¿qué daños ves en este coche y qué le digo al seguro?\"",
+       "Modelo multimodal (visual question answering)"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de decisión para elegir la tarea de visión",
+     "mermaid": "flowchart TD\n  A[\"¿Qué necesitas de la imagen?\"] --> B{\"¿Texto escrito en ella?\"}\n  B -- \"Sí\" --> OCR[\"OCR / Read\"]\n  B -- \"No\" --> C{\"¿Caras humanas?\"}\n  C -- \"Localizar\" --> FD[\"Detección de caras\"]\n  C -- \"Identificar o verificar\" --> FR[\"Reconocimiento facial (Face, acceso limitado)\"]\n  C -- \"No\" --> D{\"¿Nivel de detalle espacial?\"}\n  D -- \"Toda la imagen\" --> CL[\"Clasificación\"]\n  D -- \"Rectángulo por objeto\" --> OD[\"Detección de objetos\"]\n  D -- \"Cada píxel\" --> SG[\"Segmentación\"]\n  D -- \"Frase o preguntas libres\" --> MM[\"Captioning o modelo multimodal\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Diferencia clave: **clasificación** = una etiqueta por imagen; **detección de objetos** = etiqueta + **bounding box** + **confianza** por objeto; **segmentación semántica** = clase por **píxel**. Si el enunciado dice \"coordenadas\" o \"rectángulo\", es detección; si dice \"cada píxel\" o \"contorno exacto\", es segmentación."
+    },
+    {
+     "type": "h",
+     "text": "Azure Vision in Foundry Tools: Image Analysis"
+    },
+    {
+     "type": "p",
+     "text": "**Azure Vision in Foundry Tools** (antes Azure AI Vision / Computer Vision) ofrece la API **Image Analysis**. La versión **4.0** incluye: **Read** (OCR síncrono), **Caption**, **Dense captions**, **Tags**, **Objects** (detección de objetos), **People** (detección de personas con bounding box y confianza) y **Smart crop**; además de *multimodal embeddings* para búsqueda de imágenes por texto. La versión 3.2 conserva funciones que no pasaron a 4.0 (marcas, caras, celebridades, landmarks, contenido adulto, esquema de color)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# pip install azure-ai-vision-imageanalysis\nimport os\nfrom azure.ai.vision.imageanalysis import ImageAnalysisClient\nfrom azure.ai.vision.imageanalysis.models import VisualFeatures\nfrom azure.core.credentials import AzureKeyCredential\n\nclient = ImageAnalysisClient(\n    endpoint=os.environ[\"VISION_ENDPOINT\"],\n    credential=AzureKeyCredential(os.environ[\"VISION_KEY\"]),\n)\n\nresult = client.analyze_from_url(\n    image_url=\"https://learn.microsoft.com/azure/ai-services/computer-vision/media/quickstarts/presentation.png\",\n    visual_features=[VisualFeatures.CAPTION, VisualFeatures.TAGS, VisualFeatures.OBJECTS, VisualFeatures.READ],\n    gender_neutral_caption=True,\n)\n\nprint(\"Caption:\", result.caption.text, round(result.caption.confidence, 2))\nfor tag in result.tags.list:\n    print(\"Tag:\", tag.name, round(tag.confidence, 2))\nfor obj in result.objects.list:\n    print(\"Objeto:\", obj.tags[0].name, obj.bounding_box)\nfor line in result.read.blocks[0].lines:\n    print(\"Texto:\", line.text)",
+     "caption": "Image Analysis 4.0 con el SDK de Python: una sola llamada devuelve caption, tags, objetos (con bounding box) y OCR."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Estado 2026: la API **Image Analysis (v3.2 y v4.0) está en desuso y se retira el 25-sep-2028**. Microsoft recomienda migrar a **Document Intelligence** (OCR), **Face API** (caras), modelos **GPT** de Foundry o **Azure Content Understanding** (análisis gestionado de imágenes). Ya se retiraron (31-mar-2025) la personalización de modelos de Image Analysis 4.0, *Product Recognition* y *background removal*. **Custom Vision** también anunció su retirada con soporte hasta el **25-sep-2028** (alternativas: AutoML de Azure Machine Learning, modelos de Foundry o clasificadores de Content Understanding)."
+    },
+    {
+     "type": "h",
+     "text": "Azure Face: detección vs reconocimiento y acceso limitado"
+    },
+    {
+     "type": "p",
+     "text": "El servicio **Face** detecta, analiza y reconoce caras humanas. Distingue varias operaciones:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Detección** (*Detect*): devuelve el rectángulo de cada cara y, opcionalmente, atributos (pose de la cabeza, gafas, oclusión, desenfoque…). Es el primer paso de todo lo demás.",
+      "**Verificación** (*Verify*, 1:1): \"¿estas dos caras son la misma persona?\" (p. ej., selfie frente a documento de identidad).",
+      "**Identificación** (*Identify*, 1:N): busca una cara en un grupo de personas registradas.",
+      "**Find similar** y **Group**: buscar caras parecidas o agrupar caras desconocidas por similitud.",
+      "**Liveness detection**: comprueba que hay una persona real delante de la cámara (anti-spoofing contra fotos, videos o máscaras). Es una función con acceso restringido."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "IA responsable en Face: el acceso es **limitado** (*Limited Access*) según criterios de elegibilidad y uso; hay que solicitarlo con un formulario de admisión. Microsoft **retiró** las capacidades de inferir **emoción** y **género**, y **limitó** edad, sonrisa, vello facial, pelo y maquillaje. Además, no se permite el reconocimiento facial por o para departamentos de policía de EE. UU. Si procesas datos biométricos debes informar, obtener consentimiento y eliminar los datos según la normativa."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta típica: \"Una app debe inferir la emoción de los clientes a partir de su cara con Azure Face\" → **No** es posible: el reconocimiento de emociones se retiró. \"Detectar la posición de caras para difuminarlas\" → **Sí**, es detección facial."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Bounding box",
+       "en": "Bounding box",
+       "def": "Coordenadas del rectángulo que rodea un objeto detectado."
+      },
+      {
+       "term": "Puntuación de confianza",
+       "en": "Confidence score",
+       "def": "Probabilidad (0–1) que el modelo asigna a su predicción."
+      },
+      {
+       "term": "Segmentación semántica",
+       "en": "Semantic segmentation",
+       "def": "Clasificar cada píxel según la clase de objeto a la que pertenece."
+      },
+      {
+       "term": "OCR",
+       "en": "Optical character recognition",
+       "def": "Detectar y extraer texto impreso o manuscrito de imágenes."
+      },
+      {
+       "term": "Verificación facial",
+       "en": "Face verification",
+       "def": "Comparación 1:1 para saber si dos caras son de la misma persona."
+      },
+      {
+       "term": "Identificación facial",
+       "en": "Face identification",
+       "def": "Búsqueda 1:N de una cara en un grupo de personas registradas."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "**Clasificación** = una etiqueta para toda la imagen; **detección de objetos** = etiqueta + **bounding box** + **confidence score** por objeto; **segmentación semántica** = una clase por **píxel**.",
+    "**Segmentación de instancias** separa cada objeto individual (coche 1, coche 2); **captioning** = una frase; **dense captions** = varias frases con su caja; **tagging** = lista de palabras clave.",
+    "Face: **detección** = dónde está cada cara (p. ej., para difuminarlas); **verificación** = 1:1 (¿misma persona?); **identificación** = 1:N (¿quién es entre las personas registradas?).",
+    "Face es de **acceso limitado** (*Limited Access*, con formulario de solicitud) y Microsoft **retiró** la inferencia de **emoción** y **género**: \"detectar emociones con Face\" es una respuesta incorrecta.",
+    "**Image Analysis** (v3.2 y 4.0) se retira el 25-sep-2028 y **Custom Vision** solo tiene soporte hasta esa fecha; las alternativas son modelos GPT de Foundry, Content Understanding, Document Intelligence o Face."
+   ]
+  },
+  {
+   "id": "s08-l3",
+   "title": "Interpretar imágenes con un modelo multimodal desplegado (Responses API)",
+   "minutes": 16,
+   "goals": [
+    "Probar un modelo con visión en el playground de Foundry y trasladar la petición a código con la Responses API y el SDK `openai`.",
+    "Escribir una petición `responses.create` que combine `input_text` e `input_image`, con la imagen por URL pública o como data URI en base64, y leer `response.output_text`.",
+    "Ajustar el parámetro `detail` (low, high, auto) y definir structured outputs en `text.format` para obtener JSON con campos fijos.",
+    "Identificar las limitaciones de los modelos con visión: conteos aproximados, texto muy pequeño o rotado, imágenes médicas especializadas y CAPTCHA."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los **modelos con visión** (*vision-enabled models*) de Foundry —por ejemplo las series GPT-4.1 y GPT-5 y modelos de razonamiento de la serie o— aceptan **texto e imágenes en la misma petición** y responden en lenguaje natural. Esto evita montar un pipeline de visión aparte: describir fotos, responder preguntas sobre ellas, interpretar gráficos, capturas de pantalla o documentos."
+    },
+    {
+     "type": "h",
+     "text": "Del playground al código"
+    },
+    {
+     "type": "list",
+     "ordered": true,
+     "items": [
+      "En el portal de Foundry despliega un modelo con visión (sección **Discover > Models** o **Build > Models**).",
+      "Ábrelo en el **playground** del modelo, adjunta una imagen con el botón de adjuntar y escribe un prompt (\"Describe esta imagen\").",
+      "Ajusta el mensaje de sistema (*instructions*) para tu tarea y valida las respuestas.",
+      "Revisa el código de ejemplo (*View code*) y llévalo a tu aplicación con la **Responses API** y el SDK `openai`."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Estructura de la petición"
+    },
+    {
+     "type": "p",
+     "text": "En la Responses API, el mensaje del usuario contiene una lista `content` con partes de tipo `input_text` (la instrucción) e `input_image` (la imagen). La imagen se puede pasar como **URL pública**, como **data URI en base64** o como **file ID** de la Files API. En `model` se pone el **nombre del despliegue**, no el nombre del modelo base."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=\"https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/\",\n    api_key=os.getenv(\"AZURE_OPENAI_API_KEY\"),\n)\n\nresponse = client.responses.create(\n    model=\"my-vision-deployment\",  # nombre de TU despliegue\n    input=[\n        {\n            \"role\": \"user\",\n            \"content\": [\n                {\"type\": \"input_text\", \"text\": \"¿Qué hay en esta imagen? Responde en 3 viñetas.\"},\n                {\"type\": \"input_image\", \"image_url\": \"https://example.com/foto.jpg\"},\n            ],\n        }\n    ],\n)\nprint(response.output_text)",
+     "caption": "Imagen por URL: el servicio descarga la imagen, así que debe ser accesible públicamente."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import base64, os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=\"https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/\",\n    api_key=os.getenv(\"AZURE_OPENAI_API_KEY\"),\n)\n\nwith open(\"factura.jpg\", \"rb\") as f:\n    b64 = base64.b64encode(f.read()).decode(\"utf-8\")\n\nresponse = client.responses.create(\n    model=\"my-vision-deployment\",\n    input=[{\n        \"role\": \"user\",\n        \"content\": [\n            {\"type\": \"input_text\", \"text\": \"Lee el total y la fecha de este ticket.\"},\n            {\"type\": \"input_image\",\n             \"image_url\": f\"data:image/jpeg;base64,{b64}\",\n             \"detail\": \"high\"},\n        ],\n    }],\n)\nprint(response.output_text)",
+     "caption": "Imagen local en base64 como data URI. Úsalo cuando la imagen no está en una URL pública o quieres evitar una descarga extra."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción de entrada",
+      "Cuándo usarla",
+      "Detalle"
+     ],
+     "rows": [
+      [
+       "URL pública",
+       "Imagen ya alojada (web, Blob con SAS)",
+       "El modelo la descarga; debe ser accesible"
+      ],
+      [
+       "Base64 (data URI)",
+       "Imagen local, subida por el usuario o privada",
+       "`data:image/jpeg;base64,...`; aumenta el tamaño del payload"
+      ],
+      [
+       "File ID",
+       "Reutilizar un archivo subido con la Files API",
+       "Útil en conversaciones largas"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "El parámetro detail"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Valor",
+      "Comportamiento",
+      "Coste/latencia"
+     ],
+     "rows": [
+      [
+       "`low`",
+       "Usa una versión de baja resolución; puede perder detalles finos",
+       "Menos tokens, más rápido"
+      ],
+      [
+       "`high`",
+       "Usa una versión de alta resolución; capta texto pequeño y detalles",
+       "Más tokens, más lento"
+      ],
+      [
+       "`auto` (por defecto)",
+       "El modelo decide según imagen y prompt",
+       "Variable"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Petición multimodal con la Responses API",
+     "mermaid": "sequenceDiagram\n  participant U as Usuario\n  participant A as App Python\n  participant F as Endpoint Foundry v1\n  participant M as Despliegue con visión\n  U->>A: Sube foto y pregunta\n  A->>A: Codifica la imagen en base64\n  A->>F: responses.create con input_text e input_image\n  F->>M: Tokens de texto e imagen\n  M-->>F: Respuesta generada\n  F-->>A: response.output_text\n  A-->>U: Descripción o datos extraídos"
+    },
+    {
+     "type": "h",
+     "text": "Límites y limitaciones que conviene conocer"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Formatos: PNG, JPEG, WEBP y GIF no animado. Hasta **50 imágenes** por petición; cada archivo y el total por petición por debajo de **50 MB**.",
+      "Las imágenes se **redimensionan** y el modelo **no ve el nombre de archivo ni los metadatos**.",
+      "No es adecuado para **imágenes médicas especializadas** (TAC) ni para consejo médico.",
+      "Puede fallar con texto muy pequeño, rotado, alfabetos no latinos, imágenes panorámicas u ojo de pez, razonamiento espacial preciso (p. ej., posiciones de ajedrez) y **conteos** (da aproximaciones).",
+      "Los **CAPTCHA** se bloquean por seguridad.",
+      "Los modelos con visión también aceptan **PDF**: se incluye el texto extraído y una imagen de cada página en el contexto (más tokens)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Extraer datos estructurados de una imagen"
+    },
+    {
+     "type": "p",
+     "text": "Para integrar el resultado en una app, pide la salida en JSON con **structured outputs**: en la Responses API el esquema se define en `text.format` (en Chat Completions se usa `response_format`). Así obtienes siempre los mismos campos."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "schema = {\n    \"type\": \"object\",\n    \"properties\": {\n        \"comercio\": {\"type\": \"string\"},\n        \"fecha\": {\"type\": \"string\"},\n        \"total\": {\"type\": \"number\"},\n        \"moneda\": {\"type\": \"string\"}\n    },\n    \"required\": [\"comercio\", \"fecha\", \"total\", \"moneda\"],\n    \"additionalProperties\": False\n}\n\nresponse = client.responses.create(\n    model=\"my-vision-deployment\",\n    instructions=\"Extrae datos de tickets. Si un dato no aparece, usa una cadena vacía o 0.\",\n    input=[{\"role\": \"user\", \"content\": [\n        {\"type\": \"input_text\", \"text\": \"Extrae los datos del ticket.\"},\n        {\"type\": \"input_image\", \"image_url\": f\"data:image/jpeg;base64,{b64}\"},\n    ]}],\n    text={\"format\": {\"type\": \"json_schema\", \"name\": \"ticket\", \"schema\": schema, \"strict\": True}},\n)\nimport json\nprint(json.loads(response.output_text))",
+     "caption": "Structured outputs en la Responses API: el esquema va en text.format."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Claves de código para el examen: tipo **`input_image`** junto a **`input_text`** en el mismo `content`; la imagen va en **`image_url`** (URL o `data:image/...;base64,...`); `model` = **nombre del despliegue**; el texto de salida está en **`response.output_text`**. En Chat Completions el equivalente es una parte `image_url` con un objeto `{\"url\": ...}`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Errores frecuentes: pasar la ruta local (`C:/fotos/a.jpg`) como `image_url` en lugar de codificarla en base64; olvidar el prefijo `data:image/jpeg;base64,`; usar `detail: low` y esperar leer letra pequeña; confiar en el modelo para contar con exactitud o para diagnóstico médico."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Mejora las respuestas con un mensaje de sistema específico (\"Eres un perito de seguros; describe solo daños visibles\") y pide un formato concreto (viñetas, JSON). Es la misma ingeniería de prompts de las secciones anteriores, ahora con imágenes."
+    }
+   ],
+   "takeaways": [
+    "En la Responses API, la imagen va como parte **`input_image`** junto a **`input_text`** en el mismo `content`; la respuesta se lee en **`response.output_text`**.",
+    "`image_url` acepta una **URL pública** o un **data URI** (`data:image/jpeg;base64,...`), nunca una ruta local; en `model` va el **nombre del despliegue**, no el del modelo base.",
+    "`detail`: `low` = menos tokens y más rápido, pero pierde detalle fino; `high` = capta texto pequeño a cambio de más tokens y latencia; `auto` es el valor por defecto.",
+    "Para obtener JSON fiable usa **structured outputs**: en la Responses API el esquema va en `text.format`; en Chat Completions, en `response_format`.",
+    "Un modelo con visión da **conteos aproximados**, puede fallar con texto muy pequeño o rotado, no ve el nombre de archivo ni los metadatos y no es adecuado para diagnóstico médico."
+   ]
+  },
+  {
+   "id": "s08-l4",
+   "title": "Generar y editar imágenes con modelos GPT Image",
+   "minutes": 16,
+   "goals": [
+    "Explicar cómo un modelo de difusión genera una imagen nueva eliminando ruido paso a paso guiado por el prompt.",
+    "Generar una imagen con `images.generate` ajustando `size`, `quality` y `n`, y guardarla decodificando `b64_json`.",
+    "Elegir entre `images.generate`, la herramienta `image_generation` de la Responses API y `images/edits` con máscara (inpainting) según haya que generar, iterar en una conversación o editar.",
+    "Redactar prompts de imagen que especifiquen sujeto, estilo, composición, iluminación y restricciones, e iterar cambiando un elemento cada vez."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Los modelos de **generación de imágenes** hacen el camino inverso a los de visión: a partir de una descripción en lenguaje natural (*text-to-image*) —y opcionalmente de imágenes de entrada (*image-to-image*)— crean imágenes nuevas o editan existentes. En Foundry la familia principal es **GPT Image** de OpenAI; también hay modelos de terceros en el catálogo (por ejemplo **FLUX** de Black Forest Labs) y modelos **MAI Image** de Microsoft."
+    },
+    {
+     "type": "h",
+     "text": "Cómo funciona la difusión (concepto)"
+    },
+    {
+     "type": "p",
+     "text": "Muchos generadores de imágenes se basan en **modelos de difusión** (*diffusion models*): durante el entrenamiento aprenden a quitar ruido a imágenes a las que se les añadió ruido progresivamente. Al generar, parten de **ruido aleatorio** y lo van **eliminando paso a paso**, guiados por la representación del prompt, hasta obtener una imagen coherente con la descripción. No \"buscan\" una imagen existente: la sintetizan."
+    },
+    {
+     "type": "diagram",
+     "title": "Idea de la generación por difusión",
+     "mermaid": "flowchart LR\n  P[\"Prompt: un robot con una maceta, estilo vectorial\"] --> E[\"Codificación del texto\"]\n  N[\"Ruido aleatorio\"] --> D1[\"Paso de eliminación de ruido 1\"]\n  E --> D1\n  D1 --> D2[\"Paso 2 ... paso N\"]\n  E --> D2\n  D2 --> IMG[\"Imagen final\"]\n  IMG --> F[\"Filtros de contenido y Content Credentials\"]"
+    },
+    {
+     "type": "h",
+     "text": "Modelos disponibles (septiembre 2026)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Modelo",
+      "Estado",
+      "Puntos fuertes"
+     ],
+     "rows": [
+      [
+       "gpt-image-2.5-sunburst / gpt-image-2.5-flare",
+       "GA (desde sep-2026)",
+       "Sunburst: máxima precisión en edición. Flare: el más rápido para uso diario"
+      ],
+      [
+       "gpt-image-2",
+       "GA",
+       "Alta resolución hasta 4K, tamaños personalizados, edición mejorada"
+      ],
+      [
+       "gpt-image-1.5",
+       "Acceso limitado (solicitud)",
+       "Realismo, seguimiento de instrucciones, mejor velocidad/coste que gpt-image-1"
+      ],
+      [
+       "gpt-image-1",
+       "Acceso limitado (solicitud)",
+       "Realismo y contexto multimodal; soportado por la herramienta `image_generation`"
+      ],
+      [
+       "gpt-image-1-mini",
+       "Acceso limitado (solicitud)",
+       "Rápido y barato para prototipos y volumen"
+      ],
+      [
+       "dall-e-3",
+       "**Retirado el 4-mar-2026**",
+       "Sustituido por la serie gpt-image"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**DALL-E 3 ya no existe en Azure** (retirado el 4 de marzo de 2026; los despliegues existentes dejaron de funcionar). Si un material antiguo habla de DALL-E, tradúcelo mentalmente a \"modelo GPT Image\". Los nombres concretos de modelo cambian rápido; el examen se centra en capacidades y parámetros."
+    },
+    {
+     "type": "h",
+     "text": "Parámetros principales de la Images API"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Parámetro",
+      "Valores",
+      "Notas"
+     ],
+     "rows": [
+      [
+       "`prompt`",
+       "Texto",
+       "Describe contenido **y** estilo"
+      ],
+      [
+       "`model`",
+       "Nombre del despliegue",
+       "Por ejemplo tu despliegue de gpt-image-2"
+      ],
+      [
+       "`size`",
+       "Serie gpt-image-1: `1024x1024`, `1024x1536`, `1536x1024`",
+       "gpt-image-2/2.5: tamaños `ANCHOxALTO` múltiplos de 16 px, hasta 3840 px por lado"
+      ],
+      [
+       "`quality`",
+       "`low`, `medium`, `high` (2.5 añade `xhigh`, `max`, `auto`)",
+       "Más calidad = más latencia y coste"
+      ],
+      [
+       "`n`",
+       "1–10",
+       "Número de imágenes por petición"
+      ],
+      [
+       "`output_format`",
+       "`png` o `jpeg`",
+       "`output_compression` 0–100 solo para JPEG"
+      ],
+      [
+       "`background`",
+       "`auto` o `transparent`",
+       "Fondo transparente requiere PNG (según modelo)"
+      ],
+      [
+       "`stream` + `partial_images`",
+       "`true`, 0–3 parciales",
+       "Muestra imágenes intermedias mientras se genera"
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "La serie gpt-image-1 **siempre devuelve base64** (`b64_json`) y no admite `response_format`; gpt-image-2 y 2.5 admiten base64 o URL. Tu código debe decodificar el base64 y guardarlo como archivo."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import base64, os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=\"https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/\",\n    api_key=os.getenv(\"AZURE_OPENAI_API_KEY\"),\n)\n\nresult = client.images.generate(\n    model=\"my-gpt-image-deployment\",\n    prompt=\"Ilustración plana de un robot sosteniendo una maceta, estilo vectorial limpio, colores pastel\",\n    size=\"1024x1024\",\n    quality=\"medium\",\n    n=1,\n)\n\nwith open(\"robot.png\", \"wb\") as f:\n    f.write(base64.b64decode(result.data[0].b64_json))\nprint(\"Guardado robot.png\")",
+     "caption": "Images API: generar una imagen y guardarla decodificando b64_json."
+    },
+    {
+     "type": "h",
+     "text": "Generar imágenes dentro de una conversación: herramienta image_generation"
+    },
+    {
+     "type": "p",
+     "text": "La **Responses API** incluye la herramienta integrada `image_generation`. Un modelo de chat o razonamiento **orquesta** la conversación y llama a un despliegue de **gpt-image-1-series**. En Azure, el despliegue de imagen se indica con la cabecera `x-ms-oai-image-generation-deployment`. La imagen llega en un elemento de salida de tipo `image_generation_call` cuyo campo `result` está en base64. Ventajas: conversación multivuelta (\"ahora hazla en blanco y negro\" usando `previous_response_id`) y entradas por file ID."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import base64, os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=\"https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/\",\n    api_key=os.getenv(\"AZURE_OPENAI_API_KEY\"),\n    default_headers={\"x-ms-oai-image-generation-deployment\": os.getenv(\"IMAGE_MODEL_NAME\")},\n)\n\nresponse = client.responses.create(\n    model=os.getenv(\"CHAT_MODEL_NAME\"),  # modelo orquestador\n    input=\"Genera una imagen de un gato atigrado abrazando una nutria con bufanda naranja.\",\n    tools=[{\"type\": \"image_generation\"}],\n)\n\nimages = [o.result for o in response.output if o.type == \"image_generation_call\"]\nif images:\n    with open(\"nutria.png\", \"wb\") as f:\n        f.write(base64.b64decode(images[0]))",
+     "caption": "Patrón documentado en Microsoft Learn (Responses API > Image generation). La herramienta no admite streaming; para imágenes parciales usa la Images API directamente."
+    },
+    {
+     "type": "h",
+     "text": "Edición e inpainting"
+    },
+    {
+     "type": "p",
+     "text": "El endpoint de **edits** (`images/edits`, `multipart/form-data`) recibe una o más imágenes y un prompt; con una **máscara** (*mask*) opcional haces **inpainting**: solo se regenera la zona transparente de la máscara. Los modelos recientes añaden **preservación de rasgos faciales** (`input_fidelity`) para retoques coherentes. En el portal, el **Images playground** permite text-to-image, inpainting y comparar modelos."
+    },
+    {
+     "type": "h",
+     "text": "Prompts eficaces para imágenes"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Sujeto**: qué aparece (\"un faro en un acantilado\").",
+      "**Estilo / medio**: fotografía, acuarela, ilustración vectorial, 3D, cámara desechable…",
+      "**Composición**: plano general, primer plano, vista cenital, regla de tercios.",
+      "**Iluminación y ambiente**: atardecer, luz de neón, niebla, tonos pastel.",
+      "**Detalles y restricciones**: fondo liso, sin texto, relación de aspecto (elige `size`).",
+      "Usa verbos de acción (*draw*, *create*, *edit*) e **itera**: cambia un elemento cada vez."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda: **generar** = Images API `images.generate` o herramienta **`image_generation`** en la Responses API; el resultado se recibe en **base64** y hay que decodificarlo; **editar** = `images/edits` con imagen + prompt (+ máscara para inpainting). Parámetros típicos que aparecen en preguntas: `size`, `quality`, `n`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los prompts e imágenes pasan por **filtros de contenido**: si se marcan, la API devuelve un error con `code: contentFilter` y no genera nada. Las imágenes fotorrealistas de menores están bloqueadas por defecto. No confundas un error de filtro con un fallo de cuota o de despliegue."
+    }
+   ],
+   "takeaways": [
+    "Los **modelos de difusión** (*diffusion models*) parten de **ruido aleatorio** y lo eliminan paso a paso guiados por el prompt: sintetizan una imagen nueva, no buscan una existente.",
+    "**DALL-E 3 se retiró en Azure el 4-mar-2026**: la familia actual de generación de imágenes en Foundry es **GPT Image** (modelos `gpt-image-*`).",
+    "Generar = `images.generate` (Images API) o la herramienta **`image_generation`** de la Responses API; la serie gpt-image-1 devuelve siempre **base64** (`b64_json`), que hay que decodificar y guardar.",
+    "Editar = `images/edits` con imagen + prompt; con una **máscara** (*mask*) se hace **inpainting** y solo se regenera la zona transparente de la máscara.",
+    "Si el prompt o la imagen activan los **filtros de contenido**, la API devuelve un error `contentFilter` y no genera nada: no es un fallo de cuota ni de despliegue."
+   ]
+  },
+  {
+   "id": "s08-l5",
+   "title": "Video con Sora 2: flujo asíncrono",
+   "minutes": 12,
+   "goals": [
+    "Describir las modalidades de Sora 2: texto a video, imagen a video (input_reference) y video a video (remix), con audio en la salida.",
+    "Implementar el flujo asíncrono de generación de video con `videos.create`, `videos.retrieve` (polling hasta `completed`) y `videos.download_content`.",
+    "Identificar las restricciones de contenido de Sora 2 en Azure: personas reales, personajes y música con copyright, y caras humanas en las imágenes de entrada."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "**Sora 2** (preview) es el modelo de OpenAI para generar video en Foundry. Admite **texto → video**, **imagen → video** (una imagen de referencia como primer fotograma) y **video → video** (*remix* de un video generado con cambios puntuales). Genera también **audio** en la salida. En el portal se prueba en el **Video playground**."
+    },
+    {
+     "type": "h",
+     "text": "Por qué es asíncrono"
+    },
+    {
+     "type": "p",
+     "text": "Generar video es costoso: suele tardar de 1 a 5 minutos. Por eso no se espera la respuesta en la misma llamada: **creas un trabajo**, **consultas su estado** (*polling*) y, cuando está `completed`, **descargas el MP4**. Los estados son `queued`, `in_progress`, `completed` y `failed`."
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo asíncrono de la API de video (v1)",
+     "mermaid": "sequenceDiagram\n  participant A as App\n  participant F as Endpoint openai v1\n  A->>F: POST /openai/v1/videos con prompt, size y seconds\n  F-->>A: id del video y status queued\n  loop Cada 20 segundos\n    A->>F: GET /openai/v1/videos/id\n    F-->>A: status in_progress y progress\n  end\n  F-->>A: status completed\n  A->>F: GET /openai/v1/videos/id/content\n  F-->>A: Archivo MP4"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os, time\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=\"https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/\",\n    api_key=os.getenv(\"AZURE_OPENAI_API_KEY\"),\n)\n\n# 1. Crear el trabajo\nvideo = client.videos.create(\n    model=\"sora-2\",  # nombre de tu despliegue de Sora 2\n    prompt=\"Primer plano cinematográfico de gotas de lluvia en una ventana con neones de noche\",\n    size=\"1280x720\",\n    seconds=\"8\",\n)\n\n# 2. Consultar el estado hasta que termine\nwhile video.status not in [\"completed\", \"failed\", \"cancelled\"]:\n    time.sleep(20)\n    video = client.videos.retrieve(video.id)\n    print(video.status, video.progress)\n\n# 3. Descargar el MP4\nif video.status == \"completed\":\n    content = client.videos.download_content(video.id, variant=\"video\")\n    content.write_to_file(\"lluvia.mp4\")",
+     "caption": "SDK openai actualizado (pip install openai --upgrade); con versiones antiguas aparece AttributeError: 'OpenAI' object has no attribute 'videos'."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Parámetro",
+      "Valores (Sora 2)"
+     ],
+     "rows": [
+      [
+       "`prompt`",
+       "Obligatorio. Describe tipo de plano, sujeto, acción, escenario, luz y movimiento de cámara"
+      ],
+      [
+       "`size`",
+       "`720x1280` (vertical, por defecto) o `1280x720` (horizontal)"
+      ],
+      [
+       "`seconds`",
+       "`4` (por defecto), `8` o `12`"
+      ],
+      [
+       "`input_reference`",
+       "Imagen de referencia (JPEG, PNG o WEBP) del mismo tamaño que el video"
+      ],
+      [
+       "`remix_video_id`",
+       "ID de un video ya completado para reutilizar estructura y movimiento"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Restricciones de Sora 2 en Azure: solo contenido apto para menores de 18; se rechazan **personajes y música con copyright**; **no se pueden generar personas reales** (incluidas figuras públicas); se rechazan imágenes de entrada con **caras humanas**. Los videos del playground se conservan **24 horas**: descárgalos si los necesitas."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Ciclo de vida: Sora (v1) ya está retirado y **sora-2 es un modelo preview** con fecha de retirada publicada (versión 2025-12-08: 15-oct-2026 según el *Model retirement schedule*). Comprueba la disponibilidad antes de planificar una práctica; el concepto (trabajo asíncrono crear → consultar → descargar) es lo que importa para el examen."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si te preguntan por qué una app de video no recibe el MP4 en la respuesta de creación: porque la generación de video es **asíncrona**. La secuencia correcta es **POST /videos → GET /videos/{id} (hasta `completed`) → GET /videos/{id}/content**."
+    }
+   ],
+   "takeaways": [
+    "La generación de video es **asíncrona** (suele tardar de 1 a 5 minutos): la respuesta de creación trae un `id` y un estado, no el MP4.",
+    "Secuencia REST: **POST /videos** → **GET /videos/{id}** hasta `completed` → **GET /videos/{id}/content** para descargar el MP4.",
+    "Sora 2 admite **texto → video**, **imagen → video** (`input_reference`) y **video → video** (*remix* con `remix_video_id`), y genera también **audio**.",
+    "Con `input_reference`, la imagen debe tener la **misma resolución** que el video (`1280x720` o `720x1280`).",
+    "Sora 2 **no genera personas reales** (ni figuras públicas) y rechaza personajes y música con **copyright** e imágenes de entrada con **caras humanas**."
+   ]
+  },
+  {
+   "id": "s08-l6",
+   "title": "Elegir el enfoque y usar la visión generativa de forma responsable",
+   "minutes": 12,
+   "goals": [
+    "Elegir entre un servicio especializado (Azure Vision, Face, Document Intelligence), un modelo multimodal, Content Understanding o un modelo generativo según la salida, la precisión espacial y el determinismo necesarios.",
+    "Aplicar los principios de IA responsable a la visión: privacidad de los datos biométricos, equidad, revisión humana y transparencia sobre el contenido generado.",
+    "Explicar qué aportan las Content Credentials (C2PA) y las marcas de agua invisibles, y qué no pueden garantizar."
+   ],
+   "blocks": [
+    {
+     "type": "h",
+     "text": "Servicio especializado vs modelo multimodal vs Content Understanding"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Criterio",
+      "Servicio especializado (Azure Vision, Face, Document Intelligence)",
+      "Modelo multimodal (GPT con visión)",
+      "Content Understanding"
+     ],
+     "rows": [
+      [
+       "Salida",
+       "JSON fijo: tags, cajas, texto OCR con coordenadas y confianza",
+       "Texto libre o JSON con structured outputs",
+       "Campos estructurados definidos por analizadores"
+      ],
+      [
+       "Flexibilidad",
+       "Baja: solo las funciones del API",
+       "Muy alta: cualquier pregunta en lenguaje natural",
+       "Media-alta: esquema personalizable"
+      ],
+      [
+       "Precisión espacial",
+       "Alta (bounding boxes, píxeles)",
+       "Limitada (conteos y posiciones aproximadas)",
+       "Depende del analizador"
+      ],
+      [
+       "Determinismo",
+       "Alto: misma entrada, misma salida",
+       "Menor: puede variar o alucinar",
+       "Alto en campos, con puntuaciones de confianza"
+      ],
+      [
+       "Coste y latencia",
+       "Bajo por transacción",
+       "Por tokens (imagen + texto); `detail` influye",
+       "Por contenido procesado"
+      ],
+      [
+       "Estado 2026",
+       "Image Analysis y Custom Vision en retirada (2028); Face con acceso limitado",
+       "Opción recomendada para escenarios flexibles",
+       "Recomendado para extracción gestionada (ver sección de extracción)"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué enfoque elijo?",
+     "mermaid": "flowchart TD\n  S[\"Necesidad de visión\"] --> Q1{\"¿Identidad o verificación de personas?\"}\n  Q1 -- \"Sí\" --> FACE[\"Azure Face (Limited Access, consentimiento)\"]\n  Q1 -- \"No\" --> Q2{\"¿Campos estructurados de documentos o imágenes a escala?\"}\n  Q2 -- \"Sí\" --> CU[\"Content Understanding o Document Intelligence\"]\n  Q2 -- \"No\" --> Q3{\"¿Preguntas abiertas, razonamiento o descripción rica?\"}\n  Q3 -- \"Sí\" --> MM[\"Modelo multimodal con Responses API\"]\n  Q3 -- \"No\" --> Q4{\"¿Crear contenido nuevo?\"}\n  Q4 -- \"Imagen\" --> GI[\"GPT Image (images.generate o image_generation)\"]\n  Q4 -- \"Video\" --> SO[\"Sora 2 (trabajo asíncrono)\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Regla práctica: **\"coordenadas exactas / OCR con posición / identidad\"** → servicio especializado; **\"responder preguntas sobre la imagen / interpretar un gráfico / describir con matices\"** → modelo multimodal; **\"crear\"** → modelo generativo de imagen o video."
+    },
+    {
+     "type": "h",
+     "text": "IA responsable en visión y contenido generado"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Privacidad**: las caras son datos biométricos. Informa, obtén consentimiento, limita la retención y difumina caras cuando no sean necesarias.",
+      "**Equidad**: los modelos pueden funcionar peor con ciertos tonos de piel, edades o condiciones de luz; evalúa con datos representativos. Por eso se retiraron emoción y género en Face.",
+      "**Fiabilidad y seguridad**: los modelos multimodales pueden describir cosas que no están; mantén revisión humana en decisiones de impacto (seguros, medicina, acceso).",
+      "**Deepfakes y desinformación**: imágenes y videos realistas pueden suplantar a personas. Sora 2 bloquea personas reales y material con copyright; los filtros de contenido bloquean prompts dañinos.",
+      "**Transparencia**: indica a los usuarios que un contenido fue generado por IA."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Procedencia: Content Credentials (C2PA) y marcas de agua invisibles"
+    },
+    {
+     "type": "p",
+     "text": "Microsoft es cofundador de la **C2PA** (*Coalition for Content Provenance and Authenticity*). Foundry añade **Content Credentials**: metadatos **firmados criptográficamente** que indican que el contenido fue generado con IA, con qué servicio y cuándo; se aplican automáticamente a las imágenes de los modelos GPT Image compatibles, sin configuración. Además, Microsoft usa **marcas de agua invisibles** que incrustan la señal en el propio contenido y pueden sobrevivir aunque se borren los metadatos. Se pueden verificar con el sitio y la API de *Content Provenance Detection*."
+    },
+    {
+     "type": "diagram",
+     "title": "Capas de protección en la generación visual",
+     "mermaid": "mindmap\n  root((\"Visión generativa responsable\"))\n    \"Antes de generar\"\n      \"Filtros de contenido del prompt\"\n      \"Restricciones del modelo: personas reales y copyright\"\n    \"Al generar\"\n      \"Moderación de la salida\"\n      \"Abuse monitoring\"\n    \"Después de generar\"\n      \"Content Credentials C2PA\"\n      \"Marcas de agua invisibles\"\n      \"Divulgación al usuario\"\n    \"Visión analítica\"\n      \"Face Limited Access\"\n      \"Consentimiento biométrico\"\n      \"Revisión humana\""
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Limitaciones de la procedencia: **no prueba que el contenido sea verdadero ni quién lo publicó**, y los metadatos pueden perderse al **recortar, redimensionar, aplicar filtros, convertir formato o recomprimir**. Content Credentials es una señal de transparencia, no un detector infalible de deepfakes."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Content Credentials",
+       "en": "Content Credentials (C2PA)",
+       "def": "Manifiesto de metadatos firmado criptográficamente que describe el origen de un contenido generado."
+      },
+      {
+       "term": "Marca de agua invisible",
+       "en": "Invisible watermark",
+       "def": "Señal de procedencia incrustada en el contenido, imperceptible y verificable con herramientas."
+      },
+      {
+       "term": "Deepfake",
+       "en": "Deepfake",
+       "def": "Contenido sintético realista que suplanta a personas o hechos reales."
+      },
+      {
+       "term": "Acceso limitado",
+       "en": "Limited Access",
+       "def": "Política que exige solicitar y justificar el uso de capacidades sensibles como el reconocimiento facial."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "Coordenadas exactas, OCR con posición o identidad → **servicio especializado**; preguntas abiertas, interpretar un gráfico o describir con matices → **modelo multimodal**; crear contenido → **GPT Image** o **Sora 2**.",
+    "Un servicio especializado devuelve JSON fijo y **determinista**; un modelo multimodal es más flexible pero puede variar o **alucinar**: mantén **revisión humana** en decisiones de impacto.",
+    "**Content Credentials** (estándar **C2PA**) son metadatos **firmados criptográficamente** que declaran que una imagen se generó con IA; se añaden **automáticamente** a las imágenes de los modelos GPT Image compatibles.",
+    "La procedencia **no prueba que el contenido sea verdadero** y los metadatos se pierden al recortar, redimensionar o recomprimir; las **marcas de agua invisibles** pueden sobrevivir aunque se borren.",
+    "Las caras son **datos biométricos**: informa, obtén consentimiento, limita la retención y difumina las que no necesites."
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "¿Cómo representa un ordenador una imagen en color?",
+   "back": "Como matrices de valores de píxel (0–255), una por canal: rojo, verde y azul (RGB)."
+  },
+  {
+   "front": "¿Qué hace un kernel en una convolución?",
+   "back": "Se desliza sobre la imagen calculando sumas ponderadas por parche para producir un feature map (p. ej., bordes)."
+  },
+  {
+   "front": "¿Qué aprende una CNN durante el entrenamiento?",
+   "back": "Los pesos de sus filtros (kernels) y de la red conectada, para que la salida softmax acierte la etiqueta."
+  },
+  {
+   "front": "¿Qué procesa un vision transformer en lugar de tokens de texto?",
+   "back": "Parches de píxeles convertidos en embeddings, relacionados con atención."
+  },
+  {
+   "front": "Clasificación vs detección de objetos",
+   "back": "Clasificación: etiqueta para toda la imagen. Detección: cada objeto con bounding box y confidence score."
+  },
+  {
+   "front": "¿Qué tarea clasifica cada píxel?",
+   "back": "Segmentación semántica (la de instancias separa además cada objeto individual)."
+  },
+  {
+   "front": "Funciones de Image Analysis 4.0",
+   "back": "Read (OCR), Caption, Dense captions, Tags, Objects, People, Smart crop (y multimodal embeddings)."
+  },
+  {
+   "front": "¿Cuándo se retira Image Analysis (Azure Vision)?",
+   "back": "El 25-sep-2028 (v3.2 y v4.0). Custom Vision tiene soporte hasta la misma fecha."
+  },
+  {
+   "front": "Verificación vs identificación facial",
+   "back": "Verificación 1:1 (¿misma persona?). Identificación 1:N (¿quién de este grupo es?)."
+  },
+  {
+   "front": "¿Qué atributos faciales retiró Microsoft?",
+   "back": "Emoción y género. Limitó edad, sonrisa, vello facial, pelo y maquillaje."
+  },
+  {
+   "front": "¿Cómo se envía una imagen local a un modelo con visión?",
+   "back": "Codificada en base64 como data URI: `data:image/jpeg;base64,...` en `input_image.image_url`."
+  },
+  {
+   "front": "Valores de `detail` para imágenes",
+   "back": "`low` (menos tokens, rápido), `high` (más detalle, más tokens), `auto` (por defecto)."
+  },
+  {
+   "front": "¿Dónde se define el esquema JSON en la Responses API?",
+   "back": "En `text.format` con `type: json_schema` (en Chat Completions: `response_format`)."
+  },
+  {
+   "front": "¿En qué formato devuelve la imagen la serie gpt-image-1?",
+   "back": "Siempre en base64 (`b64_json`); no admite `response_format`."
+  },
+  {
+   "front": "¿Qué modelo de imagen se retiró el 4-mar-2026?",
+   "back": "DALL-E 3 (dall-e-3). Se sustituye por la serie gpt-image."
+  },
+  {
+   "front": "¿Qué es inpainting?",
+   "back": "Editar solo una zona de la imagen indicada por una máscara, usando un prompt (endpoint images/edits)."
+  },
+  {
+   "front": "¿Cómo se indica en Azure el despliegue de imagen para la herramienta image_generation?",
+   "back": "Con la cabecera `x-ms-oai-image-generation-deployment`; la salida llega como `image_generation_call` con `result` en base64."
+  },
+  {
+   "front": "Pasos del flujo asíncrono de Sora 2",
+   "back": "POST /videos (crear) → GET /videos/{id} hasta completed → GET /videos/{id}/content (descargar MP4)."
+  },
+  {
+   "front": "Duraciones y tamaños de Sora 2",
+   "back": "seconds 4, 8 o 12; size 720x1280 o 1280x720."
+  },
+  {
+   "front": "¿Qué son las Content Credentials?",
+   "back": "Metadatos C2PA firmados criptográficamente que indican origen IA; se aplican automáticamente a imágenes GPT Image compatibles."
+  },
+  {
+   "front": "Principio de difusión",
+   "back": "Parte de ruido aleatorio y lo elimina paso a paso, guiado por el prompt, hasta obtener la imagen."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s08-lab1",
+   "title": "Analizar imágenes en el playground de Foundry",
+   "goal": "Desplegar un modelo con visión en Microsoft Foundry, adjuntar imágenes en el playground y comprobar cómo influyen el mensaje de sistema y la pregunta en la respuesta.",
+   "minutes": 25,
+   "cost": "Céntimos (pago por tokens; las imágenes consumen tokens de entrada)",
+   "prereqs": [
+    "Suscripción de Azure",
+    "Proyecto de Microsoft Foundry (portal nuevo en ai.azure.com)",
+    "2–3 imágenes de prueba (foto de calle, ticket, gráfico)"
+   ],
+   "steps": [
+    {
+     "title": "Abrir el proyecto",
+     "detail": "Entra en https://ai.azure.com con el portal nuevo de Foundry activado y abre tu proyecto (o crea uno con **Create project**)."
+    },
+    {
+     "title": "Desplegar un modelo con visión",
+     "detail": "Selecciona **Discover** y luego **Models**. Busca un modelo con entrada de imagen disponible en tu región (por ejemplo `gpt-5-mini`, `gpt-5.4-mini` o `gpt-4.1-mini`) y elige **Deploy > Default settings**. Anota el nombre del despliegue."
+    },
+    {
+     "title": "Abrir el playground",
+     "detail": "Al terminar el despliegue llegas al playground del modelo (también desde **Build > Models**, seleccionando el despliegue y **Open in playground**)."
+    },
+    {
+     "title": "Configurar instrucciones",
+     "detail": "En el campo de instrucciones (mensaje de sistema) escribe: \"Eres un asistente que describe imágenes de forma objetiva. Responde en español, en viñetas, y di 'no se aprecia' si algo no es visible.\""
+    },
+    {
+     "title": "Adjuntar una imagen y preguntar",
+     "detail": "Usa el botón de adjuntar del chat para subir la foto de calle y pregunta: \"Describe la escena y enumera los objetos que ves.\" Observa la respuesta."
+    },
+    {
+     "title": "Preguntas de seguimiento",
+     "detail": "Pregunta \"¿Cuántas personas hay exactamente?\" y \"¿Qué pone en los carteles?\". Compara: los conteos pueden ser aproximados y el texto pequeño puede fallar."
+    },
+    {
+     "title": "Extracción de un ticket",
+     "detail": "Adjunta la foto del ticket y pide: \"Devuelve solo un JSON con comercio, fecha, total y moneda.\""
+    },
+    {
+     "title": "Ver el código",
+     "detail": "Abre **View code** (o activa la vista JSON) para ver cómo se construye la petición con partes de texto e imagen. Lo usarás en el laboratorio 2."
+    }
+   ],
+   "verify": [
+    "El modelo describe correctamente el contenido principal de cada imagen",
+    "El JSON del ticket contiene los cuatro campos",
+    "Identificas al menos una limitación (conteo, texto pequeño o rotado)"
+   ],
+   "cleanup": "Si no vas a seguir con el laboratorio 2, elimina el despliegue en **Build > Models** o borra el grupo de recursos del proyecto en el portal de Azure.",
+   "challenge": "Sube un gráfico de barras y pide al modelo que lo convierta en una tabla. Verifica los valores a mano: ¿dónde se equivoca?"
+  },
+  {
+   "id": "s08-lab2",
+   "title": "App Python que describe imágenes y extrae datos estructurados",
+   "goal": "Construir un script que envía una imagen local (base64) y una URL a un modelo multimodal con la Responses API, obtiene una descripción y extrae datos en JSON validado con structured outputs.",
+   "minutes": 35,
+   "cost": "Céntimos",
+   "prereqs": [
+    "Despliegue de un modelo con visión del laboratorio 1",
+    "Python 3.10+",
+    "Endpoint y clave del recurso (o Azure CLI con `az login` para Entra ID)",
+    "Una imagen local `ticket.jpg`"
+   ],
+   "steps": [
+    {
+     "title": "Preparar el entorno",
+     "detail": "Crea una carpeta y un entorno virtual e instala el SDK.",
+     "code": "mkdir vision-app && cd vision-app\npython3 -m venv .venv\nsource .venv/bin/activate\npip install openai azure-identity",
+     "lang": "bash"
+    },
+    {
+     "title": "Variables de entorno",
+     "detail": "Copia el endpoint del recurso (formato `https://<recurso>.openai.azure.com/`) y la clave desde el portal. Define el nombre de tu despliegue.",
+     "code": "export AZURE_OPENAI_ENDPOINT=\"https://<recurso>.openai.azure.com/\"\nexport AZURE_OPENAI_API_KEY=\"<clave>\"\nexport VISION_DEPLOYMENT=\"<nombre-del-despliegue>\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Escribir describe.py",
+     "detail": "Crea `describe.py` con una función que acepte URL o archivo local.",
+     "code": "import base64, json, mimetypes, os, sys\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=os.environ[\"AZURE_OPENAI_ENDPOINT\"].rstrip(\"/\") + \"/openai/v1/\",\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n)\nMODEL = os.environ[\"VISION_DEPLOYMENT\"]\n\ndef to_image_part(source, detail=\"auto\"):\n    if source.startswith(\"http\"):\n        url = source\n    else:\n        mime = mimetypes.guess_type(source)[0] or \"image/jpeg\"\n        with open(source, \"rb\") as f:\n            b64 = base64.b64encode(f.read()).decode(\"utf-8\")\n        url = f\"data:{mime};base64,{b64}\"\n    return {\"type\": \"input_image\", \"image_url\": url, \"detail\": detail}\n\ndef describe(source):\n    r = client.responses.create(\n        model=MODEL,\n        instructions=\"Describe imágenes de forma objetiva, en español y en 3 viñetas.\",\n        input=[{\"role\": \"user\", \"content\": [\n            {\"type\": \"input_text\", \"text\": \"¿Qué muestra esta imagen?\"},\n            to_image_part(source),\n        ]}],\n    )\n    return r.output_text\n\nif __name__ == \"__main__\":\n    print(describe(sys.argv[1]))",
+     "lang": "python"
+    },
+    {
+     "title": "Probar con URL y con archivo local",
+     "detail": "Ejecuta el script con una URL pública y después con tu imagen local.",
+     "code": "python describe.py https://learn.microsoft.com/azure/ai-services/computer-vision/media/quickstarts/presentation.png\npython describe.py ticket.jpg",
+     "lang": "bash"
+    },
+    {
+     "title": "Añadir extracción estructurada",
+     "detail": "Crea `extract.py` que reutiliza `to_image_part` y define un esquema JSON en `text.format`. Usa `detail: high` para leer texto pequeño.",
+     "code": "import json, sys\nfrom describe import client, MODEL, to_image_part\n\nSCHEMA = {\n    \"type\": \"object\",\n    \"properties\": {\n        \"comercio\": {\"type\": \"string\"},\n        \"fecha\": {\"type\": \"string\"},\n        \"total\": {\"type\": \"number\"},\n        \"moneda\": {\"type\": \"string\"},\n        \"lineas\": {\"type\": \"array\", \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\"concepto\": {\"type\": \"string\"}, \"importe\": {\"type\": \"number\"}},\n            \"required\": [\"concepto\", \"importe\"],\n            \"additionalProperties\": False\n        }}\n    },\n    \"required\": [\"comercio\", \"fecha\", \"total\", \"moneda\", \"lineas\"],\n    \"additionalProperties\": False\n}\n\nr = client.responses.create(\n    model=MODEL,\n    instructions=\"Extrae datos de tickets. No inventes: usa '' o 0 si no aparece.\",\n    input=[{\"role\": \"user\", \"content\": [\n        {\"type\": \"input_text\", \"text\": \"Extrae los datos de este ticket.\"},\n        to_image_part(sys.argv[1], detail=\"high\"),\n    ]}],\n    text={\"format\": {\"type\": \"json_schema\", \"name\": \"ticket\", \"schema\": SCHEMA, \"strict\": True}},\n)\ndata = json.loads(r.output_text)\nprint(json.dumps(data, indent=2, ensure_ascii=False))\nprint(\"Suma de líneas:\", sum(l[\"importe\"] for l in data[\"lineas\"]), \"Total:\", data[\"total\"])",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar y validar",
+     "detail": "Ejecuta la extracción y compara la suma de líneas con el total: es una comprobación sencilla de fiabilidad antes de usar los datos.",
+     "code": "python extract.py ticket.jpg",
+     "lang": "bash"
+    },
+    {
+     "title": "(Opcional) Autenticación sin clave",
+     "detail": "Sustituye la clave por Microsoft Entra ID: asigna el rol Cognitive Services User, ejecuta `az login` y crea el cliente con `get_bearer_token_provider(DefaultAzureCredential(), \"https://ai.azure.com/.default\")` pasado como `api_key`."
+    }
+   ],
+   "verify": [
+    "`describe.py` devuelve 3 viñetas para la URL y para el archivo local",
+    "`extract.py` imprime un JSON que cumple el esquema (json.loads no falla)",
+    "La suma de líneas coincide o se aproxima al total del ticket"
+   ],
+   "cleanup": "Borra el despliegue del modelo en Foundry (**Build > Models > Delete**) o el grupo de recursos si ya no lo necesitas. Elimina la clave de tus variables de entorno.",
+   "challenge": "Acepta varias imágenes en la misma petición (por ejemplo, anverso y reverso de un ticket) añadiendo varias partes `input_image`, y compara coste y calidad con `detail: low` frente a `high`."
+  },
+  {
+   "id": "s08-lab3",
+   "title": "Generar imágenes desde código y guardarlas",
+   "goal": "Desplegar un modelo GPT Image, generar imágenes desde Python con la Images API variando tamaño y calidad, guardarlas en disco y probar la herramienta image_generation de la Responses API.",
+   "minutes": 30,
+   "cost": "Céntimos a pocos euros (cada imagen se factura; usa quality low/medium para practicar)",
+   "prereqs": [
+    "Suscripción de Azure y proyecto de Foundry en una región con modelos GPT Image",
+    "Python 3.10+ con `openai` instalado",
+    "Opcional: despliegue de un modelo de chat para la parte de image_generation"
+   ],
+   "steps": [
+    {
+     "title": "Desplegar un modelo de imagen",
+     "detail": "En Foundry, **Discover > Models**, busca `gpt-image-2` (GA) u otro modelo GPT Image disponible para tu suscripción (gpt-image-1.5/1/1-mini requieren solicitar acceso). Despliega con **Deploy > Default settings** y anota el nombre."
+    },
+    {
+     "title": "Probar en el Images playground",
+     "detail": "Abre el despliegue: Foundry muestra el **Images playground**. Escribe un prompt (\"Cartel minimalista de un faro al atardecer, ilustración vectorial, sin texto\"), elige tamaño y calidad y genera. Revisa **View code**."
+    },
+    {
+     "title": "Configurar variables",
+     "detail": "Define endpoint, clave y nombre del despliegue de imagen.",
+     "code": "export AZURE_OPENAI_ENDPOINT=\"https://<recurso>.openai.azure.com/\"\nexport AZURE_OPENAI_API_KEY=\"<clave>\"\nexport IMAGE_DEPLOYMENT=\"<despliegue-gpt-image>\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Script generate.py",
+     "detail": "Genera varias variantes y guárdalas. El código admite respuesta en base64 (serie gpt-image-1) o URL (modelos que la soportan).",
+     "code": "import base64, os, pathlib, urllib.request\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=os.environ[\"AZURE_OPENAI_ENDPOINT\"].rstrip(\"/\") + \"/openai/v1/\",\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n)\nout = pathlib.Path(\"salida\"); out.mkdir(exist_ok=True)\n\nprompt = (\"Cartel minimalista de un faro en un acantilado al atardecer, \"\n          \"ilustración vectorial, paleta naranja y azul, sin texto\")\n\nfor quality in [\"low\", \"medium\"]:\n    result = client.images.generate(\n        model=os.environ[\"IMAGE_DEPLOYMENT\"],\n        prompt=prompt,\n        size=\"1024x1536\",\n        quality=quality,\n        n=1,\n    )\n    img = result.data[0]\n    path = out / f\"faro_{quality}.png\"\n    if getattr(img, \"b64_json\", None):\n        path.write_bytes(base64.b64decode(img.b64_json))\n    else:\n        urllib.request.urlretrieve(img.url, path)\n    print(\"Guardado\", path)",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar",
+     "detail": "Ejecuta el script y abre las imágenes en la carpeta `salida`. Compara calidad y tiempo de respuesta entre `low` y `medium`.",
+     "code": "python generate.py",
+     "lang": "bash"
+    },
+    {
+     "title": "Probar un fallo de filtro",
+     "detail": "Cambia el prompt por algo que viole la política (por ejemplo, violencia explícita) y captura la excepción: verás un error con código `contentFilter` en lugar de una imagen. Envuelve la llamada en `try/except openai.BadRequestError`."
+    },
+    {
+     "title": "(Opcional) Herramienta image_generation",
+     "detail": "Si tienes un despliegue de chat compatible y un despliegue de la serie gpt-image-1, usa la Responses API con la cabecera del despliegue de imagen y pide una segunda versión con `previous_response_id`.",
+     "code": "import base64, os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    base_url=os.environ[\"AZURE_OPENAI_ENDPOINT\"].rstrip(\"/\") + \"/openai/v1/\",\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n    default_headers={\"x-ms-oai-image-generation-deployment\": os.environ[\"IMAGE_DEPLOYMENT\"]},\n)\nr1 = client.responses.create(\n    model=os.environ[\"CHAT_DEPLOYMENT\"],\n    input=\"Genera un icono plano de una taza de café.\",\n    tools=[{\"type\": \"image_generation\"}],\n)\nr2 = client.responses.create(\n    model=os.environ[\"CHAT_DEPLOYMENT\"],\n    previous_response_id=r1.id,\n    input=\"Ahora la misma taza en estilo acuarela.\",\n    tools=[{\"type\": \"image_generation\"}],\n)\nfor i, r in enumerate([r1, r2]):\n    imgs = [o.result for o in r.output if o.type == \"image_generation_call\"]\n    if imgs:\n        open(f\"taza_{i}.png\", \"wb\").write(base64.b64decode(imgs[0]))",
+     "lang": "python"
+    }
+   ],
+   "verify": [
+    "La carpeta `salida` contiene `faro_low.png` y `faro_medium.png` con la relación de aspecto vertical",
+    "El prompt bloqueado produce un error de filtro de contenido y no una imagen",
+    "(Opcional) `taza_0.png` y `taza_1.png` muestran la misma idea en dos estilos"
+   ],
+   "cleanup": "Elimina los despliegues de imagen y de chat en **Build > Models** o borra el grupo de recursos. Borra las imágenes locales si contienen material de prueba.",
+   "challenge": "Sube una de las imágenes generadas al sitio de Content Provenance Detection de Microsoft para comprobar sus Content Credentials; después recórtala y vuelve a guardarla con otro programa y comprueba si la señal se conserva."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s08-q1",
+   "type": "single",
+   "q": "Una cadena de supermercados quiere que una cámara identifique en una sola foto todos los productos de la cinta de caja y su posición. ¿Qué tarea de visión necesita?",
+   "options": [
+    "Clasificación de imágenes",
+    "Detección de objetos",
+    "Captioning",
+    "OCR"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La detección de objetos devuelve cada objeto con su bounding box y puntuación de confianza, lo que permite localizar varios productos. La clasificación asigna una sola etiqueta a toda la imagen, el captioning genera una frase y el OCR extrae texto."
+  },
+  {
+   "id": "s08-q2",
+   "type": "single",
+   "q": "Necesitas marcar exactamente qué píxeles de una imagen aérea corresponden a carreteras. ¿Qué técnica usas?",
+   "options": [
+    "Detección de objetos",
+    "Tagging",
+    "Segmentación semántica",
+    "Smart crop"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "La segmentación semántica clasifica cada píxel. La detección de objetos solo da rectángulos, el tagging da palabras clave y el smart crop devuelve una región de recorte."
+  },
+  {
+   "id": "s08-q3",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre cómo procesan imágenes los ordenadores, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Una imagen en color RGB se representa normalmente con tres canales de valores de píxel.",
+     "answer": true
+    },
+    {
+     "text": "En una CNN, los valores de los filtros se fijan manualmente y no cambian durante el entrenamiento.",
+     "answer": false
+    },
+    {
+     "text": "Un vision transformer divide la imagen en parches y usa atención para relacionarlos.",
+     "answer": true
+    }
+   ],
+   "explain": "RGB = 3 canales (rojo, verde, azul). En una CNN los kernels empiezan con pesos aleatorios y se ajustan en el entrenamiento para reducir la pérdida, así que la segunda es falsa. Los ViT procesan parches de píxeles como embeddings con atención."
+  },
+  {
+   "id": "s08-q4",
+   "type": "single",
+   "q": "¿Qué función de la capa de salida de una CNN de clasificación produce una probabilidad por cada clase posible?",
+   "options": [
+    "Pooling",
+    "Convolución",
+    "Softmax",
+    "Flatten"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Softmax convierte las salidas en probabilidades por clase (por ejemplo [0.2, 0.5, 0.3]). Pooling reduce el tamaño de los feature maps, la convolución aplica filtros y flatten convierte los mapas en un vector."
+  },
+  {
+   "id": "s08-q5",
+   "type": "multi",
+   "q": "Estás escribiendo una petición a la Responses API para que un modelo con visión describa una imagen guardada en el disco local. ¿Qué DOS elementos son necesarios? (Selecciona DOS.)",
+   "options": [
+    "Una parte de contenido de tipo `input_image` cuyo `image_url` es un data URI en base64",
+    "Pasar la ruta local del archivo directamente en `image_url`",
+    "Una parte de contenido de tipo `input_text` con la instrucción",
+    "El parámetro `tools=[{\"type\": \"image_generation\"}]`",
+    "Establecer `detail` en `low` obligatoriamente"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "La imagen local debe codificarse en base64 como data URI en una parte `input_image`, y la instrucción va en una parte `input_text` del mismo mensaje. El servicio no puede leer rutas locales; `image_generation` sirve para crear imágenes, no para analizarlas; y `detail` es opcional (por defecto `auto`)."
+  },
+  {
+   "id": "s08-q6",
+   "type": "single",
+   "q": "Un desarrollador envía una imagen con `\"detail\": \"low\"` y el modelo no consigue leer el número de serie impreso en letra pequeña. ¿Qué cambio es más adecuado?",
+   "options": [
+    "Cambiar a `\"detail\": \"high\"`",
+    "Reducir la resolución de la imagen",
+    "Enviar el nombre del archivo con el número de serie",
+    "Usar la herramienta image_generation"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`high` usa una versión de alta resolución que capta detalles finos a cambio de más tokens. Reducir la resolución empeora el problema, el modelo no procesa nombres de archivo ni metadatos, e image_generation crea imágenes en lugar de analizarlas."
+  },
+  {
+   "id": "s08-q7",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre modelos con visión en Foundry, indica Sí o No.",
+   "statements": [
+    {
+     "text": "El modelo lee los metadatos EXIF y el nombre original del archivo de la imagen.",
+     "answer": false
+    },
+    {
+     "text": "Es adecuado para diagnosticar TAC y dar consejo médico.",
+     "answer": false
+    },
+    {
+     "text": "Puede dar conteos aproximados de objetos en lugar de exactos.",
+     "answer": true
+    },
+    {
+     "text": "Se puede enviar más de una imagen en la misma petición.",
+     "answer": true
+    }
+   ],
+   "explain": "La documentación indica que el modelo no procesa nombres de archivo ni metadatos y que no es adecuado para imágenes médicas especializadas. Reconoce que los conteos pueden ser aproximados y permite varias imágenes (hasta 50) por petición."
+  },
+  {
+   "id": "s08-q8",
+   "type": "single",
+   "q": "En la Responses API, ¿dónde defines el esquema JSON para obtener datos estructurados de una imagen?",
+   "options": [
+    "En `response_format`",
+    "En `text.format` con `type: json_schema`",
+    "En `tools`",
+    "En la cabecera `x-ms-oai-image-generation-deployment`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En la Responses API los structured outputs se configuran en `text.format`. `response_format` es el parámetro equivalente de Chat Completions; `tools` define herramientas y esa cabecera indica el despliegue de imagen para image_generation."
+  },
+  {
+   "id": "s08-q9",
+   "type": "single",
+   "q": "Tu código llama a `client.images.generate` con un despliegue de gpt-image-1. ¿Cómo obtienes la imagen?",
+   "options": [
+    "Descargando `result.data[0].url`",
+    "Decodificando `result.data[0].b64_json` desde base64 y guardando los bytes",
+    "Leyendo `response.output_text`",
+    "Consultando periódicamente un id de trabajo hasta que termine"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La serie gpt-image-1 siempre devuelve base64 en `b64_json` (no admite `response_format` URL). `output_text` es texto de la Responses API, y el sondeo por id de trabajo es el patrón de video con Sora."
+  },
+  {
+   "id": "s08-q10",
+   "type": "multi",
+   "q": "¿Qué DOS parámetros de la Images API controlan directamente el aspecto y la fidelidad de la imagen generada? (Selecciona DOS.)",
+   "options": [
+    "size",
+    "quality",
+    "temperature",
+    "seconds",
+    "detail"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`size` fija resolución y relación de aspecto y `quality` (low/medium/high) la fidelidad y el coste. `temperature` es de modelos de texto, `seconds` es de Sora y `detail` controla cómo se procesa una imagen de entrada en modelos con visión."
+  },
+  {
+   "id": "s08-q11",
+   "type": "single",
+   "q": "Un tutorial de 2024 usa `dall-e-3` en Azure OpenAI. Si hoy (septiembre de 2026) intentas desplegarlo, ¿qué ocurre?",
+   "options": [
+    "Funciona igual que antes",
+    "No está disponible: se retiró el 4 de marzo de 2026 y debes usar un modelo gpt-image",
+    "Solo funciona con la Responses API",
+    "Requiere solicitar acceso limitado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "DALL-E 3 se retiró el 4-mar-2026; no admite nuevos despliegues y los existentes dejaron de funcionar. Microsoft indica usar la serie gpt-image. No es cuestión de API ni de acceso limitado."
+  },
+  {
+   "id": "s08-q12",
+   "type": "single",
+   "q": "Quieres modificar solo el cielo de una foto manteniendo el resto intacto. ¿Qué técnica usas?",
+   "options": [
+    "Generación de texto a imagen desde cero",
+    "Inpainting con una máscara en el endpoint de edits",
+    "Smart crop",
+    "Segmentación semántica con Image Analysis"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El inpainting regenera solo la zona indicada por la máscara según el prompt. Generar desde cero cambia toda la imagen; smart crop solo recorta; la segmentación identifica píxeles pero no edita."
+  },
+  {
+   "id": "s08-q13",
+   "type": "single",
+   "q": "¿Qué describe mejor cómo genera imágenes un modelo de difusión?",
+   "options": [
+    "Busca en internet la imagen más parecida al prompt",
+    "Parte de ruido aleatorio y lo elimina paso a paso guiado por el prompt",
+    "Combina recortes de imágenes del conjunto de entrenamiento",
+    "Aplica un único filtro de convolución sobre una plantilla"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La difusión aprende a eliminar ruido y, al generar, transforma ruido aleatorio en una imagen coherente con el prompt. No busca ni pega imágenes existentes, ni es un filtro único."
+  },
+  {
+   "id": "s08-q14",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre la herramienta `image_generation` de la Responses API en Azure, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Un modelo de chat o razonamiento orquesta la llamada y un despliegue de la serie gpt-image-1 genera la imagen.",
+     "answer": true
+    },
+    {
+     "text": "La imagen generada llega en un elemento de salida de tipo `image_generation_call` con el resultado en base64.",
+     "answer": true
+    },
+    {
+     "text": "La herramienta admite streaming de imágenes parciales dentro de la Responses API.",
+     "answer": false
+    }
+   ],
+   "explain": "La documentación indica que un modelo compatible orquesta y la cabecera `x-ms-oai-image-generation-deployment` señala el despliegue de imagen; el resultado está en `image_generation_call.result` (base64). El streaming de imágenes parciales no está soportado en la herramienta: hay que usar la Images API directamente."
+  },
+  {
+   "id": "s08-q15",
+   "type": "single",
+   "q": "Tu aplicación crea un video con Sora 2 y la respuesta inmediata no contiene el MP4. ¿Por qué?",
+   "options": [
+    "Falta el parámetro `n`",
+    "La generación de video es asíncrona: hay que consultar el estado y descargar cuando esté `completed`",
+    "Sora 2 solo devuelve imágenes",
+    "Hay que usar `detail: high`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El POST crea un trabajo (estado `queued`); luego se consulta `GET /videos/{id}` hasta `completed` y se descarga con `/content`. `n` y `detail` no aplican, y Sora 2 sí genera video."
+  },
+  {
+   "id": "s08-q16",
+   "type": "single",
+   "q": "¿Cuál es el orden correcto de llamadas para obtener un video con la API v1 de Sora 2?",
+   "options": [
+    "GET /videos/{id}/content → POST /videos → GET /videos/{id}",
+    "POST /videos → GET /videos/{id} → GET /videos/{id}/content",
+    "POST /images/generations → GET /videos/{id}",
+    "POST /responses con tools image_generation"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Primero se crea el trabajo (POST), después se sondea el estado (GET por id) y finalmente se descarga el contenido. Las demás opciones usan un orden imposible o APIs de imagen."
+  },
+  {
+   "id": "s08-q17",
+   "type": "multi",
+   "q": "¿Qué DOS peticiones rechaza Sora 2 en Azure por sus restricciones de IA responsable? (Selecciona DOS.)",
+   "options": [
+    "Un video de un personaje de dibujos animados con copyright",
+    "Un paisaje de montaña con niebla al amanecer",
+    "Un video de un político real dando un discurso",
+    "Una animación de un producto a partir de la foto de una taza",
+    "Un video horizontal de 1280x720 de 8 segundos"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Sora 2 rechaza personajes y música con copyright y no genera personas reales, incluidas figuras públicas. Un paisaje, animar la foto de un objeto (sin caras humanas) y un tamaño/duración soportados son válidos."
+  },
+  {
+   "id": "s08-q18",
+   "type": "single",
+   "q": "Una app de banca debe confirmar que el selfie del usuario corresponde a la foto de su documento de identidad. ¿Qué operación y servicio encajan?",
+   "options": [
+    "Identificación 1:N con Image Analysis",
+    "Verificación 1:1 con Azure Face (acceso limitado) y detección de vida (liveness)",
+    "Captioning con un modelo multimodal",
+    "Clasificación de imágenes con un modelo de difusión"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Comparar dos caras para saber si son la misma persona es verificación 1:1, del servicio Face (que requiere acceso limitado), y liveness evita suplantaciones con fotos. Image Analysis 4.0 no hace reconocimiento facial, el captioning no verifica identidad y la difusión genera imágenes."
+  },
+  {
+   "id": "s08-q19",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre Azure Face, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Se puede usar para inferir el estado emocional de un cliente.",
+     "answer": false
+    },
+    {
+     "text": "El acceso a reconocimiento facial requiere solicitarlo y cumplir criterios de elegibilidad.",
+     "answer": true
+    },
+    {
+     "text": "La detección facial devuelve la posición de cada cara y puede usarse para difuminarlas.",
+     "answer": true
+    }
+   ],
+   "explain": "Microsoft retiró la inferencia de emoción y género. Face es un servicio de acceso limitado con formulario de admisión. La detección devuelve rectángulos de las caras, útil para *face redaction*."
+  },
+  {
+   "id": "s08-q20",
+   "type": "single",
+   "q": "¿Qué función NO forma parte de Image Analysis 4.0 de Azure Vision?",
+   "options": [
+    "Dense captions",
+    "Smart crop",
+    "Reconocimiento de celebridades",
+    "People detection"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Celebridades (y landmarks, marcas, caras) son funciones de la versión 3.2. La 4.0 ofrece Read, Caption, Dense captions, Tags, Objects, People y Smart crop."
+  },
+  {
+   "id": "s08-q21",
+   "type": "single",
+   "q": "Una empresa usa Image Analysis y Custom Vision. ¿Qué debe planificar según la documentación de 2026?",
+   "options": [
+    "Nada: son servicios nuevos sin fecha de retirada",
+    "Una migración: ambos se retiran (Image Analysis el 25-sep-2028 y Custom Vision con soporte hasta esa fecha)",
+    "Migrar a DALL-E 3",
+    "Pasar a la versión 5.0 de Image Analysis"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Image Analysis (v3.2 y v4.0) se retira el 25-sep-2028 y Custom Vision tiene soporte hasta el 25-sep-2028. Las alternativas incluyen Document Intelligence, Face, modelos GPT de Foundry, Content Understanding y AutoML. DALL-E 3 está retirado y no existe una v5.0."
+  },
+  {
+   "id": "s08-q22",
+   "type": "single",
+   "q": "Un equipo necesita que los usuarios hagan preguntas libres sobre fotos de averías (\"¿qué pieza parece dañada y qué debería revisar?\"). ¿Qué enfoque es más adecuado?",
+   "options": [
+    "Image Analysis con Tags",
+    "Un modelo multimodal con visión mediante la Responses API",
+    "Azure Face",
+    "Un modelo GPT Image"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las preguntas abiertas y el razonamiento sobre la imagen son el punto fuerte de los modelos multimodales. Los tags solo dan palabras clave, Face analiza caras y GPT Image genera imágenes en lugar de interpretarlas."
+  },
+  {
+   "id": "s08-q23",
+   "type": "multi",
+   "q": "¿En qué DOS situaciones un servicio especializado es preferible a un modelo multimodal? (Selecciona DOS.)",
+   "options": [
+    "Necesitas coordenadas precisas de cada línea de texto con puntuación de confianza",
+    "Quieres un resumen creativo de lo que transmite una foto",
+    "Necesitas resultados deterministas y baratos a gran escala para detectar objetos con bounding boxes",
+    "Quieres conversar sobre un diagrama y hacer preguntas de seguimiento",
+    "Quieres explicar un meme"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Los servicios especializados devuelven salidas estructuradas y deterministas con coordenadas y confianza, a bajo coste por transacción. Los resúmenes creativos, las conversaciones sobre diagramas y la interpretación de memes aprovechan la flexibilidad de un modelo multimodal."
+  },
+  {
+   "id": "s08-q24",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre la procedencia del contenido generado en Foundry, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Las Content Credentials se basan en el estándar abierto C2PA y están firmadas criptográficamente.",
+     "answer": true
+    },
+    {
+     "text": "Hay que activar manualmente las Content Credentials en cada petición de imagen.",
+     "answer": false
+    },
+    {
+     "text": "Las Content Credentials demuestran que lo que muestra la imagen es verdadero.",
+     "answer": false
+    },
+    {
+     "text": "Recortar o recomprimir una imagen puede eliminar los metadatos de procedencia.",
+     "answer": true
+    }
+   ],
+   "explain": "Content Credentials son metadatos C2PA firmados que se aplican automáticamente a imágenes de modelos compatibles. La procedencia no determina la veracidad ni la autoría, y transformaciones como recortar, redimensionar o recomprimir pueden eliminarla (las marcas de agua invisibles ayudan en ese caso)."
+  },
+  {
+   "id": "s08-q25",
+   "type": "single",
+   "q": "¿Qué tecnología de procedencia puede conservarse aunque se eliminen los metadatos del archivo?",
+   "options": [
+    "El nombre del archivo",
+    "Las marcas de agua invisibles",
+    "Los datos EXIF",
+    "El parámetro quality"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Las marcas de agua invisibles incrustan la señal en el propio contenido y pueden sobrevivir aunque se pierdan los metadatos. El nombre del archivo y EXIF son metadatos fácilmente modificables; quality es solo un parámetro de generación."
+  },
+  {
+   "id": "s08-q26",
+   "type": "single",
+   "q": "Una petición de generación de imagen devuelve un error con `code: contentFilter`. ¿Qué significa?",
+   "options": [
+    "Se agotó la cuota de imágenes por minuto",
+    "El prompt o la imagen fue marcado por el sistema de seguridad y no se generó la imagen",
+    "El despliegue no existe",
+    "El tamaño solicitado no es válido"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`contentFilter` indica que la moderación de contenido bloqueó la petición. Los problemas de cuota, despliegue inexistente o tamaño inválido producen otros errores."
+  },
+  {
+   "id": "s08-q27",
+   "type": "single",
+   "q": "En la llamada `client.responses.create(model=..., input=[...])` a un modelo con visión en Foundry, ¿qué valor va en `model`?",
+   "options": [
+    "Siempre el literal \"gpt-4o\"",
+    "El nombre que diste al despliegue del modelo",
+    "El nombre del recurso de Azure",
+    "La URL de la imagen"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "En Azure/Foundry `model` es el nombre del despliegue (que puede coincidir o no con el nombre del modelo base). El nombre del recurso forma parte del endpoint y la URL de la imagen va en `input_image`."
+  },
+  {
+   "id": "s08-q28",
+   "type": "multi",
+   "q": "Una aplicación de accesibilidad debe generar texto alternativo para fotos y además leer el texto de los carteles que aparecen en ellas. ¿Qué DOS capacidades necesita? (Selecciona DOS.)",
+   "options": [
+    "Captioning (descripción de la imagen)",
+    "OCR / Read",
+    "Reconocimiento facial",
+    "Generación de imágenes",
+    "Segmentación de instancias"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El texto alternativo es una descripción (captioning) y leer carteles es OCR. Estas capacidades las ofrecen Image Analysis o un modelo multimodal. El reconocimiento facial, la generación de imágenes y la segmentación no responden a esos requisitos."
+  },
+  {
+   "id": "s08-q29",
+   "type": "single",
+   "q": "¿Qué opción de Sora 2 permite partir de un video ya generado y hacer cambios puntuales sin regenerarlo todo?",
+   "options": [
+    "input_reference",
+    "remix_video_id",
+    "partial_images",
+    "detail"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`remix_video_id` reutiliza estructura, movimiento y encuadre de un video completado. `input_reference` es una imagen para el primer fotograma, `partial_images` es de streaming de imágenes y `detail` es de entrada de imágenes en modelos con visión."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "Get started with computer vision in Azure (módulo AI-901)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-vision-azure/"
+  },
+  {
+   "title": "Introduction to computer vision concepts (módulo)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-computer-vision/"
+  },
+  {
+   "title": "Develop computer vision solutions with Microsoft Foundry (learning path)",
+   "url": "https://learn.microsoft.com/en-us/training/paths/develop-computer-vision-with-foundry/"
+  },
+  {
+   "title": "Azure OpenAI Responses API (entrada de imagen, image generation, structured outputs)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses"
+  },
+  {
+   "title": "How to use vision-enabled chat models",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-with-vision"
+  },
+  {
+   "title": "How to use image generation models from OpenAI",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/dall-e"
+  },
+  {
+   "title": "Use the image generation tool in Foundry Agent Service",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/image-generation"
+  },
+  {
+   "title": "Video generation with Sora 2 (preview)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/video-generation"
+  },
+  {
+   "title": "Microsoft Foundry Playgrounds (Images y Video playground)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/concepts/concept-playgrounds"
+  },
+  {
+   "title": "Model retirement schedule (Foundry Models)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule"
+  },
+  {
+   "title": "What is Image Analysis? (Azure Vision in Foundry Tools)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/overview-image-analysis"
+  },
+  {
+   "title": "Migrate from Azure Vision in Foundry Tools - Image Analysis",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/migration-options"
+  },
+  {
+   "title": "What is the Azure Face service?",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/overview-identity"
+  },
+  {
+   "title": "What is Custom Vision? (aviso de retirada)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/custom-vision-service/overview"
+  },
+  {
+   "title": "Content provenance (Content Credentials C2PA y marcas de agua)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/content-safety/provenance-disclosure"
+  },
+  {
+   "title": "Content Credentials in Azure OpenAI (classic)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry-classic/openai/concepts/content-credentials"
+  },
+  {
+   "title": "Deploy Microsoft Foundry Models in the Foundry portal",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/deploy-foundry-models"
+  }
+ ]
+}

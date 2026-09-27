@@ -1,0 +1,2508 @@
+{
+ "id": "s02",
+ "order": 2,
+ "title": "Primer repositorio y las tres áreas",
+ "domain": "fundamentos",
+ "summary": "Creas tu primer repositorio y aprendes el modelo mental central de Git: el directorio de trabajo, el área de preparación (index) y el repositorio. Dominarás `git status`, `git add` en todas sus formas, `git commit` (con `-m`, con el editor, con `-a` y con rutas) y `git log` básico, verás qué guarda realmente un commit y practicarás lo que distingue a un profesional: commits atómicos con buenos mensajes.",
+ "goal": "Crear un repositorio y construir con `git add` y `git commit` una historia de commits atómicos y bien descritos, sabiendo en todo momento en qué área está cada cambio.",
+ "objectives": [
+  "Crear un repositorio con `git init` y explicar para qué sirven los elementos principales de `.git`",
+  "Describir el recorrido de un cambio por el directorio de trabajo, el área de preparación y el repositorio",
+  "Interpretar `git status` y `git status -s` para decidir el siguiente comando",
+  "Preparar cambios con `git add` usando archivos, carpetas, `.`, `-A`, `-u`, patrones y `-p`",
+  "Crear commits con `-m`, con el editor, con `-a` y con rutas",
+  "Redactar mensajes de commit con el formato 50/72 y en imperativo",
+  "Dividir el trabajo en commits atómicos",
+  "Explicar qué contiene un commit y recorrer la historia con `git log`"
+ ],
+ "lessons": [
+  {
+   "id": "s02-l1",
+   "title": "Tu primer repositorio: `git init` y la carpeta `.git`",
+   "minutes": 15,
+   "goals": [
+    "Crear un repositorio con `git init` en un proyecto nuevo o existente",
+    "Identificar para qué sirven los elementos principales de la carpeta `.git`",
+    "Reconocer una rama «por nacer» y los mensajes de un repositorio sin commits",
+    "Evitar los dos errores clásicos: `git init` en la carpeta equivocada y repositorios anidados"
+   ],
+   "takeaways": [
+    "`git init` solo crea la subcarpeta `.git`: tus archivos no cambian y todavía no hay ningún commit.",
+    "La carpeta `.git` ES el repositorio: si la borras, pierdes toda la historia (los archivos del proyecto se quedan).",
+    "Tras `git init`, HEAD apunta a `main`, pero esa rama «nace» recién con el primer commit.",
+    "Git busca `.git` hacia arriba desde la carpeta actual; por eso funciona en cualquier subcarpeta del proyecto.",
+    "Un proyecto, un `git init` en su carpeta raíz: nunca en `~` ni dentro de otro repositorio."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Hasta ahora tu proyecto es una carpeta normal con archivos. Para que Git empiece a guardar su historia necesitas un **repositorio**: la base de datos donde Git almacena cada versión (cada *commit*), las ramas y la configuración del proyecto. Lo sorprendente es dónde vive esa base de datos: **dentro del propio proyecto**, en una carpeta oculta llamada `.git`. No hay servidor, ni cuenta, ni internet de por medio: todo es local."
+    },
+    {
+     "type": "diagram",
+     "title": "Un proyecto con Git: tus archivos + la carpeta .git",
+     "mermaid": "flowchart LR\n  subgraph P[\"mi-web/ (directorio de trabajo)\"]\n    A[\"index.html\"]\n    B[\"estilos.css\"]\n    subgraph G[\".git/ (el repositorio)\"]\n      H[\"HEAD: rama actual\"]\n      C[\"config: configuración local\"]\n      O[\"objects/: contenidos y commits\"]\n      R[\"refs/: ramas y etiquetas\"]\n      I[\"index: área de preparación\"]\n    end\n  end",
+     "caption": "Los archivos que editas quedan fuera de `.git`; Git guarda allí dentro las versiones, las ramas y el área de preparación (el archivo `index` aparece con el primer `git add`)."
+    },
+    {
+     "type": "p",
+     "text": "El comando que crea esa carpeta es `git init`. Se ejecuta **una sola vez por proyecto**, dentro de la carpeta del proyecto (también puedes indicarle una carpeta: `git init nombre` la usa y la crea si no existe). Pruébalo: primero verás que Git no reconoce la carpeta; después de `git init`, sí."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "mkdir -p mi-web && cd mi-web\nescribir index.html '<h1>Mi web</h1>'\nescribir estilos.css 'body { font-family: sans-serif; }'",
+     "cwd": "mi-web",
+     "code": "ls -a\ngit status\ngit init\nls -a\nls .git\ncat .git/HEAD\ngit status",
+     "caption": "Antes de `git init`, `git status` responde `fatal: not a git repository (or any of the parent directories): .git`. Después aparece `.git` y Git ve tus dos archivos como *untracked* (sin seguimiento)."
+    },
+    {
+     "type": "p",
+     "text": "Lee con calma lo que respondió Git:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`Initialized empty Git repository in …/mi-web/.git/`: creó un repositorio **vacío**. Tus archivos no se movieron ni se copiaron a ninguna parte. (En la plataforma, la ruta completa es la de una carpeta temporal: tu `~` de práctica.)",
+      "`On branch main`: la rama actual se llama `main` (en la plataforma `init.defaultBranch` ya está configurado como `main`, igual que lo hiciste en s01).",
+      "`No commits yet`: todavía no hay historia.",
+      "`Untracked files`: Git ve los archivos, pero aún no los sigue. Eso cambia con `git add` (lección 3)."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Qué hay dentro de `.git` (a vista de pájaro)"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Elemento",
+      "Para qué sirve",
+      "A fondo en"
+     ],
+     "rows": [
+      [
+       "`HEAD`",
+       "Archivo que dice dónde estás: `ref: refs/heads/main` significa «en la rama main».",
+       "s05 y s12"
+      ],
+      [
+       "`config`",
+       "Configuración **local** de este repositorio (el nivel más específico).",
+       "s13"
+      ],
+      [
+       "`objects/`",
+       "La base de datos: el contenido de los archivos, las carpetas y los commits, comprimidos e identificados por su hash.",
+       "s12"
+      ],
+      [
+       "`refs/`",
+       "Las referencias: `refs/heads/` (ramas) y `refs/tags/` (etiquetas).",
+       "s05 y s08"
+      ],
+      [
+       "`hooks/`",
+       "Scripts de ejemplo (`*.sample`) que Git puede ejecutar en ciertos momentos.",
+       "s13"
+      ],
+      [
+       "`info/exclude`",
+       "Patrones para ignorar archivos solo en tu copia.",
+       "s03"
+      ],
+      [
+       "`description`",
+       "Solo lo usa GitWeb, un visor web antiguo; puedes ignorarlo.",
+       "—"
+      ],
+      [
+       "`index`",
+       "El área de preparación. **No existe** hasta tu primer `git add`.",
+       "lecciones 2 y 3"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**No edites `.git` a mano y nunca la borres** (salvo que sepas exactamente lo que haces): la carpeta `.git` *es* el repositorio. Si ejecutas `rm -rf .git`, tus archivos siguen ahí, pero pierdes toda la historia, las ramas y la configuración local."
+    },
+    {
+     "type": "h",
+     "text": "La rama que todavía no nace"
+    },
+    {
+     "type": "p",
+     "text": "`cat .git/HEAD` mostró `ref: refs/heads/main`, pero la carpeta `.git/refs/heads/` está vacía. Git llama a esto una rama **por nacer** (*unborn branch*): HEAD apunta a `main`, pero `main` empezará a existir con el primer commit. Por eso `git log` en un repositorio recién creado responde `fatal: your current branch 'main' does not have any commits yet`: no hay nada roto, solo falta el primer commit."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nmkdir -p src/componentes\nescribir src/componentes/boton.js 'export const boton = () => \"Comprar\";'",
+     "cwd": "tienda",
+     "code": "ls .git/refs/heads\ngit log\ncd src/componentes\ngit status\ncd ~/tienda\ngit init\ngit status -s",
+     "caption": "Desde `src/componentes/`, `git status` funciona igual: Git busca `.git` hacia arriba hasta encontrarla y muestra las rutas relativas a donde estás (`../` es la carpeta `src/`, todavía sin seguimiento). Repetir `git init` es inofensivo: responde `Reinitialized existing Git repository` y no borra nada."
+    },
+    {
+     "type": "p",
+     "text": "Esa búsqueda hacia arriba explica los dos errores más típicos de quien empieza:"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**`git init` en la carpeta equivocada.** Si lo ejecutas en tu carpeta personal (`~`), *todo* lo que haya debajo (Documentos, Descargas…) queda «dentro» de un repositorio y `git status` te mostrará cientos de archivos sin seguimiento. Antes de `git init`, comprueba con `pwd` dónde estás. Si ya pasó y no hiciste commits, basta con borrar **esa** `.git` recién creada (`rm -rf ~/.git`), asegurándote de que es la correcta."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Un repositorio dentro de otro.** Si haces `git init` en una subcarpeta de un proyecto que ya es repositorio, creas un repositorio anidado. Al hacer `git add` desde el de fuera verás `warning: adding embedded git repository`: el repositorio externo solo guarda una referencia, no los archivos. Salvo que quieras submódulos (s14), es un error."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Variantes útiles: `git init nombre-proyecto` crea la carpeta y el repositorio de una vez; `git init -b main` fija el nombre de la rama inicial solo para ese repositorio. Sin `-b` ni `init.defaultBranch`, Git 2.50 usa `master` y muestra un aviso que empieza con `hint: Using 'master' as the name for the initial branch`. Algunas distribuciones ya traen `main` configurado (por ejemplo, el Git de las herramientas de Xcode en macOS)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: **¿qué hace exactamente `git init`?** Crea la subcarpeta `.git` (objetos, referencias, HEAD, configuración y plantillas como los hooks de ejemplo) con una rama inicial sin commits. **No** prepara archivos, **no** crea commits y **no** se conecta a ningún servidor. Ejecutarlo de nuevo en un repositorio existente es seguro: la documentación dice que no sobrescribe lo que ya existe."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Repositorio",
+       "en": "repository",
+       "def": "La base de datos de Git con toda la historia del proyecto; vive en la carpeta `.git`."
+      },
+      {
+       "term": "Directorio de trabajo",
+       "en": "working tree",
+       "def": "Los archivos del proyecto que ves y editas, fuera de `.git`."
+      },
+      {
+       "term": "HEAD",
+       "en": "HEAD",
+       "def": "Referencia que indica dónde estás; normalmente apunta a la rama actual (`ref: refs/heads/main`)."
+      },
+      {
+       "term": "Rama por nacer",
+       "en": "unborn branch",
+       "def": "Rama a la que apunta HEAD pero que aún no existe porque no tiene commits; nace con el primer commit."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l2",
+   "title": "Las tres áreas y el ciclo de vida de un archivo",
+   "minutes": 20,
+   "goals": [
+    "Describir el recorrido de un cambio: directorio de trabajo → área de preparación → repositorio",
+    "Clasificar cada archivo en su estado: sin seguimiento, sin modificar, modificado o preparado",
+    "Interpretar la salida de `git status` y de `git status -s` (columnas X e Y)",
+    "Detectar un archivo con cambios preparados y sin preparar a la vez (`MM`)"
+   ],
+   "takeaways": [
+    "Directorio de trabajo = lo que editas; área de preparación (index) = el próximo commit en construcción; repositorio = los commits guardados en `.git`.",
+    "Un archivo está sin seguimiento (*untracked*) hasta su primer `git add`; después es rastreado y puede estar sin modificar, modificado o preparado.",
+    "`git status -s` usa dos columnas: la izquierda es el index (lo preparado) y la derecha el directorio de trabajo (lo no preparado).",
+    "Un archivo puede estar preparado y modificado a la vez (`MM`): el commit se lleva la versión preparada, no la del disco.",
+    "Ante la duda, `git status`: no cambia nada y casi siempre sugiere el siguiente comando."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Este es **el** modelo mental de Git; si lo dominas, el resto del curso se vuelve lógico. Un cambio no pasa directo de tu editor a la historia: recorre **tres áreas**."
+    },
+    {
+     "type": "diagram",
+     "title": "Las tres áreas de Git",
+     "mermaid": "flowchart LR\n  WD[\"Directorio de trabajo (working tree): lo que editas\"] -- \"git add\" --> IX[\"Área de preparación (index): el próximo commit\"]\n  IX -- \"git commit\" --> RP[\"Repositorio (.git): commits guardados\"]",
+     "caption": "`git add` copia el contenido actual de un archivo al área de preparación; `git commit` guarda como instantánea todo lo que hay en ella. Para ir en sentido contrario (deshacer) están los comandos de s04."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Directorio de trabajo** (*working tree*): los archivos reales de tu carpeta, los que abres en el editor. Aquí puedes probar y romper lo que quieras.",
+      "**Área de preparación** (*staging area*; su nombre técnico es **index** y vive en el archivo `.git/index`): la versión del proyecto que irá en el **próximo commit**. Tú decides qué entra y qué no.",
+      "**Repositorio** (la carpeta `.git`): los commits ya guardados. Lo que llega aquí queda registrado en la historia."
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Piensa en una **foto grupal**: el directorio de trabajo es la gente conversando en la fiesta; el área de preparación es el escenario (*stage*, de ahí *staging*) donde ubicas solo a quienes quieres en la foto; `git commit` es apretar el disparador. Puedes subir y bajar gente del escenario todas las veces que quieras antes de la foto, y la foto solo muestra a quienes estaban arriba."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Un detalle que casi nadie cuenta: el index **no se vacía** después de un commit. Siempre contiene la instantánea completa del próximo commit, que justo después de confirmar es idéntica al último. Por eso `git status` puede responder `nothing to commit, working tree clean`: el último commit, el index y tu carpeta coinciden."
+    },
+    {
+     "type": "h",
+     "text": "Qué compara `git status`"
+    },
+    {
+     "type": "diagram",
+     "title": "Las tres preguntas de git status",
+     "mermaid": "flowchart LR\n  H[\"Último commit (HEAD)\"] <-->|\"Changes to be committed\"| I[\"Index\"]\n  I <-->|\"Changes not staged for commit\"| W[\"Directorio de trabajo\"]\n  W --- U[\"Archivos que Git no conoce: Untracked files\"]",
+     "caption": "`git status` compara el último commit con el index y el index con tu carpeta, y además lista los archivos que Git no rastrea."
+    },
+    {
+     "type": "p",
+     "text": "`git status` responde tres preguntas a la vez: ¿qué cambió entre el último commit y el index? (**Changes to be committed**, en verde: irá en el próximo commit); ¿qué cambió entre el index y tu carpeta? (**Changes not staged for commit**, en rojo: modificado pero sin preparar); ¿qué archivos no conoce Git? (**Untracked files**). Los textos entre paréntesis, como `(use \"git add <file>...\" to update what will be committed)`, son pistas del siguiente paso; las que mencionan `git restore` sirven para deshacer y las verás en s04."
+    },
+    {
+     "type": "h",
+     "text": "El ciclo de vida de un archivo"
+    },
+    {
+     "type": "p",
+     "text": "Cada archivo de tu carpeta está en uno de estos estados. Los tres últimos corresponden a archivos **rastreados** (*tracked*): Git los conoce porque estaban en el último commit o porque ya los preparaste. Todo lo demás está **sin seguimiento** (*untracked*)."
+    },
+    {
+     "type": "diagram",
+     "title": "Ciclo de vida de un archivo",
+     "mermaid": "stateDiagram-v2\n  state \"Sin seguimiento (untracked)\" as U\n  state \"Sin modificar (unmodified)\" as S\n  state \"Modificado (modified)\" as M\n  state \"Preparado (staged)\" as P\n  [*] --> U: creas el archivo\n  U --> P: git add\n  S --> M: lo editas\n  M --> P: git add\n  P --> S: git commit\n  P --> M: lo editas otra vez\n  S --> U: git rm --cached (s03)",
+     "caption": "Basado en el diagrama del capítulo 2.2 de Pro Git. Si editas un archivo ya preparado, queda en dos estados a la vez: una versión preparada y otra modificada (lo verás más abajo)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Estado",
+      "Qué significa",
+      "En `git status -s`"
+     ],
+     "rows": [
+      [
+       "Sin seguimiento (*untracked*)",
+       "Git ve el archivo, pero no lo incluye en nada.",
+       "`??`"
+      ],
+      [
+       "Preparado (*staged*)",
+       "Su contenido actual irá en el próximo commit.",
+       "`A ` (nuevo), `M ` (modificado), `D ` (borrado)"
+      ],
+      [
+       "Modificado (*modified*)",
+       "Cambió desde el último commit (o desde el último `git add`), pero ese cambio no está preparado.",
+       "` M` (modificado), ` D` (borrado)"
+      ],
+      [
+       "Sin modificar (*unmodified*)",
+       "Idéntico al último commit.",
+       "no aparece"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-01 09:00'\ncommit_archivo menu.txt 'Café ........ 1500' 'Agrega menú'",
+     "cwd": "cafeteria",
+     "code": "git status\necho \"Precios en pesos chilenos\" > README.md\ngit status\ngit add README.md\ngit status\necho \"Té .......... 1200\" >> menu.txt\ngit status\ngit add menu.txt\ngit status -s\ngit commit -m \"Agrega README y té al menú\"\ngit status",
+     "caption": "Ejecuta paso a paso y mira el panel de las tres áreas: `README.md` pasa de sin seguimiento a preparado, `menu.txt` de modificado a preparado, y el commit los guarda a los dos."
+    },
+    {
+     "type": "h",
+     "text": "La forma corta: `git status -s`"
+    },
+    {
+     "type": "p",
+     "text": "Con `-s` (`--short`) cada archivo ocupa una línea con **dos columnas**: la izquierda (X) describe el **index** (lo preparado) y la derecha (Y) el **directorio de trabajo** (lo no preparado). Un espacio significa «sin cambios en esa área»."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Código",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "`??`",
+       "Sin seguimiento."
+      ],
+      [
+       "`A `",
+       "Archivo nuevo, preparado."
+      ],
+      [
+       "`M `",
+       "Modificado y preparado."
+      ],
+      [
+       "` M`",
+       "Modificado, sin preparar."
+      ],
+      [
+       "`MM`",
+       "Preparado y luego modificado otra vez: tiene cambios en las dos áreas."
+      ],
+      [
+       "`AM`",
+       "Nuevo y preparado, pero editado después del `git add`."
+      ],
+      [
+       "`D `",
+       "Borrado y preparado."
+      ],
+      [
+       "` D`",
+       "Borrado de la carpeta, sin preparar."
+      ],
+      [
+       "`R `",
+       "Renombrado (preparado)."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Con `git status -sb` (`-b` es `--branch`) aparece además una primera línea con la rama: `## main`, o `## No commits yet on main` en un repositorio recién creado."
+    },
+    {
+     "type": "h",
+     "text": "La trampa: un archivo en dos secciones a la vez"
+    },
+    {
+     "type": "p",
+     "text": "`git add` guarda en el index el contenido **del momento** en que lo ejecutas. Si después sigues editando, el archivo aparece dos veces en `git status`: en *Changes to be committed* (la versión que preparaste) y en *Changes not staged for commit* (lo que editaste después). `git commit` se lleva **solo la versión preparada**."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo api\nfecha '2026-09-02 10:00'\ncommit_archivo config.txt 'puerto=3000' 'Agrega configuración'",
+     "cwd": "api",
+     "code": "echo \"puerto=8080\" > config.txt\ngit add config.txt\necho \"debug=false\" >> config.txt\ngit status\ngit status -s\ngit commit -m \"Cambia el puerto a 8080\"\ngit status -s\ncat config.txt\ngit show HEAD:config.txt",
+     "caption": "El commit guardó solo `puerto=8080`; la línea `debug=false` sigue sin preparar (` M`). `git show HEAD:config.txt` muestra el archivo tal como quedó en el último commit (`git show` a fondo en s03)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Error típico:** editar, hacer `git add`, seguir corrigiendo y confirmar sin volver a preparar. Resultado: un commit con una versión a medias. Costumbre profesional: justo antes de `git commit`, mira `git status`; si un archivo aparece también en rojo, decide si falta otro `git add`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pro Git lo resume en **tres estados** (*modified*, *staged*, *committed*) y **tres secciones** de un proyecto (*working tree*, *staging area* —o *index*— y *Git directory*). Si te preguntan qué columna de `git status -s` corresponde al área de preparación: **la izquierda**."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Área de preparación",
+       "en": "staging area / index",
+       "def": "Archivo `.git/index` con la instantánea del próximo commit. `git add` la actualiza; `git commit` la guarda."
+      },
+      {
+       "term": "Rastreado",
+       "en": "tracked",
+       "def": "Archivo que Git conoce: estaba en el último commit o ya fue preparado."
+      },
+      {
+       "term": "Sin seguimiento",
+       "en": "untracked",
+       "def": "Archivo que Git ve pero no conoce; no entra en ningún commit hasta que lo prepares."
+      },
+      {
+       "term": "Instantánea",
+       "en": "snapshot",
+       "def": "Copia del estado completo del proyecto en un momento dado; cada commit guarda una."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l3",
+   "title": "Preparar cambios con `git add`",
+   "minutes": 20,
+   "goals": [
+    "Preparar archivos sueltos, varios archivos, carpetas completas y patrones con `git add`",
+    "Elegir entre `git add .`, `git add -A` y `git add -u` según qué cambios quieras incluir",
+    "Previsualizar qué se va a preparar con `git add -n` antes de hacerlo"
+   ],
+   "takeaways": [
+    "`git add` no «agrega archivos al proyecto»: copia su contenido ACTUAL al index. Si vuelves a editar, vuelve a hacer `git add`.",
+    "`git add .` prepara lo nuevo, lo modificado y lo borrado dentro de la carpeta actual; `git add -A`, en todo el repositorio; `git add -u`, solo lo que Git ya rastrea.",
+    "Con comillas (`git add '*.css'`) el patrón lo interpreta Git y alcanza subcarpetas; sin comillas lo expande la terminal y solo ve la carpeta actual.",
+    "Git rastrea contenido, no carpetas: una carpeta vacía no se puede confirmar.",
+    "Antes de preparar en masa, revisa con `git status` o `git add -n`: así no se cuelan secretos ni basura."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git add` tiene un nombre engañoso. No significa «agregar este archivo al proyecto», sino, como lo resume Pro Git, **«agrega exactamente este contenido al próximo commit»**. Sirve para empezar a rastrear archivos nuevos, para preparar archivos modificados y también para registrar archivos borrados."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Qué prepara"
+     ],
+     "rows": [
+      [
+       "`git add index.html`",
+       "Un archivo."
+      ],
+      [
+       "`git add index.html estilos.css`",
+       "Varios archivos, separados por espacios."
+      ],
+      [
+       "`git add posts` (o `posts/`)",
+       "Una carpeta completa, con sus subcarpetas: archivos nuevos, modificados **y borrados** dentro de ella."
+      ],
+      [
+       "`git add .`",
+       "Todo lo que cambió en la carpeta **actual** y sus subcarpetas (el `.` significa «aquí»)."
+      ],
+      [
+       "`git add -A` (`--all`)",
+       "Todo lo que cambió en **todo el repositorio**, estés en la carpeta que estés."
+      ],
+      [
+       "`git add -u` (`--update`)",
+       "Solo archivos que Git **ya rastrea**: modificados y borrados. Ignora los nuevos."
+      ],
+      [
+       "`git add '*.css'`",
+       "Todos los `.css` de cualquier carpeta (patrón interpretado por Git)."
+      ],
+      [
+       "`git add -n .` (`--dry-run`)",
+       "No prepara nada: solo muestra qué haría."
+      ],
+      [
+       "`git add -p archivo`",
+       "Elige fragmento por fragmento qué cambios preparar (lección 6)."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-03 20:00'\ncommit_archivo README.md '# Blog de viajes' 'Crea el blog'\nescribir estilos.css 'body { max-width: 40rem; }'\nescribir posts/chiloe.md '# Chiloé: palafitos y curanto'\nescribir posts/2026/atacama.md '# San Pedro de Atacama'\nescribir borradores/idea.md 'Post sobre la Carretera Austral'\nmkdir -p imagenes",
+     "cwd": "blog",
+     "code": "git status\ngit add -n .\ngit add estilos.css\ngit add posts\ngit status -s\ngit add imagenes\ngit status -s\ngit add -v borradores/idea.md\ngit status",
+     "caption": "`-n` solo simula. `git add posts` entra en las subcarpetas (`posts/2026/`). `imagenes/` está vacía: Git ni la muestra ni la prepara. `-v` (*verbose*) informa cada archivo que agrega."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "**Git rastrea contenido, no carpetas.** Una carpeta vacía no aparece en `git status` ni puede confirmarse. Si necesitas que exista en el repositorio (por ejemplo, `logs/`), la convención es dejar dentro un archivo vacío llamado `.gitkeep`. No es una función de Git: es solo un nombre que todo el mundo entiende."
+    },
+    {
+     "type": "h",
+     "text": "`git add .` vs `git add -A` vs `git add -u`"
+    },
+    {
+     "type": "p",
+     "text": "Las tres preparan cambios «en masa», pero no los mismos. Desde **Git 2.0**, `git add <ruta>` (incluido `git add .`) también registra los archivos **borrados**; antes había que usar `-A`, y la opción `--no-all` conserva el comportamiento antiguo. Lo que distingue a estas tres formas es el **alcance** y si entran los archivos **nuevos**:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Nuevos",
+      "Modificados",
+      "Borrados",
+      "Alcance"
+     ],
+     "rows": [
+      [
+       "`git add .`",
+       "sí",
+       "sí",
+       "sí",
+       "carpeta actual y subcarpetas"
+      ],
+      [
+       "`git add -A`",
+       "sí",
+       "sí",
+       "sí",
+       "todo el repositorio"
+      ],
+      [
+       "`git add -u`",
+       "**no**",
+       "sí",
+       "sí",
+       "todo el repositorio"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tareas\nfecha '2026-09-04 12:00'\nescribir README.md '# Gestor de tareas'\nescribir src/tareas.py 'tareas = []'\nescribir src/viejo.py 'print(\"obsoleto\")'\ngit add . && git commit -qm 'Crea el gestor de tareas'\nanexar README.md 'Uso: python src/tareas.py'\nanexar src/tareas.py 'def agregar(t): tareas.append(t)'\nrm src/viejo.py\nescribir src/fechas.py 'from datetime import date'\nescribir notas.txt 'ideas sueltas'",
+     "cwd": "tareas",
+     "code": "git status -s\ncd src\ngit add -n .\ngit add -n -A\ngit add -n -u\ncd ..\ngit add -u\ngit status -s",
+     "caption": "Desde `src/`, `git add .` no ve `README.md` ni `notas.txt`; `-A` ve todo; `-u` ve todo lo rastreado (incluido el borrado de `viejo.py`, que aparece como `remove`) pero ignora los nuevos `fechas.py` y `notas.txt`."
+    },
+    {
+     "type": "h",
+     "text": "Patrones: ¿quién expande el asterisco?"
+    },
+    {
+     "type": "p",
+     "text": "Con `*` hay un detalle que sorprende incluso a gente con años de Git. Si escribes `git add *.css` **sin comillas**, es la terminal la que reemplaza `*.css` por los archivos que coinciden **en la carpeta actual** y le pasa esa lista a Git. Si escribes `git add '*.css'` **con comillas** (o escapas el asterisco: `git add \\*.css`), el patrón le llega intacto a Git, que lo aplica a todas las rutas del proyecto; en los patrones de Git (los *pathspecs*), `*` también atraviesa `/`, así que alcanza cualquier subcarpeta."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portal\nfecha '2026-09-05 09:00'\ncommit_archivo README.md '# Portal de vecinos' 'Crea el portal'\nescribir estilos.css 'body { margin: 0; }'\nescribir css/base.css 'h1 { font-size: 2rem; }'\nescribir css/componentes/boton.css '.boton { padding: 1rem; }'\nescribir app.js 'console.log(\"hola\")'",
+     "cwd": "portal",
+     "code": "git add -n *.css\ngit add -n '*.css'\ngit add -n \\*.css\ngit add -n 'css/*.css'\ngit add '*.css'\ngit status -s",
+     "caption": "Sin comillas solo aparece `estilos.css`. Con comillas, o escapando el asterisco con `\\`, Git encuentra los tres `.css`; `'css/*.css'` limita la búsqueda a esa carpeta (incluidas sus subcarpetas)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Es exactamente el ejemplo de la documentación oficial de `git add`: `git add Documentation/\\*.txt` (asterisco protegido de la terminal con `\\`) incluye los `.txt` de las subcarpetas de `Documentation/`; `git add git-*.sh` (expandido por la terminal) no considera `subdir/git-foo.sh`. Otra pregunta frecuente: `git add *` tampoco ve los archivos borrados (ya no existen, la terminal no puede listarlos) ni los que empiezan con punto."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**`git add .` a ciegas** es la forma más común de meter en un commit lo que no debía: contraseñas en un `.env`, carpetas enormes como `node_modules`, archivos del sistema. Antes de preparar en masa, mira `git status` o usa `git add -n .`. En s03 aprenderás a decirle a Git qué ignorar con `.gitignore`."
+    },
+    {
+     "type": "p",
+     "text": "Dos respuestas de Git que conviene reconocer: `git add` sin argumentos no hace nada y avisa `Nothing specified, nothing added.` (con la pista `Maybe you wanted to say 'git add .'?`), y una ruta que no existe produce `fatal: pathspec 'x.txt' did not match any files`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para ver qué archivos hay rastreados en el index en este momento: `git ls-files`. Justo después de un commit coincide con los archivos de ese commit, lo que confirma que el index guarda siempre una instantánea completa."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Preparar",
+       "en": "to stage",
+       "def": "Copiar el contenido actual de un cambio al área de preparación con `git add`."
+      },
+      {
+       "term": "Pathspec",
+       "en": "pathspec",
+       "def": "Patrón con el que los comandos de Git limitan las rutas sobre las que actúan: un archivo, una carpeta o un patrón como `'*.css'`."
+      },
+      {
+       "term": "Simulación",
+       "en": "dry run",
+       "def": "Ejecución de prueba que muestra qué pasaría sin hacer cambios (`git add -n`)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l4",
+   "title": "Confirmar cambios con `git commit`",
+   "minutes": 22,
+   "goals": [
+    "Crear commits con `-m`, con varios `-m` y desde el editor",
+    "Aplicar `git commit -a` sabiendo qué incluye y qué deja fuera",
+    "Confirmar solo ciertas rutas con `git commit <ruta>` sin alterar lo ya preparado",
+    "Diagnosticar los mensajes de Git al confirmar (`root-commit`, `nothing to commit`…)"
+   ],
+   "takeaways": [
+    "`git commit` guarda en el repositorio exactamente lo que hay en el index, ni más ni menos.",
+    "Sin `-m`, Git abre el editor: las líneas que empiezan con `#` se descartan y un mensaje vacío cancela el commit.",
+    "`git commit -a` prepara automáticamente lo modificado y lo borrado de archivos rastreados, pero nunca los archivos nuevos.",
+    "`git commit -m \"…\" <ruta>` confirma solo el contenido actual de esas rutas e ignora (y conserva) lo preparado de otras.",
+    "Si Git responde `nothing to commit` o `no changes added to commit`, revisa `git status`: casi siempre falta un `git add`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git commit` toma **todo lo que hay en el área de preparación** y lo guarda en el repositorio como una instantánea nueva, junto con tu nombre, tu correo, la fecha y un mensaje. Lo que no esté preparado **no** entra, aunque lo tengas modificado en la carpeta."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "$ git commit -m \"Agrega portada\"\n[main (root-commit) 1c351d4] Agrega portada\n 1 file changed, 1 insertion(+)\n create mode 100644 index.html",
+     "caption": "Salida real de Git 2.50 al crear el primer commit de un repositorio."
+    },
+    {
+     "type": "list",
+     "items": [
+      "`main`: la rama donde quedó el commit.",
+      "`(root-commit)`: es el **primer** commit, el que no tiene padre. Aparece una sola vez por historia.",
+      "`1c351d4`: el comienzo del hash del commit, su identificador (lección 5). El tuyo será distinto.",
+      "`Agrega portada`: el título del mensaje.",
+      "`1 file changed, 1 insertion(+)`: resumen de lo que cambió respecto del commit anterior (o de la nada, si es el primero).",
+      "`create mode 100644 index.html`: se agregó un archivo normal (`100644`); un ejecutable aparecería como `100755`."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Con `-m`: el mensaje en la misma línea"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo panaderia\nfecha '2026-09-06 07:00'\nescribir panes.txt 'Hallulla'\nanexar panes.txt 'Marraqueta'",
+     "cwd": "panaderia",
+     "code": "git add panes.txt\ngit commit -m \"Agrega lista de panes\"\necho \"Precio de la marraqueta: 1800 el kilo\" >> panes.txt\ngit commit -m \"Agrega precio de la marraqueta\"\ngit add panes.txt\ngit commit -m \"Agrega precio de la marraqueta\" -m \"El proveedor subió el precio de la harina en septiembre.\"\ngit log",
+     "caption": "El segundo `git commit` falla: el cambio no estaba preparado (`no changes added to commit`). Con dos `-m`, Git crea dos párrafos: el título y el cuerpo del mensaje."
+    },
+    {
+     "type": "h",
+     "text": "Sin `-m`: el editor"
+    },
+    {
+     "type": "p",
+     "text": "Si ejecutas `git commit` sin `-m`, Git abre tu editor (el de `core.editor`, que configuraste en s01) con un archivo temporal, `.git/COMMIT_EDITMSG`, que ya trae unas líneas de ayuda. Escribes el mensaje arriba, **guardas y cierras**, y recién entonces Git crea el commit. En la plataforma se abre el editor integrado."
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "\n# Please enter the commit message for your changes. Lines starting\n# with '#' will be ignored, and an empty message aborts the commit.\n#\n# On branch main\n# Changes to be committed:\n#\tmodified:   menu.txt\n#",
+     "caption": "Contenido de `.git/COMMIT_EDITMSG` cuando se abre el editor."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Las líneas que empiezan con `#` se descartan: son un recordatorio de lo que vas a confirmar.",
+      "Si guardas sin escribir nada (o cierras sin guardar), Git cancela con `Aborting commit due to empty commit message.` Es la forma limpia de arrepentirte.",
+      "El editor es la mejor forma de escribir un mensaje con **título y cuerpo** (lección 6)."
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-07 08:00'\ncommit_archivo menu.txt 'Café ........ 1500' 'Agrega menú'\nanexar menu.txt 'Té .......... 1200'\ngit add menu.txt",
+     "cwd": "cafeteria",
+     "code": "git status -s\ngit commit\ngit log -n 1",
+     "caption": "Cuando se abra el editor, escribe `Agrega té al menú`, deja una línea en blanco, agrega una frase que explique por qué y guarda. Si guardas sin escribir nada verás cómo se cancela el commit (y puedes repetir `git commit`)."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**¿Se abrió Vim y no sabes salir?** Le pasa a medio mundo. Si no configuraste editor, Git usa `$GIT_EDITOR`, luego `core.editor`, luego `$VISUAL`, luego `$EDITOR` y, si no hay nada, el predeterminado, que normalmente es `vi`. En Vim: presiona `i` para escribir; luego `Esc` y `:wq` + Enter para guardar y salir (o `:q!` + Enter para salir sin guardar, lo que cancela el commit). En nano: `Ctrl+O`, Enter y `Ctrl+X`. La solución de fondo: `git config --global core.editor \"code --wait\"` (s01)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`git commit -v` (`--verbose`) agrega al final del editor el diff de lo que vas a confirmar, bajo una línea de tijera (`>8`). Esa parte no se guarda en el mensaje: es un recordatorio para describir bien el cambio."
+    },
+    {
+     "type": "h",
+     "text": "Con `-a`: preparar y confirmar de una vez"
+    },
+    {
+     "type": "p",
+     "text": "`git commit -a` (o `-am \"mensaje\"`) prepara automáticamente **todos los archivos rastreados que estén modificados o borrados** y luego confirma. Es un atajo cómodo con dos trampas: **no incluye archivos nuevos** (sin seguimiento) y mete **todo** lo modificado, aunque algo no debiera ir en ese commit."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetario\nfecha '2026-09-08 13:00'\nescribir cazuela.txt 'Cazuela: zapallo, choclo, papas'\nescribir charquican.txt 'Charquicán: zapallo, papas, carne'\nescribir humitas.txt 'Humitas: choclo, albahaca'\ngit add . && git commit -qm 'Agrega primeras recetas'\nanexar cazuela.txt 'Cocinar 45 minutos'\nrm humitas.txt\nescribir pastel-de-choclo.txt 'Pastel de choclo: pino, choclo, albahaca'",
+     "cwd": "recetario",
+     "code": "git status -s\ngit commit -am \"Completa cazuela y elimina humitas\"\ngit status -s",
+     "caption": "El commit se llevó la modificación de `cazuela.txt` y el borrado de `humitas.txt` (`delete mode`), pero `pastel-de-choclo.txt` sigue `??`: `-a` nunca toca archivos sin seguimiento."
+    },
+    {
+     "type": "h",
+     "text": "Con rutas: confirmar solo algunos archivos"
+    },
+    {
+     "type": "p",
+     "text": "Hay una tercera forma, poco conocida y muy útil: `git commit -m \"…\" archivo`. Cuando le das rutas, Git confirma el **contenido actual de esas rutas** (que deben estar rastreadas) e **ignora lo que tengas preparado de otros archivos**, que sigue preparado para después. Es el modo `--only`, el predeterminado cuando hay rutas. Perfecto para un arreglo urgente en medio de otro trabajo."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo feria\nfecha '2026-09-09 10:00'\nescribir index.html '<h1>Feria del libro</h1>'\nescribir contacto.txt 'Teléfono: +56 9 1234 5678'\ngit add . && git commit -qm 'Crea el sitio de la feria'\nanexar index.html '<section>Programa (en construcción)</section>'\ngit add index.html\nescribir contacto.txt 'Teléfono: +56 9 8765 4321'",
+     "cwd": "feria",
+     "code": "git status -s\ngit commit -m \"Corrige teléfono de contacto\" contacto.txt\ngit status -s\ngit log --oneline",
+     "caption": "El commit lleva solo `contacto.txt`; `index.html` sigue preparado (`M `), esperando su propio commit."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Mensaje de Git",
+      "Qué pasa",
+      "Qué hacer"
+     ],
+     "rows": [
+      [
+       "`nothing to commit, working tree clean`",
+       "No hay ningún cambio.",
+       "Nada: todo está confirmado."
+      ],
+      [
+       "`no changes added to commit (use \"git add\" and/or \"git commit -a\")`",
+       "Hay archivos rastreados modificados, pero nada preparado.",
+       "`git add` lo que corresponda (o `git commit -a`)."
+      ],
+      [
+       "`nothing added to commit but untracked files present (use \"git add\" to track)`",
+       "Solo hay archivos nuevos, sin preparar.",
+       "`git add` los archivos nuevos que quieras confirmar."
+      ],
+      [
+       "`Aborting commit due to empty commit message.`",
+       "Cerraste el editor sin mensaje.",
+       "Repite `git commit` y escribe el mensaje."
+      ],
+      [
+       "`error: pathspec 'x' did not match any file(s) known to git`",
+       "Diste a `git commit` una ruta que Git no rastrea.",
+       "Prepárala primero con `git add`."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Qué forma de git commit uso?",
+     "mermaid": "flowchart TD\n  Q{\"¿Qué quiero confirmar?\"}\n  Q -- \"Lo que preparé con git add\" --> A[\"git commit -m 'mensaje'\"]\n  Q -- \"Todo lo rastreado modificado o borrado\" --> B[\"git commit -am 'mensaje'\"]\n  Q -- \"Solo ciertos archivos, sin tocar lo preparado\" --> C[\"git commit -m 'mensaje' ruta\"]\n  Q -- \"Un mensaje con título y cuerpo\" --> D[\"git commit (se abre el editor)\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Identidad sin configurar.** Si no configuraste `user.name` y `user.email` (s01), Git puede negarse (`Author identity unknown` / `*** Please tell me who you are.`) o, peor, inventar una identidad con tu usuario y el nombre del computador y avisarte con `Your name and email address were configured automatically based on your username and hostname`. Configúrala antes de tu primer commit real: esos datos quedan grabados en cada commit."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Trampas frecuentes: (1) `git commit -a` **no** incluye archivos sin seguimiento; (2) dos `-m` generan dos párrafos (título y cuerpo), no dos commits; (3) un mensaje vacío cancela el commit; (4) `git commit ruta` confirma esa ruta aunque no la hayas preparado, siempre que Git ya la rastree, y deja intacto lo preparado de otros archivos."
+    }
+   ]
+  },
+  {
+   "id": "s02-l5",
+   "title": "Qué guarda un commit y cómo ver la historia con `git log`",
+   "minutes": 18,
+   "goals": [
+    "Enumerar lo que guarda un commit: instantánea (tree), padre, autor, committer, fechas y mensaje",
+    "Explicar por qué el hash identifica un commit y cambia si cambia cualquier dato",
+    "Recorrer la historia con `git log`, `git log --oneline` y `git log -n`"
+   ],
+   "takeaways": [
+    "Un commit es una instantánea completa del proyecto (un *tree*) más metadatos: padre(s), autor, committer, fechas y mensaje.",
+    "Los archivos que no cambian no se duplican: el commit nuevo reutiliza los mismos objetos.",
+    "El hash se calcula a partir de todo el contenido del commit, incluido el hash del padre: cambiar cualquier cosa cambia los hashes desde ahí en adelante.",
+    "El primer commit no tiene padre (*root commit*); cada commit siguiente apunta a su padre y así se forma la historia.",
+    "`git log` muestra del más nuevo al más antiguo; `--oneline` y `-n` lo resumen (en tu terminal real sales del paginador con `q`)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un commit no es «una lista de cambios». Es una **instantánea completa** del proyecto tal como estaba en el index, más unos datos que la describen. Git guarda todo en `.git/objects` como objetos identificados por su hash (a fondo en s12); por ahora bastan tres tipos:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**blob**: el contenido de un archivo (solo el contenido: ni el nombre ni la carpeta).",
+      "**tree**: una carpeta; lista nombres que apuntan a blobs (archivos) y a otros trees (subcarpetas).",
+      "**commit**: apunta al tree raíz del proyecto y agrega **padre(s)**, **autor**, **committer**, fechas y **mensaje**."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Dos commits: el segundo reutiliza el blob de README.md",
+     "mermaid": "flowchart LR\n  C2[\"commit ac63ce3: Agrega post sobre Chiloé\"] -->|parent| C1[\"commit d124541: Crea el blog\"]\n  C2 --> T2[\"tree raíz\"]\n  C1 --> T1[\"tree raíz\"]\n  T1 --> B1[\"blob: # Blog de viajes\"]\n  T2 --> B1\n  T2 --> T3[\"tree posts/\"]\n  T3 --> B2[\"blob: # Chiloé\"]",
+     "caption": "Cada commit apunta a una instantánea completa, pero los archivos que no cambiaron no se copian: los dos trees apuntan al mismo blob. Son los hashes reales de la demostración siguiente."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-01 10:00'\nautor 'Camila Rojas' 'camila@ejemplo.com'\ncommit_archivo README.md '# Blog de viajes' 'Crea el blog'\nfecha '2026-09-02 18:30'\ncommit_archivo posts/chiloe.md '# Chiloé' 'Agrega post sobre Chiloé'\nyo",
+     "cwd": "blog",
+     "code": "git log\ngit cat-file -p HEAD\ngit cat-file -p HEAD~1\ngit ls-tree HEAD\ngit ls-tree HEAD~1",
+     "caption": "`HEAD~1` significa «el commit anterior a HEAD». `git cat-file -p` (s12) muestra el objeto commit en crudo: `tree`, `parent`, `author`, `committer` y el mensaje. El primer commit no tiene línea `parent`. En los dos `ls-tree`, `README.md` apunta al **mismo** blob."
+    },
+    {
+     "type": "p",
+     "text": "Lo que viste en crudo es todo lo que hay en un commit:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Campo",
+      "Qué es"
+     ],
+     "rows": [
+      [
+       "`tree`",
+       "Hash de la instantánea: la carpeta raíz del proyecto."
+      ],
+      [
+       "`parent`",
+       "Hash del commit anterior. El primero no tiene (*root commit*); un merge tiene dos o más (s06)."
+      ],
+      [
+       "`author`",
+       "Quién escribió el cambio: nombre, correo, fecha (segundos desde el 1 de enero de 1970) y zona horaria (`-0300`)."
+      ],
+      [
+       "`committer`",
+       "Quién lo registró en el repositorio. Suele coincidir con el autor; cambia, por ejemplo, al reaplicar commits de otra persona (s09 y s10)."
+      ],
+      [
+       "mensaje",
+       "Título y cuerpo, separados del resto por una línea en blanco."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "Fíjate en lo que **no** está: ni el nombre de la rama ni una lista de diferencias. Las diferencias (*diffs*) Git las calcula al vuelo comparando instantáneas (s03), y las ramas son punteros que viven aparte, en `.git/refs` (s05)."
+    },
+    {
+     "type": "h",
+     "text": "El hash: la huella digital del commit"
+    },
+    {
+     "type": "p",
+     "text": "Cada objeto se identifica por un **hash SHA-1** de 40 caracteres hexadecimales (como `d124541a94cc9255f35cca19aac0da7084ae3b33`) calculado a partir de **todo** su contenido. Como el commit incluye el hash de su tree y el de su padre, cambiar cualquier cosa —un byte de un archivo, el mensaje, la fecha o un commit antiguo— produce hashes distintos desde ese punto en adelante. Por eso la historia de Git es a prueba de manipulaciones, y por eso basta un prefijo corto (normalmente 7 caracteres) para nombrar un commit. La transición a SHA-256 la verás en s12."
+    },
+    {
+     "type": "diagram",
+     "title": "La historia es una cadena: cada commit apunta a su padre",
+     "mermaid": "gitGraph\n  commit id: \"d124541 Crea el blog\"\n  commit id: \"ac63ce3 Chiloé\"\n  commit id: \"tu próximo commit\"",
+     "caption": "Si alguien modificara `d124541`, su hash cambiaría, y con él el de todos los commits que vienen después."
+    },
+    {
+     "type": "h",
+     "text": "Ver la historia: `git log` básico"
+    },
+    {
+     "type": "p",
+     "text": "`git log` recorre la cadena de padres desde el commit actual hacia atrás: muestra los commits **del más reciente al más antiguo**, cada uno con su hash completo, autor, fecha y mensaje (con sangría)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo huerta\nfecha '2026-09-01 09:00'\nautor 'Camila Rojas' 'camila@ejemplo.com'\ncommit_archivo plantas.txt 'Lechuga' 'Agrega lista de plantas'\nfecha '2026-09-03 17:20'\nanexar plantas.txt 'Tomate'\ngit commit -qam 'Agrega tomates'\nyo\nfecha '2026-09-10 11:45'\ncommit_archivo riego.txt 'Regar lunes y jueves' 'Agrega calendario de riego'\nfecha '2026-09-15 19:05'\nanexar plantas.txt 'Cilantro'\ngit commit -qam 'Agrega cilantro' -m 'Se siembra en primavera, junto a los tomates.'",
+     "cwd": "huerta",
+     "code": "git log\ngit log --oneline\ngit log -n 2\ngit log --oneline --no-decorate\ngit log --format=fuller -1",
+     "caption": "`--oneline` resume cada commit en una línea (hash corto + título). `-n 2` (o `-2`) limita la cantidad. El `(HEAD -> main)` junto al commit más reciente es una **decoración**: los nombres de ramas (y etiquetas) que apuntan a ese commit; HEAD apunta a `main` y `main`, a ese commit (s05). Las controla `--decorate`, activada por defecto en una terminal desde Git 2.13 (antes había que pedirla); `--no-decorate` las oculta. `--format=fuller` muestra autor y committer por separado, cada uno con su fecha."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "En tu terminal real, si la historia no cabe en pantalla, `git log` la abre en un **paginador** (normalmente `less`): avanzas con la barra espaciadora o las flechas y **sales con `q`**. Muchos creen que la terminal «se quedó pegada». En la plataforma no hay paginador. En s03 verás `git log` a fondo: filtros por autor, fecha, texto y archivo."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`fatal: your current branch 'main' does not have any commits yet` al ejecutar `git log` no es un error grave: significa que la rama aún no nace. Haz tu primer commit."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Qué guarda un commit? Un **tree** (instantánea completa), **padre(s)**, **autor**, **committer** (cada uno con su fecha) y el **mensaje**. ¿Qué no guarda? El nombre de la rama ni los diffs. ¿Por qué cambia el hash si solo cambio el mensaje? Porque el hash se calcula sobre todo el contenido del commit."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Commit",
+       "en": "commit",
+       "def": "Objeto que registra una instantánea del proyecto con sus metadatos; también se le dice «confirmación»."
+      },
+      {
+       "term": "Hash",
+       "en": "hash / SHA-1",
+       "def": "Identificador de 40 caracteres hexadecimales calculado a partir del contenido; cualquier cambio produce otro hash."
+      },
+      {
+       "term": "Padre",
+       "en": "parent",
+       "def": "El commit anterior al que apunta un commit; forma la cadena de la historia."
+      },
+      {
+       "term": "Commit raíz",
+       "en": "root commit",
+       "def": "El primer commit de una historia: no tiene padre."
+      },
+      {
+       "term": "Autor / committer",
+       "en": "author / committer",
+       "def": "Quien escribió el cambio / quien lo registró en el repositorio."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s02-l6",
+   "title": "Buenos mensajes y commits atómicos",
+   "minutes": 22,
+   "goals": [
+    "Redactar mensajes con título imperativo de hasta 50 caracteres, línea en blanco y cuerpo ajustado a 72 columnas",
+    "Dividir un conjunto de cambios en commits atómicos preparando archivos por separado",
+    "Preparar solo una parte de un archivo con `git add -p`"
+   ],
+   "takeaways": [
+    "Título corto (≤ 50, máximo 72), en imperativo y sin punto final; una línea en blanco; luego el cuerpo con el qué y el porqué.",
+    "Prueba del imperativo: «Si se aplica, este commit… agrega validación del RUT».",
+    "Un commit atómico contiene UN cambio lógico completo: se revisa, se revierte o se lleva a otra rama sin arrastrar nada más.",
+    "El área de preparación existe justamente para armar commits atómicos: preparas por archivo o por fragmento (`git add -p`).",
+    "El estado final del proyecto es el mismo con 1 o con 5 commits; lo que cambia es lo fácil que es entenderlo, revisarlo y deshacerlo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Un commit se escribe una vez y se lee decenas: al revisar un *pull request* (s08), al buscar cuándo apareció un error (`git log` y `git blame` en s03, `git bisect` en s11), al decidir qué revertir (s04). El mensaje es la explicación que tu yo del futuro —o tu equipo— va a necesitar. «cambios», «arreglos» o «wip» no le sirven a nadie."
+    },
+    {
+     "type": "h",
+     "text": "La forma: la regla 50/72"
+    },
+    {
+     "type": "code",
+     "lang": "text",
+     "code": "Resume el cambio en 50 caracteres o menos\n\nExplica con más detalle, si hace falta. Ajusta el texto a unos 72\ncaracteres por línea. En algunos contextos la primera línea se trata\ncomo el asunto de un correo y el resto como el cuerpo. La línea en\nblanco que separa el título del cuerpo es imprescindible.\n\nExplica qué problema resuelve este commit y por qué lo resuelve así,\nno cómo: eso ya lo dice el código.\n\n- Las viñetas también sirven\n- Normalmente con guion o asterisco",
+     "caption": "Plantilla adaptada de la que propone Pro Git (originalmente de Tim Pope)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Título de 50 caracteres o menos** (límite blando; nunca más de 72). La documentación de `git commit` lo recomienda porque el título se usa en toda la herramienta: `git log --oneline`, el asunto del correo que genera `git format-patch`, las interfaces web…",
+      "**Una línea en blanco** entre título y cuerpo. Git trata como título todo el texto hasta la primera línea en blanco: si la omites, título y cuerpo se funden en un solo título larguísimo.",
+      "**Imperativo y sin punto final**: «Agrega validación del RUT», no «Agregué…», «Agregando…» ni «Se agregó…».",
+      "**Mayúscula inicial** en el título (salvo que tu equipo use otra convención).",
+      "**Cuerpo ajustado a 72 columnas**, explicando **qué** y **por qué**, no el cómo."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "p",
+     "text": "La prueba del imperativo, popularizada por Chris Beams: el título debe completar la frase **«Si se aplica, este commit… ___»**. «…agrega validación del RUT» funciona; «…agregué validación» no. En español la forma más usada coincide con el imperativo de *tú* (Agrega, Corrige, Elimina); algunos equipos prefieren el infinitivo (Agregar, Corregir). Lo importante es **que todo el equipo use la misma**. Si el repositorio está en inglés: *Add*, *Fix*, *Remove*, igual que los mensajes que genera el propio Git (`Merge branch…`, `Revert…`)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Mal",
+      "Mejor",
+      "Por qué"
+     ],
+     "rows": [
+      [
+       "`cambios`",
+       "`Corrige cálculo del IVA en el carrito`",
+       "Dice qué y dónde."
+      ],
+      [
+       "`arreglé el bug`",
+       "`Corrige caída al guardar RUT con puntos`",
+       "Imperativo y específico."
+      ],
+      [
+       "`Actualización del archivo index.html.`",
+       "`Agrega horario de atención a la portada`",
+       "El archivo ya lo muestra Git; el título explica la intención. Sin punto final."
+      ],
+      [
+       "`wip`",
+       "Terminar el cambio antes de confirmar (o, si confirmas a medias, ordenar la historia antes de compartirla, s09)",
+       "«wip» (*work in progress*) no dice nada."
+      ],
+      [
+       "`Agrega login, arregla estilos y actualiza README`",
+       "Tres commits distintos",
+       "Si el título necesita «y», probablemente son varios commits."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Más adelante verás convenciones que agregan estructura al título, como **Conventional Commits** (`feat: …`, `fix: …`, s08). El propio proyecto Git usa `área: descripción` en minúscula (por ejemplo, `doc: clarify distinction between sign-off and pgp-signing`). Cada proyecto define la suya: mira `git log --oneline` antes de tu primer commit en un repositorio ajeno."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo registro\nfecha '2026-09-11 16:00'\ncommit_archivo registro.js 'function guardar(rut) { db.save(rut); }' 'Crea el formulario de registro'\nescribir registro.js 'function guardar(rut) { db.save(normalizar(rut)); }'\nanexar registro.js 'function normalizar(rut) { return rut.replaceAll(\".\", \"\"); }'\ngit add registro.js",
+     "cwd": "registro",
+     "code": "git status -s\ngit commit\ngit log -n 1\ngit log --oneline",
+     "caption": "En el editor escribe, por ejemplo, el título `Normaliza el RUT antes de guardarlo`, una línea en blanco y el cuerpo `Los usuarios escribían el RUT con y sin puntos y quedaban registros duplicados.` Después compara: `git log` muestra el mensaje completo y `--oneline`, solo el título. Por eso importa tanto."
+    },
+    {
+     "type": "h",
+     "text": "Commits atómicos"
+    },
+    {
+     "type": "p",
+     "text": "Un commit **atómico** contiene **un solo cambio lógico, completo**: ni dos cosas mezcladas ni media cosa. Ventajas concretas: se revisa en minutos, se puede revertir sin llevarse otra cosa por delante (s04), se puede copiar a otra rama con cherry-pick (s10) y `git bisect` (s11) apunta a un culpable preciso. Pro Git lo dice así: aunque trabajes todo un fin de semana en cinco problemas, usa el área de preparación para dividirlo al menos en **un commit por problema**. La instantánea final es idéntica con uno o con cinco commits; lo que cambia es lo fácil que es entender la historia."
+    },
+    {
+     "type": "diagram",
+     "title": "Historia atómica: cada commit, un cambio que se entiende solo",
+     "mermaid": "gitGraph\n  commit id: \"Crea la tienda\"\n  commit id: \"Corrige error en README\"\n  commit id: \"Agrega carrito de compras\"\n  commit id: \"Agrega cupones de descuento\"",
+     "caption": "Si mañana hay que quitar los cupones, basta con revertir un commit; el carrito y la corrección del README quedan intactos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-12 10:00'\nescribir README.md 'Tienda de artesanía de Pomaire. Envíos a todo Chlie.'\nescribir index.html '<h1>Greda de Pomaire</h1>'\ngit add . && git commit -qm 'Crea la tienda'\nescribir README.md 'Tienda de artesanía de Pomaire. Envíos a todo Chile.'\nescribir carrito.js 'const carrito = [];'\nanexar index.html '<script src=\"carrito.js\"></script>'",
+     "cwd": "tienda",
+     "code": "git status -s\ngit add README.md\ngit commit -m \"Corrige error ortográfico en README\"\ngit add carrito.js index.html\ngit commit -m \"Agrega carrito de compras\"\ngit log --oneline",
+     "caption": "Dos cambios sin relación, dos commits. El área de preparación te deja elegir qué va en cada uno."
+    },
+    {
+     "type": "h",
+     "text": "Dos cambios en el mismo archivo: `git add -p`"
+    },
+    {
+     "type": "p",
+     "text": "Si en un mismo archivo hay dos cambios independientes, `git add -p` (`--patch`) te muestra cada **fragmento** (*hunk*) de cambios y te pregunta si lo preparas: `(1/2) Stage this hunk [y,n,q,a,d,j,J,g,/,e,p,?]?`. Las líneas con `-` son las que salen y las con `+` las que entran (leer diffs es tema de s03). Las respuestas principales:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tecla",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`y`",
+       "Prepara este fragmento."
+      ],
+      [
+       "`n`",
+       "No lo prepara."
+      ],
+      [
+       "`q`",
+       "Sale; no prepara este fragmento ni los siguientes."
+      ],
+      [
+       "`a` / `d`",
+       "Prepara (`a`) o deja sin preparar (`d`) este fragmento y todos los que quedan del archivo."
+      ],
+      [
+       "`s`",
+       "Divide el fragmento en otros más pequeños (solo aparece cuando se puede)."
+      ],
+      [
+       "`e`",
+       "Edita el fragmento a mano."
+      ],
+      [
+       "`?`",
+       "Muestra la ayuda."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En tu terminal real respondes tecla a tecla. La terminal de práctica no le entrega el teclado a Git, así que le pasas las respuestas por adelantado con `printf`, una por línea: `printf 'y\\nn\\n' | git add -p menu.txt` responde `y` al primer fragmento y `n` al segundo. (Si ejecutas `git add -p` solo, verás el primer fragmento y Git terminará sin preparar nada: útil para mirar antes de decidir)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo picada\nfecha '2026-09-13 12:00'\nprintf '%s\\n' 'MENÚ PICADA DON TITO' '' 'Completo italiano ..... 2500' 'Churrasco ............. 4500' 'Barros Luco ........... 5200' 'Chacarero ............. 5500' 'Lomito ................ 4900' 'Ave palta ............. 4200' 'Papas fritas .......... 2000' 'Empanada de pino ...... 2200' 'Bebida ................ 1500' > menu.txt\ngit add menu.txt && git commit -qm 'Agrega menú'\nprintf '%s\\n' 'MENÚ PICADA DON TITO' '' 'Completo italiano ..... 2800' 'Churrasco ............. 4500' 'Barros Luco ........... 5200' 'Chacarero ............. 5500' 'Lomito ................ 4900' 'Ave palta ............. 4200' 'Papas fritas .......... 2000' 'Empanada de pino ...... 2200' 'Bebida ................ 1500' 'Sopaipillas (x4) ...... 1600' > menu.txt",
+     "cwd": "picada",
+     "code": "git status -s\nprintf 'y\\nn\\n' | git add -p menu.txt\ngit status -s\ngit commit -m \"Corrige precio del completo italiano\"\ngit commit -am \"Agrega sopaipillas al menú\"\ngit log --oneline",
+     "caption": "Tras `add -p`, `menu.txt` queda `MM`: una parte preparada (el precio) y otra no (las sopaipillas). Dos commits atómicos a partir de un solo archivo."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**`git commit -am` es enemigo de los commits atómicos**: mete en el mismo saco todo lo modificado. Úsalo cuando `git status` te confirme que todo lo pendiente es un único cambio lógico."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En entrevistas preguntan: «¿Para qué sirve el área de preparación si podrías confirmar todo directo?». Respuesta: para **construir commits atómicos**, eligiendo por archivo o por fragmento (`git add -p`) qué entra en cada uno, y para revisar lo que vas a confirmar antes de hacerlo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Commit atómico",
+       "en": "atomic commit",
+       "def": "Commit con un único cambio lógico y completo."
+      },
+      {
+       "term": "Fragmento",
+       "en": "hunk",
+       "def": "Bloque de líneas cambiadas (con algo de contexto) que Git muestra y prepara como unidad en `git add -p`."
+      },
+      {
+       "term": "Título / cuerpo",
+       "en": "subject / body",
+       "def": "Primera parte del mensaje (hasta la primera línea en blanco) / explicación detallada que sigue."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s02-e1",
+   "title": "Tu primer repositorio",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Tu abuela te dictó sus recetas y las guardaste en la carpeta `~/recetas`: `README.md`, `pantrucas.txt` y `sopaipillas.txt`. Todavía no es un repositorio.",
+    "Conviértela en un repositorio de Git y crea el **primer commit** con los tres archivos y el mensaje exacto `Agrega recetas de la abuela`. Al terminar, `git status` no debe mostrar nada pendiente."
+   ],
+   "setup": "mkdir -p recetas && cd recetas\nescribir README.md '# Recetas de la abuela'\nescribir pantrucas.txt 'Pantrucas: harina, agua, sal y un buen caldo de verduras.'\nescribir sopaipillas.txt 'Sopaipillas: zapallo cocido, harina, manteca y sal.'",
+   "cwd": "recetas",
+   "checks": [
+    {
+     "name": "El repositorio está en ~/recetas",
+     "script": "top=$(git rev-parse --show-toplevel 2>/dev/null) || falla \"Aquí todavía no hay un repositorio de Git: créalo dentro de ~/recetas\"\n[ \"$top\" = \"$(pwd -P)\" ] || falla \"El repositorio no está en ~/recetas sino en una carpeta superior: ¿ejecutaste git init en otro lugar?\""
+    },
+    {
+     "name": "Hay exactamente un commit",
+     "script": "git rev-parse --verify -q HEAD >/dev/null || falla \"Todavía no hay ningún commit\"\n[ \"$(num_commits)\" = 1 ] || falla \"Debería haber exactamente 1 commit y hay $(num_commits)\""
+    },
+    {
+     "name": "El mensaje es el pedido",
+     "script": "mensaje_es HEAD 'Agrega recetas de la abuela'"
+    },
+    {
+     "name": "Los tres archivos están en el commit",
+     "script": "for f in README.md pantrucas.txt sopaipillas.txt; do git cat-file -e \"HEAD:$f\" 2>/dev/null || falla \"El commit no incluye $f: ¿lo preparaste antes de confirmar?\"; done"
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio \"Quedan cambios sin confirmar: revisa git status\""
+    }
+   ],
+   "solution": [
+    "git init",
+    "git add .",
+    "git commit -m \"Agrega recetas de la abuela\""
+   ],
+   "hints": [
+    "Son tres pasos: crear el repositorio, preparar los archivos y confirmar.",
+    "`git init` (dentro de `~/recetas`) crea la carpeta `.git`; `git add .` prepara todo lo de la carpeta actual.",
+    "Termina con `git commit -m \"Agrega recetas de la abuela\"` y comprueba con `git status` y `git log`."
+   ],
+   "explain": "`git init` crea `.git` con la rama `main` por nacer; `git add .` copia el contenido de los tres archivos al index (los verías como `A ` en `git status -s`) y `git commit -m` los guarda en el primer commit, marcado como `(root-commit)` porque no tiene padre. Alternativas equivalentes para preparar: `git add -A` o `git add README.md pantrucas.txt sopaipillas.txt`. También podrías crear el repositorio desde `~` con `git init recetas`: con una carpeta como argumento, `git init` la usa (y la crea si no existe). Lo que **no** debes hacer es `git init` en `~`: el repositorio abarcaría todo tu directorio personal."
+  },
+  {
+   "id": "s02-e2",
+   "title": "Solo lo que corresponde",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "En la tienda online de greda de Pomaire agregaste una sección nueva: modificaste `index.html` y `estilos.css`. Además tienes `borrador-precios.txt`, unas notas tuyas que **no** deben quedar en el repositorio.",
+    "Crea un commit con **solo** `index.html` y `estilos.css` y el mensaje `Agrega sección de ollas de greda`. El borrador debe seguir en tu carpeta, sin seguimiento."
+   ],
+   "setup": "nuevo_repo tienda\nfecha '2026-09-10 09:00'\nescribir index.html '<h1>Greda de Pomaire</h1>'\nescribir estilos.css 'h1 { color: sienna; }'\ngit add . && git commit -qm 'Crea portada de la tienda'\nanexar index.html '<section id=\"ollas\">Ollas de greda</section>'\nanexar estilos.css '#ollas { padding: 1rem; }'\nescribir borrador-precios.txt 'Olla chica: ¿5000 o 6000?'",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\nmensaje_es HEAD 'Agrega sección de ollas de greda'"
+    },
+    {
+     "name": "El commit incluye index.html y estilos.css",
+     "script": "contenido HEAD index.html | grep -q 'ollas' || falla \"El último commit no incluye el cambio de index.html\"\ncontenido HEAD estilos.css | grep -q '#ollas' || falla \"El último commit no incluye el cambio de estilos.css\""
+    },
+    {
+     "name": "El borrador no entró al repositorio",
+     "script": "archivo_existe borrador-precios.txt \"No borres borrador-precios.txt: solo tenía que quedar fuera del commit\"\ngit cat-file -e HEAD:borrador-precios.txt 2>/dev/null && falla \"borrador-precios.txt quedó dentro del commit y no debía\"\ngit ls-files --error-unmatch borrador-precios.txt >/dev/null 2>&1 && falla \"borrador-precios.txt está preparado: debía quedar sin seguimiento\"\ntrue"
+    },
+    {
+     "name": "Solo queda el borrador sin seguimiento",
+     "script": "[ \"$(git status --porcelain)\" = \"?? borrador-precios.txt\" ] || falla \"git status -s debería mostrar solo ?? borrador-precios.txt\""
+    }
+   ],
+   "solution": [
+    "git add index.html estilos.css",
+    "git commit -m \"Agrega sección de ollas de greda\""
+   ],
+   "hints": [
+    "Mira `git status`: ¿qué archivos están modificados y cuál está sin seguimiento?",
+    "`git add` acepta varios archivos separados por espacios; aquí evita `git add .`.",
+    "`git add index.html estilos.css` y luego `git commit -m \"Agrega sección de ollas de greda\"`."
+   ],
+   "explain": "Preparar archivo por archivo es la forma más directa de controlar qué entra en un commit. Como `index.html` y `estilos.css` ya estaban rastreados, también funcionaba `git commit -am \"Agrega sección de ollas de greda\"`: `-a` prepara lo modificado y lo borrado, pero **nunca** archivos sin seguimiento, así que el borrador habría quedado fuera igual. Lo que sí habría fallado es `git add .` o `git add -A`, que también preparan archivos nuevos. En s03 verás la solución de fondo para archivos que nunca deben confirmarse: `.gitignore`."
+  },
+  {
+   "id": "s02-e3",
+   "title": "Una carpeta completa",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "En tu blog de viajes escribiste tres posts en la carpeta `posts/` (uno de ellos dentro de `posts/2026/`). También empezaste a ordenar fotos en `fotos/`, pero todavía no terminas.",
+    "Crea un commit con **toda** la carpeta `posts/` y el mensaje `Agrega primeros posts del viaje al sur`. `fotos/` debe quedar fuera, sin seguimiento."
+   ],
+   "setup": "nuevo_repo blog-viajes\nfecha '2026-09-12 20:00'\ncommit_archivo README.md '# Blog de viajes' 'Crea el blog'\nescribir posts/chiloe.md '# Chiloé: palafitos y curanto'\nescribir posts/puerto-varas.md '# Puerto Varas y el volcán Osorno'\nescribir posts/2026/carretera-austral.md '# La Carretera Austral en bicicleta'\nescribir fotos/lista.txt 'Fotos por elegir: 48'",
+   "cwd": "blog-viajes",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\nmensaje_es HEAD 'Agrega primeros posts del viaje al sur'"
+    },
+    {
+     "name": "Los tres posts están en el commit",
+     "script": "for f in posts/chiloe.md posts/puerto-varas.md posts/2026/carretera-austral.md; do git cat-file -e \"HEAD:$f\" 2>/dev/null || falla \"Falta $f en el commit\"; done"
+    },
+    {
+     "name": "fotos/ quedó fuera, sin seguimiento",
+     "script": "git cat-file -e HEAD:fotos 2>/dev/null && falla \"fotos/ quedó en el commit y no debía\"\n[ \"$(git status --porcelain)\" = \"?? fotos/\" ] || falla \"git status -s debería mostrar solo ?? fotos/\""
+    }
+   ],
+   "solution": [
+    "git add posts",
+    "git commit -m \"Agrega primeros posts del viaje al sur\""
+   ],
+   "hints": [
+    "`git add` también acepta el nombre de una carpeta.",
+    "Al darle una carpeta, Git prepara todo lo que hay dentro, subcarpetas incluidas.",
+    "`git add posts` y luego el commit con el mensaje pedido."
+   ],
+   "explain": "Una carpeta como argumento de `git add` es un *pathspec* que abarca todo su contenido, recursivamente: por eso entró `posts/2026/carretera-austral.md` sin nombrarlo. `git add posts/` es lo mismo. Alternativa: nombrar los tres archivos (más largo y es fácil olvidar uno). Observa también que `git status` muestra `fotos/` como una sola línea: con las opciones por defecto, Git resume las carpetas completamente nuevas; `git status -uall` mostraría cada archivo. Y si `fotos/` estuviera vacía, Git ni siquiera la mostraría: rastrea archivos, no carpetas."
+  },
+  {
+   "id": "s02-e4",
+   "title": "El ciclo completo, dos veces",
+   "level": "facil",
+   "minutes": 8,
+   "prompt": [
+    "Llevas un diario de aprendizaje en el repositorio `~/diario`. Hoy vas a registrar tu entrada en dos commits.",
+    "1) Crea el archivo `2026-09-27.md` con la línea `Hoy creé mi primer repositorio.` y confírmalo con el mensaje `Agrega entrada del 27 de septiembre`.",
+    "2) Agrega al final del mismo archivo la línea `Mañana: aprender git log.` y confírmalo con el mensaje `Completa entrada del 27 de septiembre`.",
+    "Puedes escribir con `code 2026-09-27.md`, o con `echo \"texto\" > archivo` (crea o reemplaza) y `echo \"texto\" >> archivo` (agrega al final)."
+   ],
+   "setup": "nuevo_repo diario\nfecha '2026-09-26 21:00'\ncommit_archivo README.md '# Diario de aprendizaje de Git' 'Crea el diario'",
+   "cwd": "diario",
+   "checks": [
+    {
+     "name": "Hay dos commits nuevos",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"Debería haber 3 commits (el inicial y tus dos) y hay $(num_commits)\""
+    },
+    {
+     "name": "Primer commit: la entrada inicial",
+     "script": "mensaje_es HEAD~1 'Agrega entrada del 27 de septiembre'\ncontenido HEAD~1 2026-09-27.md | grep -qF 'primer repositorio' || falla \"En tu primer commit, 2026-09-27.md debería contener «Hoy creé mi primer repositorio.»\"\ncontenido HEAD~1 2026-09-27.md | grep -qF 'git log' && falla \"Tu primer commit ya incluye la segunda línea: cada línea iba en su propio commit\"\ntrue"
+    },
+    {
+     "name": "Segundo commit: la entrada completa",
+     "script": "mensaje_es HEAD 'Completa entrada del 27 de septiembre'\ncontenido HEAD 2026-09-27.md | grep -qF 'primer repositorio' || falla \"En el último commit falta la primera línea (¿usaste > en vez de >>?)\"\ncontenido HEAD 2026-09-27.md | grep -qF 'aprender git log' || falla \"En el último commit falta la línea «Mañana: aprender git log.»\""
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "echo \"Hoy creé mi primer repositorio.\" > 2026-09-27.md",
+    "git add 2026-09-27.md",
+    "git commit -m \"Agrega entrada del 27 de septiembre\"",
+    "echo \"Mañana: aprender git log.\" >> 2026-09-27.md",
+    "git commit -am \"Completa entrada del 27 de septiembre\""
+   ],
+   "hints": [
+    "El ciclo es siempre el mismo: editar → `git add` → `git commit`.",
+    "El archivo es nuevo: la primera vez necesitas `git add` sí o sí (`git commit -a` no incluye archivos sin seguimiento).",
+    "Para la segunda línea usa `>>` (agregar al final); `>` reemplazaría el contenido. Como el archivo ya está rastreado, puedes confirmar con `git commit -am`."
+   ],
+   "explain": "El primer commit necesita `git add` porque el archivo es nuevo; en el segundo, el archivo ya está rastreado, así que `git commit -am` prepara y confirma de una vez (equivale a `git add 2026-09-27.md` + `git commit -m`). Si hubieras usado `>` la segunda vez, el archivo tendría solo la segunda línea y el commit registraría que borraste la primera. Revisa el resultado con `git log --oneline`: dos commits nuevos, del más reciente al más antiguo."
+  },
+  {
+   "id": "s02-e5",
+   "title": "Un mensaje con cuerpo, desde el editor",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "El almacén de doña Rosa ahora tiene página web. Ya creaste el archivo `horario.txt` con el horario de atención; falta confirmarlo con un mensaje **profesional**, escrito en el editor.",
+    "Prepara `horario.txt` y ejecuta `git commit` **sin** `-m`. En el editor escribe como título exactamente `Agrega horario de atención`, deja una línea en blanco y agrega un cuerpo de al menos una línea (de 72 caracteres como máximo cada una) que explique **por qué** se agrega. Guarda para que Git cree el commit."
+   ],
+   "setup": "nuevo_repo almacen\nfecha '2026-09-20 09:00'\ncommit_archivo index.html '<h1>Almacén Doña Rosa</h1>' 'Crea la página del almacén'\nescribir horario.txt 'Lunes a sábado: 8:30 a 21:00'\nanexar horario.txt 'Domingo: 9:00 a 14:00'",
+   "cwd": "almacen",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con horario.txt",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\ngit cat-file -e HEAD:horario.txt 2>/dev/null || falla \"El último commit no incluye horario.txt\""
+    },
+    {
+     "name": "El título es el pedido",
+     "script": "mensaje_es HEAD 'Agrega horario de atención' \"El título debería ser «Agrega horario de atención» (es «$(mensaje HEAD)»). Si ves el título y el cuerpo juntos, faltó la línea en blanco\""
+    },
+    {
+     "name": "El mensaje tiene cuerpo",
+     "script": "[ -n \"$(git log -1 --format=%b)\" ] || falla \"El mensaje no tiene cuerpo: tras el título deja una línea en blanco y explica por qué se agrega el horario\""
+    },
+    {
+     "name": "Ninguna línea supera los 72 caracteres",
+     "script": "git log -1 --format=%B | while IFS= read -r l; do [ ${#l} -le 72 ] || exit 1; done || falla \"Alguna línea del mensaje supera los 72 caracteres: pártela en varias\""
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git add horario.txt",
+    {
+     "cmd": "git commit",
+     "edit": "Agrega horario de atención\n\nLos clientes preguntaban por WhatsApp a qué hora abrimos.\nAhora el horario queda publicado en la página.\n"
+    }
+   ],
+   "hints": [
+    "Primero `git add horario.txt`; después `git commit` a secas: se abrirá el editor.",
+    "Las líneas que empiezan con `#` se ignoran; escribe tu mensaje arriba de ellas.",
+    "Estructura: línea 1 = título; línea 2 = vacía; de la línea 3 en adelante = cuerpo. Guarda el archivo para terminar."
+   ],
+   "explain": "Sin `-m`, Git abre el editor con `.git/COMMIT_EDITMSG`; al guardar, descarta las líneas con `#` y los espacios sobrantes (modo de limpieza `strip`) y crea el commit. Todo lo que hay hasta la primera línea en blanco es el **título** (`%s` en los formatos de `git log`); el resto es el **cuerpo** (`%b`): `git log --oneline` solo muestra el título y `git log`, todo. Alternativa sin editor: `git commit -m \"Agrega horario de atención\" -m \"Los clientes preguntaban…\"` (cada `-m` es un párrafo), cómoda para cuerpos cortos pero sin ajuste de líneas. Si guardas el editor vacío verás `Aborting commit due to empty commit message.` y no pasa nada: vuelve a intentarlo."
+  },
+  {
+   "id": "s02-e6",
+   "title": "Commits atómicos: dos cambios, dos commits",
+   "level": "medio",
+   "minutes": 9,
+   "prompt": [
+    "En la app del clima hiciste dos cosas sin relación: corregiste una falta de ortografía en `README.md` (decía «temperatrua») y agregaste las alertas de lluvia (archivo nuevo `alertas.js` más una línea en `index.html` que lo carga).",
+    "Crea **dos commits atómicos**, en este orden: 1) `Corrige error ortográfico en README`, solo con `README.md`; 2) `Agrega alertas de lluvia`, con `alertas.js` e `index.html`."
+   ],
+   "setup": "nuevo_repo app-clima\nfecha '2026-09-15 11:00'\nescribir README.md '# App del clima'\nanexar README.md 'Muestra la temperatrua de Santiago cada hora.'\nescribir index.html '<h1>Clima en Santiago</h1>'\ngit add . && git commit -qm 'Crea la app del clima'\nescribir README.md '# App del clima'\nanexar README.md 'Muestra la temperatura de Santiago cada hora.'\nanexar index.html '<script src=\"alertas.js\"></script>'\nescribir alertas.js 'function alertaLluvia(mm) { return mm > 5; }'",
+   "cwd": "app-clima",
+   "checks": [
+    {
+     "name": "Hay dos commits nuevos",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"Debería haber 3 commits (el inicial y tus dos) y hay $(num_commits)\""
+    },
+    {
+     "name": "El primero solo corrige README.md",
+     "script": "mensaje_es HEAD~1 'Corrige error ortográfico en README'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1 | tr '\\n' ' ')\" = \"README.md \" ] || falla \"El commit de la corrección debería tocar solo README.md (toca: $(git diff-tree --no-commit-id --name-only -r HEAD~1 | tr '\\n' ' '))\""
+    },
+    {
+     "name": "El segundo trae las alertas completas",
+     "script": "mensaje_es HEAD 'Agrega alertas de lluvia'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' ')\" = \"alertas.js index.html \" ] || falla \"El commit de las alertas debería incluir alertas.js e index.html, y nada más (incluye: $(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' '))\""
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git add README.md",
+    "git commit -m \"Corrige error ortográfico en README\"",
+    "git add alertas.js index.html",
+    "git commit -m \"Agrega alertas de lluvia\""
+   ],
+   "hints": [
+    "Con `git status` identifica qué archivos pertenecen a cada cambio.",
+    "Prepara solo el README y confirma; después prepara el resto y confirma.",
+    "`git add README.md` → `git commit -m …`; luego `git add alertas.js index.html` → `git commit -m …`."
+   ],
+   "explain": "El área de preparación sirve justamente para esto: con `git add` eliges qué va en cada commit. Así, si mañana hay que revertir las alertas (s04), la corrección del README no se ve afectada, y quien revise ve dos cambios claros. Para el segundo commit también servía `git add -A` (a esa altura solo quedaba lo de las alertas), pero **no** `git commit -am`: `alertas.js` es nuevo y `-a` no lo incluiría, así que el commit quedaría con un `index.html` que carga un archivo inexistente en el repositorio. Eso es justo lo contrario de un commit atómico: medio cambio."
+  },
+  {
+   "id": "s02-e7",
+   "title": "La trampa del archivo modificado dos veces",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En la API de pedidos cambiaste en `config.json` el puerto de 3000 a 8080 y lo preparaste con `git add`. Después, antes de confirmar, también cambiaste `\"debug\": true` por `\"debug\": false`.",
+    "Crea **un solo commit** con el mensaje `Configura puerto y debug para producción` que incluya **los dos cambios**. Mira `git status` con atención antes de confirmar."
+   ],
+   "setup": "nuevo_repo api-pedidos\nfecha '2026-09-18 15:00'\nprintf '%s\\n' '{' '  \"puerto\": 3000,' '  \"debug\": true' '}' > config.json\ngit add config.json && git commit -qm 'Agrega configuración inicial'\nprintf '%s\\n' '{' '  \"puerto\": 8080,' '  \"debug\": true' '}' > config.json\ngit add config.json\nprintf '%s\\n' '{' '  \"puerto\": 8080,' '  \"debug\": false' '}' > config.json",
+   "cwd": "api-pedidos",
+   "checks": [
+    {
+     "name": "Un solo commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber exactamente 1 commit nuevo y hay $(( $(num_commits) - 1 )). Si confirmaste en dos pasos, reinicia el ejercicio (deshacer commits lo verás en s04)\"\nmensaje_es HEAD 'Configura puerto y debug para producción'"
+    },
+    {
+     "name": "El commit tiene el puerto 8080",
+     "script": "contenido HEAD config.json | grep -q '\"puerto\": 8080' || falla \"En el commit, config.json no tiene el puerto 8080\""
+    },
+    {
+     "name": "El commit también desactiva debug",
+     "script": "contenido HEAD config.json | grep -q '\"debug\": false' || falla \"El commit tiene todavía \\\"debug\\\": true: se confirmó solo la versión que estaba preparada\""
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio \"Quedan cambios sin confirmar en config.json: el commit no se llevó la última versión\""
+    }
+   ],
+   "solution": [
+    "git add config.json",
+    "git commit -m \"Configura puerto y debug para producción\""
+   ],
+   "hints": [
+    "`git status` muestra `config.json` en dos secciones. ¿Qué versión se llevaría un `git commit` ahora mismo?",
+    "`git add` guarda en el index el contenido del momento en que lo ejecutas; lo editado después no está preparado.",
+    "Vuelve a ejecutar `git add config.json` (o usa `git commit -am`) y confirma."
+   ],
+   "explain": "El archivo estaba `MM`: la columna izquierda (index) tenía la versión con el puerto 8080 y `\"debug\": true`; la derecha, la del disco, con `\"debug\": false`. Un `git commit` a secas habría confirmado la versión del index y dejado `\"debug\": false` sin confirmar: un commit a medias que en producción habría dejado el modo depuración encendido. Volver a hacer `git add` actualiza el index con el contenido actual. `git commit -am` también funcionaba porque el archivo está rastreado. Moraleja: `git status` justo antes de cada commit."
+  },
+  {
+   "id": "s02-e8",
+   "title": "Solo lo que Git ya conoce",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "En el gestor de tareas modificaste `tareas.py` y `utils.py` y borraste `viejo.py`, un módulo que ya nadie usaba. Además aparecieron dos archivos nuevos que **no** quieres confirmar: `scratch.py` (tus pruebas) y `salida.log`.",
+    "Crea un commit con el mensaje `Elimina módulo viejo y actualiza tareas` que incluya **las modificaciones y el borrado**, pero **ninguno** de los archivos nuevos (deben seguir en tu carpeta, sin seguimiento)."
+   ],
+   "setup": "nuevo_repo gestor-tareas\nfecha '2026-09-19 10:00'\nescribir tareas.py 'tareas = []'\nescribir utils.py 'def limpiar(t): return t.strip()'\nescribir viejo.py 'def obsoleto(): pass'\ngit add . && git commit -qm 'Crea el gestor de tareas'\nanexar tareas.py 'def agregar(t): tareas.append(limpiar(t))'\nanexar utils.py 'def vacia(t): return not t.strip()'\nrm viejo.py\nescribir scratch.py 'print(tareas)'\nescribir salida.log 'DEBUG 2026-09-19 prueba de agregar()'",
+   "cwd": "gestor-tareas",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\nmensaje_es HEAD 'Elimina módulo viejo y actualiza tareas'"
+    },
+    {
+     "name": "viejo.py se eliminó en el commit",
+     "script": "git cat-file -e HEAD:viejo.py 2>/dev/null && falla \"viejo.py sigue en el último commit: el borrado también hay que prepararlo\"; true"
+    },
+    {
+     "name": "Las modificaciones están confirmadas",
+     "script": "contenido HEAD tareas.py | grep -q 'def agregar' || falla \"El commit no incluye la modificación de tareas.py\"\ncontenido HEAD utils.py | grep -q 'def vacia' || falla \"El commit no incluye la modificación de utils.py\""
+    },
+    {
+     "name": "Los archivos nuevos siguen sin seguimiento",
+     "script": "archivo_existe scratch.py \"No borres scratch.py: solo tenía que quedar fuera del commit\"\narchivo_existe salida.log \"No borres salida.log: solo tenía que quedar fuera del commit\"\n[ \"$(git status --porcelain | tr '\\n' ' ')\" = \"?? salida.log ?? scratch.py \" ] || falla \"git status -s debería mostrar solo ?? salida.log y ?? scratch.py\""
+    }
+   ],
+   "solution": [
+    "git add -u",
+    "git commit -m \"Elimina módulo viejo y actualiza tareas\""
+   ],
+   "hints": [
+    "Hay una opción de `git add` que prepara todo lo que Git **ya rastrea** (modificados y borrados) e ignora lo nuevo.",
+    "Es `-u` (`--update`). También hay una opción de `git commit` que hace lo mismo al confirmar.",
+    "`git add -u` y luego `git commit -m \"Elimina módulo viejo y actualiza tareas\"` (o todo junto con `git commit -am`)."
+   ],
+   "explain": "`git add -u` actualiza el index solo donde ya tiene entradas: registra modificaciones y borrados, pero nunca agrega archivos nuevos. `git commit -am` hace lo mismo justo antes de confirmar. Otra opción explícita: `git add tareas.py utils.py viejo.py` (sí, se puede hacer `git add` de un archivo borrado: prepara su eliminación). En cambio, `git add .` o `git add -A` habrían metido `scratch.py` y `salida.log`. En s03 aprenderás `git rm` (borrar y preparar en un paso) y `.gitignore`, para que los `.log` ni aparezcan."
+  },
+  {
+   "id": "s02-e9",
+   "title": "Todos los CSS, estén donde estén",
+   "level": "medio",
+   "minutes": 7,
+   "prompt": [
+    "En el portal de vecinos hay hojas de estilo nuevas en tres lugares: `estilos.css` (en la raíz), `css/base.css` y `css/componentes/boton.css`. También hay archivos JavaScript nuevos que todavía no están listos.",
+    "Crea un commit con el mensaje `Agrega hojas de estilo` que incluya **todos los `.css` del proyecto y nada más**. Intenta hacerlo con un **patrón**, sin escribir cada ruta."
+   ],
+   "setup": "nuevo_repo portal-vecinos\nfecha '2026-09-21 12:00'\ncommit_archivo README.md '# Portal de vecinos' 'Crea el portal'\nescribir estilos.css 'body { margin: 0; }'\nescribir css/base.css 'h1 { font-size: 2rem; }'\nescribir css/componentes/boton.css '.boton { padding: 1rem; }'\nescribir app.js 'console.log(\"portal\")'\nescribir js/mapa.js 'const mapa = null;'",
+   "cwd": "portal-vecinos",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\nmensaje_es HEAD 'Agrega hojas de estilo'"
+    },
+    {
+     "name": "Los tres .css están en el commit",
+     "script": "for f in estilos.css css/base.css css/componentes/boton.css; do git cat-file -e \"HEAD:$f\" 2>/dev/null || falla \"Falta $f en el commit. ¿Quién expandió el asterisco: la terminal o Git?\"; done"
+    },
+    {
+     "name": "Ningún .js entró en el commit",
+     "script": "git ls-tree -r --name-only HEAD | grep -q '\\.js$' && falla \"Hay archivos .js en el commit: solo debían entrar los .css\"; true"
+    },
+    {
+     "name": "Los .js siguen sin seguimiento",
+     "script": "[ \"$(git status --porcelain | tr '\\n' ' ')\" = \"?? app.js ?? js/ \" ] || falla \"git status -s debería mostrar solo ?? app.js y ?? js/\""
+    }
+   ],
+   "solution": [
+    "git add '*.css'",
+    "git commit -m \"Agrega hojas de estilo\""
+   ],
+   "hints": [
+    "Prueba primero con `git add -n`, que solo simula, para ver qué prepararía cada variante.",
+    "Compara `git add -n *.css` con `git add -n '*.css'`: ¿quién interpreta el asterisco en cada caso?",
+    "Con comillas el patrón llega a Git, y en los pathspecs de Git `*` también atraviesa carpetas: `git add '*.css'`."
+   ],
+   "explain": "Sin comillas, la terminal reemplaza `*.css` por los archivos que coinciden **en la carpeta actual** (solo `estilos.css`) antes de llamar a Git. Con comillas (o escapando el asterisco: `git add \\*.css`), el patrón llega a Git como *pathspec*, y ahí `*` también coincide con `/`, así que alcanza `css/base.css` y `css/componentes/boton.css`. Es el mismo ejemplo de la documentación oficial (`git add Documentation/\\*.txt`). Alternativas válidas: `git add estilos.css css` (la carpeta completa, porque en `css/` solo hay estilos) o nombrar los tres archivos."
+  },
+  {
+   "id": "s02-e10",
+   "title": "Reparar un status confuso",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Retomas el manual de reparación de bicicletas después de una semana y `git status` es un desorden: `frenos.md` aparece dos veces, `cambios.md` figura como borrado, `guia.txt` también, y hay una carpeta `docs/` sin seguimiento (moviste `guia.txt` a `docs/` y escribiste `docs/cadena.md`). Además está `apuntes-personales.txt`, que es solo tuyo.",
+    "Deja **un único commit** con el mensaje `Reorganiza el manual en docs/` que refleje exactamente cómo está hoy tu carpeta: la última versión de `frenos.md`, sin `cambios.md`, con `guia.txt` movido a `docs/` y con `docs/cadena.md`. `apuntes-personales.txt` debe quedar sin seguimiento."
+   ],
+   "setup": "nuevo_repo manual-bicicletas\nfecha '2026-09-14 18:00'\nescribir README.md '# Manual de reparación de bicicletas'\nescribir guia.txt 'Guía rápida: revisa frenos, cadena y neumáticos antes de cada salida.'\nescribir frenos.md '# Frenos'\nescribir cambios.md '# Cambios (sección duplicada)'\ngit add . && git commit -qm 'Crea el manual'\nanexar frenos.md 'Ajusta la tensión del cable hasta que la palanca quede firme.'\ngit add frenos.md\nanexar frenos.md 'Revisa el desgaste de las pastillas cada 500 km.'\nrm cambios.md\nmkdir -p docs\nmv guia.txt docs/guia.txt\nescribir docs/cadena.md '# Cadena: limpiar y lubricar cada 200 km'\nescribir apuntes-personales.txt 'Comprar pastillas nuevas el sábado'",
+   "cwd": "manual-bicicletas",
+   "checks": [
+    {
+     "name": "Un único commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber exactamente 1 commit nuevo y hay $(( $(num_commits) - 1 )). Si confirmaste en varios pasos, reinicia el ejercicio\"\nmensaje_es HEAD 'Reorganiza el manual en docs/'"
+    },
+    {
+     "name": "frenos.md está en su última versión",
+     "script": "contenido HEAD frenos.md | grep -qF 'pastillas cada 500 km' || falla \"El commit no tiene la última versión de frenos.md: la línea de las pastillas quedó fuera\""
+    },
+    {
+     "name": "cambios.md ya no está",
+     "script": "git cat-file -e HEAD:cambios.md 2>/dev/null && falla \"cambios.md sigue en el commit: también hay que preparar su borrado\"; true"
+    },
+    {
+     "name": "guia.txt quedó en docs/, junto a cadena.md",
+     "script": "git cat-file -e HEAD:guia.txt 2>/dev/null && falla \"guia.txt sigue en la raíz dentro del commit: prepara también su borrado\"\ngit cat-file -e HEAD:docs/guia.txt 2>/dev/null || falla \"Falta docs/guia.txt en el commit\"\ngit cat-file -e HEAD:docs/cadena.md 2>/dev/null || falla \"Falta docs/cadena.md en el commit\""
+    },
+    {
+     "name": "Solo apuntes-personales.txt queda sin seguimiento",
+     "script": "archivo_existe apuntes-personales.txt \"No borres apuntes-personales.txt: solo tenía que quedar fuera del commit\"\n[ \"$(git status --porcelain)\" = \"?? apuntes-personales.txt\" ] || falla \"git status -s debería mostrar solo ?? apuntes-personales.txt\""
+    }
+   ],
+   "solution": [
+    "git add -u",
+    "git add docs",
+    "git commit -m \"Reorganiza el manual en docs/\""
+   ],
+   "hints": [
+    "Clasifica cada línea de `git status -s`: ¿qué está en el index, qué solo en la carpeta y qué es nuevo?",
+    "Necesitas preparar la versión nueva de `frenos.md`, los dos borrados y la carpeta `docs/`. Nada más.",
+    "Una forma: `git add -u` (modificados y borrados rastreados) + `git add docs` (lo nuevo de `docs/`). Antes de confirmar, `git status` debería mostrar `renamed: guia.txt -> docs/guia.txt`."
+   ],
+   "explain": "`git add -u` se encarga de todo lo que Git ya rastreaba: sube la última versión de `frenos.md` (deja de estar `MM`) y prepara los borrados de `cambios.md` y `guia.txt`. `git add docs` agrega los archivos nuevos de esa carpeta. Al ver en el index el borrado de `guia.txt` y un archivo nuevo con el mismo contenido, Git informa `renamed: guia.txt -> docs/guia.txt`: Git no registra los renombres, los **deduce** comparando contenidos (en s03 verás `git mv`). Alternativas: `git add frenos.md cambios.md guia.txt docs` (se puede hacer `git add` de rutas borradas) o una exclusión con pathspec: `git add -A -- . ':!apuntes-personales.txt'` (la «magia» `:!` excluye rutas). `git add -A` a secas habría metido tus apuntes."
+  },
+  {
+   "id": "s02-e11",
+   "title": "Dos cambios en el mismo archivo",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "En la picada de don Tito hiciste dos cambios en `menu.txt`: subiste el precio del completo italiano de 2500 a 2800 (arriba) y agregaste las sopaipillas al final. Son cambios independientes y quieres un commit para cada uno.",
+    "Crea dos commits en este orden: 1) `Corrige precio del completo italiano`, solo con el cambio de precio; 2) `Agrega sopaipillas al menú`, con la línea nueva.",
+    "Nota sobre la plataforma: `git add -p` pregunta fragmento por fragmento. En tu terminal real respondes con el teclado; aquí le pasas las respuestas con `printf`, una por línea: por ejemplo, `printf 'n\\ny\\n' | git add -p archivo` responde `n` al primer fragmento y `y` al segundo."
+   ],
+   "setup": "nuevo_repo picada\nfecha '2026-09-13 12:00'\nprintf '%s\\n' 'MENÚ PICADA DON TITO' '' 'Completo italiano ..... 2500' 'Churrasco ............. 4500' 'Barros Luco ........... 5200' 'Chacarero ............. 5500' 'Lomito ................ 4900' 'Ave palta ............. 4200' 'Papas fritas .......... 2000' 'Empanada de pino ...... 2200' 'Bebida ................ 1500' > menu.txt\ngit add menu.txt && git commit -qm 'Agrega menú'\nprintf '%s\\n' 'MENÚ PICADA DON TITO' '' 'Completo italiano ..... 2800' 'Churrasco ............. 4500' 'Barros Luco ........... 5200' 'Chacarero ............. 5500' 'Lomito ................ 4900' 'Ave palta ............. 4200' 'Papas fritas .......... 2000' 'Empanada de pino ...... 2200' 'Bebida ................ 1500' 'Sopaipillas (x4) ...... 1600' > menu.txt",
+   "cwd": "picada",
+   "checks": [
+    {
+     "name": "Hay dos commits nuevos",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"Debería haber 3 commits (el inicial y tus dos) y hay $(num_commits)\""
+    },
+    {
+     "name": "Primer commit: solo el precio",
+     "script": "mensaje_es HEAD~1 'Corrige precio del completo italiano'\ncontenido HEAD~1 menu.txt | grep -qF 'Completo italiano ..... 2800' || falla \"En tu primer commit el completo italiano debería costar 2800\"\ncontenido HEAD~1 menu.txt | grep -qF 'Sopaipillas' && falla \"Tu primer commit ya incluye las sopaipillas: debían ir en el segundo\"\ntrue"
+    },
+    {
+     "name": "Segundo commit: las sopaipillas",
+     "script": "mensaje_es HEAD 'Agrega sopaipillas al menú'\ncontenido HEAD menu.txt | grep -qF 'Sopaipillas (x4) ...... 1600' || falla \"En el último commit faltan las sopaipillas\"\ncontenido HEAD menu.txt | grep -qF 'Completo italiano ..... 2800' || falla \"En el último commit se perdió el precio nuevo del completo\""
+    },
+    {
+     "name": "No queda nada pendiente",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "printf 'y\\nn\\n' | git add -p menu.txt",
+    "git commit -m \"Corrige precio del completo italiano\"",
+    "git commit -am \"Agrega sopaipillas al menú\""
+   ],
+   "hints": [
+    "Ejecuta primero `git add -p menu.txt` sin nada más: verás el primer fragmento y la pregunta `(1/2) Stage this hunk…`. ¿Cuántos fragmentos hay y en qué orden aparecen?",
+    "Quieres el primer fragmento (el precio) ahora y el segundo (las sopaipillas) después.",
+    "`printf 'y\\nn\\n' | git add -p menu.txt`, confirma, y después confirma el resto con `git commit -am`."
+   ],
+   "explain": "`git add -p` divide los cambios del archivo en fragmentos (*hunks*) y te deja preparar solo algunos: tras responder `y` y `n`, `git status -s` muestra `MM menu.txt` (una parte en el index, otra solo en la carpeta). El primer `git commit` se lleva solo lo preparado; el segundo, con `-a`, el resto. Sin `add -p` también se puede: guardar una copia (`cp menu.txt menu.bak`), dejar en `menu.txt` solo el cambio de precio, hacer `git add` y el commit, recuperar la copia (`mv menu.bak menu.txt`) y confirmar. Si dos cambios quedan en el mismo fragmento por estar muy cerca, la tecla `s` intenta dividirlo y `e` permite editarlo a mano. Pro Git recomienda `git add --patch` precisamente para esto: separar el trabajo en commits lógicos aunque toque el mismo archivo."
+  },
+  {
+   "id": "s02-e12",
+   "title": "Arreglo urgente sin tocar lo preparado",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "Estás armando la nueva portada de la feria del libro: ya preparaste (`git add`) cambios en `index.html` y `estilos.css`, pero todavía no están listos para confirmar. Te llaman: el teléfono de `contacto.txt` está mal y hay que corregirlo **ya**.",
+    "Cambia el contenido de `contacto.txt` a `Teléfono: +56 9 8765 4321` y crea un commit `Corrige teléfono de contacto` que incluya **solo** ese archivo. Lo que tenías preparado debe **seguir preparado** (sin confirmar y sin perderse)."
+   ],
+   "setup": "nuevo_repo feria-libro\nfecha '2026-09-22 11:00'\nescribir index.html '<h1>Feria del libro</h1>'\nescribir estilos.css 'h1 { color: navy; }'\nescribir contacto.txt 'Teléfono: +56 9 1234 5678'\ngit add . && git commit -qm 'Crea el sitio de la feria'\nanexar index.html '<section id=\"programa\">Programa (borrador)</section>'\nanexar estilos.css '#programa { margin: 2rem; }'\ngit add index.html estilos.css",
+   "cwd": "feria-libro",
+   "checks": [
+    {
+     "name": "Hay un commit nuevo con el mensaje pedido",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Debería haber 2 commits (el inicial y el tuyo) y hay $(num_commits)\"\nmensaje_es HEAD 'Corrige teléfono de contacto'"
+    },
+    {
+     "name": "El commit contiene solo contacto.txt, con el número nuevo",
+     "script": "[ \"$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' ')\" = \"contacto.txt \" ] || falla \"El commit debería incluir solo contacto.txt (incluye: $(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' '))\"\ncontenido HEAD contacto.txt | grep -qF '+56 9 8765 4321' || falla \"En el commit, contacto.txt no tiene el número +56 9 8765 4321\""
+    },
+    {
+     "name": "index.html y estilos.css siguen preparados",
+     "script": "[ \"$(git diff --cached --name-only | tr '\\n' ' ')\" = \"estilos.css index.html \" ] || falla \"index.html y estilos.css deberían seguir en Changes to be committed (y nada más)\"\ngit show :index.html | grep -q 'programa' || falla \"Se perdió el cambio preparado de index.html\""
+    },
+    {
+     "name": "No hay cambios sin preparar",
+     "script": "[ -z \"$(git diff --name-only)\" ] || falla \"Hay cambios sin preparar: revisa git status\""
+    }
+   ],
+   "solution": [
+    "echo \"Teléfono: +56 9 8765 4321\" > contacto.txt",
+    "git commit -m \"Corrige teléfono de contacto\" contacto.txt"
+   ],
+   "hints": [
+    "Si haces `git add contacto.txt` y `git commit`, el commit se llevaría también lo preparado de la portada.",
+    "`git commit` acepta rutas al final: confirma el contenido actual de esas rutas e ignora lo preparado de otros archivos.",
+    "Edita el archivo (`echo \"Teléfono: +56 9 8765 4321\" > contacto.txt`) y luego `git commit -m \"Corrige teléfono de contacto\" contacto.txt`."
+   ],
+   "explain": "Cuando le das rutas, `git commit` trabaja en modo `--only` (el predeterminado con rutas): arma el commit con el contenido **actual** de esas rutas sobre el último commit, sin mirar lo que el index tenga para otros archivos, y después deja el index como estaba (con `contacto.txt` ya al día). Por eso `index.html` y `estilos.css` siguen `M ` en `git status -s`. Solo funciona con archivos rastreados: con uno nuevo verías `error: pathspec … did not match any file(s) known to git`. Otras salidas que verás más adelante: guardar lo preparado con `git stash` (s10) o sacarlo del index con `git restore --staged` (s04)."
+  },
+  {
+   "id": "s02-e13",
+   "title": "Proyecto: un portafolio con historia profesional",
+   "level": "proyecto",
+   "minutes": 15,
+   "prompt": [
+    "Vas a publicar tu portafolio y quieres que su historia se vea profesional desde el primer día. En `~/portafolio` tienes `README.md`, `index.html`, `estilos.css` y `notas-privadas.txt` (tus notas: **nunca** deben entrar al repositorio). Aún no es un repositorio.",
+    "1) Crea el repositorio. 2) Primer commit: solo `README.md`, con el mensaje `Agrega README del portafolio`. 3) Segundo commit: `index.html` y `estilos.css`, con el mensaje `Agrega portada y estilos`.",
+    "4) Agrega al final de `README.md` la línea `Contacto: alumno@cuaderno.local` y confírmalo **desde el editor** con el título `Agrega datos de contacto al README` y un cuerpo que explique por qué (líneas de 72 caracteres como máximo).",
+    "Al final, `git status -s` debe mostrar solo `?? notas-privadas.txt`."
+   ],
+   "setup": "mkdir -p portafolio && cd portafolio\nescribir README.md '# Portafolio de Alumno'\nanexar README.md 'Proyectos web hechos mientras aprendo Git.'\nescribir index.html '<h1>Hola, soy Alumno</h1>'\nescribir estilos.css 'h1 { font-family: Georgia, serif; }'\nescribir notas-privadas.txt 'Pedir carta de recomendación a la profe el lunes.'",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "El repositorio está en ~/portafolio",
+     "script": "top=$(git rev-parse --show-toplevel 2>/dev/null) || falla \"Aquí todavía no hay un repositorio de Git: créalo dentro de ~/portafolio\"\n[ \"$top\" = \"$(pwd -P)\" ] || falla \"El repositorio no está en ~/portafolio sino en una carpeta superior: ¿ejecutaste git init en otro lugar?\""
+    },
+    {
+     "name": "Hay tres commits",
+     "script": "git rev-parse --verify -q HEAD >/dev/null || falla \"Todavía no hay ningún commit\"\n[ \"$(num_commits)\" = 3 ] || falla \"Debería haber 3 commits y hay $(num_commits)\""
+    },
+    {
+     "name": "Primer commit: solo README.md",
+     "script": "git rev-parse --verify -q HEAD >/dev/null || falla \"Todavía no hay ningún commit\"\nr=$(git rev-list --max-parents=0 HEAD | head -n 1)\nmensaje_es \"$r\" 'Agrega README del portafolio' \"El primer commit debería llamarse «Agrega README del portafolio» (es «$(mensaje \"$r\")»)\"\n[ \"$(git diff-tree --root --no-commit-id --name-only -r \"$r\" | tr '\\n' ' ')\" = \"README.md \" ] || falla \"El primer commit debería contener solo README.md\""
+    },
+    {
+     "name": "Segundo commit: portada y estilos",
+     "script": "git rev-parse --verify -q HEAD >/dev/null || falla \"Todavía no hay ningún commit\"\n[ \"$(num_commits)\" -ge 3 ] || falla \"Todavía faltan commits\"\nmensaje_es HEAD~1 'Agrega portada y estilos'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1 | tr '\\n' ' ')\" = \"estilos.css index.html \" ] || falla \"El segundo commit debería contener index.html y estilos.css, y nada más\""
+    },
+    {
+     "name": "Tercer commit: contacto, con título y cuerpo",
+     "script": "git rev-parse --verify -q HEAD >/dev/null || falla \"Todavía no hay ningún commit\"\nmensaje_es HEAD 'Agrega datos de contacto al README'\ncontenido HEAD README.md | grep -qF 'Contacto: alumno@cuaderno.local' || falla \"README.md del último commit no tiene la línea de contacto\"\n[ -n \"$(git log -1 --format=%b)\" ] || falla \"El último commit no tiene cuerpo: deja una línea en blanco tras el título y explica el porqué\"\ngit log -1 --format=%B | while IFS= read -r l; do [ ${#l} -le 72 ] || exit 1; done || falla \"Alguna línea del último mensaje supera los 72 caracteres\""
+    },
+    {
+     "name": "Las notas privadas nunca entraron",
+     "script": "archivo_existe notas-privadas.txt \"No borres notas-privadas.txt: solo tenía que quedar fuera\"\ngit log --all --format=%H -- notas-privadas.txt 2>/dev/null | grep -q . && falla \"notas-privadas.txt aparece en algún commit de la historia\"\n[ \"$(git status --porcelain 2>/dev/null)\" = \"?? notas-privadas.txt\" ] || falla \"git status -s debería mostrar solo ?? notas-privadas.txt\""
+    }
+   ],
+   "solution": [
+    "git init",
+    "git add README.md",
+    "git commit -m \"Agrega README del portafolio\"",
+    "git add index.html estilos.css",
+    "git commit -m \"Agrega portada y estilos\"",
+    "echo \"Contacto: alumno@cuaderno.local\" >> README.md",
+    "git add README.md",
+    {
+     "cmd": "git commit",
+     "edit": "Agrega datos de contacto al README\n\nQuien revise el portafolio necesita una forma directa de\nescribirme, sin tener que buscar mi correo en otros sitios.\n"
+    }
+   ],
+   "hints": [
+    "Sigue el orden del enunciado y revisa `git status -s` después de cada paso.",
+    "En cada commit prepara solo lo que corresponde, nombrando los archivos: nada de `git add .` con notas privadas en la carpeta.",
+    "Para el último: `echo \"Contacto: alumno@cuaderno.local\" >> README.md`, `git add README.md` y `git commit` sin `-m` (título, línea en blanco, cuerpo)."
+   ],
+   "explain": "Resultado: tres commits atómicos y bien descritos (`git log --oneline` lo muestra de un vistazo) y las notas privadas fuera de toda la historia. El primero aparece como `(root-commit)` al crearlo. En el último también servía `git commit -a` sin `-m`: prepara el README (ya rastreado) y abre el editor igual. Empezar por el README es una buena costumbre: explica qué es el repositorio a quien llegue después. En s03, `.gitignore` hará que `notas-privadas.txt` ni siquiera aparezca en `git status`."
+  },
+  {
+   "id": "s02-e14",
+   "title": "Proyecto: retomar el trabajo de una compañera",
+   "level": "proyecto",
+   "minutes": 18,
+   "prompt": [
+    "Camila Rojas se fue de vacaciones y te dejó su copia del inventario de la bodega (`~/inventario-bodega`), con dos commits suyos y bastante trabajo sin confirmar. Tu tarea es convertir ese trabajo en una historia limpia, a tu nombre.",
+    "Revisa el estado y crea **tres commits atómicos**, en este orden: 1) `Corrige división por cero en el reporte`, solo con `reporte.py`; 2) `Agrega productos de invierno`, con la **versión final** de `productos.csv` (ojo: Camila dejó una parte preparada y siguió editando); 3) `Agrega exportación a CSV`, con `exportar.py`, escrito **desde el editor** con un cuerpo que explique para qué sirve.",
+    "La carpeta `temp/` tiene salidas de prueba: no debe confirmarse. Los dos commits de Camila deben quedar tal cual. Antes de cada commit, fíjate bien en qué hay preparado."
+   ],
+   "setup": "nuevo_repo inventario-bodega\nautor 'Camila Rojas' 'camila.rojas@ejemplo.com'\nfecha '2026-09-01 09:30'\nescribir productos.csv 'codigo,nombre,stock'\nanexar productos.csv 'P001,Arroz 1 kg,120'\nanexar productos.csv 'P002,Aceite 1 L,80'\nescribir reporte.py 'def promedio(total, n):'\nanexar reporte.py '    return total / n'\ngit add . && git commit -qm 'Crea inventario y reporte'\nfecha '2026-09-05 16:10'\nanexar productos.csv 'P003,Azúcar 1 kg,95'\ngit commit -qam 'Agrega azúcar al inventario'\nyo\nescribir reporte.py 'def promedio(total, n):'\nanexar reporte.py '    if n == 0:'\nanexar reporte.py '        return 0'\nanexar reporte.py '    return total / n'\nanexar productos.csv 'P004,Leche en polvo 800 g,40'\ngit add productos.csv\nanexar productos.csv 'P005,Lentejas 1 kg,60'\nescribir exportar.py 'import csv'\nanexar exportar.py 'def exportar(filas, ruta):'\nanexar exportar.py '    with open(ruta, \"w\", newline=\"\") as f:'\nanexar exportar.py '        csv.writer(f).writerows(filas)'\nescribir temp/salida-1.txt 'prueba de exportación 1'\nescribir temp/salida-2.txt 'prueba de exportación 2'",
+   "cwd": "inventario-bodega",
+   "checks": [
+    {
+     "name": "Tres commits nuevos sobre los de Camila",
+     "script": "[ \"$(num_commits)\" = 5 ] || falla \"Debería haber 5 commits (2 de Camila + 3 tuyos) y hay $(num_commits)\"\n[ \"$(git log -1 --format=%s HEAD~3)\" = 'Agrega azúcar al inventario' ] || falla \"El último commit de Camila debería quedar justo debajo de tus tres commits\""
+    },
+    {
+     "name": "Commit 1: solo reporte.py, sin división por cero",
+     "script": "mensaje_es HEAD~2 'Corrige división por cero en el reporte'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~2 | tr '\\n' ' ')\" = \"reporte.py \" ] || falla \"El commit de la corrección debería tocar solo reporte.py (toca: $(git diff-tree --no-commit-id --name-only -r HEAD~2 | tr '\\n' ' ')). ¿Se coló lo que Camila había dejado preparado?\"\ncontenido HEAD~2 reporte.py | grep -qF 'if n == 0' || falla \"En ese commit, reporte.py no tiene la corrección\""
+    },
+    {
+     "name": "Commit 2: versión final de productos.csv",
+     "script": "mensaje_es HEAD~1 'Agrega productos de invierno'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1 | tr '\\n' ' ')\" = \"productos.csv \" ] || falla \"El commit de productos debería tocar solo productos.csv (toca: $(git diff-tree --no-commit-id --name-only -r HEAD~1 | tr '\\n' ' '))\"\ncontenido HEAD~1 productos.csv | grep -qF 'P004' || falla \"En ese commit falta el producto P004\"\ncontenido HEAD~1 productos.csv | grep -qF 'P005' || falla \"En ese commit falta P005: se confirmó la versión que Camila había preparado, no la final\""
+    },
+    {
+     "name": "Commit 3: exportación, con cuerpo",
+     "script": "mensaje_es HEAD 'Agrega exportación a CSV'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' ')\" = \"exportar.py \" ] || falla \"El último commit debería contener solo exportar.py (contiene: $(git diff-tree --no-commit-id --name-only -r HEAD | tr '\\n' ' '))\"\n[ -n \"$(git log -1 --format=%b)\" ] || falla \"El último commit no tiene cuerpo: escríbelo desde el editor (título, línea en blanco, cuerpo)\""
+    },
+    {
+     "name": "Autoría correcta",
+     "script": "[ \"$(git log -3 --format=%an | sort -u)\" = \"Alumno\" ] || falla \"Tus tres commits deberían estar a tu nombre (Alumno)\"\n[ \"$(git log --format=%an HEAD~3 | sort -u)\" = \"Camila Rojas\" ] || falla \"Los commits de Camila deberían seguir a su nombre\""
+    },
+    {
+     "name": "temp/ quedó fuera",
+     "script": "git log --all --format=%H -- temp | grep -q . && falla \"temp/ aparece en algún commit\"\n[ \"$(git status --porcelain)\" = \"?? temp/\" ] || falla \"git status -s debería mostrar solo ?? temp/\""
+    }
+   ],
+   "solution": [
+    "git status -s",
+    "git commit -m \"Corrige división por cero en el reporte\" reporte.py",
+    "git add productos.csv",
+    "git commit -m \"Agrega productos de invierno\"",
+    "git add exportar.py",
+    {
+     "cmd": "git commit",
+     "edit": "Agrega exportación a CSV\n\nContabilidad necesita el inventario en una planilla. exportar()\nescribe las filas en un archivo CSV que se abre directo en Excel.\n"
+    }
+   ],
+   "hints": [
+    "Empieza con `git status -s`. `productos.csv` aparece como `MM`: una parte ya está preparada. Si haces `git add reporte.py` y `git commit`, ¿qué se llevaría ese commit?",
+    "Para el primer commit necesitas la forma de `git commit` que confirma solo ciertas rutas e ignora lo preparado de otros archivos (lección 4). Para el segundo, vuelve a hacer `git add productos.csv` y así llevas la versión final.",
+    "`git commit -m \"Corrige división por cero en el reporte\" reporte.py`; luego `git add productos.csv` + commit; al final `git add exportar.py` y `git commit` sin `-m` (título, línea en blanco, cuerpo). `temp/` nunca se prepara."
+   ],
+   "explain": "Es el día a día real: heredar trabajo a medias y convertirlo en una historia legible. La trampa estaba en el index: Camila había dejado preparada una versión de `productos.csv`, así que `git add reporte.py` + `git commit` habría mezclado los dos cambios en el primer commit. `git commit -m \"…\" reporte.py` (modo `--only`) confirma solo `reporte.py` y deja lo preparado donde estaba. Después, el `MM` de `productos.csv` obliga a un nuevo `git add` para llevar la versión final (con P004 **y** P005); también servía `git commit -m \"…\" productos.csv`, que toma el contenido actual del archivo. Y nada de `git add .` ni `-A` mientras haya basura como `temp/` (en s03, `.gitignore`). Como la identidad sale de tu configuración, tus tres commits quedan a tu nombre y los de Camila conservan el suyo: `git log --format='%h %an %s'` lo muestra. Otra salida válida habría sido confirmar primero los productos, pero el orden pedido obligaba a esquivar lo preparado; sacar cosas del index con `git restore --staged` lo verás en s04."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué crea `git init`?",
+   "back": "La subcarpeta `.git` (objetos, refs, HEAD, config y plantillas como los hooks de ejemplo) con una rama inicial sin commits. No toca tus archivos ni crea commits."
+  },
+  {
+   "front": "¿Qué pasa si borras la carpeta `.git`?",
+   "back": "Pierdes el repositorio: toda la historia, las ramas y la configuración local. Los archivos del directorio de trabajo se quedan."
+  },
+  {
+   "front": "¿Qué es una rama «por nacer» (*unborn branch*)?",
+   "back": "La rama a la que apunta HEAD en un repositorio recién creado: tiene nombre, pero no existe hasta el primer commit."
+  },
+  {
+   "front": "Las tres áreas de Git",
+   "back": "Directorio de trabajo (lo que editas), área de preparación o index (el próximo commit) y repositorio (`.git`, los commits)."
+  },
+  {
+   "front": "Los cuatro estados de un archivo",
+   "back": "Sin seguimiento (*untracked*), sin modificar, modificado y preparado (*staged*). Los tres últimos son archivos rastreados."
+  },
+  {
+   "front": "`git status -s`: ¿qué indica cada columna?",
+   "back": "Izquierda (X): el index, lo preparado. Derecha (Y): el directorio de trabajo, lo no preparado."
+  },
+  {
+   "front": "¿Qué significa `MM` en `git status -s`?",
+   "back": "Preparado y modificado otra vez: el index tiene una versión y la carpeta otra más nueva. El commit se llevaría la del index."
+  },
+  {
+   "front": "¿Qué significa `??` en `git status -s`?",
+   "back": "Archivo sin seguimiento: Git lo ve, pero no lo incluye en ningún commit hasta que lo prepares."
+  },
+  {
+   "front": "`git add .` vs `git add -A`",
+   "back": "Ambos preparan archivos nuevos, modificados y borrados; `.` solo en la carpeta actual y sus subcarpetas, `-A` en todo el repositorio."
+  },
+  {
+   "front": "¿Qué hace `git add -u`?",
+   "back": "Prepara modificaciones y borrados de archivos ya rastreados. Ignora los archivos nuevos."
+  },
+  {
+   "front": "`git add *.css` vs `git add '*.css'`",
+   "back": "Sin comillas, la terminal expande el patrón en la carpeta actual. Con comillas, lo interpreta Git (pathspec) y alcanza todas las subcarpetas."
+  },
+  {
+   "front": "¿Cómo ver qué haría `git add` sin hacerlo?",
+   "back": "`git add -n` (`--dry-run`), por ejemplo `git add -n .`."
+  },
+  {
+   "front": "¿Se puede confirmar una carpeta vacía?",
+   "back": "No: Git rastrea contenido, no carpetas. Convención: dejar dentro un archivo vacío `.gitkeep`."
+  },
+  {
+   "front": "¿Qué incluye `git commit -a`?",
+   "back": "Las modificaciones y los borrados de archivos rastreados. Nunca archivos sin seguimiento."
+  },
+  {
+   "front": "`git commit -m \"Título\" -m \"Cuerpo\"`",
+   "back": "Un solo commit cuyo mensaje tiene dos párrafos: cada `-m` es un párrafo (título y cuerpo)."
+  },
+  {
+   "front": "¿Cómo se cancela un commit desde el editor?",
+   "back": "Guardando un mensaje vacío (o solo con líneas `#`): Git responde `Aborting commit due to empty commit message.`"
+  },
+  {
+   "front": "¿Qué hace `git commit -m \"…\" ruta`?",
+   "back": "Confirma solo el contenido actual de esa ruta rastreada (modo `--only`) e ignora, sin tocarlo, lo preparado de otros archivos."
+  },
+  {
+   "front": "¿Qué contiene un commit?",
+   "back": "Un tree (instantánea completa), el hash de su(s) padre(s), autor y committer (cada uno con fecha) y el mensaje."
+  },
+  {
+   "front": "¿Qué es el *root commit*?",
+   "back": "El primer commit de una historia: no tiene padre. Git lo marca como `(root-commit)` al crearlo."
+  },
+  {
+   "front": "¿Por qué cambiar un commit antiguo cambia todos los hashes posteriores?",
+   "back": "Cada commit incluye el hash de su padre; si uno cambia, cambian en cadena los hashes de todos sus descendientes."
+  },
+  {
+   "front": "Autor vs committer",
+   "back": "Autor: quien escribió el cambio. Committer: quien lo registró en el repositorio. Suelen coincidir; se separan al reaplicar commits ajenos."
+  },
+  {
+   "front": "Regla 50/72",
+   "back": "Título de hasta 50 caracteres (nunca más de 72), una línea en blanco y el cuerpo ajustado a 72 columnas."
+  },
+  {
+   "front": "Prueba del imperativo para el título",
+   "back": "Debe completar «Si se aplica, este commit… ___»: Agrega, Corrige, Elimina… (en inglés: Add, Fix, Remove)."
+  },
+  {
+   "front": "¿Qué es un commit atómico?",
+   "back": "Uno que contiene un único cambio lógico y completo: se revisa, se revierte o se lleva a otra rama sin arrastrar otros cambios."
+  },
+  {
+   "front": "¿Para qué sirve `git add -p`?",
+   "back": "Para preparar solo algunos fragmentos (*hunks*) de los cambios de un archivo, respondiendo y/n a cada uno."
+  },
+  {
+   "front": "¿Cómo sales de `git log` en tu terminal real?",
+   "back": "Con `q`: la salida larga se abre en un paginador (normalmente `less`)."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s02-q1",
+   "type": "single",
+   "q": "Ejecutas `git init` en `~/proyecto`, una carpeta que ya tiene 3 archivos. ¿Qué es cierto justo después?",
+   "options": [
+    "Hay un commit inicial con los 3 archivos",
+    "Los 3 archivos quedaron preparados en el index",
+    "Existe `~/proyecto/.git` y los 3 archivos aparecen como sin seguimiento",
+    "Git movió los archivos dentro de `.git`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git init` solo crea la carpeta `.git` con una rama sin commits. No prepara nada (el archivo `.git/index` ni siquiera existe todavía), no crea commits y no mueve archivos: por eso `git status` los muestra en *Untracked files*."
+  },
+  {
+   "id": "s02-q2",
+   "type": "single",
+   "q": "En un repositorio recién creado, sin commits, ejecutas `git log`. ¿Qué responde Git 2.50?",
+   "options": [
+    "Nada: una salida vacía",
+    "`fatal: your current branch 'main' does not have any commits yet`",
+    "`fatal: not a git repository (or any of the parent directories): .git`",
+    "El commit inicial que crea `git init`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La rama `main` está «por nacer»: HEAD apunta a ella, pero no existe hasta el primer commit, y Git lo dice así. `not a git repository` es el error de ejecutar Git fuera de un repositorio, y `git init` no crea ningún commit."
+  },
+  {
+   "id": "s02-q3",
+   "type": "yesno",
+   "q": "Sobre la carpeta `.git`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Si la borras, pierdes la historia pero conservas los archivos del directorio de trabajo.",
+     "answer": true
+    },
+    {
+     "text": "`git init` crea el archivo `.git/index` de inmediato.",
+     "answer": false
+    },
+    {
+     "text": "`.git/HEAD` indica dónde estás, por ejemplo `ref: refs/heads/main`.",
+     "answer": true
+    },
+    {
+     "text": "Ejecutar `git init` otra vez en un repositorio existente borra la historia.",
+     "answer": false
+    }
+   ],
+   "explain": "La carpeta `.git` es el repositorio: borrarla elimina historia, ramas y configuración, pero no los archivos de tu carpeta. El index aparece con el primer `git add`. `HEAD` guarda la referencia a la rama actual. Repetir `git init` es seguro: responde `Reinitialized existing Git repository` y no sobrescribe nada."
+  },
+  {
+   "id": "s02-q4",
+   "type": "single",
+   "q": "`git status -s` muestra `AM notas.txt`. ¿Qué pasó?",
+   "options": [
+    "`notas.txt` es nuevo, se preparó y después se volvió a editar",
+    "`notas.txt` fue preparado y confirmado",
+    "`notas.txt` está modificado pero Git no lo rastrea",
+    "`notas.txt` tiene un conflicto"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La columna izquierda (`A`) dice que en el index hay un archivo nuevo; la derecha (`M`), que en la carpeta cambió después del `git add`. Un archivo confirmado sin cambios no aparece; uno no rastreado sería `??`; los conflictos usan códigos con `U` (s06)."
+  },
+  {
+   "id": "s02-q5",
+   "type": "single",
+   "q": "En `git status -s`, ¿qué columna corresponde al área de preparación (index)?",
+   "options": [
+    "La izquierda",
+    "La derecha",
+    "Las dos indican lo mismo",
+    "Ninguna: `-s` no muestra el index"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "La columna izquierda (X) muestra el estado del index y la derecha (Y), el del directorio de trabajo. Por eso `M ` es «modificado y preparado» y ` M`, «modificado sin preparar»."
+  },
+  {
+   "id": "s02-q6",
+   "type": "single",
+   "q": "En un repositorio ejecutas:\n```bash\necho \"v1\" > a.txt\ngit add a.txt\necho \"v2\" > a.txt\ngit commit -m \"Agrega a.txt\"\n```\n¿Qué contenido de `a.txt` queda en el commit?",
+   "options": [
+    "`v1`",
+    "`v2`",
+    "`v1` y `v2`",
+    "Ninguno: el commit falla"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git add` copió al index el contenido del momento (`v1`). El segundo `echo` cambió solo el archivo de la carpeta, y `git commit` guarda lo que hay en el index. Para confirmar `v2` habría que repetir `git add` (o usar `git commit -a`)."
+  },
+  {
+   "id": "s02-q7",
+   "type": "single",
+   "q": "Justo después de la secuencia de la pregunta anterior, ¿qué muestra `git status -s`?",
+   "options": [
+    "` M a.txt`",
+    "`M  a.txt`",
+    "`MM a.txt`",
+    "Nada: todo está limpio"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El commit guardó `v1`, así que el index coincide con el último commit (columna izquierda vacía), pero en la carpeta está `v2` (columna derecha `M`). `MM` era el estado *antes* del commit."
+  },
+  {
+   "id": "s02-q8",
+   "type": "multi",
+   "q": "Estás en la raíz del repositorio. En la raíz hay un archivo rastreado modificado, uno rastreado que borraste y uno nuevo. ¿Qué comandos preparan los TRES cambios? (Selecciona DOS.)",
+   "options": [
+    "`git add .`",
+    "`git add -u`",
+    "`git add -A`",
+    "`git commit -a`",
+    "`git add *`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Desde Git 2.0, `git add .` y `git add -A` preparan nuevos, modificados y borrados (en la raíz su alcance coincide). `git add -u` y `git commit -a` ignoran el archivo nuevo. `git add *` lo expande la terminal con los archivos que *existen*: el borrado no aparece en la lista, así que su eliminación no se prepara."
+  },
+  {
+   "id": "s02-q9",
+   "type": "single",
+   "q": "Estás en `src/` y ejecutas `git add .`. Hay cambios en `src/app.js` y en `README.md` (en la raíz). ¿Qué se prepara?",
+   "options": [
+    "Ambos",
+    "Solo `src/app.js`",
+    "Solo `README.md`",
+    "Nada: `.` solo funciona en la raíz"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El `.` es un pathspec que significa «la carpeta actual y sus subcarpetas». Para preparar todo el repositorio desde cualquier carpeta está `git add -A`."
+  },
+  {
+   "id": "s02-q10",
+   "type": "single",
+   "q": "¿Qué hace `git add -u`?",
+   "options": [
+    "Prepara archivos nuevos y modificados, pero no los borrados",
+    "Prepara modificaciones y borrados de archivos rastreados; ignora los nuevos",
+    "Deshace el último `git add`",
+    "Prepara solo los archivos sin seguimiento"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-u` (`--update`) actualiza el index solo donde ya tiene entradas: registra cambios y borrados, pero nunca agrega archivos nuevos. La opción que prepara nuevos y modificados ignorando los borrados es `--no-all`; deshacer un `git add` es tema de s04 (`git restore --staged`)."
+  },
+  {
+   "id": "s02-q11",
+   "type": "single",
+   "q": "El proyecto tiene `a.css`, `css/b.css` y `css/temas/c.css`, todos nuevos. Desde la raíz ejecutas `git add '*.css'` (con comillas). ¿Qué se prepara?",
+   "options": [
+    "Solo `a.css`",
+    "`a.css` y `css/b.css`",
+    "Los tres",
+    "Nada: el patrón es inválido"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Con comillas el patrón llega intacto a Git. En los pathspecs de Git, `*` también coincide con `/`, así que alcanza cualquier subcarpeta."
+  },
+  {
+   "id": "s02-q12",
+   "type": "single",
+   "q": "Mismo proyecto que en la pregunta anterior, pero ahora escribes `git add *.css` (sin comillas) en bash, desde la raíz. ¿Qué se prepara?",
+   "options": [
+    "Solo `a.css`",
+    "Los tres",
+    "Solo los de `css/`",
+    "Nada: da error"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Sin comillas, la terminal expande `*.css` antes de ejecutar Git, y lo hace solo con los archivos de la carpeta actual: Git recibe `git add a.css`. Es el ejemplo `git-*.sh` de la documentación oficial."
+  },
+  {
+   "id": "s02-q13",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre `git add`.",
+   "statements": [
+    {
+     "text": "`git add` sin argumentos prepara todo.",
+     "answer": false
+    },
+    {
+     "text": "Se puede hacer `git add` de un archivo borrado para preparar su eliminación.",
+     "answer": true
+    },
+    {
+     "text": "`git add -n .` muestra qué se prepararía, sin prepararlo.",
+     "answer": true
+    },
+    {
+     "text": "Una carpeta vacía aparece en `git status` como sin seguimiento.",
+     "answer": false
+    }
+   ],
+   "explain": "`git add` a secas responde `Nothing specified, nothing added.` y sugiere `git add .`. Una ruta borrada es un pathspec válido: su eliminación queda preparada. `-n` (`--dry-run`) solo simula. Git rastrea contenido, no carpetas: una carpeta vacía es invisible para él."
+  },
+  {
+   "id": "s02-q14",
+   "type": "single",
+   "q": "Hay un archivo nuevo `logo.svg` y un `index.html` rastreado y modificado; nada está preparado. Ejecutas `git commit -am \"Actualiza portada\"`. ¿Qué pasa?",
+   "options": [
+    "Se confirman los dos",
+    "Se confirma solo `index.html`; `logo.svg` sigue sin seguimiento",
+    "Se confirma solo `logo.svg`",
+    "Falla: `-a` y `-m` no se pueden combinar"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-a` prepara automáticamente lo modificado y lo borrado de archivos **rastreados**; los nuevos nunca. `-am` es la combinación más usada de `-a` y `-m`."
+  },
+  {
+   "id": "s02-q15",
+   "type": "single",
+   "q": "¿Qué produce `git commit -m \"Corrige login\" -m \"Faltaba validar el correo.\"` (con algo preparado)?",
+   "options": [
+    "Un commit con título «Corrige login» y cuerpo «Faltaba validar el correo.»",
+    "Dos commits, uno por cada `-m`",
+    "Un error: solo se admite un `-m`",
+    "Un título con las dos frases en la misma línea"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Según la documentación, si hay varios `-m` sus valores se concatenan como párrafos separados. El primero es el título; el resto, el cuerpo."
+  },
+  {
+   "id": "s02-q16",
+   "type": "single",
+   "q": "Ejecutas `git commit` sin `-m`, se abre el editor y lo guardas sin escribir nada. ¿Qué pasa?",
+   "options": [
+    "Se crea un commit sin mensaje",
+    "Se crea un commit con un mensaje por defecto",
+    "Git cancela: `Aborting commit due to empty commit message.`",
+    "Git confirma usando las líneas que empiezan con `#`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Las líneas con `#` se descartan al limpiar el mensaje; si no queda nada, Git cancela el commit. Es la forma limpia de arrepentirse. Nada queda confirmado y lo preparado sigue preparado."
+  },
+  {
+   "id": "s02-q17",
+   "type": "single",
+   "q": "Tienes `index.html` preparado (a medias) y necesitas confirmar YA un arreglo en `contacto.txt` (rastreado, modificado, sin preparar), sin incluir `index.html` y sin perder lo preparado. ¿Qué comando usas?",
+   "options": [
+    "`git commit -am \"Corrige contacto\"`",
+    "`git add contacto.txt && git commit -m \"Corrige contacto\"`",
+    "`git commit -m \"Corrige contacto\" contacto.txt`",
+    "`git commit -m \"Corrige contacto\"`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Con rutas, `git commit` confirma el contenido actual de esas rutas e ignora lo preparado de otros archivos, que sigue preparado (modo `--only`). Las opciones con `-a`, con `git add` + commit o con commit a secas se llevarían `index.html`; la última, además, no incluiría `contacto.txt`."
+  },
+  {
+   "id": "s02-q18",
+   "type": "single",
+   "q": "¿Qué indica `(root-commit)` en la salida `[main (root-commit) 1c351d4] Agrega portada`?",
+   "options": [
+    "Que el commit lo hizo el administrador (root) del sistema",
+    "Que es el primer commit de la historia: no tiene padre",
+    "Que se hizo desde la carpeta raíz del proyecto",
+    "Que el commit está en una rama protegida"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "*Root commit* es el commit sin padre con el que empieza una historia. No tiene nada que ver con el usuario root ni con la carpeta desde la que se ejecuta."
+  },
+  {
+   "id": "s02-q19",
+   "type": "single",
+   "q": "`git commit` responde `no changes added to commit (use \"git add\" and/or \"git commit -a\")`. ¿Qué significa?",
+   "options": [
+    "Hay archivos rastreados modificados, pero nada preparado",
+    "No hay ningún cambio en el repositorio",
+    "Solo hay archivos sin seguimiento",
+    "El repositorio está dañado"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git ve modificaciones (*Changes not staged for commit*) pero el index coincide con el último commit. Si no hubiera ningún cambio diría `nothing to commit, working tree clean`; si solo hubiera archivos nuevos, `nothing added to commit but untracked files present`."
+  },
+  {
+   "id": "s02-q20",
+   "type": "multi",
+   "q": "¿Qué datos guarda un objeto commit? (Selecciona TRES.)",
+   "options": [
+    "El hash del tree con la instantánea",
+    "El nombre de la rama en la que se creó",
+    "El hash de su(s) padre(s)",
+    "Autor y committer, con sus fechas",
+    "La lista de diferencias respecto del padre"
+   ],
+   "answer": [
+    0,
+    2,
+    3
+   ],
+   "explain": "`git cat-file -p HEAD` muestra `tree`, `parent`, `author`, `committer` y el mensaje. El nombre de la rama no se guarda (las ramas son punteros aparte, en `.git/refs`) y Git guarda instantáneas, no diferencias: los diffs se calculan al vuelo."
+  },
+  {
+   "id": "s02-q21",
+   "type": "single",
+   "q": "Si cambias solo el mensaje de un commit (lo aprenderás en s04), ¿qué pasa con su hash?",
+   "options": [
+    "No cambia: el hash depende solo de los archivos",
+    "Cambia, porque el hash se calcula sobre todo el contenido del commit, mensaje incluido",
+    "Cambia solo el hash corto",
+    "Depende de la configuración"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El hash identifica el contenido completo del objeto commit: tree, padres, autor, committer, fechas y mensaje. Cualquier cambio produce un commit distinto con otro hash (y, en cadena, cambian los de sus descendientes)."
+  },
+  {
+   "id": "s02-q22",
+   "type": "single",
+   "q": "Tu segundo commit no modificó `README.md`. ¿Cómo lo guarda Git?",
+   "options": [
+    "Hace una copia nueva del archivo",
+    "Guarda un diff vacío",
+    "El tree del segundo commit apunta al mismo blob que el del primero",
+    "No lo incluye: el commit solo contiene los archivos cambiados"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Cada commit es una instantánea completa (el archivo sí está), pero como el blob se identifica por su contenido, el contenido idéntico se reutiliza: `git ls-tree` de ambos commits muestra el mismo hash de blob."
+  },
+  {
+   "id": "s02-q23",
+   "type": "yesno",
+   "q": "Indica Sí o No sobre `git log`.",
+   "statements": [
+    {
+     "text": "Muestra primero el commit más reciente.",
+     "answer": true
+    },
+    {
+     "text": "`git log --oneline` muestra el hash corto y el título de cada commit.",
+     "answer": true
+    },
+    {
+     "text": "`git log -n 2` muestra los dos commits más antiguos de la historia.",
+     "answer": false
+    },
+    {
+     "text": "En una terminal real se sale del paginador con `q`.",
+     "answer": true
+    }
+   ],
+   "explain": "`git log` lista en orden cronológico inverso. `-n 2` (o `-2`) limita a los dos **más recientes**. En un terminal interactivo la salida larga pasa por un paginador (normalmente `less`), del que se sale con `q`."
+  },
+  {
+   "id": "s02-q24",
+   "type": "single",
+   "q": "¿Cuál es el mejor título de commit?",
+   "options": [
+    "`arreglé el bug del carrito`",
+    "`Corrige cálculo del IVA en el carrito`",
+    "`Cambios en carrito.js.`",
+    "`Actualizaciones varias`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Está en imperativo (completa «Si se aplica, este commit… corrige cálculo del IVA en el carrito»), es específico y no termina en punto. Los otros están en pasado, repiten lo que Git ya muestra (el nombre del archivo) o no dicen nada."
+  },
+  {
+   "id": "s02-q25",
+   "type": "multi",
+   "q": "¿Qué recomienda la convención 50/72 para los mensajes de commit? (Selecciona TRES.)",
+   "options": [
+    "Título de 50 caracteres o menos",
+    "Una línea en blanco entre el título y el cuerpo",
+    "Cuerpo ajustado a unos 72 caracteres por línea",
+    "Terminar el título con punto",
+    "Escribir todo el mensaje en una sola línea"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Título breve (≤ 50), línea en blanco y cuerpo ajustado a ~72 columnas: es lo que recomiendan la documentación de `git commit` y Pro Git. El título va sin punto final, y un mensaje de una sola línea no deja espacio para explicar el porqué."
+  },
+  {
+   "id": "s02-q26",
+   "type": "single",
+   "q": "¿Qué considera Git el «título» de un commit?",
+   "options": [
+    "La primera palabra",
+    "Todo el texto hasta la primera línea en blanco",
+    "Los primeros 50 caracteres",
+    "La última línea"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La documentación de `git commit` lo dice: el texto hasta la primera línea en blanco se trata como título y se usa en toda la herramienta (por ejemplo, como asunto en `git format-patch`). Por eso, si no dejas la línea en blanco, título y cuerpo se funden."
+  },
+  {
+   "id": "s02-q27",
+   "type": "single",
+   "q": "En un mismo archivo hiciste dos cambios independientes, lejos uno del otro, y quieres un commit para cada uno. ¿Qué usas?",
+   "options": [
+    "`git add -p` y elegir el fragmento que va primero",
+    "`git commit -a` dos veces",
+    "`git add -u`",
+    "No se puede: un archivo va entero en un commit"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git add -p` muestra los cambios por fragmentos (*hunks*) y pregunta cuáles preparar. `git commit -a` y `git add -u` preparan el archivo completo; y sí se puede dividir: el index guarda la versión exacta que prepares."
+  },
+  {
+   "id": "s02-q28",
+   "type": "yesno",
+   "q": "¿Es un commit atómico?",
+   "statements": [
+    {
+     "text": "«Agrega login, corrige estilos y actualiza README», todo en un solo commit.",
+     "answer": false
+    },
+    {
+     "text": "Un commit que agrega `carrito.js` junto con la línea de `index.html` que lo carga.",
+     "answer": true
+    },
+    {
+     "text": "Un commit con la línea de `index.html` que carga `carrito.js`, pero sin `carrito.js`.",
+     "answer": false
+    },
+    {
+     "text": "Un commit que solo corrige una falta de ortografía en el README.",
+     "answer": true
+    }
+   ],
+   "explain": "Atómico = un solo cambio lógico y completo. Mezclar tres cambios no lo es; dejar la funcionalidad a medias (un `index.html` que carga un archivo inexistente) tampoco. El carrito completo y la corrección de ortografía sí lo son."
+  },
+  {
+   "id": "s02-q29",
+   "type": "single",
+   "q": "En un repositorio recién creado, sin commits, ¿qué muestra la primera línea de `git status -sb`?",
+   "options": [
+    "`## main`",
+    "`## No commits yet on main`",
+    "`On branch main`",
+    "`## HEAD (no branch)`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con `-b` el formato corto agrega una línea con la rama; si todavía no hay commits, Git lo indica así. `On branch main` es la primera línea del formato largo."
+  },
+  {
+   "id": "s02-q30",
+   "type": "single",
+   "q": "Ejecutaste por error `git init` en tu carpeta personal `~` (todavía sin commits). ¿Qué haces?",
+   "options": [
+    "Nada: es inofensivo",
+    "Borrar la carpeta `~/.git` recién creada, asegurándote de que es esa",
+    "Ejecutar `git init` otra vez para deshacerlo",
+    "Borrar los archivos de `~`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Mientras exista `~/.git`, todo lo que está bajo tu carpeta personal queda dentro de un repositorio (y cualquier proyecto sin su propio `.git` se confunde con él). Si no hay commits, borrar esa `.git` no pierde nada. Repetir `git init` solo lo «reinicializa», y borrar tus archivos sería un desastre."
+  },
+  {
+   "id": "s02-q31",
+   "type": "single",
+   "q": "En un repositorio con 10 archivos rastreados modificas `index.html`, ejecutas `git add index.html` y `git commit -m \"…\"`. Justo después, ¿qué hay en el index?",
+   "options": [
+    "Nada: el commit lo vacía",
+    "Los 10 archivos, idénticos al commit recién creado",
+    "Solo `index.html`",
+    "Solo los archivos modificados desde el commit anterior"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El index siempre contiene la instantánea completa del próximo commit. Tras confirmar, coincide con el commit recién creado, y por eso `git status` dice `nothing to commit, working tree clean`. `git ls-files` lo confirma: lista los 10 archivos."
+  },
+  {
+   "id": "s02-q32",
+   "type": "single",
+   "q": "¿En qué orden busca Git el editor que abre `git commit`?",
+   "options": [
+    "`$EDITOR`, `$VISUAL`, `core.editor` y `$GIT_EDITOR`",
+    "`$GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR` y, al final, el predeterminado (normalmente `vi`)",
+    "Siempre usa `vi`",
+    "Solo `core.editor`; si no existe, el commit falla"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Es el orden que documenta `git var` para `GIT_EDITOR`. Por eso, sin configuración, muchos terminan dentro de Vim: `git config --global core.editor \"code --wait\"` lo evita."
+  },
+  {
+   "id": "s02-q33",
+   "type": "multi",
+   "q": "¿Qué estados corresponden a archivos rastreados (*tracked*)? (Selecciona TRES.)",
+   "options": [
+    "Sin modificar",
+    "Modificado",
+    "Preparado",
+    "Sin seguimiento"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "Pro Git: los archivos rastreados son los que estaban en la última instantánea o fueron preparados después, y pueden estar sin modificar, modificados o preparados. Todo lo demás está sin seguimiento."
+  },
+  {
+   "id": "s02-q34",
+   "type": "single",
+   "q": "Tras `mv guia.txt docs/guia.txt` y `git add -A`, ¿qué muestra `git status -s`?",
+   "options": [
+    "`R  guia.txt -> docs/guia.txt`",
+    "`D  guia.txt` y `?? docs/`",
+    "` D guia.txt` y `A  docs/guia.txt`",
+    "Nada: Git no nota los movimientos"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Con el borrado y el archivo nuevo en el index, Git compara contenidos y deduce el renombre (`R`). Antes del `git add -A` verías ` D guia.txt` y `?? docs/`. Git no guarda los renombres: los detecta (más en s03 con `git mv`)."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-init — documentación oficial",
+   "url": "https://git-scm.com/docs/git-init"
+  },
+  {
+   "title": "git-status — documentación oficial (formato corto)",
+   "url": "https://git-scm.com/docs/git-status"
+  },
+  {
+   "title": "git-add — documentación oficial",
+   "url": "https://git-scm.com/docs/git-add"
+  },
+  {
+   "title": "git-commit — documentación oficial (DISCUSSION: título del mensaje)",
+   "url": "https://git-scm.com/docs/git-commit"
+  },
+  {
+   "title": "git-log — documentación oficial",
+   "url": "https://git-scm.com/docs/git-log"
+  },
+  {
+   "title": "gitglossary — pathspec, index, unborn, commit object",
+   "url": "https://git-scm.com/docs/gitglossary"
+  },
+  {
+   "title": "git-var — orden de búsqueda del editor (GIT_EDITOR)",
+   "url": "https://git-scm.com/docs/git-var"
+  },
+  {
+   "title": "SubmittingPatches — cómo describe sus cambios el proyecto Git",
+   "url": "https://git-scm.com/docs/SubmittingPatches"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Fundamentos de Git (las tres áreas)",
+   "url": "https://git-scm.com/book/es/v2/Inicio---Sobre-el-Control-de-Versiones-Fundamentos-de-Git"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Obteniendo un repositorio Git",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Obteniendo-un-repositorio-Git"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Guardando cambios en el repositorio",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Guardando-cambios-en-el-Repositorio"
+  },
+  {
+   "title": "Pro Git 2ª ed. — Ver el historial de confirmaciones",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Ver-el-Historial-de-Confirmaciones"
+  },
+  {
+   "title": "Pro Git 2nd ed. — Contributing to a Project (Commit Guidelines)",
+   "url": "https://git-scm.com/book/en/v2/Distributed-Git-Contributing-to-a-Project"
+  },
+  {
+   "title": "Pro Git 2nd ed. — Git Objects",
+   "url": "https://git-scm.com/book/en/v2/Git-Internals-Git-Objects"
+  },
+  {
+   "title": "Chris Beams — How to Write a Git Commit Message (2014)",
+   "url": "https://cbea.ms/git-commit/"
+  },
+  {
+   "title": "Atlassian Git Tutorial — Saving changes (git add)",
+   "url": "https://www.atlassian.com/git/tutorials/saving-changes"
+  }
+ ]
+}

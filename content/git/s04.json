@@ -1,0 +1,2802 @@
+{
+ "id": "s04",
+ "order": 4,
+ "title": "Deshacer cambios con seguridad",
+ "domain": "fundamentos",
+ "summary": "Aprende a deshacer cualquier cosa en Git sabiendo qué se pierde y qué no: descartar y despreparar cambios con `git restore`, rehacer el último commit con `--amend`, mover la rama con `git reset` (`--soft`, `--mixed`, `--hard`), revertir commits publicados con `git revert` y limpiar archivos sin seguimiento con `git clean`. Todo con el modelo de las tres áreas y un árbol de decisión para elegir bien a la primera.",
+ "goal": "Elegir y ejecutar el comando correcto para deshacer un cambio en el directorio de trabajo, el área de preparación o la historia, local o publicada, sin perder trabajo por accidente.",
+ "objectives": [
+  "Clasificar lo que quieres deshacer según dónde está: directorio de trabajo, área de preparación, último commit, commits locales o commits publicados.",
+  "Descartar y despreparar cambios con `git restore`, `git restore --staged` y `--source`, y reconocer las formas antiguas con `checkout` y `reset`.",
+  "Corregir el mensaje y el contenido del último commit con `git commit --amend`.",
+  "Predecir el efecto de `git reset --soft`, `--mixed` y `--hard` sobre la rama, el área de preparación y el directorio de trabajo.",
+  "Revertir commits publicados con `git revert`, incluidos varios a la vez y los que generan conflicto.",
+  "Eliminar archivos sin seguimiento con `git clean` de forma segura (`-n`, `-f`, `-d`, `-x`, `-X`).",
+  "Justificar la elección de cada comando con un árbol de decisión y la regla de no reescribir la historia publicada."
+ ],
+ "lessons": [
+  {
+   "id": "s04-l1",
+   "title": "Mapa mental: qué quieres deshacer y dónde está",
+   "minutes": 15,
+   "goals": [
+    "Clasificar un cambio no deseado según la zona en que está: directorio de trabajo, área de preparación, último commit, commits locales o commits publicados.",
+    "Nombrar commits relativos con `HEAD`, `HEAD~n` y `HEAD^` sin copiar hashes.",
+    "Distinguir los comandos que reescriben la historia de los que solo agregan commits."
+   ],
+   "takeaways": [
+    "Antes de deshacer, pregúntate **dónde está** el cambio: directorio de trabajo, área de preparación, último commit, commits locales o commits publicados.",
+    "Cada zona tiene su herramienta: `git restore`, `git restore --staged`, `git commit --amend`, `git reset` y `git revert` (y `git clean` para lo que no tiene seguimiento).",
+    "`HEAD` apunta a tu rama y la rama apunta al último commit; `HEAD~1` es su padre y `HEAD~2` su abuelo.",
+    "Lo más frágil es lo que nunca confirmaste: un cambio descartado del directorio de trabajo no se puede recuperar.",
+    "Regla de oro: lo publicado no se reescribe, se revierte."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Todo el mundo se equivoca con Git: un archivo que no debía prepararse, un commit con el mensaje mal escrito, una prueba que salió mal, un cambio publicado que rompió la tienda en línea. La buena noticia es que **casi todo se puede deshacer**. La mala: cada situación tiene su comando, y usar el equivocado puede costarte horas de trabajo. Por eso esta sección parte con la pregunta que un profesional se hace siempre antes de teclear: **¿dónde está lo que quiero deshacer?**"
+    },
+    {
+     "type": "h",
+     "text": "Las cinco zonas de un cambio"
+    },
+    {
+     "type": "p",
+     "text": "Un cambio recorre zonas que ya conoces de s02: nace en el **directorio de trabajo**, pasa al **área de preparación** (*staging area* o *index*) con `git add` y entra en la **historia** con `git commit`. Dentro de la historia conviene distinguir tres casos: el **último commit**, **varios commits locales** y los **commits publicados**, es decir, los que ya subiste a un servidor con `git push` (lo verás en s07). A cada zona le corresponde una herramienta para deshacer:"
+    },
+    {
+     "type": "diagram",
+     "title": "Cada zona tiene su herramienta para deshacer",
+     "mermaid": "flowchart LR\n  W[\"1 · Directorio de trabajo\"] -->|\"git add\"| I[\"2 · Área de preparación\"]\n  I -->|\"git commit\"| U[\"3 · Último commit\"]\n  U -->|\"más commits\"| C[\"4 · Commits locales\"]\n  C -->|\"git push (s07)\"| P[\"5 · Commits publicados\"]\n  W -.- W2[\"git restore\"]\n  I -.- I2[\"git restore --staged\"]\n  U -.- U2[\"git commit --amend\"]\n  C -.- C2[\"git reset\"]\n  P -.- P2[\"git revert\"]",
+     "caption": "Las flechas continuas son el camino normal de un cambio; las líneas punteadas, el comando que lo deshace en cada zona."
+    },
+    {
+     "type": "table",
+     "head": [
+      "¿Qué quiero deshacer?",
+      "Comando",
+      "¿Reescribe la historia?",
+      "¿Puedo perder trabajo?"
+     ],
+     "rows": [
+      [
+       "Cambios en un archivo que no he preparado",
+       "`git restore archivo`",
+       "No",
+       "**Sí**: el cambio descartado no se recupera"
+      ],
+      [
+       "Un `git add` que no debía hacer",
+       "`git restore --staged archivo`",
+       "No",
+       "No: el cambio vuelve al directorio de trabajo"
+      ],
+      [
+       "El último commit (mensaje o archivos), sin publicar",
+       "`git commit --amend`",
+       "Sí: reemplaza el commit",
+       "No"
+      ],
+      [
+       "Varios commits locales",
+       "`git reset --soft`, `--mixed` o `--hard`",
+       "Sí: mueve la rama",
+       "Solo con `--hard`"
+      ],
+      [
+       "Un commit ya publicado",
+       "`git revert commit`",
+       "No: agrega un commit",
+       "No"
+      ],
+      [
+       "Archivos sin seguimiento que sobran",
+       "`git clean -n` y después `git clean -f`",
+       "No",
+       "**Sí**: se borran del disco"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "**Lo más frágil es lo que nunca confirmaste.** Un commit, incluso uno que «borraste» con `git reset`, sigue un tiempo en la base de datos de Git y se puede rescatar (lo verás con `git reflog` en s10). En cambio, un cambio que solo existía en tu directorio de trabajo y que descartas con `git restore`, `git reset --hard` o `git clean` **desaparece para siempre**: Git nunca lo guardó."
+    },
+    {
+     "type": "h",
+     "text": "HEAD, la rama y cómo nombrar commits"
+    },
+    {
+     "type": "p",
+     "text": "Para deshacer commits necesitas nombrarlos. Recuerda de s02 que cada commit guarda el hash de su **padre**. Además, Git mantiene dos punteros: la rama (`main`) apunta a tu último commit y **`HEAD`** apunta a la rama en la que estás (lo verás a fondo en s05). Cuando confirmas, la rama avanza al commit nuevo y `HEAD` la acompaña. Con eso puedes nombrar cualquier ancestro sin copiar hashes:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`HEAD`: el commit en el que estás (el último de tu rama).",
+      "`HEAD~1`, `HEAD~` o `HEAD^`: su padre, el penúltimo commit.",
+      "`HEAD~2` o `HEAD^^`: el abuelo; `HEAD~3`, el bisabuelo, y así sucesivamente.",
+      "Un hash abreviado como `a1b2c3d`: cualquier commit, sin importar dónde esté."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "HEAD, la rama y los ancestros",
+     "mermaid": "flowchart RL\n  H([\"HEAD\"]) --> M([\"main\"])\n  M --> C3[\"mote · HEAD\"]\n  C3 --> C2[\"sopaipillas · HEAD~1 = HEAD^\"]\n  C2 --> C1[\"empanadas · HEAD~2 = HEAD^^\"]",
+     "caption": "Cada commit apunta a su padre. HEAD~n significa «retrocede n commits desde HEAD»."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo recetas\nfecha '2026-09-01 09:00'\ncommit_archivo empanadas.md '# Empanadas de pino' 'Agrega receta de empanadas'\nfecha '2026-09-01 10:00'\ncommit_archivo sopaipillas.md '# Sopaipillas pasadas' 'Agrega receta de sopaipillas'\nfecha '2026-09-01 11:00'\ncommit_archivo mote.md '# Mote con huesillo' 'Agrega receta de mote con huesillo'",
+     "cwd": "recetas",
+     "code": "git log --oneline\ngit rev-parse --short HEAD\ngit rev-parse --short HEAD~1\ngit rev-parse --short HEAD^\ngit log --oneline -1 HEAD~2\ncat .git/HEAD\ncat .git/refs/heads/main",
+     "caption": "`git rev-parse` traduce un nombre a su hash. Fíjate en que `.git/HEAD` no contiene un hash sino `ref: refs/heads/main`: HEAD apunta a la rama, y la rama al commit."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`~` y `^` coinciden mientras la historia sea una línea recta. Se diferencian en los commits de fusión, que tienen dos padres: `HEAD^2` es el *segundo padre* y `HEAD~2` el abuelo siguiendo siempre el primer padre. Lo verás en s06."
+    },
+    {
+     "type": "h",
+     "text": "Reescribir o agregar: la regla de oro"
+    },
+    {
+     "type": "p",
+     "text": "Los comandos para deshacer commits se dividen en dos familias. Los que **reescriben** la historia (`git commit --amend`, `git reset`) sustituyen o quitan commits de la rama: son perfectos para ordenar tu trabajo local antes de compartirlo. Los que **agregan** (`git revert`) no tocan los commits existentes: crean uno nuevo que deshace el efecto de otro. Si un commit ya está en el servidor, tus compañeros pueden tenerlo y haber trabajado encima; si lo reescribes, tu historia y la de ellos se separan. De ahí la regla de oro: **lo publicado no se reescribe; se revierte.**"
+    },
+    {
+     "type": "p",
+     "text": "En los ejercicios con servidor verás en el gráfico la etiqueta `origin/main`: marca hasta dónde llega lo publicado. Lo que esté por encima de ella es local y todavía puedes reescribirlo. (Los remotos, `origin` y `git push` se estudian en s07.)"
+    },
+    {
+     "type": "p",
+     "text": "Tu mejor aliado para diagnosticar es `git status`: además de decirte en qué zona está cada archivo, **te sugiere entre paréntesis el comando para deshacer**. Míralo en acción en un repositorio con un cambio preparado, uno sin preparar y un archivo sin seguimiento:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda\nfecha '2026-09-01 09:00'\nescribir index.html '<h1>Tienda de bicicletas</h1>'\nescribir precios.csv 'producto,precio'\nanexar precios.csv 'bicicleta urbana,250000'\ngit add .\ngit commit -q -m 'Crea la tienda'\nanexar index.html '<p>Despachos a todo Chile</p>'\nanexar precios.csv 'casco,35000'\ngit add precios.csv\nescribir borrador.txt 'ideas sueltas para la portada'",
+     "cwd": "tienda",
+     "code": "git status\ngit status -s\ngit diff\ngit diff --staged",
+     "caption": "Hay un cambio preparado (precios.csv), uno sin preparar (index.html) y un archivo sin seguimiento (borrador.txt). Lee las pistas entre paréntesis: `git restore --staged`, `git restore` y `git add`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica de entrevista: «¿qué diferencia hay entre `reset`, `restore` y `revert`?». La documentación oficial (`git help git`, apartado *Reset, restore and revert*) lo resume así: `git revert` crea un commit nuevo que invierte los cambios de otros; `git restore` restaura archivos del directorio de trabajo o del área de preparación y **no** mueve la rama; `git reset` mueve la punta de la rama y por eso cambia la historia (con rutas, también sirve para restaurar el área de preparación)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "HEAD",
+       "en": "HEAD",
+       "def": "Referencia a la rama en la que estás (y, a través de ella, a su último commit). Es el punto de partida de nombres como `HEAD~1`."
+      },
+      {
+       "term": "Rama",
+       "en": "branch",
+       "def": "Puntero móvil a un commit; avanza sola con cada commit nuevo. Se estudia en s05."
+      },
+      {
+       "term": "Commit padre",
+       "en": "parent commit",
+       "def": "El commit anterior, cuyo hash guarda cada commit. `HEAD~1` es el padre de `HEAD`."
+      },
+      {
+       "term": "Reescribir la historia",
+       "en": "rewrite history",
+       "def": "Sustituir o quitar commits de una rama (`--amend`, `reset`). Seguro en local; peligroso en lo publicado."
+      },
+      {
+       "term": "Commit publicado",
+       "en": "pushed commit",
+       "def": "Commit que ya está en un repositorio compartido y que otras personas pueden tener."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l2",
+   "title": "Descartar y despreparar cambios: git restore",
+   "minutes": 22,
+   "goals": [
+    "Descartar cambios del directorio de trabajo con `git restore`, revisando antes qué se perderá.",
+    "Sacar archivos del área de preparación sin perder su contenido con `git restore --staged`.",
+    "Recuperar la versión de un archivo de otro commit con `--source`.",
+    "Traducir las formas antiguas `git checkout -- archivo` y `git reset archivo` a su equivalente moderno."
+   ],
+   "takeaways": [
+    "`git restore archivo` copia la versión del **área de preparación** sobre el archivo (no la de HEAD).",
+    "`git restore --staged archivo` copia la versión de HEAD al área de preparación: deshace el `git add` y tus cambios siguen en el disco.",
+    "`--source=<commit>` elige otra fuente; `-S` (`--staged`) y `-W` (`--worktree`) eligen el destino, y juntos restauran las dos áreas.",
+    "Descartar cambios del directorio de trabajo es irreversible: revisa con `git diff` antes.",
+    "`git checkout -- archivo` y `git reset archivo` son las formas antiguas: reconócelas, pero prefiere `git restore`."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git restore` llegó en **Git 2.23** (agosto de 2019). Hasta entonces, el viejo `git checkout` hacía dos trabajos muy distintos: cambiar de rama y restaurar archivos. Las notas de versión lo cuentan así: se introducen `git switch` y `git restore` para separar ambas tareas. `git switch` es para ramas (s05); `git restore` es para **archivos**: nunca mueve la rama ni crea commits. Para usarlo solo necesitas responder dos preguntas: ¿de dónde saco el contenido (la **fuente**)? y ¿dónde lo copio (el **destino**)?"
+    },
+    {
+     "type": "diagram",
+     "title": "De dónde a dónde copia git restore",
+     "mermaid": "flowchart LR\n  H[\"HEAD · último commit\"] -->|\"git restore --staged f\"| I[\"Área de preparación\"]\n  I -->|\"git restore f\"| W[\"Directorio de trabajo\"]\n  S[\"Otro commit\"] -->|\"git restore --source=commit f\"| W",
+     "caption": "Las flechas indican en qué dirección se copia el contenido. Sin opciones, la fuente es el área de preparación y el destino el directorio de trabajo."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Comando",
+      "Fuente",
+      "Destino",
+      "Para qué sirve"
+     ],
+     "rows": [
+      [
+       "`git restore f`",
+       "Área de preparación",
+       "Directorio de trabajo",
+       "Descartar cambios no preparados"
+      ],
+      [
+       "`git restore --staged f`",
+       "HEAD",
+       "Área de preparación",
+       "Deshacer un `git add` (despreparar)"
+      ],
+      [
+       "`git restore -SW f`",
+       "HEAD",
+       "Ambas áreas",
+       "Dejar el archivo exactamente como en el último commit"
+      ],
+      [
+       "`git restore --source=HEAD~2 f`",
+       "`HEAD~2`",
+       "Directorio de trabajo",
+       "Ver o recuperar una versión antigua"
+      ],
+      [
+       "`git restore --source=HEAD~2 -SW f`",
+       "`HEAD~2`",
+       "Ambas áreas",
+       "Versión antigua lista para confirmar"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Descartar cambios del directorio de trabajo"
+    },
+    {
+     "type": "p",
+     "text": "Es el caso más común: tocaste un archivo, no te gustó cómo quedó y quieres volver atrás. `git status` incluso te lo sugiere: `(use \"git restore <file>...\" to discard changes in working directory)`. Primero mira qué vas a perder con `git diff` y después descarta:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-02 09:00'\nescribir post.md '# Mi primer post'\nanexar post.md 'Hoy aprendí a deshacer cambios en Git.'\ngit add post.md\ngit commit -q -m 'Agrega primer post'",
+     "cwd": "blog",
+     "code": "echo \"Párrafo escrito a las 3 AM que no me convence\" >> post.md\ngit status -s\ngit diff\ngit restore post.md\ngit status -s\ncat post.md",
+     "caption": "Tras `git restore`, `git status -s` ya no muestra nada: el archivo volvió a su versión confirmada."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No hay papelera. Como advierte Pro Git, cualquier cambio local que hayas hecho en ese archivo desaparece: Git simplemente lo reemplaza por la última versión preparada o confirmada. El texto descartado nunca pasó por Git, así que **no se puede recuperar**. Si dudas, apártalo con `git stash` (s10) o haz un commit temporal."
+    },
+    {
+     "type": "p",
+     "text": "**Un detalle que confunde a muchos:** sin `--source`, `git restore archivo` copia desde el **área de preparación**, no desde el último commit. Si ya habías preparado una versión del archivo, vuelves a *esa* versión, no a la de HEAD. Compruébalo:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo blog\nfecha '2026-09-02 09:00'\nescribir post.md '# Mi primer post'\nanexar post.md 'Hoy aprendí a deshacer cambios en Git.'\ngit add post.md\ngit commit -q -m 'Agrega primer post'",
+     "cwd": "blog",
+     "code": "echo \"Versión A (preparada)\" >> post.md\ngit add post.md\necho \"Versión B (sin preparar)\" >> post.md\ngit status -s\ngit restore post.md\ncat post.md\ngit status -s\ngit restore --staged post.md\ngit status -s\ngit restore post.md\ngit status -s",
+     "caption": "`MM` significa «modificado en preparación y en trabajo». El primer `git restore` quita solo la versión B; `--staged` devuelve la A al directorio de trabajo, y el último `git restore` la descarta."
+    },
+    {
+     "type": "h",
+     "text": "Sacar archivos del área de preparación"
+    },
+    {
+     "type": "p",
+     "text": "`git restore --staged archivo` hace lo contrario de `git add`: copia la versión de HEAD al área de preparación. El archivo en tu disco no se toca, así que no pierdes nada: el cambio simplemente pasa de *Changes to be committed* a *Changes not staged for commit*, o a *Untracked files* si el archivo era nuevo. Con `--staged --worktree` (abreviado `-SW`) restauras las dos áreas a la vez desde HEAD, algo muy útil para recuperar un archivo borrado con `git rm`:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo tienda-bicis\nfecha '2026-09-02 10:00'\nescribir README.md '# Tienda de bicis Pedaleando'\nescribir catalogo.csv 'modelo,precio'\nanexar catalogo.csv 'urbana,250000'\nanexar catalogo.csv 'montaña,420000'\ngit add .\ngit commit -q -m 'Crea la tienda con catálogo'",
+     "cwd": "tienda-bicis",
+     "code": "rm README.md\ngit rm catalogo.csv\ngit status -s\ngit restore README.md\ngit restore catalogo.csv\ngit restore --staged --worktree catalogo.csv\ngit status -s\nls",
+     "caption": "`git rm` también borra el archivo del área de preparación, por eso el primer intento falla con `error: pathspec 'catalogo.csv' did not match any file(s) known to git`. Con `--staged --worktree` la fuente pasa a ser HEAD y todo vuelve."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "¿Y antes del primer commit? Todavía no existe HEAD, así que `git restore --staged archivo` falla con `fatal: could not resolve HEAD`. Por eso en un repositorio sin commits `git status` sugiere otra cosa: `(use \"git rm --cached <file>...\" to unstage)`. `git reset archivo` también funciona en ese caso."
+    },
+    {
+     "type": "h",
+     "text": "Recuperar la versión de otro commit"
+    },
+    {
+     "type": "p",
+     "text": "Con `--source=<commit>` (o `-s <commit>`) cambias la fuente: puedes traer un archivo tal como estaba en cualquier commit. Por defecto solo escribe en el **directorio de trabajo**; si quieres dejarlo además preparado para confirmar, agrega `--staged --worktree`. Ningún commit cambia: la historia sigue igual y tú decides si confirmas la versión recuperada."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-02 09:00'\ncommit_archivo menu.md 'Café 2500' 'Crea el menú'\nfecha '2026-09-02 10:00'\nanexar menu.md 'Té 1500'\ngit commit -q -am 'Agrega té'\nfecha '2026-09-02 11:00'\nescribir menu.md 'Café 3500'\nanexar menu.md 'Té 2500'\ngit commit -q -am 'Sube todos los precios'",
+     "cwd": "cafeteria",
+     "code": "git log --oneline\ncat menu.md\ngit restore --source=HEAD~1 menu.md\ncat menu.md\ngit status -s\ngit restore menu.md\ngit restore --source=HEAD~1 --staged --worktree menu.md\ngit status -s\ngit commit -m \"Vuelve a los precios anteriores\"\ngit log --oneline",
+     "caption": "Con `--source` a secas el estado es ` M` (solo trabajo); con `--staged --worktree` es `M ` (preparado). La historia no pierde nada: se agrega un commit nuevo."
+    },
+    {
+     "type": "h",
+     "text": "Elegir trozo a trozo: --patch"
+    },
+    {
+     "type": "p",
+     "text": "`git restore -p archivo` te muestra cada bloque de cambios (*hunk*) y te pregunta si lo descartas: `y` (sí), `n` (no), `q` (salir), `?` (ayuda). En tu terminal respondes con el teclado. La terminal de práctica no es interactiva, pero Git lee las respuestas de su entrada estándar, así que puedes pasárselas con `printf` en una tubería:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-02 09:00'\nprintf '%s\\n' 'Menú de la cafetería' '' 'Café de grano 2500' 'Café con leche 2800' 'Té 1500' 'Chocolate caliente 3000' 'Jugo natural 3200' 'Sándwich de ave 4500' 'Barros Luco 5900' 'Empanada de queso 2200' 'Kuchen de manzana 2900' 'Torta de mil hojas 3500' > menu.txt\ngit add menu.txt\ngit commit -q -m 'Crea el menú'\nprintf '%s\\n' 'Menú de la cafetería' '' 'Café de grano 2700' 'Café con leche 2800' 'Té 1500' 'Chocolate caliente 3000' 'Jugo natural 3200' 'Sándwich de ave 4500' 'Barros Luco 5900' 'Empanada de queso 2200' 'Kuchen de manzana 2900' 'Torta de mil hojas 3900' > menu.txt",
+     "cwd": "cafeteria",
+     "code": "git diff\nprintf 'y\\nn\\n' | git restore -p menu.txt\ngit diff",
+     "caption": "Hay dos cambios de precio separados. Respondemos `y` al primero (se descarta) y `n` al segundo (se conserva)."
+    },
+    {
+     "type": "h",
+     "text": "Las formas antiguas (y cómo reconocerlas)"
+    },
+    {
+     "type": "p",
+     "text": "Antes de Git 2.23 se usaban `git checkout` y `git reset` para lo mismo. Siguen funcionando y los verás en tutoriales, en Stack Overflow y en compañeros veteranos, así que conviene reconocerlos:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Moderno",
+      "Forma antigua",
+      "Ojo con"
+     ],
+     "rows": [
+      [
+       "`git restore f`",
+       "`git checkout -- f`",
+       "El `--` separa rutas de ramas: sin él, si existe una rama llamada como el archivo, Git cambia de rama."
+      ],
+      [
+       "`git restore --staged f`",
+       "`git reset f` o `git reset HEAD f`",
+       "Es la forma que sugería `git status` antes de 2.23."
+      ],
+      [
+       "`git restore -SW f`",
+       "`git checkout HEAD -- f`",
+       "Restaura ambas áreas desde HEAD."
+      ],
+      [
+       "`git restore --source=C -SW f`",
+       "`git checkout C -- f`",
+       "`checkout` con commit escribe **en ambas áreas**; `restore --source` por defecto solo en el trabajo."
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-02 09:00'\ncommit_archivo menu.md 'Café 2500' 'Crea el menú'\nfecha '2026-09-02 10:00'\nanexar menu.md 'Té 1500'\ngit commit -q -am 'Agrega té'\nfecha '2026-09-02 11:00'\nescribir menu.md 'Café 3500'\nanexar menu.md 'Té 2500'\ngit commit -q -am 'Sube todos los precios'",
+     "cwd": "cafeteria",
+     "code": "echo \"Promo: 2x1 en café\" >> menu.md\ngit checkout -- menu.md\ngit status -s\necho \"Promo: 2x1 en café\" >> menu.md\ngit add menu.md\ngit reset menu.md\ngit status -s\ngit checkout HEAD -- menu.md\ngit checkout HEAD~1 -- menu.md\ngit status -s\ngit restore -SW menu.md\ngit status -s",
+     "caption": "`git reset menu.md` imprime `Unstaged changes after reset:`. Después, `git checkout HEAD~1 -- menu.md` deja el archivo como `M ` (preparado): toca ambas áreas."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "La página del manual de `git restore` todavía dice «THIS COMMAND IS EXPERIMENTAL. THE BEHAVIOR MAY CHANGE.» (también en Git 2.50). Aun así, es lo que recomienda el propio `git status` desde 2.23 y lo que enseña la edición actual de Pro Git. Aprende la forma moderna y reconoce la antigua."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Descartar cambios",
+       "en": "discard changes",
+       "def": "Reemplazar la versión del directorio de trabajo por la preparada o confirmada. Irreversible."
+      },
+      {
+       "term": "Despreparar",
+       "en": "unstage",
+       "def": "Sacar un cambio del área de preparación sin tocar el archivo (`git restore --staged`)."
+      },
+      {
+       "term": "Fuente",
+       "en": "source",
+       "def": "Commit o área desde la que `git restore` copia el contenido (`--source`)."
+      },
+      {
+       "term": "Bloque de cambios",
+       "en": "hunk",
+       "def": "Grupo de líneas cambiadas contiguas en un diff; `-p` trabaja bloque a bloque."
+      },
+      {
+       "term": "Especificación de ruta",
+       "en": "pathspec",
+       "def": "Rutas o patrones (`'*.css'`) que indican a qué archivos afecta un comando."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l3",
+   "title": "Rehacer el último commit: git commit --amend",
+   "minutes": 16,
+   "goals": [
+    "Corregir el mensaje del último commit con `git commit --amend`.",
+    "Agregar o quitar archivos del último commit sin crear commits nuevos.",
+    "Explicar por qué `--amend` cambia el hash y por qué no debe usarse sobre commits publicados."
+   ],
+   "takeaways": [
+    "`--amend` no edita el commit: crea uno **nuevo** con el mismo padre y la rama pasa a apuntarle.",
+    "`-m` da un mensaje nuevo, `--no-edit` conserva el actual y sin opciones se abre el editor con el mensaje de siempre.",
+    "El commit enmendado conserva el autor y la fecha de autor; cambian la fecha de commit y el hash.",
+    "Para quitar un archivo del último commit: `git rm --cached archivo` y luego `git commit --amend --no-edit`.",
+    "Solo enmienda commits que todavía no hayas publicado."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Acabas de confirmar y te das cuenta: el mensaje tiene una errata, olvidaste un archivo o se coló uno que no debía. Si el commit **todavía no está publicado**, la solución es `git commit --amend` (*enmendar*): rehace el último commit con lo que haya en el área de preparación y, si quieres, con un mensaje nuevo."
+    },
+    {
+     "type": "diagram",
+     "title": "Qué hace --amend por dentro",
+     "mermaid": "flowchart RL\n  M([\"main\"]) --> N[\"c3' · commit nuevo (hash distinto)\"]\n  N --> B[\"b2\"]\n  O[\"c3 · commit original, sin rama\"] -.-> B\n  B --> A[\"a1\"]",
+     "caption": "El commit original no se modifica: se crea c3' con el mismo padre y la rama pasa a apuntarle. c3 queda sin ninguna rama que lo alcance."
+    },
+    {
+     "type": "p",
+     "text": "Como dice Pro Git, al enmendar no «arreglas» el commit: lo **reemplazas** por otro. Un commit es inmutable: su hash se calcula a partir de su instantánea, su padre, su autor y quien lo confirma (con sus fechas) y su mensaje, así que cualquier cambio produce un commit nuevo con otro hash. Por eso `--amend` es una forma (pequeña) de **reescribir la historia**."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Quiero…",
+      "Comando"
+     ],
+     "rows": [
+      [
+       "Cambiar el mensaje en el editor",
+       "`git commit --amend`"
+      ],
+      [
+       "Cambiar el mensaje directamente",
+       "`git commit --amend -m \"Mensaje nuevo\"`"
+      ],
+      [
+       "Agregar un archivo olvidado sin tocar el mensaje",
+       "`git add archivo` y `git commit --amend --no-edit`"
+      ],
+      [
+       "Quitar un archivo que se coló (sin borrarlo del disco)",
+       "`git rm --cached archivo` y `git commit --amend --no-edit`"
+      ],
+      [
+       "Figurar como autor con la fecha actual",
+       "`git commit --amend --reset-author --no-edit`"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Corregir el mensaje"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Portafolio de Ana</h1>' 'Crea la portada'\nfecha '2026-09-03 10:00'\ncommit_archivo proyectos.html '<h2>Proyectos</h2>' 'Agerga seccion de proyetcos'",
+     "cwd": "portafolio",
+     "code": "git log --oneline\ngit commit --amend -m \"Agrega sección de proyectos\"\ngit log --oneline",
+     "caption": "Compara los hashes: el primer commit es el mismo, el segundo cambió aunque su contenido es idéntico."
+    },
+    {
+     "type": "p",
+     "text": "Sin `-m`, Git abre el editor con el mensaje actual para que lo corrijas. En la plataforma se abre el editor integrado: cambia la primera línea, guarda y Git termina el commit (las líneas que empiezan con `#` se ignoran)."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Portafolio de Ana</h1>' 'Crea la portada'\nfecha '2026-09-03 10:00'\ncommit_archivo proyectos.html '<h2>Proyectos</h2>' 'Agerga seccion de proyetcos'",
+     "cwd": "portafolio",
+     "code": "git commit --amend\ngit log --oneline",
+     "caption": "Prueba a escribir «Agrega sección de proyectos» en el editor antes de guardar."
+    },
+    {
+     "type": "h",
+     "text": "Agregar el archivo olvidado"
+    },
+    {
+     "type": "p",
+     "text": "`--amend` usa el área de preparación **actual** para rehacer el commit. Así que basta con preparar lo que faltaba y enmendar. `--no-edit` conserva el mensaje sin abrir el editor:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Portafolio de Ana</h1>' 'Crea la portada'\nfecha '2026-09-03 10:00'\nescribir proyectos.html '<link rel=\"stylesheet\" href=\"proyectos.css\">'\nanexar proyectos.html '<h2>Proyectos</h2>'\ngit add proyectos.html\ngit commit -q -m 'Agrega sección de proyectos'\nescribir proyectos.css 'h2 { color: teal; }'",
+     "cwd": "portafolio",
+     "code": "git status -s\ngit log --oneline\ngit add proyectos.css\ngit commit --amend --no-edit\ngit show --stat HEAD\ngit log --oneline",
+     "caption": "`git show --stat HEAD` confirma que el commit ahora trae los dos archivos, con el mismo mensaje y la misma fecha de autor."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Evita `git commit -a --amend` si tienes otros cambios a medias: `-a` prepara **todos** los archivos rastreados modificados y los metería en el commit enmendado. Prepara a mano solo lo que falta."
+    },
+    {
+     "type": "h",
+     "text": "Quitar un archivo que se coló"
+    },
+    {
+     "type": "p",
+     "text": "Si el archivo es **nuevo** en ese commit, sácalo del área de preparación con `git rm --cached` (s03) y enmienda: desaparece del commit pero sigue en tu disco. Si el archivo ya existía antes y lo que quieres es deshacer su *modificación* en ese commit, devuelve al área de preparación la versión anterior con `git restore --staged --source=HEAD~1 archivo` y enmienda."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo portafolio\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Portafolio de Ana</h1>' 'Crea la portada'\nfecha '2026-09-03 10:00'\nescribir proyectos.html '<h2>Proyectos</h2>'\nescribir notas-privadas.txt 'Sueldo que voy a pedir: ...'\ngit add .\ngit commit -q -m 'Agrega sección de proyectos'",
+     "cwd": "portafolio",
+     "code": "git show --stat HEAD\ngit rm --cached notas-privadas.txt\ngit commit --amend --no-edit\ngit show --stat HEAD\ngit status -s\nls",
+     "caption": "El archivo sale del commit y queda sin seguimiento (`??`) en tu disco. Para que no vuelva a colarse, agrégalo a `.gitignore` (s03)."
+    },
+    {
+     "type": "h",
+     "text": "¿Por qué no enmendar lo publicado?"
+    },
+    {
+     "type": "p",
+     "text": "Mira qué pasa si enmiendas un commit que ya está en el servidor. Antes del amend, `git status` dice que estás al día con `origin/main`; después, que las ramas **divergieron** (*have diverged*): tu `main` tiene un commit que el servidor no tiene, y el servidor uno que tú ya no tienes."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "git init -q --bare ~/servidor/web.git\ngit clone -q ~/servidor/web.git ~/web\ncd ~/web\nfecha '2026-09-03 09:00'\ncommit_archivo index.html '<h1>Mi sitio</h1>' 'Crea la portada'\nfecha '2026-09-03 10:00'\ncommit_archivo contacto.html '<p>Escríbeme</p>' 'Agrega contacto'\ngit push -q -u origin main",
+     "cwd": "web",
+     "code": "git status\ngit commit --amend -m \"Agrega página de contacto\"\ngit status\ngit log --oneline --graph --all",
+     "caption": "El gráfico muestra dos puntas: tu commit enmendado y el original, que sigue en `origin/main`."
+    },
+    {
+     "type": "p",
+     "text": "Para publicar tendrías que forzar el envío y sobrescribir el servidor, y quienes ya descargaron el commit original se encontrarían con una historia que no cuadra con la suya. Pro Git lo dice sin rodeos: enmienda solo commits que sigan siendo locales. Para lo publicado existe `git revert` (lección 5)."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "`--amend` conserva el autor y la **fecha de autor** del commit original; cambian la fecha de commit (*committer date*) y el hash. Por eso Git muestra una línea `Date:` al enmendar. Si quieres figurar como autor con la fecha actual, agrega `--reset-author`. Muchos profesionales se crean un alias para `git commit --amend --no-edit` (alias en s13)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "«¿Qué pasa con el commit original tras un `--amend`?» No se borra de inmediato: queda en la base de datos sin ninguna rama que lo apunte y se puede recuperar con `git reflog` (s10) hasta que la limpieza automática (`git gc`) lo elimine. Otra pregunta frecuente: `--amend` equivale aproximadamente a `git reset --soft HEAD^` seguido de `git commit -c ORIG_HEAD`, como explica la propia documentación de `git commit`. Y si no hay commits todavía, `git commit --amend` falla con `fatal: You have nothing to amend.`"
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Enmendar",
+       "en": "amend",
+       "def": "Reemplazar el último commit por uno nuevo con el área de preparación actual y, opcionalmente, otro mensaje."
+      },
+      {
+       "term": "Fecha de autor",
+       "en": "author date",
+       "def": "Cuándo se escribió originalmente el cambio. `--amend` la conserva."
+      },
+      {
+       "term": "Fecha de commit",
+       "en": "committer date",
+       "def": "Cuándo se creó este objeto commit. Cambia con cada `--amend`."
+      },
+      {
+       "term": "Commit inalcanzable",
+       "en": "unreachable commit",
+       "def": "Commit al que no llega ninguna rama ni etiqueta; `git gc` lo borra con el tiempo."
+      },
+      {
+       "term": "Ramas divergentes",
+       "en": "diverged branches",
+       "def": "Dos ramas que tienen cada una commits que la otra no tiene."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l4",
+   "title": "git reset: mover la rama (--soft, --mixed, --hard)",
+   "minutes": 25,
+   "goals": [
+    "Predecir qué cambian `--soft`, `--mixed` y `--hard` en la rama, el área de preparación y el directorio de trabajo.",
+    "Deshacer commits locales conservando sus cambios con `--soft` o `--mixed`.",
+    "Descartar commits y cambios con `--hard` identificando antes qué se perderá.",
+    "Deshacer un reset recién hecho con `ORIG_HEAD`."
+   ],
+   "takeaways": [
+    "`git reset` mueve la rama a la que apunta HEAD; el modo decide hasta dónde se propaga: `--soft` (solo la rama), `--mixed` (rama y preparación; es el modo por defecto) y `--hard` (rama, preparación y trabajo).",
+    "`--soft` deja los cambios de los commits deshechos **preparados**: ideal para juntar varios commits en uno.",
+    "`--mixed` los deja **sin preparar** en el directorio de trabajo: ideal para rehacer los commits de otra forma.",
+    "`--hard` es el único modo destructivo: pierde los cambios no confirmados de archivos rastreados, incluidos archivos nuevos ya preparados; los archivos sin seguimiento sobreviven.",
+    "Antes de mover la rama, `reset` guarda la posición anterior en `ORIG_HEAD`: `git reset --hard ORIG_HEAD` deshace el último reset."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git reset` es el comando más poderoso (y el más temido) de esta sección. Pro Git le dedica un capítulo entero, *Reset Demystified* («Reiniciar desmitificado»), y la clave para dominarlo es pensar en **tres árboles**: tres colecciones de archivos que Git maneja al mismo tiempo."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Árbol",
+      "Qué es",
+      "Rol"
+     ],
+     "rows": [
+      [
+       "HEAD",
+       "La instantánea del último commit de tu rama",
+       "Será el padre del próximo commit"
+      ],
+      [
+       "Área de preparación (índice)",
+       "La instantánea que propones para el próximo commit",
+       "`git commit` la convierte en commit"
+      ],
+      [
+       "Directorio de trabajo",
+       "Los archivos reales en tu disco",
+       "Tu espacio de pruebas"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Los tres pasos de reset"
+    },
+    {
+     "type": "p",
+     "text": "`git reset <modo> <commit>` ejecuta hasta tres pasos, siempre en este orden, y el **modo** decide en cuál se detiene:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Mueve la rama** a la que apunta HEAD hasta el commit indicado (HEAD la acompaña). `--soft` se detiene aquí.",
+      "**Actualiza el área de preparación** para que coincida con ese commit. `--mixed`, el modo por defecto, se detiene aquí.",
+      "**Actualiza el directorio de trabajo** para que coincida con el área de preparación. Solo `--hard` llega hasta aquí."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "diagram",
+     "title": "Dónde se detiene cada modo",
+     "mermaid": "flowchart TD\n  A[\"git reset MODO commit\"] --> B[\"1 · Mover la rama (y HEAD) al commit\"]\n  B --> C{\"¿--soft?\"}\n  C -->|\"sí\"| F1[\"Fin: preparación y trabajo intactos\"]\n  C -->|\"no\"| D[\"2 · Área de preparación = commit\"]\n  D --> E{\"¿--hard?\"}\n  E -->|\"no: --mixed\"| F2[\"Fin: cambios en el trabajo, sin preparar\"]\n  E -->|\"sí\"| G[\"3 · Directorio de trabajo = commit\"]\n  G --> F3[\"Fin: cambios no confirmados perdidos\"]",
+     "caption": "Los tres modos mueven la rama; la diferencia es cuántas áreas sobrescriben después."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Modo",
+      "Rama y HEAD",
+      "Área de preparación",
+      "Directorio de trabajo",
+      "¿Seguro para tu trabajo?"
+     ],
+     "rows": [
+      [
+       "`--soft`",
+       "Se mueve",
+       "No cambia",
+       "No cambia",
+       "Sí"
+      ],
+      [
+       "`--mixed` (por defecto)",
+       "Se mueve",
+       "= commit destino",
+       "No cambia",
+       "Sí"
+      ],
+      [
+       "`--hard`",
+       "Se mueve",
+       "= commit destino",
+       "= commit destino",
+       "**No**"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "git reset HEAD~2: la rama retrocede",
+     "mermaid": "flowchart RL\n  D[\"d4 · wip 2\"] --> C[\"c3 · wip\"] --> B[\"b2 · Agrega resta\"] --> A[\"a1 · Crea la calculadora\"]\n  M1([\"main antes\"]) -.-> D\n  M2([\"main después\"]) --> B",
+     "caption": "c3 y d4 no se borran: quedan fuera de la rama (y se pueden recuperar con el reflog, s10). Lo que cambia según el modo es qué pasa con su contenido en tus áreas."
+    },
+    {
+     "type": "h",
+     "text": "--soft: deshacer commits y dejar todo preparado"
+    },
+    {
+     "type": "p",
+     "text": "Con `--soft` la rama retrocede, pero el área de preparación y el directorio de trabajo se quedan como estaban. Resultado: todo lo que traían los commits deshechos queda **preparado**, listo para un único commit nuevo. Es la forma clásica de juntar (*squash*) varios commits locales en uno:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-04 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-04 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-04 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'wip'\nfecha '2026-09-04 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'wip 2'",
+     "cwd": "calculadora",
+     "code": "git log --oneline\ngit reset --soft HEAD~2\ngit log --oneline\ngit status -s\ngit diff --staged\ngit commit -m \"Agrega multiplicación y división\"\ngit log --oneline",
+     "caption": "`--soft` no imprime nada. Los dos commits «wip» se convierten en uno con un mensaje decente."
+    },
+    {
+     "type": "h",
+     "text": "--mixed: deshacer commits y dejar los cambios sin preparar"
+    },
+    {
+     "type": "p",
+     "text": "`--mixed` (el modo que se usa si no escribes ninguno) también copia el commit destino al área de preparación. Los cambios de los commits deshechos quedan en tu directorio de trabajo **sin preparar**, y Git lista los archivos afectados bajo `Unstaged changes after reset:`. Es perfecto cuando quieres rehacer esos commits de otra forma, por ejemplo separándolos:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-04 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-04 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-04 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'wip'\nfecha '2026-09-04 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'wip 2'",
+     "cwd": "calculadora",
+     "code": "git reset HEAD~2\ngit log --oneline\ngit status\ngit diff --stat",
+     "caption": "El código de multiplicar y dividir sigue en `calc.py`, pero ahora como cambio sin preparar."
+    },
+    {
+     "type": "h",
+     "text": "--hard: volver atrás de verdad"
+    },
+    {
+     "type": "p",
+     "text": "`--hard` completa los tres pasos: la rama, el área de preparación y el directorio de trabajo quedan idénticos al commit destino. Es lo que quieres cuando un experimento salió mal y no hay nada que rescatar. Mira qué se pierde y qué sobrevive en un repositorio con cambios en todas las zonas:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-04 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-04 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-04 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'wip'\nfecha '2026-09-04 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'wip 2'\nanexar calc.py '# TODO: controlar la división por cero'\nescribir potencia.py 'def potencia(a, b):'\nanexar potencia.py '    return a ** b'\ngit add potencia.py\nescribir notas.txt 'Preguntar a la profe por los decimales'",
+     "cwd": "calculadora",
+     "code": "git status -s\ngit reset --hard HEAD~2\ngit status -s\nls\ngit log --oneline",
+     "caption": "Se pierden los dos commits, el comentario sin confirmar de `calc.py` y también `potencia.py`, que estaba **preparado** pero nunca confirmado. `notas.txt`, sin seguimiento, sobrevive."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`--hard` es, en palabras de Pro Git, uno de los pocos casos en que Git realmente destruye datos. Pierdes los cambios no confirmados de los archivos rastreados y los archivos **nuevos que ya habías preparado** pero nunca confirmaste. Los archivos sin seguimiento no se tocan (para eso está `git clean`). Antes de un `--hard`, siempre `git status` y `git diff`: los commits se pueden rescatar después; lo no confirmado, en general, no."
+    },
+    {
+     "type": "h",
+     "text": "Deshacer un reset: ORIG_HEAD"
+    },
+    {
+     "type": "p",
+     "text": "Antes de mover la rama, `reset` guarda en `ORIG_HEAD` el commit en el que estaba. Si te arrepientes justo después, `git reset --hard ORIG_HEAD` devuelve la rama a su sitio. (`git merge` y `git rebase` también actualizan `ORIG_HEAD`; para historias más largas de arrepentimientos está `git reflog`, en s10.)"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-04 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-04 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-04 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'wip'\nfecha '2026-09-04 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'wip 2'",
+     "cwd": "calculadora",
+     "code": "git reset --hard HEAD~2\ngit log --oneline\ncat .git/ORIG_HEAD\ngit reset --hard ORIG_HEAD\ngit log --oneline",
+     "caption": "`git reset --hard` confirma con `HEAD is now at <hash> <mensaje>`. Ojo: `ORIG_HEAD` solo recupera commits; el trabajo no confirmado que borró un `--hard` no vuelve."
+    },
+    {
+     "type": "h",
+     "text": "reset con rutas"
+    },
+    {
+     "type": "p",
+     "text": "Si le das una ruta, `reset` se salta el paso 1 (una rama no puede apuntar «a medias» a un commit) y solo copia ese archivo de HEAD al área de preparación. Por eso `git reset archivo` equivale a `git restore --staged archivo`. Con rutas no admite `--soft` ni `--hard`:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo calculadora\nfecha '2026-09-04 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-04 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-04 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'wip'\nfecha '2026-09-04 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'wip 2'",
+     "cwd": "calculadora",
+     "code": "echo \"# versión 2\" >> calc.py\ngit add calc.py\ngit status -s\ngit reset calc.py\ngit status -s\ngit reset --soft HEAD calc.py\ngit reset --hard HEAD calc.py",
+     "caption": "Los dos últimos comandos fallan con `fatal: Cannot do soft reset with paths.` y `fatal: Cannot do hard reset with paths.`"
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Existe un modo menos conocido y más prudente que `--hard`: `git reset --keep <commit>`. Mueve la rama y actualiza los archivos, pero **se niega** si con ello perdieras cambios locales (`error: Entry 'calc.py' not uptodate. Cannot merge.`). Y un truco frecuente: `git reset` sin argumentos equivale a `git reset --mixed HEAD`, es decir, despreparar todo."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "En entrevistas técnicas y exámenes de Git aparecen escenarios como: «¿qué modo de reset conserva los cambios preparados?» (`--soft`), «¿cuál es el modo por defecto?» (`--mixed`), «¿cómo juntas tus tres últimos commits locales en uno?» (`git reset --soft HEAD~3` y `git commit`) y «¿por qué no usar reset sobre commits publicados?» (reescribe la historia compartida: usa `git revert`)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Índice",
+       "en": "index",
+       "def": "Otro nombre del área de preparación: la instantánea propuesta para el próximo commit."
+      },
+      {
+       "term": "Árbol",
+       "en": "tree",
+       "def": "Instantánea de archivos y carpetas. Reset trabaja con tres: HEAD, índice y directorio de trabajo."
+      },
+      {
+       "term": "ORIG_HEAD",
+       "en": "ORIG_HEAD",
+       "def": "Referencia que guarda dónde estaba la rama antes de un reset, merge o rebase."
+      },
+      {
+       "term": "Juntar commits",
+       "en": "squash",
+       "def": "Convertir varios commits en uno solo, por ejemplo con `git reset --soft`."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l5",
+   "title": "git revert: deshacer sin reescribir la historia",
+   "minutes": 22,
+   "goals": [
+    "Revertir un commit publicado creando un commit inverso con `git revert`.",
+    "Resolver o abortar un revert que termina en conflicto.",
+    "Revertir varios commits en un único commit con `--no-commit`."
+   ],
+   "takeaways": [
+    "`git revert` no borra nada: agrega un commit que aplica el cambio inverso, así la historia compartida sigue siendo válida para todos.",
+    "El mensaje propuesto es `Revert \"<asunto>\"` con el cuerpo `This reverts commit <hash>.`; agrega el porqué.",
+    "Puedes revertir cualquier commit, no solo el último; si los cambios posteriores tocan las mismas líneas habrá un conflicto (`--continue`, `--skip` o `--abort`).",
+    "`--no-edit` acepta el mensaje propuesto; `-n` (`--no-commit`) acumula varias reversiones para confirmarlas en un solo commit.",
+    "Revertir un revert produce `Reapply \"<asunto>\"` (desde Git 2.43)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "¿Y si el error ya está publicado? Tus compañeros descargaron ese commit y quizá trabajaron encima: no puedes hacerlo desaparecer sin romperles la historia. La herramienta correcta es `git revert`: **crea un commit nuevo que hace exactamente lo contrario** del commit que indicas. Si el commit original agregó una línea, el revert la quita; si cambió `1500` por `1800`, el revert vuelve a poner `1500`. La historia solo crece, así que todos pueden sincronizarse sin problemas."
+    },
+    {
+     "type": "diagram",
+     "title": "Revertir agrega, no borra",
+     "mermaid": "gitGraph\n  commit id: \"a1 Crea lista de precios\"\n  commit id: \"b2 Aplica descuento\"\n  commit id: \"c3 Agrega despachos\"\n  commit id: \"d4 Revert b2\" type: REVERSE",
+     "caption": "b2 sigue en la historia; d4 anula su efecto. c3, publicado después, no se ve afectado."
+    },
+    {
+     "type": "p",
+     "text": "Por dentro, Git calcula qué cambió ese commit respecto de su padre y aplica lo contrario sobre tu versión actual, como una pequeña fusión. Por eso puede revertir commits antiguos aunque después haya otros, siempre que no hayan tocado las mismas líneas."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Pregunta",
+      "`git reset`",
+      "`git revert`"
+     ],
+     "rows": [
+      [
+       "¿Qué hace con la historia?",
+       "Mueve la rama: los commits deshechos salen de ella",
+       "Agrega un commit nuevo al final"
+      ],
+      [
+       "¿Seguro en commits publicados?",
+       "No: obliga a forzar el envío",
+       "Sí: es su uso principal"
+      ],
+      [
+       "¿Deja rastro?",
+       "No en la rama (solo en el reflog local)",
+       "Sí: queda registrado qué se deshizo y cuándo"
+      ],
+      [
+       "¿Puede deshacer un commit del medio?",
+       "No sin llevarse también los posteriores",
+       "Sí, solo ese"
+      ],
+      [
+       "¿Qué exige a tu directorio de trabajo?",
+       "Nada: según el modo, conserva o sobrescribe tus cambios",
+       "Pide no tener cambios preparados ni cambios sin confirmar en los archivos que debe tocar"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Revertir el último commit"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git log --oneline\ngit revert --no-edit HEAD\ngit log --oneline\ncat precios.txt\ngit show HEAD",
+     "caption": "El commit nuevo se llama `Revert \"Sube el precio del café\"` y su cuerpo dice `This reverts commit <hash completo>.`"
+    },
+    {
+     "type": "p",
+     "text": "En tu terminal, `git revert HEAD` abre el editor con ese mensaje propuesto para que expliques **por qué** reviertes (la documentación lo recomienda encarecidamente). La terminal de práctica no es una terminal interactiva, así que Git confirma directamente con el mensaje propuesto; si quieres editarlo aquí, usa `git revert -e`. Con `--no-edit` nunca se abre el editor, en ninguna terminal: úsalo cuando el mensaje por defecto te sirva."
+    },
+    {
+     "type": "h",
+     "text": "Revertir un commit antiguo"
+    },
+    {
+     "type": "p",
+     "text": "No tienes que revertir el último: indica cualquier commit por su hash o con `HEAD~n`. Solo se deshace ese commit; lo que vino después se queda."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git log --oneline\ngit revert --no-edit HEAD~1\ngit log --oneline\nls\ncat precios.txt",
+     "caption": "Se revierte «Agrega menú del día» (borra `menu.txt`), pero el alza del café, posterior, sigue ahí."
+    },
+    {
+     "type": "h",
+     "text": "Cuando el revert choca: conflictos"
+    },
+    {
+     "type": "p",
+     "text": "Si un commit posterior modificó las mismas líneas, Git no puede decidir solo y se detiene con un **conflicto**. `git status` te dice que estás en medio de un revert (`You are currently reverting commit …`) y el archivo muestra las dos versiones entre marcadores: arriba `<<<<<<< HEAD` (lo que tienes ahora), abajo lo que dejaría el revert (`>>>>>>> parent of …`). Tienes tres salidas: resolver y seguir (`git revert --continue`), saltarte ese commit (`--skip`) o cancelar todo y volver a como estabas (`--abort`). Los conflictos se estudian a fondo en s06; aquí basta con saber salir de ellos."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git revert HEAD~2\ngit status\ncat precios.txt\ngit revert --abort\ngit status\ngit log --oneline -1",
+     "caption": "Revertir «Agrega precio del té» choca con «Sube el precio del café», que tocó las líneas vecinas. `--abort` lo deja todo como antes."
+    },
+    {
+     "type": "p",
+     "text": "Para resolverlo, deja el archivo como debe quedar (con `code precios.txt` en la plataforma o con tu editor), márcalo como resuelto con `git add` y continúa:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git revert HEAD~2\nprintf 'cafe 1800\\n' > precios.txt\ngit add precios.txt\ngit status\ngit revert --continue\ngit log --oneline -3",
+     "caption": "La versión resuelta conserva el café a 1800 y quita el té, que era lo que hacía el commit revertido."
+    },
+    {
+     "type": "h",
+     "text": "Varios commits de una vez"
+    },
+    {
+     "type": "p",
+     "text": "`git revert` acepta varios commits o un rango. Por defecto crea **un commit de reversión por cada uno**; en un rango como `HEAD~3..HEAD` (los tres últimos commits) empieza por el más reciente para minimizar conflictos. Si prefieres un único commit, usa `-n` (`--no-commit`): Git aplica todas las reversiones al área de preparación y al directorio de trabajo, y tú confirmas al final con `git commit`."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git revert -n HEAD HEAD~1\ngit status\ngit commit -m \"Revierte el menú del día y el alza del café\"\ngit log --oneline\ngit status",
+     "caption": "Mientras no confirmes, `git status` avisa `You are currently reverting commit …`. El `git commit` cierra la operación."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "¿Te arrepentiste de revertir? Revierte el revert. Desde **Git 2.43** el mensaje propuesto ya no es `Revert \"Revert \"…\"\"` sino `Reapply \"<asunto original>\"`. Pruébalo:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo cafeteria\nfecha '2026-09-05 09:00'\nescribir precios.txt 'cafe 1500'\ngit add precios.txt\ngit commit -q -m 'Agrega precio del café'\nfecha '2026-09-05 10:00'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Agrega precio del té'\nfecha '2026-09-05 11:00'\ncommit_archivo menu.txt 'Menú del día: cazuela de vacuno' 'Agrega menú del día'\nfecha '2026-09-05 12:00'\nescribir precios.txt 'cafe 1800'\nanexar precios.txt 'te 1200'\ngit commit -q -am 'Sube el precio del café'",
+     "cwd": "cafeteria",
+     "code": "git revert --no-edit HEAD\ngit revert --no-edit HEAD\ngit log --oneline -3",
+     "caption": "El segundo revert deshace el primero y se titula `Reapply \"Sube el precio del café\"`."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Dos límites de `git revert`. Primero, la documentación pide un directorio de trabajo limpio. En la práctica, si tienes cambios **preparados** Git se niega de entrada (`error: your local changes would be overwritten by revert.`), y si solo tienes cambios sin preparar, se niega cuando el revert necesita tocar esos archivos (`error: Your local changes to the following files would be overwritten by merge`). Confirma, descarta o aparta tus cambios antes. Segundo, un commit de fusión no se revierte sin indicar qué padre es la línea principal (`-m 1`): lo verás en s16, junto con sus consecuencias."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Escenario típico de entrevista: «Un commit que ya está en `main` del servidor rompió producción. ¿Qué haces?» Respuesta: `git revert <hash>` y publicar el commit de reversión; nunca `git reset --hard` más un envío forzado sobre una rama compartida. Pregunta trampa: «¿`git revert HEAD~3` revierte los tres últimos commits?» No: revierte **solo** el commit `HEAD~3`. Para los tres últimos se usa el rango `git revert HEAD~3..HEAD`."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Revertir",
+       "en": "revert",
+       "def": "Crear un commit nuevo que aplica el cambio inverso de otro commit."
+      },
+      {
+       "term": "Commit de reversión",
+       "en": "revert commit",
+       "def": "El commit creado por `git revert`; su cuerpo incluye `This reverts commit <hash>.`"
+      },
+      {
+       "term": "Conflicto",
+       "en": "conflict",
+       "def": "Situación en que Git no puede combinar cambios automáticamente porque tocan las mismas líneas (s06)."
+      },
+      {
+       "term": "Historia compartida",
+       "en": "shared history",
+       "def": "Commits que ya están en un repositorio al que otras personas tienen acceso."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l6",
+   "title": "Limpiar archivos sin seguimiento: git clean",
+   "minutes": 14,
+   "goals": [
+    "Previsualizar con `git clean -n` qué archivos sin seguimiento se borrarían.",
+    "Eliminar archivos y carpetas sin seguimiento con `-f` y `-d`, protegiendo los necesarios con `-e` o con rutas.",
+    "Decidir cuándo incluir los archivos ignorados con `-x` o `-X`."
+   ],
+   "takeaways": [
+    "`git clean` solo borra archivos **sin seguimiento**; nunca toca archivos rastreados.",
+    "Por seguridad exige `-f` (`clean.requireForce` vale `true` por defecto), salvo con `-n` o `-i`.",
+    "Sin `-d` no entra en carpetas sin seguimiento; sin `-x` respeta `.gitignore`.",
+    "`-x` borra también lo ignorado (`.env`, dependencias); `-X` borra solo lo ignorado.",
+    "Lo que borra `git clean` no pasa por la papelera ni por Git: siempre `-n` primero."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "`git reset --hard` y `git restore` solo trabajan con archivos que Git conoce. Los archivos **sin seguimiento** (*untracked*) —capturas, salidas de pruebas, carpetas de compilación— no les interesan. Para eso existe `git clean`: borra del disco los archivos sin seguimiento del directorio de trabajo, empezando por la carpeta actual."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Opción",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "`-n`, `--dry-run`",
+       "Simula: muestra `Would remove …` sin borrar nada"
+      ],
+      [
+       "`-f`, `--force`",
+       "Borra de verdad (obligatorio salvo que configures `clean.requireForce=false`)"
+      ],
+      [
+       "`-d`",
+       "Entra también en carpetas sin seguimiento"
+      ],
+      [
+       "`-x`",
+       "Ignora las reglas de `.gitignore`: borra también los archivos ignorados"
+      ],
+      [
+       "`-X`",
+       "Borra **solo** los archivos ignorados"
+      ],
+      [
+       "`-e PATRÓN`",
+       "Agrega una regla de ignorar: lo que coincida se salva de `-f` e incluso de `-x`… pero con `-X` pasa a borrarse, porque ahora cuenta como ignorado"
+      ],
+      [
+       "`-i`",
+       "Modo interactivo: muestra la lista y un menú para elegir qué borrar"
+      ],
+      [
+       "`-q`",
+       "Silencioso: solo informa errores"
+      ],
+      [
+       "`git clean -f RUTA…`",
+       "Limita la limpieza a esas rutas"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "¿Lo borra git clean?",
+     "mermaid": "flowchart TD\n  A[\"Archivo en tu carpeta\"] --> B{\"¿Rastreado por Git?\"}\n  B -->|\"sí\"| N[\"git clean nunca lo toca\"]\n  B -->|\"no\"| C{\"¿Ignorado por .gitignore?\"}\n  C -->|\"sí\"| X[\"Solo con -x (todo) o -X (solo ignorados)\"]\n  C -->|\"no\"| D{\"¿Dentro de una carpeta sin seguimiento?\"}\n  D -->|\"no\"| F[\"git clean -f\"]\n  D -->|\"sí\"| G[\"git clean -f -d\"]",
+     "caption": "Recorre el árbol antes de limpiar: la mayoría de los sustos vienen de un -x o un -d que no hacían falta."
+    },
+    {
+     "type": "p",
+     "text": "Veámoslo en un proyecto de Node.js típico: `node_modules/`, `.env` y los `*.log` están ignorados; `borrador.md`, `prueba.tmp` y la carpeta `dist/` no tienen seguimiento. Compara lo que borraría cada combinación (todas con `-n`, sin riesgo):"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo app-notas\nfecha '2026-09-06 09:00'\nescribir .gitignore 'node_modules/'\nanexar .gitignore '.env'\nanexar .gitignore '*.log'\nescribir app.js 'console.log(\"App de notas\");'\ngit add .\ngit commit -q -m 'Crea la app de notas'\nescribir node_modules/express/index.js 'module.exports = {};'\nescribir .env 'CLAVE_API=abc123'\nescribir servidor.log 'Servidor iniciado en el puerto 3000'\nescribir borrador.md 'Ideas: modo oscuro, etiquetas'\nescribir prueba.tmp 'temporal'\nescribir dist/app.min.js 'console.log(1)'",
+     "cwd": "app-notas",
+     "code": "git status -s\ngit clean\ngit clean -n\ngit clean -n -d\ngit clean -n -d -x\ngit clean -n -d -X",
+     "caption": "Sin `-f` Git se niega: `fatal: clean.requireForce is true and -f not given: refusing to clean`. Fíjate en que `dist/` solo aparece con `-d`, y que `.env`, `servidor.log` y `node_modules/` solo con `-x` o `-X` (la carpeta ignorada, además, necesita `-d`)."
+    },
+    {
+     "type": "p",
+     "text": "Ahora de verdad. Primero sin `-d` y protegiendo `borrador.md` con `-e`; después, con `-d`:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo app-notas\nfecha '2026-09-06 09:00'\nescribir .gitignore 'node_modules/'\nanexar .gitignore '.env'\nanexar .gitignore '*.log'\nescribir app.js 'console.log(\"App de notas\");'\ngit add .\ngit commit -q -m 'Crea la app de notas'\nescribir node_modules/express/index.js 'module.exports = {};'\nescribir .env 'CLAVE_API=abc123'\nescribir servidor.log 'Servidor iniciado en el puerto 3000'\nescribir borrador.md 'Ideas: modo oscuro, etiquetas'\nescribir prueba.tmp 'temporal'\nescribir dist/app.min.js 'console.log(1)'",
+     "cwd": "app-notas",
+     "code": "git clean -f -e borrador.md\ngit status -s\ngit clean -n -d -e borrador.md\ngit clean -f -d -e borrador.md\ngit status -s\nls -a",
+     "caption": "El primer `git clean -f` borra `prueba.tmp` pero no entra en `dist/`; con `-d` también cae `dist/`. `borrador.md` se salva gracias a `-e`, y `.env`, `servidor.log` y `node_modules/` porque están ignorados."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "`git clean -f -d -x` es tierra arrasada: además de la basura, borra tu `.env` con claves locales, la configuración de tu editor y carpetas de dependencias que tardaron minutos en descargarse. Nada de eso está en Git, así que **no hay forma de recuperarlo** con Git. Regla profesional: siempre `git clean -n` con exactamente las mismas opciones antes de cambiar la `n` por la `f`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Para dejar el directorio de trabajo exactamente como el último commit, combina dos comandos: `git reset --hard` (archivos rastreados) y `git clean -f -d` (sin seguimiento, respetando los ignorados). En tu terminal, `git clean -i` muestra un menú (`clean`, `filter by pattern`, `select by numbers`, `ask each`, `quit`, `help`) para elegir con calma; en la terminal de práctica no es interactivo. Y si lo que quieres es apartar archivos sin seguimiento en lugar de borrarlos, `git stash -u` (s10) los guarda."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Preguntas frecuentes: «¿por qué `git clean` sin opciones da error?» (por `clean.requireForce`), «¿qué opción borra también los archivos ignorados?» (`-x`), «¿y solo los ignorados?» (`-X`, útil para borrar productos de compilación y conservar lo creado a mano) y «¿`git reset --hard` borra los archivos sin seguimiento?» (no; para eso es `git clean`)."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Sin seguimiento",
+       "en": "untracked",
+       "def": "Archivo que existe en el directorio de trabajo pero nunca se preparó ni se confirmó."
+      },
+      {
+       "term": "Ignorado",
+       "en": "ignored",
+       "def": "Archivo sin seguimiento que coincide con un patrón de `.gitignore`; `git status` no lo muestra."
+      },
+      {
+       "term": "Simulación",
+       "en": "dry run",
+       "def": "Ejecución que solo informa lo que haría (`-n`), sin cambiar nada."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s04-l7",
+   "title": "¿Qué comando uso? Árbol de decisión y hábitos profesionales",
+   "minutes": 15,
+   "goals": [
+    "Elegir el comando adecuado para cada situación de deshacer usando un árbol de decisión.",
+    "Ordenar varias operaciones de deshacer para que ninguna estropee a la siguiente.",
+    "Aplicar hábitos que reducen el riesgo de perder trabajo."
+   ],
+   "takeaways": [
+    "Primero diagnostica con `git status`, `git diff` y `git log --oneline`; después deshaz.",
+    "La pregunta clave es dónde está el cambio y, si está en un commit, si ya se publicó.",
+    "El orden importa: `--amend` actúa sobre el último commit y `git clean` borra lo que aún no está en Git.",
+    "`git restore` sin `--staged`, `git reset --hard` y `git clean -f` no tienen deshacer para lo no confirmado.",
+    "Confirmar a menudo en local es tu red de seguridad: un commit se puede recuperar; un cambio sin confirmar, no."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Ya conoces todas las herramientas. Esta lección las ordena en un árbol de decisión que puedes recorrer en segundos, y las pone a prueba en situaciones con varios problemas a la vez, que es como suelen aparecer en la vida real."
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de decisión: ¿qué comando uso?",
+     "mermaid": "flowchart TD\n  A[\"¿Dónde está lo que quieres deshacer?\"] --> B[\"Archivos sin seguimiento que sobran\"]\n  A --> C[\"Cambio sin preparar\"]\n  A --> D[\"Cambio preparado\"]\n  A --> V[\"Un archivo debe volver a una versión antigua\"]\n  A --> E[\"Dentro de uno o más commits\"]\n  B --> B1[\"git clean -n y después git clean -f (-d para carpetas)\"]\n  C --> C1[\"git restore archivo · se pierde\"]\n  D --> D1[\"git restore --staged archivo · se conserva\"]\n  V --> V1[\"git restore --source=commit archivo\"]\n  E --> F{\"¿Ya está publicado?\"}\n  F -->|\"sí\"| F1[\"git revert commit\"]\n  F -->|\"no\"| G{\"¿Solo corregir el último commit?\"}\n  G -->|\"sí\"| G1[\"git commit --amend\"]\n  G -->|\"no: quitar commits\"| H{\"¿Qué hago con sus cambios?\"}\n  H -->|\"conservarlos preparados\"| H1[\"git reset --soft HEAD~n\"]\n  H -->|\"conservarlos sin preparar\"| H2[\"git reset HEAD~n\"]\n  H -->|\"descartarlos\"| H3[\"git reset --hard HEAD~n\"]",
+     "caption": "Si dudas entre dos ramas del árbol, elige la que no destruye: siempre podrás descartar después."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Situación",
+      "Solución"
+     ],
+     "rows": [
+      [
+       "«Me equivoqué al editar `app.js` y quiero volver a lo confirmado»",
+       "`git restore app.js`"
+      ],
+      [
+       "«Hice `git add .` y se coló `.env`»",
+       "`git restore --staged .env` (y agrégalo a `.gitignore`)"
+      ],
+      [
+       "«El mensaje del último commit tiene una errata» (no publicado)",
+       "`git commit --amend -m \"…\"`"
+      ],
+      [
+       "«Olvidé un archivo en el último commit» (no publicado)",
+       "`git add archivo` y `git commit --amend --no-edit`"
+      ],
+      [
+       "«Quiero juntar mis 3 últimos commits locales en uno»",
+       "`git reset --soft HEAD~3` y `git commit`"
+      ],
+      [
+       "«Quiero rehacer mis 2 últimos commits locales de otra forma»",
+       "`git reset HEAD~2`"
+      ],
+      [
+       "«El experimento local fracasó: fuera todo»",
+       "`git reset --hard <commit bueno>` y `git clean -n`/`-f -d`"
+      ],
+      [
+       "«Un commit publicado rompió algo»",
+       "`git revert <hash>`"
+      ],
+      [
+       "«Necesito `config.json` como estaba hace 5 commits»",
+       "`git restore --source=HEAD~5 config.json`"
+      ],
+      [
+       "«Me arrepentí del reset que acabo de hacer»",
+       "`git reset --hard ORIG_HEAD` (o `git reflog`, s10)"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Varios problemas a la vez: el orden importa"
+    },
+    {
+     "type": "p",
+     "text": "En la pastelería quedaron varias cosas a medias: un experimento de colores sin confirmar en `estilos.css`, basura sin seguimiento (`debug.log`, `captura.tmp`) y el último commit, «Agrega página de contacto», al que le faltó `contacto.css`. Si ejecutas `git clean -f` antes de preparar `contacto.css`, lo borras (¡también está sin seguimiento!). La secuencia segura es: diagnosticar, rescatar lo valioso en Git y, al final, destruir lo que sobra."
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo pasteleria\nfecha '2026-09-07 09:00'\nescribir index.html '<h1>Pastelería Dulce Hogar</h1>'\nescribir estilos.css 'h1 { color: chocolate; }'\ngit add .\ngit commit -q -m 'Crea la portada'\nfecha '2026-09-07 10:00'\nescribir contacto.html '<link rel=\"stylesheet\" href=\"contacto.css\">'\nanexar contacto.html '<p>Pedidos al +56 9 1234 5678</p>'\ngit add contacto.html\ngit commit -q -m 'Agrega página de contacto'\nescribir contacto.css 'p { font-size: 1.2rem; }'\nanexar estilos.css 'body { background: magenta; }'\nescribir debug.log 'error 42'\nescribir captura.tmp 'x'",
+     "cwd": "pasteleria",
+     "code": "git status -s\ngit diff\ngit restore estilos.css\ngit add contacto.css\ngit commit --amend --no-edit\ngit clean -n\ngit clean -f\ngit status\ngit show --stat HEAD",
+     "caption": "Primero lo que no tiene vuelta atrás pero está claro (descartar el experimento), después rescatar `contacto.css` en el commit y, solo al final, `git clean`."
+    },
+    {
+     "type": "h",
+     "text": "Volver exactamente al último commit"
+    },
+    {
+     "type": "p",
+     "text": "A veces quieres tirar **todo** lo que no está confirmado y quedarte con el directorio de trabajo recién salido del último commit. Son dos pasos, porque cada comando se ocupa de una clase de archivos: `git reset --hard` de los rastreados (y de los preparados nuevos) y `git clean` de los sin seguimiento. Sin `-x`, los ignorados como `.env` sobreviven:"
+    },
+    {
+     "type": "code",
+     "lang": "bash",
+     "run": true,
+     "setup": "nuevo_repo pasteleria\nfecha '2026-09-07 09:00'\nescribir .gitignore '.env'\nescribir index.html '<h1>Pastelería Dulce Hogar</h1>'\ngit add .\ngit commit -q -m 'Crea la portada'\nescribir .env 'CLAVE=local'\nanexar index.html '<marquee>¡Ofertas!</marquee>'\nescribir prueba.html '<p>experimento</p>'\ngit add prueba.html\nescribir cache/pagina.html 'cache'\nescribir notas.tmp 'x'",
+     "cwd": "pasteleria",
+     "code": "git status -s\ngit reset --hard\ngit status -s\ngit clean -n -d\ngit clean -f -d\ngit status\nls -a",
+     "caption": "`prueba.html` estaba preparado pero nunca confirmado: lo borra el `reset --hard`. `cache/` y `notas.tmp` los borra `git clean -f -d`. `.env` sigue ahí."
+    },
+    {
+     "type": "h",
+     "text": "Hábitos que te ahorran disgustos"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Diagnostica antes de actuar:** `git status`, `git diff`, `git diff --staged` y `git log --oneline --graph --all`. Treinta segundos de lectura evitan una hora de reconstrucción.",
+      "**Simula lo destructivo:** `git clean -n` antes de `-f`; `git diff` antes de `git restore`; `git status` antes de `git reset --hard`.",
+      "**Confirma a menudo en local.** Un commit «wip» se puede enmendar o juntar después (`--amend`, `reset --soft`); un cambio sin confirmar que se pierde no vuelve.",
+      "**Aparta en vez de destruir** cuando dudes: un commit temporal o `git stash` (s10).",
+      "**Respeta la regla de oro:** en ramas compartidas, `git revert`; reescribe (`--amend`, `reset`) solo lo que sigue siendo local.",
+      "**Si algo sale mal, detente.** No encadenes comandos al azar: los commits «perdidos» se recuperan con `git reflog` (s10), y cada comando extra puede complicar el rescate."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Recuerda qué **no** tiene arreglo con Git: los cambios que descartas con `git restore` (sin `--staged`), con `git reset --hard` o con `git checkout -- archivo`, y los archivos que borras con `git clean -f`, si nunca estuvieron en un commit. Todo lo que alguna vez se confirmó, en cambio, se puede rescatar durante un tiempo. Matiz de experto: lo que llegaste a **preparar** con `git add` deja una copia del contenido (un *blob*) en la base de datos aunque nunca lo confirmaras, y a veces se puede pescar con `git fsck --lost-found` (s10); lo que nunca preparaste no deja rastro."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Tres preguntas que suelen caer juntas: (1) «¿qué comando deshace cambios preparados sin perderlos?» → `git restore --staged`; (2) «¿cuál de estos NO reescribe la historia: `commit --amend`, `reset`, `revert`?» → `revert`; (3) «tras `git reset --hard HEAD~1`, ¿qué pasa con un archivo sin seguimiento?» → nada, sigue ahí."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Diagnosticar",
+       "en": "inspect",
+       "def": "Revisar el estado con `status`, `diff` y `log` antes de cambiar nada."
+      },
+      {
+       "term": "Commit temporal",
+       "en": "WIP commit",
+       "def": "Commit provisional (*work in progress*) que se enmienda o se junta con otros antes de publicar."
+      },
+      {
+       "term": "Red de seguridad",
+       "en": "safety net",
+       "def": "Mecanismos que permiten recuperar trabajo: commits, `ORIG_HEAD`, el reflog (s10)."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "exercises": [
+  {
+   "id": "s04-e1",
+   "title": "Descarta un experimento de estilos",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Estás armando la web de la **Panadería La Espiga**. Hace un rato probaste una combinación de colores en `estilos.css`… y quedó espantosa (fucsia sobre verde limón). En cambio, la línea con el horario que agregaste en `index.html` está perfecta, aunque todavía no la confirmas.",
+    "**Objetivo:** descarta los cambios de `estilos.css` para que vuelva a estar como en el último commit, **sin tocar** el cambio pendiente de `index.html`. No crees commits.",
+    "Antes de descartar, revisa con `git status` y `git diff` qué cambió en cada archivo."
+   ],
+   "setup": "nuevo_repo panaderia-web\nfecha '2026-09-01 09:00'\nescribir index.html '<h1>Panadería La Espiga</h1>'\nescribir estilos.css 'h1 { color: saddlebrown; }'\ngit add .\ngit commit -q -m 'Crea la página de inicio'\nfecha '2026-09-02 10:00'\nanexar index.html '<p>Pan amasado, hallullas y marraquetas todos los días</p>'\ngit commit -q -am 'Agrega descripción de productos'\nescribir estilos.css 'h1 { color: hotpink; font-size: 72px; }'\nanexar estilos.css 'body { background: lime; }'\nanexar index.html '<p>Horario: lunes a sábado de 7:00 a 20:00</p>'",
+   "cwd": "panaderia-web",
+   "checks": [
+    {
+     "name": "estilos.css vuelve a la versión del último commit",
+     "script": "git diff --quiet HEAD -- estilos.css || falla 'estilos.css todavía tiene cambios respecto al último commit'"
+    },
+    {
+     "name": "index.html conserva el horario sin confirmar",
+     "script": "archivo_tiene index.html 'Horario: lunes a sábado' 'Se perdió la línea del horario en index.html: solo había que descartar estilos.css (reinicia el ejercicio)'\ngit diff --quiet HEAD -- index.html && falla 'index.html ya no tiene cambios pendientes: el horario debía quedar sin confirmar'\ntrue"
+    },
+    {
+     "name": "No creaste commits",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"La historia debería seguir con 2 commits (tiene $(num_commits)): aquí no hacía falta confirmar nada\""
+    }
+   ],
+   "solution": [
+    "git status",
+    "git diff estilos.css",
+    "git restore estilos.css"
+   ],
+   "hints": [
+    "`git status` muestra los dos archivos modificados y, entre paréntesis, sugiere el comando para descartar cambios del directorio de trabajo.",
+    "Ese comando recibe rutas: solo afecta a los archivos que nombres.",
+    "`git restore estilos.css` y comprueba con `git status -s` que solo queda ` M index.html`."
+   ],
+   "explain": "`git restore estilos.css` copia sobre el archivo la versión que hay en el área de preparación; como no habías hecho `git add`, esa versión coincide con la del último commit. Solo toca las rutas que nombras, por eso `index.html` conserva su cambio.\n\n**Alternativas:** la forma antigua `git checkout -- estilos.css` hace lo mismo; `git restore -p estilos.css` te deja decidir bloque a bloque; `git restore .` descartaría **todo** lo no preparado de la carpeta (aquí te habrías llevado también el horario).\n\n**Cuidado:** el cambio descartado nunca pasó por Git, así que no se puede recuperar. Mira siempre `git diff archivo` antes de un `git restore`."
+  },
+  {
+   "id": "s04-e2",
+   "title": "Saca del área de preparación lo que no va",
+   "level": "facil",
+   "minutes": 6,
+   "prompt": [
+    "Querías preparar solo tu mejora de `agenda.py` (una función para listar contactos), pero escribiste `git add .` y se coló `notas.txt`, un archivo con tus pendientes personales que no tiene nada que hacer en el repositorio.",
+    "**Objetivo:** saca `notas.txt` del área de preparación **sin borrarlo** de tu disco y deja `agenda.py` preparado tal como está. No confirmes todavía."
+   ],
+   "setup": "nuevo_repo agenda-cli\nfecha '2026-09-03 09:00'\nescribir agenda.py 'contactos = []'\nanexar agenda.py ''\nanexar agenda.py 'def agregar(nombre):'\nanexar agenda.py '    contactos.append(nombre)'\ngit add agenda.py\ngit commit -q -m 'Crea la agenda de contactos'\nanexar agenda.py ''\nanexar agenda.py 'def listar():'\nanexar agenda.py '    for c in contactos:'\nanexar agenda.py '        print(c)'\nescribir notas.txt 'Pendientes: comprar pan, llamar a la Cata, pagar la luz'\ngit add .",
+   "cwd": "agenda-cli",
+   "checks": [
+    {
+     "name": "notas.txt ya no está preparado",
+     "script": "if git diff --cached --name-only | grep -qx 'notas.txt'; then falla 'notas.txt sigue en el área de preparación'; fi"
+    },
+    {
+     "name": "notas.txt sigue en tu disco",
+     "script": "archivo_tiene notas.txt 'Pendientes' 'notas.txt desapareció o cambió: debía quedarse intacto en tu disco (reinicia el ejercicio)'"
+    },
+    {
+     "name": "agenda.py sigue preparado",
+     "script": "git diff --cached --name-only | grep -qx 'agenda.py' || falla 'agenda.py ya no está preparado: solo había que sacar notas.txt'\narchivo_tiene agenda.py 'def listar' 'Se perdió tu cambio de agenda.py'"
+    },
+    {
+     "name": "Sin commits nuevos",
+     "script": "[ \"$(num_commits)\" = 1 ] || falla 'No había que confirmar: la historia debería seguir con 1 commit'"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git restore --staged notas.txt"
+   ],
+   "hints": [
+    "Mira `git status`: bajo *Changes to be committed* Git te dice cómo despreparar (*unstage*).",
+    "Busca la opción de `git restore` que trabaja sobre el área de preparación en vez de sobre el directorio de trabajo.",
+    "`git restore --staged notas.txt`"
+   ],
+   "explain": "`git restore --staged notas.txt` copia al área de preparación la versión de `notas.txt` que hay en HEAD. Como el archivo no existe en HEAD, simplemente sale del área de preparación y vuelve a ser un archivo sin seguimiento (`??`). El archivo del disco no se toca.\n\n**Alternativas:** `git reset notas.txt` (la forma antigua, que además funciona antes del primer commit) y `git rm --cached notas.txt`, válida aquí porque el archivo es nuevo; con un archivo ya rastreado, en cambio, `git rm --cached` prepararía su **borrado** del repositorio.\n\n**Para que no vuelva a pasar:** agrega `notas.txt` a `.gitignore` (s03) o guarda tus notas fuera del repositorio, y revisa `git status` antes de confirmar tras un `git add .`."
+  },
+  {
+   "id": "s04-e3",
+   "title": "Corrige el mensaje del último commit",
+   "level": "facil",
+   "minutes": 5,
+   "prompt": [
+    "Acabas de confirmar la receta del pastel de choclo en tu recetario familiar, pero el mensaje salió con dos errores de tipeo: «Agerga receta de pastel de chocolo». Todavía no la compartes con nadie.",
+    "**Objetivo:** cambia el mensaje del último commit a exactamente «Agrega receta de pastel de choclo», sin crear un commit nuevo y sin cambiar su contenido."
+   ],
+   "setup": "nuevo_repo recetario\nfecha '2026-09-04 18:00'\ncommit_archivo README.md '# Recetario familiar' 'Crea el recetario'\nfecha '2026-09-04 18:30'\nescribir pastel-de-choclo.md '# Pastel de choclo'\nanexar pastel-de-choclo.md ''\nanexar pastel-de-choclo.md '- 6 choclos'\nanexar pastel-de-choclo.md '- 500 g de carne molida'\nanexar pastel-de-choclo.md '- 1 cucharada de azúcar para gratinar'\ngit add pastel-de-choclo.md\ngit commit -q -m 'Agerga receta de pastel de chocolo'",
+   "cwd": "recetario",
+   "checks": [
+    {
+     "name": "El mensaje es el correcto",
+     "script": "mensaje_es HEAD 'Agrega receta de pastel de choclo'"
+    },
+    {
+     "name": "Sigues teniendo 2 commits",
+     "script": "[ \"$(num_commits)\" = 2 ] || falla \"Deberías seguir teniendo 2 commits (tienes $(num_commits)): corrige el último en vez de agregar otro\"\nmensaje_es HEAD~1 'Crea el recetario'"
+    },
+    {
+     "name": "El contenido no cambió",
+     "script": "contenido HEAD pastel-de-choclo.md | grep -q '6 choclos' || falla 'La receta ya no está en el último commit'\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git commit --amend -m \"Agrega receta de pastel de choclo\""
+   ],
+   "hints": [
+    "`git commit` tiene una opción para **reemplazar** el último commit en vez de crear uno nuevo.",
+    "`git commit --amend` abre el editor con el mensaje actual; con `-m` puedes dar el mensaje nuevo directamente."
+   ],
+   "explain": "`git commit --amend -m \"…\"` crea un commit nuevo con el mismo padre, el mismo contenido (el área de preparación no había cambiado) y el mensaje corregido; la rama pasa a apuntarle. Compara `git log --oneline` antes y después: el hash cambió, porque el mensaje forma parte de lo que se «hashea». El autor y la fecha de autor se conservan.\n\n**Alternativa con editor:** `git commit --amend` a secas abre el editor con el mensaje actual; corriges la primera línea, guardas y listo.\n\n**Límite:** si el commit ya estuviera publicado, reemplazarlo obligaría a forzar el envío; en ese caso se deja el mensaje como está (o, si el problema es el contenido, se usa `git revert`)."
+  },
+  {
+   "id": "s04-e4",
+   "title": "Recupera dos archivos borrados por error",
+   "level": "facil",
+   "minutes": 7,
+   "prompt": [
+    "Ordenando la carpeta de la tienda de bicicletas te pasaste de largo: borraste `README.md` con `rm` y `catalogo.csv` con `git rm`. Ninguno de los dos borrados era intencional.",
+    "**Objetivo:** recupera ambos archivos tal como están en el último commit y deja `git status` limpio. No crees commits."
+   ],
+   "setup": "nuevo_repo tienda-bicis\nfecha '2026-09-05 10:00'\nescribir README.md '# Tienda de bicis Pedaleando'\nescribir catalogo.csv 'modelo,precio'\nanexar catalogo.csv 'urbana,250000'\nanexar catalogo.csv 'montaña,420000'\nescribir contacto.html '<p>Escríbenos a hola@pedaleando.cl</p>'\ngit add .\ngit commit -q -m 'Crea la tienda con catálogo'\nrm README.md\ngit rm -q catalogo.csv",
+   "cwd": "tienda-bicis",
+   "checks": [
+    {
+     "name": "README.md recuperado",
+     "script": "archivo_existe README.md 'README.md sigue borrado'\ngit diff --quiet HEAD -- README.md || falla 'README.md no coincide con el último commit'"
+    },
+    {
+     "name": "catalogo.csv recuperado en tu disco",
+     "script": "archivo_existe catalogo.csv 'catalogo.csv sigue sin existir en tu disco'\narchivo_tiene catalogo.csv 'urbana,250000' 'catalogo.csv no tiene el contenido del último commit'"
+    },
+    {
+     "name": "El borrado ya no está preparado",
+     "script": "git diff --cached --quiet || falla 'Todavía hay cambios en el área de preparación (¿sigue preparado el borrado de catalogo.csv?)'"
+    },
+    {
+     "name": "Todo como en el último commit",
+     "script": "limpio\n[ \"$(num_commits)\" = 1 ] || falla 'No había que confirmar nada: la historia debería seguir con 1 commit'"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git restore README.md",
+    "git restore --staged --worktree catalogo.csv"
+   ],
+   "hints": [
+    "`git status` muestra los dos borrados en secciones distintas: uno sin preparar (*Changes not staged*) y otro preparado (*Changes to be committed*).",
+    "Para el sin preparar basta con `git restore`. El otro no existe ya ni en el área de preparación: `git restore catalogo.csv` fallará.",
+    "Devuelve `catalogo.csv` desde HEAD a las dos áreas a la vez: `git restore --staged --worktree catalogo.csv` (o `-SW`)."
+   ],
+   "explain": "`rm` solo borra el archivo del directorio de trabajo; el área de preparación todavía lo tiene, así que `git restore README.md` lo copia de vuelta desde ahí. `git rm`, en cambio, lo borra **también** del área de preparación y deja el borrado listo para confirmar; por eso `git restore catalogo.csv` responde `error: pathspec 'catalogo.csv' did not match any file(s) known to git`. Con `--staged` la fuente pasa a ser HEAD: `git restore -SW catalogo.csv` lo restaura en ambas áreas.\n\n**Alternativa en dos pasos:** `git restore --staged catalogo.csv` (el borrado deja de estar preparado) y luego `git restore catalogo.csv`. **Forma antigua:** `git checkout HEAD -- catalogo.csv`.\n\nComo los archivos estaban confirmados, recuperarlos es siempre posible, incluso si ya hubieras confirmado el borrado: `git restore --source=HEAD~1 archivo`."
+  },
+  {
+   "id": "s04-e5",
+   "title": "Agrega al último commit el archivo olvidado",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Confirmaste «Agrega página de contacto» en tu portafolio, pero `contacto.html` enlaza `contacto.css` y ese archivo quedó fuera: sigue sin seguimiento. Además, tienes un cambio a medias en `README.md` que **no** forma parte de esta funcionalidad.",
+    "**Objetivo:** haz que el último commit incluya también `contacto.css`, conservando su mensaje, sin crear commits nuevos y sin meter el cambio de `README.md`, que debe seguir pendiente."
+   ],
+   "setup": "nuevo_repo portafolio\nfecha '2026-09-06 09:00'\nescribir index.html '<h1>Portafolio de Valentina Soto</h1>'\nescribir README.md '# Portafolio'\ngit add .\ngit commit -q -m 'Crea la portada'\nfecha '2026-09-06 11:00'\nescribir contacto.html '<link rel=\"stylesheet\" href=\"contacto.css\">'\nanexar contacto.html '<form action=\"/enviar\">...</form>'\ngit add contacto.html\ngit commit -q -m 'Agrega página de contacto'\nescribir contacto.css 'form { display: grid; gap: 1rem; }'\nanexar README.md 'Sitio personal hecho a mano, sin frameworks.'",
+   "cwd": "portafolio",
+   "checks": [
+    {
+     "name": "El último commit incluye contacto.css",
+     "script": "git cat-file -e HEAD:contacto.css 2>/dev/null || falla 'El último commit todavía no incluye contacto.css'\ngit cat-file -e HEAD:contacto.html 2>/dev/null || falla 'contacto.html ya no está en el último commit'"
+    },
+    {
+     "name": "Mismo mensaje y ningún commit extra",
+     "script": "mensaje_es HEAD 'Agrega página de contacto'\n[ \"$(num_commits)\" = 2 ] || falla \"Deberías tener 2 commits (tienes $(num_commits)): contacto.css debe entrar en el commit existente\""
+    },
+    {
+     "name": "README.md quedó fuera del commit",
+     "script": "[ \"$(git rev-parse HEAD:README.md)\" = \"$(git rev-parse HEAD~1:README.md 2>/dev/null)\" ] || falla 'El cambio de README.md se coló en el commit'"
+    },
+    {
+     "name": "El cambio de README.md sigue pendiente",
+     "script": "archivo_tiene README.md 'sin frameworks' 'Se perdió tu cambio de README.md (reinicia el ejercicio)'"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git add contacto.css",
+    "git commit --amend --no-edit"
+   ],
+   "hints": [
+    "Primero prepara **solo** el archivo olvidado. Ojo con `git add .` y con `git commit -a`: arrastrarían también `README.md`.",
+    "`--amend` rehace el último commit con lo que haya en el área de preparación. ¿Qué opción conserva el mensaje sin abrir el editor?",
+    "`git add contacto.css` y después `git commit --amend --no-edit`."
+   ],
+   "explain": "`git commit --amend` construye el commit nuevo a partir del área de preparación **actual**: la del commit anterior más `contacto.css`. `--no-edit` reutiliza el mensaje. `README.md` sigue modificado pero sin preparar, así que no entra.\n\n**Error típico:** `git commit -a --amend` prepara todos los archivos rastreados modificados, y `README.md` lo está. **Por dentro:** el commit original queda sin rama que lo apunte (recuperable con `git reflog`, s10) y el nuevo tiene otro hash, el mismo padre y la misma fecha de autor.\n\nSi el commit ya estuviera publicado, lo correcto sería un commit nuevo «Agrega estilos de contacto» en lugar de enmendar."
+  },
+  {
+   "id": "s04-e6",
+   "title": "Deshaz los dos últimos commits sin perder el trabajo",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Tu líder técnica revisó la calculadora y te pide que **no** dejes confirmadas todavía la multiplicación ni la división: la división no controla el caso `b == 0` y quiere que la rehagas con calma. Ninguno de esos commits está publicado.",
+    "**Objetivo:** deshaz los **2 últimos commits** de `main`, pero conserva su código en tu directorio de trabajo para seguir trabajando. La rama debe quedar en «Agrega resta»."
+   ],
+   "setup": "nuevo_repo calculadora\nfecha '2026-09-07 09:00'\nescribir calc.py 'def sumar(a, b):'\nanexar calc.py '    return a + b'\ngit add calc.py\ngit commit -q -m 'Crea la calculadora con suma'\nfecha '2026-09-07 10:00'\nanexar calc.py ''\nanexar calc.py 'def restar(a, b):'\nanexar calc.py '    return a - b'\ngit commit -q -am 'Agrega resta'\nfecha '2026-09-07 11:00'\nanexar calc.py ''\nanexar calc.py 'def multiplicar(a, b):'\nanexar calc.py '    return a * b'\ngit commit -q -am 'Agrega multiplicación'\nfecha '2026-09-07 12:00'\nanexar calc.py ''\nanexar calc.py 'def dividir(a, b):'\nanexar calc.py '    return a / b'\ngit commit -q -am 'Agrega división'",
+   "cwd": "calculadora",
+   "checks": [
+    {
+     "name": "main está en «Agrega resta»",
+     "script": "mensaje_es HEAD 'Agrega resta'\n[ \"$(num_commits)\" = 2 ] || falla \"La historia debería tener 2 commits (tiene $(num_commits))\""
+    },
+    {
+     "name": "El código de multiplicar y dividir sigue en tu disco",
+     "script": "if grep -qF 'def multiplicar' calc.py && grep -qF 'def dividir' calc.py; then exit 0; fi\n[ \"$(mensaje HEAD)\" = 'Agrega resta' ] && falla 'calc.py ya no tiene la multiplicación o la división: ¿usaste --hard? Vuelve con git reset --hard ORIG_HEAD y repite'\nfalla 'calc.py ya no tiene el código de multiplicar y dividir: debía quedarse en tu disco'"
+    },
+    {
+     "name": "Esos cambios quedan sin confirmar",
+     "script": "git diff --quiet HEAD -- calc.py && falla 'calc.py no tiene cambios pendientes respecto a «Agrega resta»'\ntrue"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git reset HEAD~2"
+   ],
+   "hints": [
+    "Necesitas mover la rama dos commits hacia atrás: `HEAD~2`.",
+    "De los tres modos de `git reset`, uno destruye los cambios; los otros dos los conservan (preparados o sin preparar).",
+    "`git reset HEAD~2` (modo `--mixed`, el de por defecto) deja el código en el directorio de trabajo, sin preparar."
+   ],
+   "explain": "`git reset HEAD~2` mueve `main` a «Agrega resta» y copia ese commit al área de preparación, pero no toca el directorio de trabajo: el código de multiplicar y dividir queda como cambio sin preparar (`Unstaged changes after reset: M calc.py`).\n\n**Alternativas:** `git reset --soft HEAD~2` también es válido: la diferencia es que los cambios quedan **preparados**. `git reset --hard HEAD~2` los habría borrado del disco; si te pasó, `git reset --hard ORIG_HEAD` devuelve la rama a su sitio porque los commits siguen en la base de datos.\n\n**Por dentro:** los dos commits no se borran; quedan fuera de la rama y el reflog (s10) los recuerda durante un tiempo. Como no estaban publicados, nadie más se entera."
+  },
+  {
+   "id": "s04-e7",
+   "title": "Revierte un commit que ya está publicado",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "En la tienda de bicicletas, Camila subió al servidor un commit que aplicaba **50 % de descuento a todo**. Era una prueba que nunca debió publicarse. Para peor, después ya se publicó otro commit (la página de despachos) y el resto del equipo descargó esa historia.",
+    "En el gráfico, la etiqueta `origin/main` marca lo que está publicado en el servidor (`~/servidor/tienda.git`); tu `main` está al día con ella.",
+    "**Objetivo:** deshaz el efecto de «Aplica 50 % de descuento a todo» **sin reescribir la historia publicada**: los precios deben volver a los originales y la página de despachos debe quedarse. No necesitas enviar el resultado al servidor (`git push` se estudia en s07)."
+   ],
+   "setup": "git init -q --bare ~/servidor/tienda.git\ngit clone -q ~/servidor/tienda.git ~/camila\ncd ~/camila\nautor 'Camila Rojas' 'camila@ejemplo.com'\nfecha '2026-09-08 09:00'\nescribir precios.txt 'bicicleta-urbana 250000'\nanexar precios.txt 'casco 35000'\nanexar precios.txt 'candado 12000'\ngit add precios.txt\ngit commit -q -m 'Crea la lista de precios'\nfecha '2026-09-09 16:00'\nescribir precios.txt 'bicicleta-urbana 125000'\nanexar precios.txt 'casco 17500'\nanexar precios.txt 'candado 6000'\ngit commit -q -am 'Aplica 50 % de descuento a todo'\nfecha '2026-09-10 10:00'\ncommit_archivo despachos.html '<h1>Despachos a todo Chile</h1>' 'Agrega página de despachos'\ngit push -q origin main\nyo\ncd ~\ngit clone -q ~/servidor/tienda.git tienda\nrm -rf ~/camila",
+   "cwd": "tienda",
+   "checks": [
+    {
+     "name": "Los precios vuelven a los originales",
+     "script": "contenido HEAD precios.txt | grep -qx 'bicicleta-urbana 250000' || falla 'En el último commit los precios siguen con descuento'"
+    },
+    {
+     "name": "La página de despachos sigue",
+     "script": "git cat-file -e HEAD:despachos.html 2>/dev/null || falla 'Desapareció despachos.html: solo había que deshacer el descuento'"
+    },
+    {
+     "name": "La historia publicada sigue intacta",
+     "script": "ancestro 116c882718b4190e6e1366c3c73539d7a6757b91 HEAD || falla 'Tu main ya no contiene la historia publicada: reescribiste commits compartidos. Vuelve con git reset --hard origin/main e inténtalo sin quitar commits'"
+    },
+    {
+     "name": "Un commit revierte el descuento",
+     "script": "git log --format=%B 116c882718b4190e6e1366c3c73539d7a6757b91..HEAD | grep -q 'This reverts commit' || falla 'No encuentro un commit creado con git revert (su mensaje incluye «This reverts commit …»)'"
+    },
+    {
+     "name": "Sin operaciones a medias y todo confirmado",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git revert --no-edit HEAD~1"
+   ],
+   "hints": [
+    "Localiza el commit con `git log --oneline`: no es el último, es el penúltimo.",
+    "Como la historia ya es compartida, no quites ni reemplaces commits: crea uno nuevo que haga lo contrario.",
+    "`git revert` acepta cualquier commit (su hash o `HEAD~1`); con `--no-edit` acepta el mensaje propuesto."
+   ],
+   "explain": "`git revert --no-edit HEAD~1` calcula qué cambió «Aplica 50 % de descuento a todo» y aplica lo contrario en un commit nuevo, `Revert \"Aplica 50 % de descuento a todo\"`. La página de despachos, posterior, no se toca, y como la historia solo crece, `origin/main` sigue siendo un ancestro de tu `main`: el siguiente `git push` (s07) será un simple avance.\n\n**¿Por qué no `git reset`?** `git reset --hard HEAD~2` quitaría el descuento… y también los despachos, y tu `main` dejaría de contener lo publicado: el servidor rechazaría tu envío y forzarlo rompería la copia de todo el equipo.\n\n**Pro:** en tu terminal, `git revert` sin `--no-edit` abre el editor; aprovecha para explicar el porqué (por ejemplo, «El descuento era una prueba; se publicó por error»). Revisa el resultado con `git show HEAD`."
+  },
+  {
+   "id": "s04-e8",
+   "title": "Limpia la basura sin llevarte nada importante",
+   "level": "medio",
+   "minutes": 8,
+   "prompt": [
+    "Tu carpeta del generador de informes se llenó de restos de pruebas: `salida-temporal.csv`, `prueba.tmp` y la carpeta `graficos-borrador/`.",
+    "Pero ojo: `ideas.md` (sin seguimiento) son tus apuntes y quieres conservarlos, y `.env` y `ejecucion.log` están ignorados y **no** debes tocarlos (`.env` guarda la clave de tu base de datos local).",
+    "**Objetivo:** elimina con `git clean` los tres restos (incluida la carpeta) sin borrar `ideas.md`, `.env`, `ejecucion.log` ni ningún archivo rastreado. Empieza siempre con una simulación."
+   ],
+   "setup": "nuevo_repo informe-ventas\nfecha '2026-09-11 09:00'\nescribir .gitignore '.env'\nanexar .gitignore '*.log'\nescribir informe.py 'print(\"Ventas de septiembre\")'\ngit add .\ngit commit -q -m 'Crea el generador de informes'\nescribir .env 'CLAVE_BD=super-secreta'\nescribir ejecucion.log 'Informe generado en 2,3 s'\nescribir salida-temporal.csv 'mes,total'\nescribir prueba.tmp 'borrar'\nescribir graficos-borrador/ventas-v1.svg '<svg></svg>'\nescribir graficos-borrador/ventas-v2.svg '<svg></svg>'\nescribir ideas.md 'Agregar comparación con agosto'",
+   "cwd": "informe-ventas",
+   "checks": [
+    {
+     "name": "Los archivos basura desaparecieron",
+     "script": "[ ! -e salida-temporal.csv ] || falla 'salida-temporal.csv sigue ahí'\n[ ! -e prueba.tmp ] || falla 'prueba.tmp sigue ahí'"
+    },
+    {
+     "name": "La carpeta graficos-borrador/ desapareció",
+     "script": "[ ! -d graficos-borrador ] || falla 'La carpeta graficos-borrador/ sigue ahí (por defecto git clean no entra en carpetas sin seguimiento)'"
+    },
+    {
+     "name": "ideas.md sigue intacto",
+     "script": "archivo_tiene ideas.md 'comparación con agosto' 'Borraste ideas.md: esos apuntes había que conservarlos (reinicia el ejercicio)'"
+    },
+    {
+     "name": "Los archivos ignorados siguen",
+     "script": "archivo_existe .env 'Borraste .env, que estaba ignorado: eso ocurre con -x (reinicia el ejercicio)'\narchivo_existe ejecucion.log 'Borraste ejecucion.log, que estaba ignorado: eso ocurre con -x o -X (reinicia el ejercicio)'"
+    },
+    {
+     "name": "Los archivos rastreados no cambiaron",
+     "script": "git diff --quiet HEAD -- informe.py .gitignore || falla 'Algún archivo rastreado cambió'\n[ -z \"$(git ls-files --deleted)\" ] || falla 'Falta algún archivo rastreado'"
+    }
+   ],
+   "solution": [
+    "git clean -n",
+    "git clean -n -d",
+    "git clean -f -d -e ideas.md"
+   ],
+   "hints": [
+    "`git clean -n` muestra qué borraría sin borrar nada. ¿Aparece la carpeta? Busca la opción que hace entrar a `git clean` en carpetas sin seguimiento.",
+    "Para proteger un archivo sin seguimiento concreto tienes dos caminos: excluirlo con `-e PATRÓN` o nombrar solo las rutas que quieres borrar.",
+    "No uses `-x`: haría que también se borraran los ignorados. Prueba `git clean -n -d -e ideas.md` y, si la lista es la correcta, cambia `-n` por `-f`."
+   ],
+   "explain": "`git clean -f -d -e ideas.md` borra los archivos sin seguimiento (`-f`), entra en carpetas sin seguimiento (`-d`) y trata `ideas.md` como si estuviera ignorado (`-e`), así que lo respeta. `.env` y `ejecucion.log` se salvan porque, sin `-x`, `git clean` respeta `.gitignore`.\n\n**Alternativas:** limitar la limpieza a rutas concretas, `git clean -f -d salida-temporal.csv prueba.tmp graficos-borrador`; o, en tu terminal, `git clean -i` y elegir con *select by numbers*.\n\n**Resumen de opciones:** `-n` simula, `-f` ejecuta, `-d` incluye carpetas, `-x` incluye también lo ignorado y `-X` borra solo lo ignorado. Nada de lo que borra `git clean` se puede recuperar con Git: por eso la simulación primero, con exactamente las mismas opciones."
+  },
+  {
+   "id": "s04-e9",
+   "title": "Vuelve a la versión anterior de un archivo",
+   "level": "medio",
+   "minutes": 10,
+   "prompt": [
+    "La dueña del Café El Refugio se equivocó: los precios de octubre todavía no corresponden y quiere volver a los precios anteriores en `menu.md`. El trabajo posterior (la sección de postres en `index.html`) debe quedarse.",
+    "**Objetivo:** deja `menu.md` exactamente como estaba **antes** de «Actualiza precios de octubre» y confirma ese cambio en un commit nuevo con el mensaje «Restaura los precios de septiembre». No quites ni modifiques commits existentes."
+   ],
+   "setup": "nuevo_repo cafeteria\nfecha '2026-09-12 09:00'\nescribir menu.md '# Menú'\nanexar menu.md 'Café de grano: 2500'\nanexar menu.md 'Té: 1500'\nanexar menu.md 'Kuchen: 2900'\nescribir index.html '<h1>Café El Refugio</h1>'\ngit add .\ngit commit -q -m 'Crea el menú'\nfecha '2026-09-13 09:00'\ncommit_archivo horario.md 'Lunes a viernes de 8:00 a 19:00' 'Agrega horario'\nfecha '2026-09-14 09:00'\nescribir menu.md '# Menú'\nanexar menu.md 'Café de grano: 3900'\nanexar menu.md 'Té: 2900'\nanexar menu.md 'Kuchen: 4500'\ngit commit -q -am 'Actualiza precios de octubre'\nfecha '2026-09-15 09:00'\nanexar index.html '<section>Postres de la casa</section>'\ngit commit -q -am 'Agrega sección de postres'",
+   "cwd": "cafeteria",
+   "checks": [
+    {
+     "name": "menu.md como antes del alza",
+     "script": "[ \"$(git rev-parse HEAD:menu.md 2>/dev/null)\" = \"45cbf11ad1b8f472b7f086de38d8ba42c6c33460\" ] || falla 'En el último commit, menu.md no coincide con la versión anterior a «Actualiza precios de octubre»'"
+    },
+    {
+     "name": "Un commit nuevo con el mensaje pedido",
+     "script": "mensaje_es HEAD 'Restaura los precios de septiembre'\n[ \"$(num_commits)\" = 5 ] || falla \"Deberías tener 5 commits: los 4 originales más el tuyo (tienes $(num_commits))\""
+    },
+    {
+     "name": "La historia anterior sigue intacta",
+     "script": "[ \"$(git rev-parse HEAD~1 2>/dev/null)\" = \"2192d7d4fdda11ec365c09888a3c792328edae2a\" ] || falla 'Los commits anteriores cambiaron: solo había que agregar uno nuevo'\ncontenido HEAD index.html | grep -q 'Postres de la casa' || falla 'Se perdió la sección de postres'"
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline -- menu.md",
+    "git restore --source=HEAD~2 --staged --worktree menu.md",
+    "git commit -m \"Restaura los precios de septiembre\""
+   ],
+   "hints": [
+    "`git log --oneline -- menu.md` muestra solo los commits que tocaron ese archivo. La versión buena es la de cualquier commit anterior al alza.",
+    "`git restore` puede tomar el contenido de cualquier commit con `--source=`.",
+    "Por defecto `--source` solo cambia el directorio de trabajo: prepara el archivo (con `git add` o agregando `--staged --worktree`) antes de confirmar."
+   ],
+   "explain": "`git restore --source=HEAD~2 --staged --worktree menu.md` copia `menu.md` tal como estaba en «Agrega horario» (dos commits atrás) al área de preparación y al directorio de trabajo; luego `git commit` registra la vuelta atrás como un commit nuevo. La historia no se reescribe: solo crece.\n\n**Alternativas:** `git restore --source=HEAD~2 menu.md` seguido de `git commit -am \"…\"`; la forma antigua `git checkout HEAD~2 -- menu.md` (escribe en ambas áreas); o `git revert HEAD~1` y enmendar el mensaje, que aquí da el mismo resultado porque ese commit solo tocó `menu.md`.\n\n**Diferencia clave:** `revert` deshace **un commit** (todos los archivos que tocó), mientras que `restore --source` lleva **un archivo** a la versión de cualquier commit, por muchos cambios que haya habido entremedio."
+  },
+  {
+   "id": "s04-e10",
+   "title": "Saca un secreto del último commit sin borrarlo del disco",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Con las prisas hiciste `git add .` y el último commit, «Conecta con la API del clima», incluyó el archivo `.env` con tu clave de la API. **Todavía no lo publicas**, así que puedes arreglarlo reescribiendo ese commit.",
+    "**Objetivo:** que ningún commit de la rama contenga `.env` (no basta con un commit nuevo que lo borre: seguiría en la historia), que `.env` siga en tu disco (tu programa lo necesita) y que Git lo ignore desde ahora (agrega `.env` a `.gitignore` y confirma ese cambio). `clima.js` debe seguir confirmado y `git status` debe quedar limpio."
+   ],
+   "setup": "nuevo_repo api-clima\nfecha '2026-09-15 10:00'\nescribir .gitignore 'node_modules/'\nescribir index.js 'console.log(\"Clima de Santiago\");'\ngit add .\ngit commit -q -m 'Crea el proyecto del clima'\nfecha '2026-09-15 12:00'\nescribir clima.js 'const clave = process.env.API_KEY;'\nanexar clima.js 'export async function temperatura(ciudad) { /* consulta la API */ }'\nescribir .env 'API_KEY=sk-live-4f9a2c7e1b'\ngit add .\ngit commit -q -m 'Conecta con la API del clima'",
+   "cwd": "api-clima",
+   "checks": [
+    {
+     "name": "Ningún commit de la rama contiene .env",
+     "script": "[ -z \"$(git rev-list HEAD -- .env)\" ] || falla 'Algún commit de la rama todavía incluye .env (un commit que lo borra no basta: el que lo agregó sigue en la historia)'"
+    },
+    {
+     "name": ".env sigue en tu disco",
+     "script": "archivo_tiene .env 'API_KEY=' '.env ya no está en tu disco (o perdió su contenido): tu programa lo necesita'"
+    },
+    {
+     "name": ".env está ignorado",
+     "script": "git check-ignore -q .env || falla '.env todavía no está ignorado: agrégalo a .gitignore'"
+    },
+    {
+     "name": "clima.js sigue confirmado",
+     "script": "git cat-file -e HEAD:clima.js 2>/dev/null || falla 'clima.js no está en el último commit'\ngit log --format=%s | grep -qx 'Conecta con la API del clima' || falla 'No encuentro el commit «Conecta con la API del clima»'"
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio 'Hay cambios sin confirmar (¿confirmaste el cambio de .gitignore?)'"
+    }
+   ],
+   "solution": [
+    "git show --stat HEAD",
+    "git rm --cached .env",
+    "echo .env >> .gitignore",
+    "git add .gitignore",
+    "git commit --amend --no-edit"
+   ],
+   "hints": [
+    "Un commit nuevo que borre `.env` no sirve: tienes que **reemplazar** el commit que lo agregó.",
+    "Primero saca `.env` del área de preparación sin borrarlo del disco (lo viste en s03). Luego agrega la línea `.env` a `.gitignore` y prepara ese cambio.",
+    "Cuando el área de preparación tenga lo correcto, `git commit --amend --no-edit` reemplaza el último commit."
+   ],
+   "explain": "`git rm --cached .env` prepara la eliminación de `.env` del repositorio sin tocar el archivo del disco; `echo .env >> .gitignore` y `git add .gitignore` preparan la regla nueva; `git commit --amend --no-edit` reemplaza el commit por uno sin `.env` y con el `.gitignore` corregido. El commit original queda sin rama que lo apunte y nunca salió de tu computador.\n\n**Alternativa:** `git reset --soft HEAD~1`, `git restore --staged .env`, arreglar `.gitignore`, `git add .gitignore` y `git commit -C ORIG_HEAD` (reutiliza el mensaje del commit original; con `-c` minúscula, además, abre el editor para retocarlo).\n\n**Si ya lo hubieras publicado:** considera la clave comprometida y **revócala de inmediato** en el proveedor; después hay que purgarla de toda la historia con `git filter-repo` y coordinar con el equipo (s15). Borrarla en un commit nuevo no basta: cualquiera puede verla en los commits anteriores."
+  },
+  {
+   "id": "s04-e11",
+   "title": "Convierte tres commits de respaldo en uno limpio",
+   "level": "dificil",
+   "minutes": 10,
+   "prompt": [
+    "Mientras programabas el carrito de compras de la tienda de artesanía fuiste guardando commits de respaldo: «wip», «wip 2» y «arreglo typo». Funcionan, pero antes de mostrárselos a tu equipo quieres una historia limpia. Nada de esto está publicado.",
+    "**Objetivo:** reemplaza esos tres commits por **uno solo** con el mensaje «Agrega carrito de compras» que contenga exactamente el mismo resultado final. Los dos commits anteriores deben quedar intactos."
+   ],
+   "setup": "nuevo_repo carrito\nfecha '2026-09-16 09:00'\nescribir index.html '<h1>Tienda de artesanía</h1>'\ngit add .\ngit commit -q -m 'Crea la tienda'\nfecha '2026-09-16 10:00'\nescribir catalogo.js 'export const productos = [\"greda de Pomaire\", \"chamanto\", \"cestería de Chimbarongo\"];'\ngit add .\ngit commit -q -m 'Agrega catálogo de productos'\nfecha '2026-09-16 15:00'\nescribir carrito.js 'const carrito = [];'\ngit add .\ngit commit -q -m 'wip'\nfecha '2026-09-16 15:40'\nanexar carrito.js 'export function agregar(p) { carrito.push(p); }'\nanexar carrito.js 'export function cantidad() { return carito.length; }'\ngit commit -q -am 'wip 2'\nfecha '2026-09-16 16:10'\nescribir carrito.js 'const carrito = [];'\nanexar carrito.js 'export function agregar(p) { carrito.push(p); }'\nanexar carrito.js 'export function cantidad() { return carrito.length; }'\nanexar index.html '<script type=\"module\" src=\"carrito.js\"></script>'\ngit commit -q -am 'arreglo typo'",
+   "cwd": "carrito",
+   "checks": [
+    {
+     "name": "Un solo commit para el carrito",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"Deberías tener 3 commits: los 2 originales más uno para el carrito (tienes $(num_commits))\"\nmensaje_es HEAD 'Agrega carrito de compras'"
+    },
+    {
+     "name": "Los commits anteriores siguen intactos",
+     "script": "ancestro 9081ec094b5fabfc5319188d0dabed8d5c9d25de HEAD || falla 'Los commits anteriores al carrito cambiaron: solo había que tocar los tres de respaldo'"
+    },
+    {
+     "name": "Mismo resultado final",
+     "script": "[ \"$(git rev-parse 'HEAD^{tree}')\" = \"98c6bcae21016ca3e866cc037633c35f0e5a44b1\" ] || falla 'El contenido del commit no coincide con el resultado de los tres commits originales (¿falta o sobra algún cambio?)'"
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git reset --soft HEAD~3",
+    "git status",
+    "git commit -m \"Agrega carrito de compras\""
+   ],
+   "hints": [
+    "Mueve la rama al commit anterior a los tres de respaldo, pero sin perder lo que contienen.",
+    "Con `--soft`, `git reset` mueve la rama y deja todos esos cambios **preparados**, listos para un único commit.",
+    "`git reset --soft HEAD~3` y después `git commit -m \"Agrega carrito de compras\"`."
+   ],
+   "explain": "`git reset --soft HEAD~3` lleva `main` a «Agrega catálogo de productos» sin tocar el área de preparación ni el directorio de trabajo: en ellos sigue el resultado final de los tres commits, ahora como cambios preparados. Un `git commit` los registra en un único commit con el mismo árbol (misma instantánea) que tenía «arreglo typo».\n\n**Alternativas:** `git reset HEAD~3` (mixto) seguido de `git add carrito.js index.html` y `git commit`; con rebase interactivo, marcando los commits como `squash`/`fixup` (s09); o `git merge --squash` desde otra rama (s06). Si algo sale mal justo después del reset, `git reset --hard ORIG_HEAD` te devuelve al punto de partida.\n\n**Buena práctica:** los commits de respaldo son útiles mientras trabajas; límpialos **antes** de publicar, nunca después."
+  },
+  {
+   "id": "s04-e12",
+   "title": "Separa un commit que mezcla dos cambios",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "El último commit del sistema de la biblioteca del barrio, «Cambios varios», mezcla dos cosas que no tienen nada que ver: corrige una errata en `README.md` («pyhton» → «python») y agrega el módulo nuevo `prestamos.py`. Tu equipo exige commits atómicos (s02) y todavía no lo publicas.",
+    "**Objetivo:** reemplaza «Cambios varios» por dos commits, en este orden: primero «Corrige errata en README», solo con el cambio de `README.md`; después «Agrega registro de préstamos», solo con `prestamos.py`. El resultado final debe ser idéntico al actual."
+   ],
+   "setup": "nuevo_repo biblioteca\nfecha '2026-09-17 09:00'\nescribir README.md '# Biblioteca del barrio'\nanexar README.md 'Sistema para registrar los libros de la biblioteca comunitaria.'\nanexar README.md 'Instalación: ejecuta pyhton biblioteca.py'\nescribir biblioteca.py 'libros = []'\ngit add .\ngit commit -q -m 'Crea el sistema de la biblioteca'\nfecha '2026-09-18 11:00'\nescribir README.md '# Biblioteca del barrio'\nanexar README.md 'Sistema para registrar los libros de la biblioteca comunitaria.'\nanexar README.md 'Instalación: ejecuta python biblioteca.py'\nescribir prestamos.py 'prestamos = {}'\nanexar prestamos.py ''\nanexar prestamos.py 'def prestar(libro, socio):'\nanexar prestamos.py '    prestamos[libro] = socio'\ngit add .\ngit commit -q -m 'Cambios varios'",
+   "cwd": "biblioteca",
+   "checks": [
+    {
+     "name": "Dos commits en lugar de «Cambios varios»",
+     "script": "[ \"$(num_commits)\" = 3 ] || falla \"Deberías tener 3 commits: el inicial y los dos nuevos (tienes $(num_commits))\"\ngit log --format=%s | grep -qx 'Cambios varios' && falla '«Cambios varios» sigue en la historia'\ntrue"
+    },
+    {
+     "name": "Primero: la errata, solo README.md",
+     "script": "mensaje_es HEAD~1 'Corrige errata en README'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD~1)\" = 'README.md' ] || falla 'El commit «Corrige errata en README» debería tocar solo README.md'"
+    },
+    {
+     "name": "Después: los préstamos, solo prestamos.py",
+     "script": "mensaje_es HEAD 'Agrega registro de préstamos'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD)\" = 'prestamos.py' ] || falla 'El commit «Agrega registro de préstamos» debería tocar solo prestamos.py'"
+    },
+    {
+     "name": "Mismo resultado final y base intacta",
+     "script": "[ \"$(git rev-parse 'HEAD^{tree}')\" = \"d87e873bd9964d6797cb49d95d730193686abd5b\" ] || falla 'El resultado final no coincide con el de «Cambios varios» (¿falta o sobra algún cambio?)'\nancestro 94ce4fb0dab0b902b408a33e5448ebe3fa17f4a9 HEAD || falla 'El commit inicial cambió: solo había que rehacer el último'"
+    },
+    {
+     "name": "Todo confirmado",
+     "script": "limpio"
+    }
+   ],
+   "solution": [
+    "git show --stat HEAD",
+    "git reset HEAD~1",
+    "git add README.md",
+    "git commit -m \"Corrige errata en README\"",
+    "git add prestamos.py",
+    "git commit -m \"Agrega registro de préstamos\""
+   ],
+   "hints": [
+    "Deshaz «Cambios varios» sin perder su contenido y de forma que **nada** quede preparado: así eliges qué va en cada commit.",
+    "Ese es el modo por defecto de `git reset`: `git reset HEAD~1`.",
+    "Después, prepara y confirma cada archivo por separado, en el orden pedido."
+   ],
+   "explain": "`git reset HEAD~1` (modo mixto) saca «Cambios varios» de la rama y deja sus dos cambios en el directorio de trabajo sin preparar: `README.md` modificado y `prestamos.py` sin seguimiento. A partir de ahí es el flujo de commits atómicos de s02: preparar un archivo, confirmar; preparar el otro, confirmar. El árbol final es idéntico al original.\n\n**Alternativa:** `git reset --soft HEAD~1`, `git restore --staged prestamos.py`, confirmar el README y luego preparar y confirmar `prestamos.py`.\n\n**Pro:** si los dos cambios hubieran estado en el **mismo** archivo, usarías `git add -p` para preparar bloque a bloque (en la plataforma, pasándole las respuestas con `printf 'y\\nn\\n' | git add -p archivo`). La documentación de `git reset` describe este mismo procedimiento («Split a commit apart into a sequence of commits»)."
+  },
+  {
+   "id": "s04-e13",
+   "title": "Revierte dos commits publicados en un único commit",
+   "level": "dificil",
+   "minutes": 12,
+   "prompt": [
+    "Pasaron las Fiestas Patrias y hay que retirar la decoración del sitio del Club Deportivo Los Aromos. Diego la había agregado en dos commits **ya publicados**, intercalados con otros cambios que deben quedarse: «Agrega banner de Fiestas Patrias» y «Cambia los colores a modo fiesta».",
+    "**Objetivo:** deshaz **ambos** commits sin reescribir la historia publicada y dejando **un único commit nuevo** con el mensaje «Retira la decoración de Fiestas Patrias». El calendario y la tabla de posiciones deben seguir. No necesitas enviar el resultado al servidor."
+   ],
+   "setup": "git init -q --bare ~/servidor/club.git\ngit clone -q ~/servidor/club.git ~/diego\ncd ~/diego\nautor 'Diego Muñoz' 'diego@ejemplo.com'\nfecha '2026-09-10 09:00'\nescribir index.html '<h1>Club Deportivo Los Aromos</h1>'\nescribir estilos.css 'body { background: white; color: #222; }'\ngit add .\ngit commit -q -m 'Crea el sitio del club'\nfecha '2026-09-12 10:00'\ncommit_archivo banner.html '<div class=\"banner\">¡Felices Fiestas Patrias!</div>' 'Agrega banner de Fiestas Patrias'\nfecha '2026-09-13 11:00'\ncommit_archivo calendario.html '<h2>Calendario de partidos</h2>' 'Agrega calendario de partidos'\nfecha '2026-09-14 12:00'\nescribir estilos.css 'body { background: #0033a0; color: #d52b1e; }'\ngit commit -q -am 'Cambia los colores a modo fiesta'\nfecha '2026-09-15 13:00'\ncommit_archivo posiciones.html '<h2>Tabla de posiciones</h2>' 'Agrega tabla de posiciones'\ngit push -q origin main\nyo\ncd ~\ngit clone -q ~/servidor/club.git club\nrm -rf ~/diego",
+   "cwd": "club",
+   "checks": [
+    {
+     "name": "La historia publicada sigue intacta",
+     "script": "ancestro d77a7f0dbaeae8a8020e1fbb5fa7f7d1486203b7 HEAD || falla 'Tu main ya no contiene la historia publicada: reescribiste commits compartidos. Vuelve con git reset --hard origin/main e inténtalo sin quitar commits'"
+    },
+    {
+     "name": "Exactamente un commit nuevo",
+     "script": "n=$(git rev-list --count d77a7f0dbaeae8a8020e1fbb5fa7f7d1486203b7..HEAD 2>/dev/null)\n[ \"$n\" = 1 ] || falla \"Debería haber exactamente 1 commit nuevo sobre lo publicado (hay $n)\"\nmensaje_es HEAD 'Retira la decoración de Fiestas Patrias'"
+    },
+    {
+     "name": "Sin banner y con los colores originales",
+     "script": "git cat-file -e HEAD:banner.html 2>/dev/null && falla 'banner.html sigue en el último commit'\ncontenido HEAD estilos.css | grep -q 'background: white' || falla 'estilos.css no volvió a los colores originales'"
+    },
+    {
+     "name": "El calendario y la tabla siguen",
+     "script": "git cat-file -e HEAD:calendario.html 2>/dev/null || falla 'Desapareció calendario.html'\ngit cat-file -e HEAD:posiciones.html 2>/dev/null || falla 'Desapareció posiciones.html'"
+    },
+    {
+     "name": "Nada a medias",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline",
+    "git revert -n HEAD~1 HEAD~3",
+    "git status",
+    "git commit -m \"Retira la decoración de Fiestas Patrias\""
+   ],
+   "hints": [
+    "Con `git revert` normal obtendrías dos commits de reversión. Busca la opción que aplica las reversiones **sin confirmarlas**.",
+    "`git revert -n` (`--no-commit`) acepta varios commits; cuando termina, confirmas tú con `git commit -m`.",
+    "Localiza ambos commits con `git log --oneline` (son `HEAD~1` y `HEAD~3`). Si ya hiciste dos reverts por separado, todavía no están publicados: puedes juntarlos con lo que viste en la lección 4."
+   ],
+   "explain": "`git revert -n HEAD~1 HEAD~3` aplica al área de preparación y al directorio de trabajo el inverso de ambos commits, sin confirmar (`git status` muestra `You are currently reverting commit …`). `git commit -m …` crea el único commit y cierra la operación. Lo publicado sigue intacto: solo agregaste un commit encima.\n\n**Orden:** conviene revertir del más reciente al más antiguo (por eso `HEAD~1` va antes que `HEAD~3`), igual que hace Git con los rangos: si ambos tocaran las mismas líneas, así se minimizan los conflictos.\n\n**Alternativa válida:** `git revert --no-edit HEAD~1` y `git revert --no-edit HEAD~4` (¡`HEAD` ya se movió!) y luego `git reset --soft HEAD~2` + `git commit -m …`: puedes reescribir tus dos commits de reversión porque todavía son locales. La regla de oro protege lo publicado, no lo que acabas de crear."
+  },
+  {
+   "id": "s04-e14",
+   "title": "Proyecto: la mañana caótica del Café El Refugio",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Lunes, 9:00, en el repositorio del **Café El Refugio**. El fin de semana todo quedó a medias y hoy tienes que dejarlo impecable. Mira el gráfico: `origin/main` marca lo publicado en `~/servidor/cafeteria.git`; tu commit «Agerga horario de atencion» todavía es solo local.",
+    "**1.** Descarta el experimento de colores que hay sin confirmar en `estilos.css`.",
+    "**2.** Saca `notas-reunion.txt` del área de preparación: no debe entrar en ningún commit, pero debe quedarse en tu disco.",
+    "**3.** Arregla tu commit local: el mensaje debe ser «Agrega horario de atención» y debe incluir `horario.css`, que olvidaste.",
+    "**4.** Deshaz el commit publicado «Cambia la tipografía a Comic Sans» sin reescribir la historia compartida.",
+    "**5.** Elimina la basura sin seguimiento (`captura-1.tmp`, `captura-2.tmp` y la carpeta `cache/`) sin tocar `.env` (ignorado) ni `notas-reunion.txt`.",
+    "El orden importa: algunos comandos cambian lo que necesitan los siguientes. Piensa antes de ejecutar y revisa `git status` a cada paso."
+   ],
+   "setup": "git init -q --bare ~/servidor/cafeteria.git\ngit clone -q ~/servidor/cafeteria.git ~/valentina\ncd ~/valentina\nautor 'Valentina Soto' 'valentina@ejemplo.com'\nfecha '2026-09-20 09:00'\nescribir .gitignore '.env'\nescribir index.html '<h1>Café El Refugio</h1>'\nescribir menu.html '<h2>Menú</h2>'\nescribir estilos.css 'body { font-family: Georgia, serif; }'\ngit add .\ngit commit -q -m 'Crea el sitio de la cafetería'\nfecha '2026-09-20 11:00'\nanexar menu.html '<p>Café de grano 2500 · Kuchen 2900</p>'\ngit commit -q -am 'Agrega precios al menú'\nfecha '2026-09-21 10:00'\nescribir estilos.css 'body { font-family: \"Comic Sans MS\", cursive; }'\ngit commit -q -am 'Cambia la tipografía a Comic Sans'\nfecha '2026-09-21 12:00'\ncommit_archivo contacto.html '<p>Escríbenos a hola@elrefugio.cl</p>' 'Agrega página de contacto'\ngit push -q origin main\nyo\ncd ~\ngit clone -q ~/servidor/cafeteria.git cafeteria\nrm -rf ~/valentina\ncd ~/cafeteria\nfecha '2026-09-22 09:00'\nescribir horario.html '<link rel=\"stylesheet\" href=\"horario.css\">'\nanexar horario.html '<p>Lunes a sábado de 8:00 a 20:00</p>'\ngit add horario.html\ngit commit -q -m 'Agerga horario de atencion'\nescribir horario.css 'p { font-weight: bold; }'\nescribir .env 'CLAVE_PAGOS=prueba-123'\nanexar estilos.css 'body { background: lime; }'\nescribir notas-reunion.txt 'Reunión: subir los precios en octubre'\ngit add notas-reunion.txt\nescribir captura-1.tmp 'x'\nescribir captura-2.tmp 'x'\nescribir cache/pagina.html '<p>copia en caché</p>'",
+   "cwd": "cafeteria",
+   "checks": [
+    {
+     "name": "1 · Experimento de colores descartado",
+     "script": "grep -q lime estilos.css && falla 'estilos.css todavía tiene el experimento de colores'\ngit diff --quiet HEAD -- estilos.css || falla 'estilos.css tiene cambios sin confirmar'"
+    },
+    {
+     "name": "2 · notas-reunion.txt fuera de Git pero en tu disco",
+     "script": "archivo_tiene notas-reunion.txt 'Reunión' 'notas-reunion.txt ya no está en tu disco (reinicia el ejercicio)'\ngit ls-files --error-unmatch notas-reunion.txt >/dev/null 2>&1 && falla 'notas-reunion.txt sigue en el área de preparación o en el último commit'\n[ -z \"$(git rev-list HEAD -- notas-reunion.txt)\" ] || falla 'notas-reunion.txt entró en algún commit'"
+    },
+    {
+     "name": "3 · Commit local corregido",
+     "script": "c=$(git rev-list --grep='^Agrega horario de atención$' b426670109b0cbf45c803129b36174ee0ae386db..HEAD 2>/dev/null | head -n 1)\n[ -n \"$c\" ] || falla 'No hay ningún commit local con el mensaje «Agrega horario de atención»'\ngit cat-file -e \"$c:horario.css\" 2>/dev/null || falla 'El commit «Agrega horario de atención» no incluye horario.css'\ngit cat-file -e \"$c:horario.html\" 2>/dev/null || falla 'El commit «Agrega horario de atención» no incluye horario.html'\ngit log --format=%s | grep -q '^Agerga' && falla 'El commit con el mensaje mal escrito sigue en la historia'\ntrue"
+    },
+    {
+     "name": "4 · Comic Sans revertido sin reescribir lo publicado",
+     "script": "ancestro b426670109b0cbf45c803129b36174ee0ae386db HEAD || falla 'Reescribiste la historia publicada: tu main ya no contiene lo que hay en el servidor'\ncontenido HEAD estilos.css | grep -q 'Comic Sans' && falla 'En el último commit la tipografía sigue siendo Comic Sans'\ngit log --format=%B b426670109b0cbf45c803129b36174ee0ae386db..HEAD | grep -q 'This reverts commit' || falla 'No encuentro un commit creado con git revert'"
+    },
+    {
+     "name": "5 · Basura eliminada y .env intacto",
+     "script": "ls *.tmp >/dev/null 2>&1 && falla 'Quedan archivos .tmp'\n[ ! -d cache ] || falla 'La carpeta cache/ sigue ahí'\narchivo_tiene .env 'CLAVE_PAGOS' 'Borraste .env, que estaba ignorado (eso pasa con -x): reinicia el ejercicio'"
+    },
+    {
+     "name": "Estado final ordenado",
+     "script": "sin_operacion_en_curso\nn=$(git rev-list --count b426670109b0cbf45c803129b36174ee0ae386db..HEAD 2>/dev/null)\n[ \"$n\" = 2 ] || falla \"Deberías tener exactamente 2 commits sin publicar (tu horario y la reversión); tienes $n\"\n[ \"$(git status --porcelain)\" = '?? notas-reunion.txt' ] || falla 'git status debería mostrar solo notas-reunion.txt sin seguimiento'"
+    }
+   ],
+   "solution": [
+    "git status",
+    "git restore estilos.css",
+    "git restore --staged notas-reunion.txt",
+    "git add horario.css",
+    "git commit --amend -m \"Agrega horario de atención\"",
+    "git log --oneline",
+    "git revert --no-edit HEAD~2",
+    "git clean -n -d",
+    "git clean -f -d -e notas-reunion.txt"
+   ],
+   "hints": [
+    "Empieza por lo que está fuera de la historia (trabajo y preparación) y termina con la historia y la limpieza. `git status` te guía.",
+    "`--amend` siempre rehace el **último** commit: corrige tu commit local antes de crear cualquier otro (el revert también crea uno).",
+    "El commit de Comic Sans no es el último: búscalo con `git log --oneline`. Si `git revert` se queja de cambios locales (*your local changes would be overwritten*), ¿terminaste las tareas 1 y 2?",
+    "Simula con `git clean -n -d`. Si `horario.css` o `notas-reunion.txt` aparecen en la lista, detente: protégelos (confirmándolos o con `-e`) antes de borrar."
+   ],
+   "explain": "**Un orden que funciona:** (1) `git restore estilos.css` descarta el experimento; además deja `estilos.css` limpio, requisito para revertir un commit que lo toca. (2) `git restore --staged notas-reunion.txt` lo devuelve a *sin seguimiento*. (3) `git add horario.css` y `git commit --amend -m \"Agrega horario de atención\"` rehacen tu commit local. (4) `git revert --no-edit HEAD~2` revierte Comic Sans (después del amend: `HEAD` es tu horario, `HEAD~1` el contacto y `HEAD~2` la tipografía). (5) `git clean -f -d -e notas-reunion.txt` borra la basura y respeta `.env` porque no usas `-x`.\n\n**Trampas del escenario:** hacer el revert antes del amend enmendaría el commit de reversión; ejecutar `git clean` antes de preparar `horario.css` lo borraría (estaba sin seguimiento) y también se llevaría `notas-reunion.txt` si no lo proteges; y `git revert` con cambios preparados o con `estilos.css` modificado se niega (`your local changes would be overwritten`).\n\n**Alternativas:** limpiar por rutas (`git clean -f -d captura-1.tmp captura-2.tmp cache`); o aprovechar que `git clean` no toca lo que está en el índice: preparar `horario.css`, limpiar mientras `notas-reunion.txt` sigue preparado y sacarlo del área de preparación justo antes del amend."
+  },
+  {
+   "id": "s04-e15",
+   "title": "Proyecto: rescata lo bueno de un experimento fallido",
+   "level": "proyecto",
+   "minutes": 25,
+   "prompt": [
+    "Pasaste la mañana probando una fórmula nueva para el **cotizador de pintura** y el experimento fracasó: los números no cuadran. Tienes 3 commits locales sin publicar (en el gráfico, `origin/main` marca lo publicado), un cambio sin confirmar en `cotizador.js` y archivos de prueba sueltos.",
+    "Lo único que vale la pena rescatar es `formato.js`, que agregaste en el commit «Agrega utilidades de formato de pesos».",
+    "**Objetivo:** deja `main` exactamente como está publicado **más un único commit nuevo** con el mensaje «Agrega formato de pesos chilenos» que contenga solo `formato.js`, con el mismo contenido que tenía. Elimina `resultados-prueba/` y `debug.txt`, pero conserva `.env` (ignorado). Al final, `git status` debe quedar limpio."
+   ],
+   "setup": "git init -q --bare ~/servidor/cotizador.git\ngit clone -q ~/servidor/cotizador.git ~/tomas\ncd ~/tomas\nautor 'Tomás Fuentes' 'tomas@ejemplo.com'\nfecha '2026-09-18 09:00'\nescribir .gitignore '.env'\nescribir cotizador.js 'export function cotizar(m2) {'\nanexar cotizador.js '  return m2 * 45000;'\nanexar cotizador.js '}'\ngit add .\ngit commit -q -m 'Crea el cotizador de pintura'\nfecha '2026-09-18 12:00'\ncommit_archivo README.md '# Cotizador de pintura' 'Agrega README'\ngit push -q origin main\nyo\ncd ~\ngit clone -q ~/servidor/cotizador.git cotizador\nrm -rf ~/tomas\ncd ~/cotizador\nfecha '2026-09-19 10:00'\nescribir cotizador.js 'export function cotizar(m2, manos) {'\nanexar cotizador.js '  return m2 * manos * 38000 + 15000;'\nanexar cotizador.js '}'\ngit commit -q -am 'Prueba nueva fórmula de cotización'\nfecha '2026-09-19 11:00'\nescribir formato.js 'export function formatoPesos(n) {'\nanexar formato.js '  return \"$\" + n.toLocaleString(\"es-CL\");'\nanexar formato.js '}'\ngit add formato.js\ngit commit -q -m 'Agrega utilidades de formato de pesos'\nfecha '2026-09-19 12:00'\nescribir cotizador.js 'export function cotizar(m2, manos, descuento) {'\nanexar cotizador.js '  return (m2 * manos * 38000 + 15000) * (1 - descuento);'\nanexar cotizador.js '}'\ngit commit -q -am 'Sigue probando la fórmula'\nanexar cotizador.js '// TODO: nada de esto cuadra'\nescribir resultados-prueba/caso-1.txt '40 m2 -> 3055000'\nescribir resultados-prueba/caso-2.txt '12 m2 -> 927000'\nescribir debug.txt 'm2=40 manos=2'\nescribir .env 'CLAVE_SII=prueba'",
+   "cwd": "cotizador",
+   "checks": [
+    {
+     "name": "main = lo publicado + 1 commit",
+     "script": "[ \"$(git rev-parse HEAD~1 2>/dev/null)\" = \"a3e71d005367176e41c23129ec472f3812ac7e84\" ] || falla 'El commit anterior a HEAD debería ser exactamente lo publicado (origin/main)'"
+    },
+    {
+     "name": "El commit nuevo: mensaje correcto y solo formato.js",
+     "script": "mensaje_es HEAD 'Agrega formato de pesos chilenos'\n[ \"$(git diff-tree --no-commit-id --name-only -r HEAD)\" = 'formato.js' ] || falla 'El último commit debería contener solo formato.js'"
+    },
+    {
+     "name": "formato.js con su contenido original",
+     "script": "[ \"$(git rev-parse HEAD:formato.js 2>/dev/null)\" = \"cbbaed3d952b864a881cda9ca0800aacc7e94b62\" ] || falla 'formato.js no tiene el mismo contenido que en el commit del experimento'"
+    },
+    {
+     "name": "cotizador.js como en lo publicado",
+     "script": "git diff --quiet a3e71d005367176e41c23129ec472f3812ac7e84 HEAD -- cotizador.js || falla 'En el último commit cotizador.js no coincide con lo publicado'\ngit diff --quiet HEAD -- cotizador.js || falla 'cotizador.js tiene cambios sin confirmar'"
+    },
+    {
+     "name": "Ningún commit del experimento en main",
+     "script": "git log --format=%s | grep -q 'fórmula' && falla 'Algún commit del experimento sigue en main'\ntrue"
+    },
+    {
+     "name": "Basura fuera y .env intacto",
+     "script": "[ ! -e resultados-prueba ] || falla 'La carpeta resultados-prueba/ sigue ahí'\n[ ! -e debug.txt ] || falla 'debug.txt sigue ahí'\narchivo_tiene .env 'CLAVE_SII' 'Borraste .env, que estaba ignorado (eso pasa con -x): reinicia el ejercicio'"
+    },
+    {
+     "name": "Todo limpio",
+     "script": "sin_operacion_en_curso\nlimpio"
+    }
+   ],
+   "solution": [
+    "git log --oneline --graph --all",
+    "git status",
+    "git reset --hard origin/main",
+    "git restore --source=ORIG_HEAD formato.js",
+    "git add formato.js",
+    "git commit -m \"Agrega formato de pesos chilenos\"",
+    "git clean -n -d",
+    "git clean -f -d"
+   ],
+   "hints": [
+    "Hay dos caminos: rescatar primero la pieza buena y luego tirar el resto, o tirar todo y luego recuperar la pieza desde el commit viejo. Ambos funcionan.",
+    "`git reset --hard origin/main` deja rama, área de preparación y directorio de trabajo exactamente como lo publicado. No toca los archivos sin seguimiento.",
+    "Justo después de un reset, `ORIG_HEAD` apunta a donde estaba la rama antes. `git restore --source=` puede traer un archivo desde ahí.",
+    "Termina con `git clean -n -d` para revisar y luego `-f -d`. Sin `-x`, `.env` está a salvo."
+   ],
+   "explain": "**Camino 1 (el de la solución):** `git reset --hard origin/main` descarta los 3 commits, el cambio sin confirmar y `formato.js` (rastreado en el experimento, pero no en lo publicado). `ORIG_HEAD` guarda la punta anterior, así que `git restore --source=ORIG_HEAD formato.js` lo trae de vuelta como archivo sin seguimiento; `git add` + `git commit` lo convierten en el único commit nuevo. Por último, `git clean -f -d` borra `resultados-prueba/` y `debug.txt`; `.env` sobrevive porque está ignorado.\n\n**Camino 2 (sin `--hard`):** `git reset origin/main` (mixto) deja `formato.js` sin seguimiento y `cotizador.js` modificado; `git restore cotizador.js`, `git add formato.js`, `git commit -m …` y `git clean -f -d`.\n\n**Por qué aquí sí vale `--hard`:** revisaste antes con `git status` y `git log` y quieres descartar el experimento a propósito. Aun así, los 3 commits no desaparecen de inmediato: el reflog (s10) los recuerda por si cambias de opinión. Lo único irrecuperable es la línea `// TODO` que nunca se confirmó."
+  }
+ ],
+ "labs": [],
+ "flashcards": [
+  {
+   "front": "¿Qué comando descarta los cambios no preparados de un archivo?",
+   "back": "`git restore archivo` (forma antigua: `git checkout -- archivo`). El cambio descartado no se puede recuperar."
+  },
+  {
+   "front": "¿De dónde copia `git restore archivo` si no indicas `--source`?",
+   "back": "Del **área de preparación**, no de HEAD. Si habías preparado una versión, vuelves a esa. Con `--staged`, la fuente por defecto pasa a ser HEAD."
+  },
+  {
+   "front": "¿Cómo sacas un archivo del área de preparación sin perder tus cambios?",
+   "back": "`git restore --staged archivo` (forma antigua: `git reset archivo` o `git reset HEAD archivo`). El archivo del disco no se toca."
+  },
+  {
+   "front": "¿Qué hace `git restore -SW archivo`?",
+   "back": "Restaura el área de preparación (`-S`, `--staged`) y el directorio de trabajo (`-W`, `--worktree`) desde HEAD: el archivo queda exactamente como en el último commit."
+  },
+  {
+   "front": "¿Cómo traes un archivo tal como estaba hace 3 commits?",
+   "back": "`git restore --source=HEAD~3 archivo` (solo al directorio de trabajo). Agrega `--staged --worktree` para dejarlo también preparado."
+  },
+  {
+   "front": "`git restore --source=C f` vs `git checkout C -- f`",
+   "back": "`restore --source` escribe solo en el directorio de trabajo (estado ` M`); `checkout C -- f` escribe en el área de preparación **y** en el directorio de trabajo (estado `M `)."
+  },
+  {
+   "front": "¿Cómo despreparas un archivo antes del primer commit?",
+   "back": "`git rm --cached archivo` (lo que sugiere `git status`) o `git reset archivo`. `git restore --staged` falla con `fatal: could not resolve HEAD`."
+  },
+  {
+   "front": "¿Qué hace `git commit --amend`?",
+   "back": "Crea un commit **nuevo** con el área de preparación actual y el mismo padre que el último, y la rama pasa a apuntarle. Reemplaza el último commit: nuevo hash."
+  },
+  {
+   "front": "¿Para qué sirve `--no-edit` en `git commit --amend --no-edit`?",
+   "back": "Para conservar el mensaje del commit sin abrir el editor. Típico tras `git add archivo-olvidado`."
+  },
+  {
+   "front": "¿Qué conserva y qué cambia un commit enmendado?",
+   "back": "Conserva el autor, la fecha de autor y el padre. Cambian el hash, la fecha de commit y lo que tú modifiques (mensaje o contenido). `--reset-author` renueva el autor y su fecha."
+  },
+  {
+   "front": "¿Cuándo NO debes usar `--amend` ni `reset`?",
+   "back": "Sobre commits ya publicados: reescriben la historia y tu rama divergiría de la de tus compañeros. Para lo publicado se usa `git revert`."
+  },
+  {
+   "front": "¿Qué tres «árboles» maneja `git reset`?",
+   "back": "HEAD (la instantánea del último commit), el índice o área de preparación (el próximo commit propuesto) y el directorio de trabajo (tus archivos)."
+  },
+  {
+   "front": "`git reset --soft HEAD~1`",
+   "back": "Mueve la rama un commit atrás. Área de preparación y directorio de trabajo intactos: los cambios de ese commit quedan **preparados**."
+  },
+  {
+   "front": "`git reset HEAD~1` (o `--mixed`)",
+   "back": "Mueve la rama y copia el commit destino al área de preparación. Los cambios quedan en el directorio de trabajo **sin preparar**. Es el modo por defecto."
+  },
+  {
+   "front": "`git reset --hard HEAD~1`",
+   "back": "Mueve la rama y deja área de preparación y directorio de trabajo idénticos al destino. Pierde lo no confirmado de archivos rastreados (y archivos nuevos solo preparados). No toca los sin seguimiento."
+  },
+  {
+   "front": "¿Qué es `ORIG_HEAD` y para qué sirve tras un reset?",
+   "back": "La posición de la rama antes del último `reset` (también de `merge` y `rebase`). `git reset --hard ORIG_HEAD` deshace un reset recién hecho."
+  },
+  {
+   "front": "¿Qué hace `git reset archivo`?",
+   "back": "Se salta el paso de mover la rama y copia `archivo` de HEAD al área de preparación: equivale a `git restore --staged archivo`. Con rutas no admite `--soft` ni `--hard`."
+  },
+  {
+   "front": "¿Cómo juntas tus 3 últimos commits locales en uno?",
+   "back": "`git reset --soft HEAD~3` y luego `git commit -m \"mensaje\"`. (Alternativas: rebase interactivo en s09, `merge --squash` en s06.)"
+  },
+  {
+   "front": "¿Qué hace `git revert <commit>`?",
+   "back": "Crea un commit nuevo que aplica el cambio inverso de ese commit. No reescribe la historia: es la forma segura de deshacer algo publicado."
+  },
+  {
+   "front": "¿Qué mensaje propone `git revert` por defecto?",
+   "back": "Asunto `Revert \"<asunto original>\"` y cuerpo `This reverts commit <hash completo>.` Se recomienda agregar el porqué."
+  },
+  {
+   "front": "¿Qué opciones tienes si `git revert` se detiene por un conflicto?",
+   "back": "Resolver el archivo, `git add` y `git revert --continue`; saltarte ese commit con `--skip`; o cancelar todo con `git revert --abort`."
+  },
+  {
+   "front": "¿Para qué sirve `git revert -n` (`--no-commit`)?",
+   "back": "Aplica las reversiones al área de preparación y al directorio de trabajo sin confirmar, para juntar varias en un solo commit que haces tú con `git commit`."
+  },
+  {
+   "front": "¿Qué produce revertir un revert desde Git 2.43?",
+   "back": "Un commit titulado `Reapply \"<asunto original>\"` en lugar de `Revert \"Revert \"…\"\"`."
+  },
+  {
+   "front": "¿Qué hace `git clean -n`?",
+   "back": "Simula (*dry run*): lista con `Would remove …` los archivos sin seguimiento que borraría, sin borrar nada."
+  },
+  {
+   "front": "¿Por qué `git clean` sin opciones da error?",
+   "back": "Porque `clean.requireForce` vale `true` por defecto: hay que pasar `-f` (o usar `-n` o `-i`). Mensaje: `fatal: clean.requireForce is true and -f not given: refusing to clean`."
+  },
+  {
+   "front": "`git clean`: ¿qué añaden `-d`, `-x` y `-X`?",
+   "back": "`-d`: entra en carpetas sin seguimiento. `-x`: borra también lo ignorado por `.gitignore` (pero respeta los patrones de `-e`). `-X`: borra **solo** lo ignorado."
+  },
+  {
+   "front": "¿Qué combinación deja tu carpeta como el último commit?",
+   "back": "`git reset --hard` (rastreados) + `git clean -f -d` (sin seguimiento; con `-x` también los ignorados). Siempre `git clean -n` antes."
+  },
+  {
+   "front": "En una historia lineal, ¿qué es `HEAD~2`?",
+   "back": "El abuelo de HEAD (dos commits atrás), igual que `HEAD^^`. `HEAD~` y `HEAD^` son el padre."
+  },
+  {
+   "front": "¿Qué NO puede recuperar Git (ni con reflog)?",
+   "back": "Cambios que nunca se confirmaron y se descartaron con `git restore`, `git checkout -- archivo`, `git reset --hard` o `git clean -f`. (Lo que llegaste a preparar deja un *blob* que a veces se rescata con `git fsck --lost-found`, s10; lo nunca preparado, no.)"
+  },
+  {
+   "front": "Regla de oro para deshacer",
+   "back": "Lo local se puede reescribir (`--amend`, `reset`); lo publicado se revierte (`git revert`)."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s04-q1",
+   "type": "single",
+   "q": "Modificaste `app.js` (sin hacer `git add`) y quieres volver a la versión confirmada. ¿Qué comando usas?",
+   "options": [
+    "`git restore app.js`",
+    "`git restore --staged app.js`",
+    "`git revert app.js`",
+    "`git reset --soft app.js`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git restore app.js` copia sobre el archivo la versión del área de preparación, que aquí coincide con la del último commit. `--staged` actúa sobre el área de preparación, `revert` trabaja con commits y `reset --soft` no admite rutas."
+  },
+  {
+   "id": "s04-q2",
+   "type": "single",
+   "q": "Hiciste `git add .env` por error en un repositorio que ya tiene commits. ¿Cómo lo sacas del área de preparación sin borrar el archivo?",
+   "options": [
+    "`git restore .env`",
+    "`git restore --staged .env`",
+    "`git clean -f .env`",
+    "`git reset --hard .env`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git restore --staged .env` deshace el `git add`: el archivo sigue en tu disco. `git restore .env` actúa sobre el directorio de trabajo, `git clean` borraría el archivo (y además no toca archivos preparados) y `reset --hard` no admite rutas."
+  },
+  {
+   "id": "s04-q3",
+   "type": "single",
+   "q": "¿Qué contiene `notas.txt` al final de esta secuencia (el archivo ya estaba confirmado)?\n```bash\necho \"A\" >> notas.txt\ngit add notas.txt\necho \"B\" >> notas.txt\ngit restore notas.txt\n```",
+   "options": [
+    "La línea A pero no la B",
+    "Ni A ni B: vuelve a la versión del último commit",
+    "A y B",
+    "Git da un error porque el archivo está preparado"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Sin `--source`, `git restore` copia desde el **área de preparación**, donde está la versión con A. Solo se descarta B. Para volver a la versión del último commit harían falta `git restore --staged notas.txt` y luego `git restore notas.txt` (o `git restore -SW notas.txt`)."
+  },
+  {
+   "id": "s04-q4",
+   "type": "single",
+   "q": "¿Qué hace `git reset --soft HEAD~1`?",
+   "options": [
+    "Mueve la rama un commit atrás y deja los cambios de ese commit preparados",
+    "Mueve la rama un commit atrás y deja los cambios sin preparar",
+    "Borra el último commit y todos sus cambios",
+    "Crea un commit nuevo que deshace el último"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`--soft` solo mueve la rama: el área de preparación y el directorio de trabajo no cambian, así que lo que traía ese commit queda como *Changes to be committed*. La opción 2 describe `--mixed`, la 3 `--hard` y la 4 `git revert`."
+  },
+  {
+   "id": "s04-q5",
+   "type": "single",
+   "q": "¿Qué modo usa `git reset HEAD~2` si no indicas ninguno?",
+   "options": [
+    "`--soft`",
+    "`--mixed`",
+    "`--hard`",
+    "`--keep`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El modo por defecto es `--mixed`: mueve la rama y actualiza el área de preparación, pero deja el directorio de trabajo intacto."
+  },
+  {
+   "id": "s04-q6",
+   "type": "multi",
+   "q": "¿Qué comandos reescriben la historia de la rama actual? (Selecciona DOS.)",
+   "options": [
+    "`git commit --amend`",
+    "`git revert HEAD`",
+    "`git reset --hard HEAD~2`",
+    "`git restore --staged app.js`",
+    "`git clean -f`"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "`--amend` reemplaza el último commit y `reset` mueve la rama quitando commits. `revert` agrega un commit; `restore` y `clean` trabajan con archivos y no tocan la historia."
+  },
+  {
+   "id": "s04-q7",
+   "type": "single",
+   "q": "Un commit con un error ya está en el servidor y tu equipo lo descargó. ¿Cuál es la forma correcta de deshacerlo?",
+   "options": [
+    "`git reset --hard HEAD~1` y forzar el envío",
+    "`git commit --amend`",
+    "`git revert <hash>` y publicar el commit nuevo",
+    "`git restore --source=HEAD~1 .` sin confirmar"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`git revert` agrega un commit que invierte el cambio, así que la historia publicada no cambia y todos pueden sincronizarse. `reset` + envío forzado o `--amend` reescriben historia compartida."
+  },
+  {
+   "id": "s04-q8",
+   "type": "yesno",
+   "q": "Sobre `git commit --amend`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "El commit resultante tiene un hash distinto del original.",
+     "answer": true
+    },
+    {
+     "text": "El commit resultante tiene el mismo padre que el original.",
+     "answer": true
+    },
+    {
+     "text": "Es seguro usarlo sobre un commit que tus compañeros ya descargaron.",
+     "answer": false
+    },
+    {
+     "text": "Conserva la fecha de autor original salvo que uses `--reset-author`.",
+     "answer": true
+    }
+   ],
+   "explain": "`--amend` crea un commit nuevo (otro hash) con el mismo padre, conservando autor y fecha de autor. Como reemplaza un commit, sobre historia publicada provoca divergencias."
+  },
+  {
+   "id": "s04-q9",
+   "type": "single",
+   "q": "Tienes `notas.txt` **sin seguimiento** en la carpeta y ejecutas `git reset --hard HEAD~1`. ¿Qué pasa con `notas.txt`?",
+   "options": [
+    "Se borra",
+    "Sigue ahí, intacto",
+    "Pasa al área de preparación",
+    "Git se niega a hacer el reset"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`reset --hard` solo sobrescribe lo que Git rastrea. Los archivos sin seguimiento no se tocan; para borrarlos existe `git clean`."
+  },
+  {
+   "id": "s04-q10",
+   "type": "single",
+   "q": "Creaste `potencia.py`, hiciste `git add potencia.py` (nunca lo confirmaste) y luego `git reset --hard`. ¿Qué ocurre?",
+   "options": [
+    "`potencia.py` sigue en el disco, sin seguimiento",
+    "`potencia.py` se borra del disco",
+    "`potencia.py` queda preparado",
+    "Git avisa y cancela"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Un archivo preparado ya está en el índice, así que Git lo considera rastreado. `--hard` deja índice y directorio de trabajo como HEAD, donde no existe: el archivo desaparece. Es una de las trampas más dolorosas de `--hard`."
+  },
+  {
+   "id": "s04-q11",
+   "type": "single",
+   "q": "Ejecutas `git clean` sin opciones con la configuración por defecto. ¿Qué pasa?",
+   "options": [
+    "Borra todos los archivos sin seguimiento",
+    "Muestra lo que borraría",
+    "Falla con `fatal: clean.requireForce is true and -f not given: refusing to clean`",
+    "Abre el modo interactivo"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "`clean.requireForce` vale `true` por defecto, así que `git clean` se niega a borrar sin `-f` (salvo con `-n` o `-i`)."
+  },
+  {
+   "id": "s04-q12",
+   "type": "single",
+   "q": "Quieres borrar **solo** los archivos ignorados (por ejemplo, productos de compilación) y conservar los demás archivos sin seguimiento. ¿Qué usas?",
+   "options": [
+    "`git clean -fx`",
+    "`git clean -fX`",
+    "`git clean -fd`",
+    "`git clean -n`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-X` (mayúscula) borra únicamente lo ignorado. `-x` (minúscula) borra lo ignorado **y** lo demás sin seguimiento; `-d` entra en carpetas; `-n` solo simula."
+  },
+  {
+   "id": "s04-q13",
+   "type": "multi",
+   "q": "¿Qué comandos pueden destruir trabajo no confirmado de forma irrecuperable? (Selecciona TRES.)",
+   "options": [
+    "`git restore app.js`",
+    "`git reset --hard`",
+    "`git clean -f`",
+    "`git restore --staged app.js`",
+    "`git reset --soft HEAD~1`",
+    "`git revert HEAD`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "`restore` (sin `--staged`) sobrescribe el archivo, `reset --hard` sobrescribe índice y trabajo y `clean -f` borra archivos sin seguimiento. `restore --staged` y `reset --soft` no tocan el directorio de trabajo, y `revert` se niega a sobrescribir cambios locales."
+  },
+  {
+   "id": "s04-q14",
+   "type": "single",
+   "q": "Reviertes el commit «Agrega login» con `git revert --no-edit <hash>`. ¿Cuál es el asunto del commit nuevo?",
+   "options": [
+    "`Revert \"Agrega login\"`",
+    "`Undo Agrega login`",
+    "`Reverted: Agrega login`",
+    "`Agrega login (revert)`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Git propone `Revert \"<asunto>\"` y un cuerpo `This reverts commit <hash completo>.` Con `-e` (o en tu terminal, sin `--no-edit`) puedes editarlo para explicar el motivo."
+  },
+  {
+   "id": "s04-q15",
+   "type": "single",
+   "q": "En Git 2.50, reviertes un commit cuyo asunto es `Revert \"Agrega login\"`. ¿Qué asunto propone Git?",
+   "options": [
+    "`Revert \"Revert \"Agrega login\"\"`",
+    "`Reapply \"Agrega login\"`",
+    "`Agrega login`",
+    "Git no permite revertir un revert"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Desde Git 2.43, al revertir un commit de reversión el mensaje propuesto es `Reapply \"<asunto original>\"`."
+  },
+  {
+   "id": "s04-q16",
+   "type": "single",
+   "q": "¿Qué muestra `git status -s` justo después de `git restore --source=HEAD~2 menu.md` (si `menu.md` cambió desde entonces)?",
+   "options": [
+    "` M menu.md`",
+    "`M  menu.md`",
+    "`MM menu.md`",
+    "Nada: el archivo queda igual que en HEAD"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Por defecto `--source` solo escribe en el directorio de trabajo: el archivo aparece modificado sin preparar (espacio + `M`). Con `--staged --worktree` saldría `M ` (preparado)."
+  },
+  {
+   "id": "s04-q17",
+   "type": "single",
+   "q": "¿Y justo después de la forma antigua `git checkout HEAD~2 -- menu.md`?",
+   "options": [
+    "` M menu.md`",
+    "`M  menu.md`",
+    "`?? menu.md`",
+    "Nada"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git checkout <commit> -- archivo` escribe en el área de preparación **y** en el directorio de trabajo, así que el cambio aparece preparado (`M `). Es una diferencia importante con `git restore --source`."
+  },
+  {
+   "id": "s04-q18",
+   "type": "single",
+   "q": "En un repositorio **sin commits** hiciste `git add a.txt`. ¿Qué comando sugiere `git status` para despreparar?",
+   "options": [
+    "`git restore --staged a.txt`",
+    "`git rm --cached a.txt`",
+    "`git reset --hard`",
+    "`git revert a.txt`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Sin commits no existe HEAD, y `git restore --staged` falla con `fatal: could not resolve HEAD`. `git status` sugiere `git rm --cached <file>`; `git reset a.txt` también funciona."
+  },
+  {
+   "id": "s04-q19",
+   "type": "single",
+   "q": "Acabas de ejecutar `git reset --hard HEAD~3` y te das cuenta de que era un error. ¿Qué comando devuelve la rama a donde estaba?",
+   "options": [
+    "`git revert HEAD~3`",
+    "`git reset --hard ORIG_HEAD`",
+    "`git restore --source=HEAD~3 .`",
+    "`git commit --amend`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Antes de mover la rama, `reset` guarda su posición en `ORIG_HEAD`. Los commits siguen en la base de datos, así que la rama vuelve a ellos. (Lo no confirmado que borró el `--hard`, en cambio, no vuelve.)"
+  },
+  {
+   "id": "s04-q20",
+   "type": "single",
+   "q": "¿Cuántos commits nuevos crea `git revert --no-edit HEAD~3..HEAD` si no hay conflictos?",
+   "options": [
+    "1",
+    "3",
+    "4",
+    "Ninguno: los rangos solo se aceptan con `-n`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El rango `HEAD~3..HEAD` son los commits alcanzables desde HEAD que no lo son desde `HEAD~3`: `HEAD`, `HEAD~1` y `HEAD~2`. Git crea un commit de reversión por cada uno, empezando por el más reciente. Con `-n` los juntarías en uno."
+  },
+  {
+   "id": "s04-q21",
+   "type": "single",
+   "q": "`git revert` se detuvo con un conflicto en `precios.txt`. Ya editaste el archivo y quedó como debe. ¿Qué haces ahora?",
+   "options": [
+    "`git commit --amend`",
+    "`git add precios.txt` y `git revert --continue`",
+    "`git revert --skip`",
+    "`git reset --hard`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Marcas el conflicto como resuelto con `git add` y dejas que Git termine con `--continue`. `--skip` descartaría esta reversión y `reset --hard` perdería tu resolución (para cancelar está `--abort`)."
+  },
+  {
+   "id": "s04-q22",
+   "type": "yesno",
+   "q": "Sobre `git reset`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "`--soft` no modifica el área de preparación ni el directorio de trabajo.",
+     "answer": true
+    },
+    {
+     "text": "`--mixed` deja el directorio de trabajo intacto.",
+     "answer": true
+    },
+    {
+     "text": "`--hard` borra también los archivos sin seguimiento.",
+     "answer": false
+    },
+    {
+     "text": "`git reset archivo` mueve la rama.",
+     "answer": false
+    }
+   ],
+   "explain": "Los tres modos mueven la rama; `--mixed` también actualiza el índice y `--hard` además el directorio de trabajo, pero ninguno toca lo sin seguimiento. Con una ruta, `reset` no mueve la rama: solo copia ese archivo de HEAD al índice."
+  },
+  {
+   "id": "s04-q23",
+   "type": "single",
+   "q": "En una historia lineal, ¿a qué equivale `HEAD~2`?",
+   "options": [
+    "`HEAD^2`",
+    "`HEAD^^`",
+    "`HEAD-2`",
+    "`HEAD@{2}`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`HEAD~2` es el abuelo siguiendo el primer padre, igual que `HEAD^^`. `HEAD^2` es el **segundo padre** (solo existe en commits de fusión) y `HEAD@{2}` es una entrada del reflog (s10)."
+  },
+  {
+   "id": "s04-q24",
+   "type": "single",
+   "q": "Tienes 3 commits locales «wip» y quieres convertirlos en uno solo antes de publicar. ¿Qué secuencia sirve?",
+   "options": [
+    "`git revert HEAD~3..HEAD` y `git commit`",
+    "`git reset --soft HEAD~3` y `git commit -m \"…\"`",
+    "`git commit --amend` tres veces",
+    "`git clean -f` y `git commit`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`--soft` retrocede la rama tres commits dejando todo su contenido preparado; un único `git commit` lo registra. `revert` agregaría commits en vez de juntarlos."
+  },
+  {
+   "id": "s04-q25",
+   "type": "single",
+   "q": "Historia actual (de más nuevo a más antiguo): `c3 Agrega pie`, `b2 Agrega menú`, `a1 Crea sitio`. Ejecutas `git revert --no-edit HEAD~1`. ¿Qué asuntos lista después `git log --oneline`, de arriba abajo?",
+   "options": [
+    "`Revert \"Agrega menú\"`, `Agrega pie`, `Agrega menú`, `Crea sitio`",
+    "`Agrega pie`, `Crea sitio`",
+    "`Revert \"Agrega pie\"`, `Agrega pie`, `Agrega menú`, `Crea sitio`",
+    "`Agrega pie`, `Revert \"Agrega menú\"`, `Crea sitio`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`HEAD~1` es «Agrega menú». `revert` agrega un commit nuevo encima de todo; ningún commit existente desaparece ni cambia de posición."
+  },
+  {
+   "id": "s04-q26",
+   "type": "single",
+   "q": "¿Qué hace `git commit --amend --no-edit`?",
+   "options": [
+    "Rehace el último commit con el área de preparación actual, sin cambiar el mensaje",
+    "Crea un commit nuevo encima del último con el mismo mensaje",
+    "Cambia solo el mensaje del último commit",
+    "Deshace el último commit y deja los cambios preparados"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "Reemplaza el último commit por uno con el contenido actual del índice y el mismo mensaje, sin abrir el editor. Es el complemento natural de `git add archivo-olvidado`."
+  },
+  {
+   "id": "s04-q27",
+   "type": "multi",
+   "q": "`config.js` ya está rastreado y preparaste una modificación. ¿Qué comandos la sacan del área de preparación y conservan el cambio en el archivo? (Selecciona DOS.)",
+   "options": [
+    "`git restore --staged config.js`",
+    "`git reset config.js`",
+    "`git checkout -- config.js`",
+    "`git rm --cached config.js`"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "Ambos copian la versión de HEAD al índice. `git checkout -- config.js` sobrescribe el archivo desde el índice, sin despreparar nada; `git rm --cached` prepararía el **borrado** del archivo del repositorio."
+  },
+  {
+   "id": "s04-q28",
+   "type": "single",
+   "q": "¿Qué responde Git a `git reset --soft HEAD app.js`?",
+   "options": [
+    "Despreparar `app.js`",
+    "`fatal: Cannot do soft reset with paths.`",
+    "Mueve la rama y deja `app.js` preparado",
+    "Restaura `app.js` en el directorio de trabajo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Con rutas, `reset` no mueve la rama, así que `--soft` (que solo mueve la rama) no tiene sentido. Lo mismo ocurre con `--hard`: `fatal: Cannot do hard reset with paths.`"
+  },
+  {
+   "id": "s04-q29",
+   "type": "yesno",
+   "q": "Sobre `git clean`, indica Sí o No:",
+   "statements": [
+    {
+     "text": "Sin `-d` no borra carpetas sin seguimiento.",
+     "answer": true
+    },
+    {
+     "text": "Nunca borra archivos rastreados.",
+     "answer": true
+    },
+    {
+     "text": "`-n` borra sin pedir confirmación.",
+     "answer": false
+    },
+    {
+     "text": "Con `-x` también borra un `.env` listado en `.gitignore`.",
+     "answer": true
+    }
+   ],
+   "explain": "`-n` es la simulación (*dry run*): no borra nada. `-d` hace falta para las carpetas sin seguimiento y `-x` ignora las reglas de `.gitignore`. Los archivos rastreados nunca son asunto de `git clean`."
+  },
+  {
+   "id": "s04-q30",
+   "type": "single",
+   "q": "¿Cuál es la forma antigua (anterior a Git 2.23) de `git restore archivo`?",
+   "options": [
+    "`git checkout -- archivo`",
+    "`git revert archivo`",
+    "`git reset --hard archivo`",
+    "`git switch archivo`"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "`git checkout -- archivo` restaura el archivo desde el índice. El `--` separa las rutas de los nombres de rama. `git switch` es para ramas (s05)."
+  },
+  {
+   "id": "s04-q31",
+   "type": "single",
+   "q": "Tu `main` local tiene 2 commits por encima de `origin/main` (no publicados) y quieres rehacerlos de otra forma, con sus cambios **sin preparar**. ¿Qué comando usas?",
+   "options": [
+    "`git revert HEAD~2..HEAD`",
+    "`git reset origin/main`",
+    "`git reset --hard origin/main`",
+    "`git restore --source=origin/main .`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git reset origin/main` (modo mixto, igual que `git reset HEAD~2` aquí) lleva la rama a lo publicado y deja los cambios de esos 2 commits sin preparar. `--hard` los perdería, `revert` agregaría commits y `restore` no mueve la rama."
+  },
+  {
+   "id": "s04-q32",
+   "type": "single",
+   "q": "¿Por qué no deberías deshacer con `git reset --hard HEAD~1` y un envío forzado un commit que tu equipo ya descargó?",
+   "options": [
+    "Porque `reset --hard` no funciona con commits publicados",
+    "Porque reescribe la historia compartida: el commit desaparece de tu rama pero sigue en las copias de tus compañeros, y sus historias divergen",
+    "Porque borra el commit también de los computadores de tus compañeros",
+    "Porque Git prohíbe los envíos forzados"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`reset` funciona igual en cualquier commit, pero cambia la historia. El servidor rechazaría tu envío normal (s07) y, si lo fuerzas, tus compañeros quedan con una historia distinta de la del servidor. `git revert` evita el problema."
+  },
+  {
+   "id": "s04-q33",
+   "type": "multi",
+   "q": "¿Qué hace `git revert -n A B`? (Selecciona DOS.)",
+   "options": [
+    "Aplica al área de preparación y al directorio de trabajo los cambios inversos de A y B",
+    "No crea commits: los confirmas tú después con `git commit`",
+    "Borra A y B de la historia",
+    "Solo funciona si A y B son consecutivos"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "`-n` (`--no-commit`) prepara las reversiones sin confirmarlas, para agruparlas en un solo commit. Los commits originales siguen en la historia y no necesitan ser consecutivos."
+  },
+  {
+   "id": "s04-q34",
+   "type": "single",
+   "q": "Ejecutas `git rm config.json` y después `git restore config.json`. ¿Qué pasa?",
+   "options": [
+    "El archivo vuelve al disco",
+    "Error: `pathspec 'config.json' did not match any file(s) known to git`",
+    "El borrado deja de estar preparado, pero el archivo sigue sin existir",
+    "Git confirma el borrado"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`git rm` quita el archivo también del índice, que es la fuente por defecto de `git restore`. Hay que usar `git restore --staged --worktree config.json` (fuente: HEAD) o hacerlo en dos pasos."
+  },
+  {
+   "id": "s04-q35",
+   "type": "single",
+   "q": "¿Qué comando previsualiza qué archivos sin seguimiento, incluidas carpetas, borraría `git clean`?",
+   "options": [
+    "`git clean -f -d`",
+    "`git clean -n -d`",
+    "`git status --ignored`",
+    "`git clean -X`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "`-n` simula y `-d` incluye las carpetas sin seguimiento. La regla profesional es simular con exactamente las mismas opciones que usarás después con `-f`."
+  },
+  {
+   "id": "s04-q36",
+   "type": "single",
+   "q": "Tras `git commit --amend` sobre un commit que ya estaba en `origin/main`, ¿qué dice `git status`?",
+   "options": [
+    "`Your branch is up to date with 'origin/main'.`",
+    "`Your branch is ahead of 'origin/main' by 1 commit.`",
+    "`Your branch and 'origin/main' have diverged, and have 1 and 1 different commits each, respectively.`",
+    "`Your branch is behind 'origin/main' by 1 commit.`"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "El commit enmendado es nuevo (solo lo tienes tú) y el original sigue en `origin/main` (ya no está en tu rama): cada lado tiene un commit que el otro no tiene. Por eso no se enmienda lo publicado."
+  }
+ ],
+ "sources": [
+  {
+   "title": "git-restore — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-restore"
+  },
+  {
+   "title": "git-reset — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-reset"
+  },
+  {
+   "title": "git-revert — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-revert"
+  },
+  {
+   "title": "git-clean — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-clean"
+  },
+  {
+   "title": "git-commit (--amend) — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-commit"
+  },
+  {
+   "title": "git-checkout — Documentación oficial",
+   "url": "https://git-scm.com/docs/git-checkout"
+  },
+  {
+   "title": "git: Reset, restore and revert",
+   "url": "https://git-scm.com/docs/git#_reset_restore_and_revert"
+  },
+  {
+   "title": "gitrevisions: HEAD~n, HEAD^, ORIG_HEAD, :/texto",
+   "url": "https://git-scm.com/docs/gitrevisions"
+  },
+  {
+   "title": "Pro Git 2.4 — Undoing Things",
+   "url": "https://git-scm.com/book/en/v2/Git-Basics-Undoing-Things"
+  },
+  {
+   "title": "Pro Git 2.4 — Deshacer cosas (español)",
+   "url": "https://git-scm.com/book/es/v2/Fundamentos-de-Git-Deshacer-Cosas"
+  },
+  {
+   "title": "Pro Git 7.7 — Reset Demystified",
+   "url": "https://git-scm.com/book/en/v2/Git-Tools-Reset-Demystified"
+  },
+  {
+   "title": "Pro Git 7.7 — Reiniciar desmitificado (español)",
+   "url": "https://git-scm.com/book/es/v2/Herramientas-de-Git-Reiniciar-Desmitificado"
+  },
+  {
+   "title": "Notas de versión de Git 2.23 (git switch y git restore)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.23.0.adoc"
+  },
+  {
+   "title": "Notas de versión de Git 2.43 (Reapply al revertir un revert)",
+   "url": "https://github.com/git/git/blob/master/Documentation/RelNotes/2.43.0.adoc"
+  },
+  {
+   "title": "Highlights from Git 2.43 — GitHub Blog",
+   "url": "https://github.blog/open-source/git/highlights-from-git-2-43/"
+  },
+  {
+   "title": "How to undo (almost) anything with Git — GitHub Blog",
+   "url": "https://github.blog/open-source/git/how-to-undo-almost-anything-with-git/"
+  },
+  {
+   "title": "Resetting, checking out & reverting — Atlassian Git Tutorials",
+   "url": "https://www.atlassian.com/git/tutorials/resetting-checking-out-and-reverting"
+  }
+ ]
+}

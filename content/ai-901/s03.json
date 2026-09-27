@@ -1,0 +1,1787 @@
+{
+ "id": "s03",
+ "order": 3,
+ "title": "Microsoft Foundry: elegir, desplegar y configurar modelos",
+ "domain": "concepts",
+ "summary": "Aprendes cómo se organiza Microsoft Foundry (recurso, proyectos, endpoints, identidad), cómo elegir el modelo adecuado del catálogo según sus capacidades y los leaderboards, qué tipo de despliegue usar (Global Standard, Data Zone, Provisioned, Batch, managed compute…) y cómo influyen parámetros como temperature, top_p o max output tokens. Es la base práctica de casi todas las preguntas de implementación del examen: sin un modelo desplegado y bien configurado no hay chat, ni agente, ni visión.",
+ "goal": "Elegir el modelo y el tipo de despliegue adecuados para un escenario, ajustar sus parámetros y probarlo en el playground de Foundry, con al menos un 80 % en el test de la sección.",
+ "objectives": [
+  "Identificar un modelo de IA adecuado según sus capacidades (Identify an appropriate AI model, based on capabilities)",
+  "Identificar opciones de despliegue de modelos y parámetros de configuración adecuados (Identify appropriate model deployment options and configuration parameters)",
+  "Desplegar un modelo e interactuar con él en el portal de Foundry (Deploy a model and interact with it in the Foundry portal)"
+ ],
+ "lessons": [
+  {
+   "id": "s03-l1",
+   "title": "Qué es Microsoft Foundry y cómo está organizado",
+   "minutes": 14,
+   "goals": [
+    "Describir la jerarquía Foundry resource → project → deployment e indicar en qué nivel se gestionan las redes, la seguridad, los despliegues y los activos de cada equipo.",
+    "Relacionar los nombres anteriores de la plataforma (Azure AI Studio, Azure AI Foundry, Azure AI Services) con los actuales (Microsoft Foundry, Foundry Tools).",
+    "Elegir entre Microsoft Entra ID y clave de API para autenticarse, y localizar en el portal el project endpoint, los despliegues y la cuota."
+   ],
+   "takeaways": [
+    "**Microsoft Foundry** es el nombre actual de Azure AI Studio / Azure AI Foundry, y **Foundry Tools**, el de los antiguos Azure AI Services (antes Cognitive Services).",
+    "El **Foundry resource** gobierna seguridad, redes, conexiones y **despliegues**; cada **project** aísla los agentes, archivos y evaluaciones de un equipo y reutiliza los despliegues del recurso.",
+    "Un **deployment** es modelo + versión + tipo de despliegue + cuota; en el parámetro `model` de tu código va el **nombre del despliegue**, no el del modelo.",
+    "Autenticación recomendada en producción: **Microsoft Entra ID** (*keyless*, con roles RBAC); la **API key** queda para pruebas y debe guardarse en Key Vault y rotarse.",
+    "Trampa: **Foundry Tools** (servicios de voz, visión, lenguaje, extracción…) no son las *tools* de un agente (web search, file search, code interpreter)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "**Microsoft Foundry** es la plataforma unificada de Azure para construir y operar aplicaciones y agentes de IA. Reúne en un único recurso de Azure los **modelos** (catálogo con miles de modelos de Microsoft, OpenAI, Anthropic, Meta, Mistral, DeepSeek, xAI…), los **agentes** (Foundry Agent Service), las **herramientas y el conocimiento** (tools, knowledge) y las capacidades empresariales (seguridad, RBAC, redes, observabilidad, evaluaciones)."
+    },
+    {
+     "type": "h",
+     "text": "Historia de nombres (te los encontrarás mezclados)"
+    },
+    {
+     "type": "p",
+     "text": "Microsoft ha renombrado la plataforma dos veces en un año. En el examen y en la documentación antigua verás los nombres anteriores, así que conviene reconocerlos todos:"
+    },
+    {
+     "type": "diagram",
+     "title": "Evolución de nombres de la plataforma",
+     "mermaid": "timeline\n  title \"De Azure AI Studio a Microsoft Foundry\"\n  \"Hasta nov 2024\" : \"Azure AI Studio\" : \"Azure AI Services (antes Cognitive Services)\"\n  \"Ignite nov 2024\" : \"Azure AI Foundry\" : \"Proyectos basados en hub\"\n  \"Ignite nov 2025\" : \"Microsoft Foundry\" : \"Foundry Tools sustituye a Azure AI Services\" : \"Nuevo portal y Foundry resource con projects\"",
+     "caption": "La plataforma cambió de nombre en Ignite 2024 y en Ignite 2025."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Antes",
+      "Ahora (2026)",
+      "Qué es"
+     ],
+     "rows": [
+      [
+       "Azure AI Studio / Azure AI Foundry",
+       "**Microsoft Foundry**",
+       "La plataforma y su portal (ai.azure.com)"
+      ],
+      [
+       "Cognitive Services → Azure AI Services",
+       "**Foundry Tools**",
+       "Servicios prediseñados: Azure Speech, Azure Language, Azure Vision, Content Understanding, Translator… (p. ej. *Azure Speech in Foundry Tools*)"
+      ],
+      [
+       "Hub + recurso Azure OpenAI + Azure AI Services",
+       "**Foundry resource** (uno solo, con projects)",
+       "Modelo de recursos simplificado"
+      ],
+      [
+       "Portal clásico",
+       "Foundry (new) / Foundry (classic)",
+       "Los proyectos basados en hub siguen en el portal *classic*; las novedades van al nuevo"
+      ],
+      [
+       "Assistants API",
+       "Responses API (Agents v2)",
+       "API moderna para chat y agentes"
+      ],
+      [
+       "Azure AI User, Azure AI Owner…",
+       "Foundry User, Foundry Owner, Foundry Account Owner, Foundry Project Manager",
+       "Roles RBAC renombrados (mismos permisos)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No confundas **Foundry Tools** (los servicios especializados de visión, voz, lenguaje, extracción…) con las **tools de un agente** (web search, file search, code interpreter…). El primero es la familia de servicios que antes se llamaba Azure AI Services."
+    },
+    {
+     "type": "h",
+     "text": "Jerarquía: Foundry resource → projects → deployments"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Foundry resource**: recurso de Azure de nivel superior (tipo `Microsoft.CognitiveServices/accounts`, kind `AIServices`). Aquí se gobierna la seguridad, las redes, las conexiones y los **despliegues de modelos**. Un recurso puede contener varios proyectos.",
+      "**Foundry project**: espacio de trabajo de desarrollo dentro del recurso (subrecurso `accounts/projects`). Aísla los activos de un equipo o caso de uso: agentes, archivos, evaluaciones. Los proyectos **reutilizan** los despliegues y conexiones del recurso.",
+      "**Deployment (despliegue)**: una instancia con nombre de un modelo concreto (modelo + versión + tipo de despliegue + cuota). Tu código llama al despliegue por su **nombre de despliegue**.",
+      "**Connected resources**: Storage, Key Vault, Azure AI Search… son recursos de Azure independientes, con su propia gobernanza, a los que Foundry se conecta."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Jerarquía de recursos de Microsoft Foundry",
+     "mermaid": "flowchart TD\n  SUB[\"Suscripción de Azure\"] --> RG[\"Grupo de recursos\"]\n  RG --> FR[\"Foundry resource (kind AIServices)\"]\n  FR --> DEP[\"Despliegues de modelos (gpt-5-mini, Llama, model-router...)\"]\n  FR --> SEC[\"Seguridad, redes, RBAC, guardrails\"]\n  FR --> P1[\"Project A (equipo chat)\"]\n  FR --> P2[\"Project B (equipo agentes)\"]\n  P1 --> A1[\"Agentes, archivos, evaluaciones\"]\n  P2 --> A2[\"Agentes, archivos, evaluaciones\"]\n  FR -.-> CON[\"Recursos conectados (Storage, Key Vault, AI Search)\"]",
+     "caption": "El recurso gobierna; los proyectos aíslan el trabajo de desarrollo y reutilizan los despliegues."
+    },
+    {
+     "type": "h",
+     "text": "Endpoints y autenticación"
+    },
+    {
+     "type": "p",
+     "text": "En la página **Home** del proyecto encuentras el **Project endpoint** (formato `https://<recurso>.services.ai.azure.com/api/projects/<proyecto>`) y la **API key** del proyecto. El endpoint del proyecto es el punto de entrada unificado para modelos, agentes y evaluaciones; con él puedes usar el SDK de Foundry (`azure-ai-projects`) o el SDK de OpenAI."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método",
+      "Cómo funciona",
+      "Cuándo"
+     ],
+     "rows": [
+      [
+       "**Microsoft Entra ID** (keyless)",
+       "La app obtiene un token con su identidad (usuario, managed identity, service principal). Permisos mediante roles RBAC.",
+       "**Recomendado** para producción: sin secretos en el código, revocable, auditable"
+      ],
+      [
+       "**Clave de API** (key)",
+       "Se envía una clave secreta en la cabecera de cada petición.",
+       "Pruebas rápidas y laboratorios; hay que guardarla en Key Vault y rotarla"
+      ]
+     ]
+    },
+    {
+     "type": "table",
+     "head": [
+      "Rol (RBAC)",
+      "Para qué sirve"
+     ],
+     "rows": [
+      [
+       "**Foundry User** (antes Azure AI User)",
+       "Rol de inicio con mínimo privilegio para desarrolladores: construir y usar dentro del proyecto"
+      ],
+      [
+       "**Foundry Project Manager**",
+       "Gestionar proyectos y asignar acceso dentro del recurso"
+      ],
+      [
+       "**Foundry Account Owner / Foundry Owner**",
+       "Administración completa del recurso"
+      ],
+      [
+       "**Cognitive Services Contributor**",
+       "Crear y gestionar despliegues en el recurso (permiso típico requerido para desplegar)"
+      ],
+      [
+       "**Cognitive Services Usages Reader**",
+       "Ver la cuota y el uso de la suscripción (mínimo privilegio para consultar cuota)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Patrones típicos de pregunta: *¿dónde se configuran redes y despliegues compartidos?* → en el **Foundry resource**. *¿Qué aísla el trabajo de un equipo?* → un **project**. *¿Qué valor pasas en el parámetro `model` de tu código?* → el **nombre del despliegue**. *¿Método de autenticación recomendado?* → **Microsoft Entra ID** (keyless)."
+    },
+    {
+     "type": "h",
+     "text": "Navegación del nuevo portal (ai.azure.com)"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Home**: endpoint y clave del proyecto, accesos rápidos (*Test in playground*, *Explore models*).",
+      "**Discover** → **Models**: catálogo de modelos, fichas (model cards), leaderboards y comparación.",
+      "**Build** → **Models**: tus despliegues; desde cada uno abres el playground, ves endpoint/clave, ajustas o eliminas.",
+      "**Manage** → **Quota**: cuota de tokens por minuto (TPM) y de PTU.",
+      "Interruptor **New Foundry**: activa el portal nuevo; el *classic* conserva los proyectos basados en hub."
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Foundry resource",
+       "en": "Foundry resource",
+       "def": "Recurso de Azure de nivel superior que agrupa despliegues, seguridad, redes y proyectos."
+      },
+      {
+       "term": "Proyecto",
+       "en": "Foundry project",
+       "def": "Espacio de trabajo aislado dentro del recurso para agentes, archivos y evaluaciones."
+      },
+      {
+       "term": "Despliegue",
+       "en": "Deployment",
+       "def": "Instancia con nombre de un modelo, con tipo de despliegue y cuota, a la que llama tu aplicación."
+      },
+      {
+       "term": "Foundry Tools",
+       "en": "Foundry Tools",
+       "def": "Nombre actual de los antiguos Azure AI Services (Speech, Language, Vision, Content Understanding…)."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l2",
+   "title": "El catálogo de modelos y cómo elegir según capacidades",
+   "minutes": 16,
+   "goals": [
+    "Elegir el tipo de modelo que pide un escenario: chat, razonamiento, multimodal, embeddings, generación de imagen o vídeo, audio en tiempo real o SLM.",
+    "Distinguir los Foundry Models *sold by Azure* de los *from partners and community* por facturación, soporte y requisitos.",
+    "Comparar LLM y SLM en calidad, coste, latencia y lugar de ejecución, y explicar cuándo conviene desplegar `model-router`."
+   ],
+   "takeaways": [
+    "*Buscar documentos parecidos* → **embeddings**; *describir fotos* → **multimodal**; *crear ilustraciones* → **generación de imagen**; *problemas de varios pasos* → **razonamiento**; *dispositivo sin conexión* → **SLM**.",
+    "**Sold by Azure** (todo Azure OpenAI y otros seleccionados): se factura en tu suscripción, con SLA y soporte de Microsoft. **Partners and community** (p. ej. Claude): se factura vía **Azure Marketplace**.",
+    "Un **SLM** (p. ej. `Phi-4-mini-instruct`) es más barato y rápido y puede ejecutarse en edge o en el dispositivo; empieza por el modelo **más pequeño que cumpla** la calidad requerida.",
+    "`model-router` elige en tiempo real el modelo subyacente para cada prompt (modos **Balanced**, **Quality** y **Cost**); el campo `model` de la respuesta indica cuál respondió.",
+    "En la **model card** revisa modalidades, context window, capacidades (tool calling, structured outputs), tipos de despliegue y regiones, precio y fecha de retirada."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El **model catalog** (catálogo de modelos) de Foundry reúne miles de modelos. Se dividen en dos grandes categorías, y la diferencia importa para facturación, soporte y requisitos:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "",
+      "Foundry Models sold by Azure",
+      "Foundry Models from partners and community"
+     ],
+     "rows": [
+      [
+       "Qué incluye",
+       "**Todos los modelos de Azure OpenAI** (GPT, gpt-image, Sora, embeddings, realtime…) y modelos seleccionados de DeepSeek, Meta (Llama), Mistral, xAI (Grok), Cohere, Black Forest Labs (FLUX), Moonshot (Kimi), Microsoft (model-router, MAI)",
+       "Anthropic (**Claude**), Microsoft **Phi**, Meta, Mistral, Cohere, Hugging Face, NVIDIA y otros proveedores y comunidad"
+      ],
+      [
+       "Facturación",
+       "Directamente en tu suscripción de Azure",
+       "Mediante **Azure Marketplace** (el proveedor fija el precio y la licencia)"
+      ],
+      [
+       "Soporte y SLA",
+       "Hospedados y operados por Azure, cubiertos por SLA de Azure, soporte de Microsoft",
+       "Productos de terceros (Non-Microsoft Products); requisitos del proveedor"
+      ],
+      [
+       "Requisitos",
+       "Ninguno extra",
+       "Permisos para suscribirse en Marketplace; algunas suscripciones (free trial, estudiante, CSP…) no sirven para Claude"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Que un modelo sea de Microsoft no implica que sea *sold by Azure*: por ejemplo los modelos **Phi** aparecen en la lista *from partners and community*. Y Claude no es *sold by Azure* aunque se despliegue en tu Foundry resource."
+    },
+    {
+     "type": "h",
+     "text": "Tipos de modelo por capacidad"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Necesidad (escenario)",
+      "Tipo de modelo",
+      "Ejemplos en el catálogo (2026)"
+     ],
+     "rows": [
+      [
+       "Chatbot, resumir, redactar, clasificar texto",
+       "LLM de chat (chat-completion)",
+       "`gpt-5-mini`, `gpt-5.4`, `Llama-3.3-70B-Instruct`, `Mistral-Large-3`, `claude-sonnet-5`"
+      ],
+      [
+       "Problemas complejos: matemáticas, planificación, código, análisis multi-paso",
+       "Modelo de **razonamiento** (reasoning)",
+       "Familia GPT-5.x, `DeepSeek-V4-Pro`, `Phi-4-reasoning`, `grok-4.1-fast-reasoning`"
+      ],
+      [
+       "Entender imágenes (describir una foto, leer un gráfico)",
+       "Modelo **multimodal** con entrada de imagen",
+       "`gpt-5.4`, `gpt-4.1`, `Llama-4-Maverick-17B-128E-Instruct-FP8`, `Phi-4-multimodal-instruct`"
+      ],
+      [
+       "Voz a voz en tiempo real, conversación hablada",
+       "Modelo de audio / realtime",
+       "`gpt-realtime`, `gpt-realtime-mini`, `gpt-audio`"
+      ],
+      [
+       "Transcribir audio o sintetizar voz",
+       "Speech to text / Text to speech",
+       "`gpt-4o-transcribe`, `gpt-4o-mini-tts` (o Azure Speech in Foundry Tools)"
+      ],
+      [
+       "Búsqueda semántica, RAG, similitud",
+       "Modelo de **embeddings**",
+       "`text-embedding-3-large`, `text-embedding-3-small`, `embed-v-4-0` (Cohere)"
+      ],
+      [
+       "Crear o editar imágenes a partir de texto",
+       "Generación de imagen",
+       "`gpt-image-2`, `gpt-image-1-mini`, `FLUX.2-pro`, `MAI-Image-2.6`"
+      ],
+      [
+       "Crear vídeo a partir de texto",
+       "Generación de vídeo",
+       "`sora-2` (preview)"
+      ],
+      [
+       "Leer PDFs e imágenes de documentos (OCR a texto/Markdown)",
+       "Image-to-text / document AI",
+       "`mistral-document-ai-2512`, `mistral-ocr-4-0`, `Cohere-parse-v5` (o Content Understanding)"
+      ],
+      [
+       "Ejecutar en el dispositivo, baja latencia, coste mínimo",
+       "**SLM** (small language model)",
+       "`Phi-4-mini-instruct`, `gpt-5-nano`, `Ministral-3B`"
+      ],
+      [
+       "No sé qué modelo usar y quiero optimizar coste/calidad automáticamente",
+       "**Model router**",
+       "`model-router` (elige en tiempo real entre modelos subyacentes)"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de decisión para elegir tipo de modelo",
+     "mermaid": "flowchart TD\n  Q0{\"¿Qué debe producir el modelo?\"} -->|\"Texto\"| Q1{\"¿Entrada solo texto?\"}\n  Q0 -->|\"Vector numérico\"| EMB[\"Modelo de embeddings\"]\n  Q0 -->|\"Imagen\"| IMG[\"Generación de imagen (gpt-image, FLUX)\"]\n  Q0 -->|\"Vídeo\"| VID[\"Generación de vídeo (sora-2)\"]\n  Q0 -->|\"Audio hablado\"| AUD[\"Modelo realtime o TTS\"]\n  Q1 -->|\"No, incluye imagen o audio\"| MM[\"Modelo multimodal\"]\n  Q1 -->|\"Sí\"| Q2{\"¿Tarea compleja de varios pasos?\"}\n  Q2 -->|\"Sí\"| RS[\"Modelo de razonamiento\"]\n  Q2 -->|\"No\"| Q3{\"¿Prioridad coste, latencia o edge?\"}\n  Q3 -->|\"Sí\"| SLM[\"SLM (Phi, nano, mini)\"]\n  Q3 -->|\"No\"| LLM[\"LLM de chat general\"]",
+     "caption": "Empieza por la modalidad de salida y de entrada; después, complejidad y restricciones."
+    },
+    {
+     "type": "h",
+     "text": "LLM vs SLM"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Criterio",
+      "LLM (large language model)",
+      "SLM (small language model)"
+     ],
+     "rows": [
+      [
+       "Tamaño",
+       "Decenas o cientos de miles de millones de parámetros",
+       "Pocos miles de millones (p. ej. 1B–14B)"
+      ],
+      [
+       "Calidad en tareas abiertas",
+       "Mayor conocimiento general y razonamiento",
+       "Suficiente para tareas acotadas"
+      ],
+      [
+       "Coste y latencia",
+       "Mayor",
+       "Menor"
+      ],
+      [
+       "Dónde se ejecuta",
+       "Nube",
+       "Nube, edge o dispositivo (p. ej. Foundry Local)"
+      ],
+      [
+       "Ejemplos",
+       "`gpt-5.4`, `claude-opus-5`, `DeepSeek-V4-Pro`",
+       "`Phi-4-mini-instruct`, `Ministral-3B`, `gpt-5-nano`"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Qué mirar en la ficha del modelo (model card)"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Modalidades** de entrada y salida (texto, imagen, audio).",
+      "**Context window** (ventana de contexto, tokens totales por petición) y **max output tokens**.",
+      "**Capacidades**: function calling / tool calling, structured outputs, streaming, razonamiento, idiomas.",
+      "**Tipos de despliegue y regiones** disponibles (no todos los modelos admiten todos los tipos ni están en todas las regiones).",
+      "**Precio** (por millón de tokens de entrada y salida) y **ciclo de vida** (Preview/GA, fecha de retirada).",
+      "**Benchmarks** (pestaña *Benchmarks*), si el modelo está en los leaderboards."
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El examen describe un escenario y te pide el tipo de modelo: *buscar documentos parecidos* → embeddings; *describir fotos subidas por usuarios* → multimodal con visión; *crear ilustraciones de producto* → generación de imagen; *resolver problemas matemáticos paso a paso* → razonamiento; *asistente en un dispositivo sin conexión* → SLM."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla práctica: empieza por el modelo **más pequeño que cumpla** la calidad requerida. Subir a un modelo mayor cuesta más tokens y latencia; bajar de tamaño ahorra en cada llamada."
+    },
+    {
+     "type": "h",
+     "text": "Model router"
+    },
+    {
+     "type": "p",
+     "text": "`model-router` es un modelo de Microsoft que, en una sola implementación, elige **en tiempo real** qué modelo subyacente responde a cada prompt (GPT-5.x, gpt-4.1, o4-mini, DeepSeek, Llama, Grok, Claude si lo despliegas tú…). Tiene modos de enrutamiento **Balanced** (predeterminado), **Quality** y **Cost**, y puedes restringirlo a un subconjunto de modelos. El coste es la suma de lo que consumen los modelos subyacentes; la respuesta indica en el campo `model` qué modelo respondió."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Catálogo de modelos",
+       "en": "Model catalog",
+       "def": "Colección de modelos de Foundry que puedes explorar, comparar y desplegar."
+      },
+      {
+       "term": "Modelo de razonamiento",
+       "en": "Reasoning model",
+       "def": "Modelo que 'piensa' antes de responder generando reasoning tokens; mejor en tareas complejas, más lento y caro."
+      },
+      {
+       "term": "Embeddings",
+       "en": "Embeddings",
+       "def": "Vectores numéricos que representan el significado del texto; base de la búsqueda semántica y RAG."
+      },
+      {
+       "term": "SLM",
+       "en": "Small language model",
+       "def": "Modelo de lenguaje pequeño, barato y rápido, apto para edge o tareas acotadas."
+      },
+      {
+       "term": "Model router",
+       "en": "Model router",
+       "def": "Modelo desplegable que enruta cada prompt al modelo subyacente más adecuado según calidad/coste."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l3",
+   "title": "Comparar modelos: leaderboards, benchmarks y playground",
+   "minutes": 10,
+   "goals": [
+    "Interpretar las métricas de los model leaderboards (quality index, safety, cost, latencia y throughput), indicando en cuáles es mejor un valor alto y en cuáles uno bajo.",
+    "Usar los trade-off charts y la función Compare del leaderboard para preseleccionar dos o tres modelos candidatos.",
+    "Distinguir cuándo usar los leaderboards del catálogo y cuándo Compare models del playground, y justificar por qué la elección final exige evaluar con datos propios."
+   ],
+   "takeaways": [
+    "Comparar modelos con **benchmarks estándar** por calidad, seguridad, coste y rendimiento → **model leaderboards** (preview) del catálogo.",
+    "**Quality index** (0–1): más alto es mejor. **Safety** se mide con la *Attack Success Rate* de HarmBench: **más baja** es mejor. **Cost**: más bajo es mejor.",
+    "Ver cómo responden varios despliegues al **mismo prompt en vivo** → **Compare models** del playground (hasta **tres** modelos a la vez).",
+    "Los **trade-off charts** enfrentan la calidad con el coste, el throughput o la seguridad; los **scenario leaderboards** clasifican los modelos por caso de uso (Reasoning, Coding, Math…).",
+    "Los benchmarks usan datasets públicos y cargas sintéticas: **no garantizan** el rendimiento con tus datos; el paso siguiente es **evaluar** con tus propios prompts."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Foundry ofrece **model leaderboards** (preview) dentro del catálogo para comparar modelos de texto (LLM y SLM) y de embeddings con benchmarks estándar. Se accede desde **Discover** (el resumen aparece arriba del catálogo) y **Go to leaderboard** para la lista completa."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Dimensión",
+      "Qué mide",
+      "Cómo se interpreta"
+     ],
+     "rows": [
+      [
+       "**Quality** (quality index)",
+       "Media de precisión en datasets de razonamiento, conocimiento, QA, matemáticas y código (p. ej. MMLU-Pro, GPQA, BIG-Bench Hard)",
+       "Valor 0–1, **más alto es mejor**"
+      ],
+      [
+       "**Safety**",
+       "Attack Success Rate con HarmBench, detección de toxicidad (ToxiGen), conocimiento sensible (WMDP)",
+       "ASR **más bajo es mejor**"
+      ],
+      [
+       "**Performance / throughput**",
+       "Latencia (media, P50–P99), time to first token (TTFT), tokens generados por segundo (GTPS)",
+       "Menos latencia y más throughput es mejor"
+      ],
+      [
+       "**Cost** (estimated cost)",
+       "Coste real de ejecutar el modelo sobre los datasets de calidad",
+       "**Más bajo es mejor**"
+      ],
+      [
+       "**Scenario leaderboards**",
+       "Rankings por caso de uso: Reasoning, Coding, Math, Question answering, Groundedness…",
+       "Úsalos si tu caso encaja en un escenario concreto"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Trade-off charts**: comparan dos métricas a la vez (calidad frente a coste, throughput o seguridad) con el desplegable **Compare quality against**. Los mejores quedan arriba a la derecha.",
+      "**Compare** (en el leaderboard): selecciona 2–3 modelos y compara benchmarks, detalles (context window, idiomas), endpoints soportados y features (function calling, visión…).",
+      "**Benchmarks** (pestaña de la ficha del modelo): resultados agregados y tablas por métrica y dataset.",
+      "**Compare models** (en el playground): envía el mismo prompt a hasta **tres** despliegues a la vez y compara las respuestas en vivo."
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Proceso para seleccionar un modelo",
+     "mermaid": "flowchart LR\n  A[\"Definir requisitos (modalidad, calidad, coste, latencia, residencia)\"] --> B[\"Filtrar catálogo por capacidades y región\"]\n  B --> C[\"Leaderboards y trade-off charts\"]\n  C --> D[\"Compare de 2 o 3 candidatos\"]\n  D --> E[\"Desplegar y probar en el playground (Compare models)\"]\n  E --> F[\"Evaluar con datos propios\"]\n  F --> G[\"Elegir modelo y tipo de despliegue\"]",
+     "caption": "Los benchmarks públicos preseleccionan; la evaluación con tus datos decide."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los benchmarks usan datasets públicos y cargas sintéticas: **no garantizan** el rendimiento en tus datos. El siguiente paso tras el leaderboard es **evaluar** el modelo con tus propios prompts (evaluaciones de Foundry)."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si la pregunta dice *comparar modelos por calidad, seguridad, coste y throughput usando benchmarks estándar* → **model leaderboards** del catálogo. Si dice *ver cómo responden dos modelos al mismo prompt en tiempo real* → **Compare models** del playground."
+    }
+   ]
+  },
+  {
+   "id": "s03-l4",
+   "title": "Opciones y tipos de despliegue, cuotas y costes",
+   "minutes": 18,
+   "goals": [
+    "Elegir entre Serverless API y managed compute según el tipo de modelo, la infraestructura y la forma de facturación.",
+    "Seleccionar el tipo de despliegue (Global Standard, Data Zone, Standard, Provisioned, Batch o Developer) según la residencia de datos, el patrón de carga y la latencia exigida.",
+    "Calcular cómo se reparte la cuota de TPM entre despliegues y explicar la causa y la solución de un error HTTP 429."
+   ],
+   "takeaways": [
+    "Punto de partida por defecto o tráfico variable → **Global Standard**; datos procesados solo en la UE → **Data Zone Standard**; latencia predecible y throughput garantizado → **Provisioned (PTU)**.",
+    "Grandes volúmenes no urgentes → **Batch** (~50 % más barato, objetivo de 24 h); modelo de Hugging Face en GPU dedicada → **managed compute**, facturado por hora de GPU.",
+    "Con los tipos **Global**, la inferencia puede procesarse en cualquier región; los datos **en reposo** siguen en la geografía designada.",
+    "La **cuota** se asigna por suscripción, región, modelo y tipo de despliegue en **TPM** (con RPM proporcional); superar el límite devuelve **HTTP 429** → reintenta con *exponential backoff*.",
+    "**Provisioned** se paga por hora aunque no haya tráfico; Standard y Batch se pagan por tokens consumidos (los *reasoning tokens* se facturan como salida)."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Para usar un modelo normalmente lo **despliegas**: creas un despliegue con nombre que tu aplicación invoca. Foundry tiene dos **opciones de despliegue**, y Foundry elige la adecuada según el modelo:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Capacidad",
+      "Serverless API (preferida)",
+      "Managed compute (preview)"
+     ],
+     "rows": [
+      [
+       "Modelos",
+       "Todos los Foundry Models (sold by Azure y partners seleccionados, p. ej. Claude)",
+       "Modelos open-source, de partners y personalizados (colección de Hugging Face, NVIDIA NIM: Qwen, Nemotron…)"
+      ],
+      [
+       "Infraestructura",
+       "Totalmente gestionada, sin GPU que dimensionar",
+       "GPU dedicadas (A100, H100, MI300X) gestionadas por Foundry, autoescalado y scale-to-zero"
+      ],
+      [
+       "Tipos de despliegue",
+       "Global/Data Zone/Standard, Provisioned, Batch, Developer",
+       "No usa esos tipos; procesamiento global"
+      ],
+      [
+       "Facturación",
+       "Por **token** o por **PTU** reservadas",
+       "**Por hora** por acelerador (GPU)"
+      ],
+      [
+       "Content filtering",
+       "Integrado y personalizable",
+       "No disponible en la preview"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "**Instant access (preview)**: para modelos compatibles puedes llamar al modelo **por su nombre sin crear despliegue** (p. ej. `model=\"gpt-5-mini\"`). Durante la preview solo en proyectos de **West US 3**, con guardrails predeterminados no configurables. Para residencia de datos, PTU, filtros personalizados o modelos fine-tuned necesitas un despliegue."
+    },
+    {
+     "type": "h",
+     "text": "Tipos de despliegue (Serverless API)"
+    },
+    {
+     "type": "p",
+     "text": "El tipo de despliegue decide **dónde se procesan los datos** (global, data zone o geografía de Azure), **cómo pagas** (por token, capacidad reservada o batch con descuento) y el **rendimiento** (variabilidad de latencia, throughput garantizado)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Tipo",
+      "SKU",
+      "Procesamiento de datos",
+      "Facturación",
+      "Ideal para"
+     ],
+     "rows": [
+      [
+       "**Global Standard**",
+       "`GlobalStandard`",
+       "Cualquier región de Azure",
+       "Pago por token",
+       "**Punto de partida por defecto**: modelos nuevos antes, precio más bajo, mayor cuota"
+      ],
+      [
+       "Global Provisioned",
+       "`GlobalProvisionedManaged`",
+       "Cualquier región",
+       "PTU reservadas",
+       "Alto volumen constante con latencia predecible"
+      ],
+      [
+       "Global Batch",
+       "`GlobalBatch`",
+       "Cualquier región",
+       "**50 % más barato**, objetivo 24 h",
+       "Grandes trabajos asíncronos no urgentes"
+      ],
+      [
+       "**Data Zone Standard**",
+       "`DataZoneStandard`",
+       "Solo dentro de la zona de datos (**EU**, **US** o **APAC**)",
+       "Pago por token",
+       "Cumplimiento de residencia en la UE/EE. UU./APAC"
+      ],
+      [
+       "Data Zone Provisioned",
+       "`DataZoneProvisionedManaged`",
+       "Dentro de la zona",
+       "PTU reservadas",
+       "Residencia por zona + throughput garantizado"
+      ],
+      [
+       "Data Zone Batch",
+       "`DataZoneBatch`",
+       "Dentro de la zona",
+       "50 % de descuento",
+       "Batch con residencia por zona"
+      ],
+      [
+       "**Standard** (regional)",
+       "`Standard`",
+       "Dentro de la geografía de Azure del recurso",
+       "Pago por token",
+       "Cumplimiento por geografía, volumen bajo-medio y con picos"
+      ],
+      [
+       "Regional Provisioned",
+       "`ProvisionedManaged`",
+       "Dentro de la geografía",
+       "PTU reservadas",
+       "Geografía + throughput garantizado"
+      ],
+      [
+       "Developer",
+       "`DeveloperTier`",
+       "Cualquier región (sin garantía de residencia)",
+       "Pago por token",
+       "Solo evaluar modelos **fine-tuned**; vida de 24 h y sin SLA"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Árbol de decisión del tipo de despliegue",
+     "mermaid": "flowchart TD\n  S{\"¿Modelo open-source o personalizado en GPU dedicada?\"} -->|\"Sí\"| MC[\"Managed compute (pago por hora de GPU)\"]\n  S -->|\"No, Foundry Model\"| R{\"¿Requisito de residencia de datos?\"}\n  R -->|\"Ninguno\"| G{\"¿Patrón de carga?\"}\n  R -->|\"Zona EU, US o APAC\"| DZ[\"Data Zone Standard, Provisioned o Batch\"]\n  R -->|\"Geografía concreta\"| RG[\"Standard o Regional Provisioned\"]\n  G -->|\"Variable o con picos\"| GS[\"Global Standard (pago por token)\"]\n  G -->|\"Alto y constante, latencia estable\"| GP[\"Global Provisioned (PTU)\"]\n  G -->|\"Masivo y no urgente\"| GB[\"Global Batch (50 % más barato, 24 h)\"]",
+     "caption": "Primero residencia de datos, después patrón de carga y latencia."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Claves de examen: *empezar / prototipar / tráfico variable* → **Global Standard**. *Los datos deben quedarse en la UE* → **Data Zone Standard** (EU). *Latencia predecible y throughput garantizado* → **Provisioned (PTU)**. *Procesar millones de documentos por la noche al menor coste* → **Batch**. *Modelo de Hugging Face en GPU* → **managed compute**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Residencia de datos: los datos **en reposo** siempre se quedan en la geografía designada; lo que cambia con el tipo es dónde se **procesa la inferencia** (prompts y respuestas). *Global* puede procesarse en cualquier región del mundo."
+    },
+    {
+     "type": "h",
+     "text": "Cuotas y límites: TPM y RPM"
+    },
+    {
+     "type": "p",
+     "text": "La **cuota** se asigna a tu suscripción **por región, por modelo y por tipo de despliegue**, en **tokens por minuto (TPM)**. Al crear un despliegue le asignas parte de esa cuota; lo que asignas fija su límite de TPM y un límite proporcional de **peticiones por minuto (RPM)**. Por ejemplo, en modelos de chat clásicos 1 unidad de capacidad = 1.000 TPM = 6 RPM (la proporción varía por modelo)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "Si superas TPM o RPM recibes **HTTP 429 (Too Many Requests)**; reintenta con *exponential backoff* respetando `retry-after-ms`.",
+      "El cálculo de TPM **estima** tokens del prompt + `max_tokens`: un `max_tokens` exagerado consume límite aunque la respuesta sea corta.",
+      "Ejemplo: con 240.000 TPM de un modelo en una región puedes crear 1 despliegue de 240K, 2 de 120K, etc., mientras la suma no supere la cuota.",
+      "La cuota **no** es el context window: TPM limita el ritmo; el context window limita el tamaño de cada petición.",
+      "Consulta y reparte cuota en **Manage → Quota** (pestañas *Token per minute* y *Provisioned throughput unit*); pide más con **Request quota**.",
+      "Provisioned usa **PTU** (provisioned throughput units): capacidad reservada, facturada por hora aunque no la uses."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Costes y monitorización"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Modelo de pago",
+      "Pagas por",
+      "Coste con el despliegue sin uso"
+     ],
+     "rows": [
+      [
+       "Standard / Global Standard / Data Zone Standard",
+       "Tokens de **entrada + salida** consumidos (los reasoning tokens se facturan como salida)",
+       "Prácticamente nada (no hay tokens)"
+      ],
+      [
+       "Provisioned (PTU)",
+       "Capacidad reservada por hora (o reserva mensual/anual)",
+       "Sí pagas: la capacidad está reservada"
+      ],
+      [
+       "Batch",
+       "Tokens con ~50 % de descuento",
+       "Nada fuera de los trabajos"
+      ],
+      [
+       "Managed compute",
+       "Horas de GPU",
+       "Sí, salvo que escale a cero"
+      ]
+     ]
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Azure Monitor → Metrics** del recurso: tokens procesados, peticiones, latencia, errores (filtrables por despliegue).",
+      "**Cost Management → Cost analysis** en el portal de Azure: gasto por recurso y por etiqueta de despliegue.",
+      "Métricas a nivel de recurso (tokens, latencia, peticiones de todos los proyectos) y a nivel de proyecto (evaluaciones, agentes).",
+      "Reduce costes: modelo más pequeño, prompts más cortos, `max output tokens` ajustado, menor *reasoning effort*, Batch para lo no urgente."
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Tipo de despliegue",
+       "en": "Deployment type",
+       "def": "SKU que determina dónde se procesan los datos, cómo se factura y qué rendimiento se garantiza."
+      },
+      {
+       "term": "TPM",
+       "en": "Tokens per minute",
+       "def": "Unidad de cuota y límite de velocidad de tokens de un despliegue."
+      },
+      {
+       "term": "RPM",
+       "en": "Requests per minute",
+       "def": "Límite de peticiones por minuto, proporcional a los TPM asignados."
+      },
+      {
+       "term": "PTU",
+       "en": "Provisioned throughput unit",
+       "def": "Unidad de capacidad reservada para despliegues Provisioned; da latencia estable y se paga por hora."
+      },
+      {
+       "term": "Data zone",
+       "en": "Data zone",
+       "def": "Límite geográfico definido por Microsoft (EU, US, APAC) dentro del que se procesan los datos."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "s03-l5",
+   "title": "Parámetros de configuración y el playground",
+   "minutes": 16,
+   "goals": [
+    "Elegir el ajuste de temperature, top_p, max output tokens, stop sequences o frequency/presence penalty que produce el comportamiento pedido (consistencia, creatividad, longitud, menos repeticiones).",
+    "Identificar los parámetros que no admiten los modelos de razonamiento y sustituirlos por `reasoning_effort`, `verbosity` y `max_output_tokens`.",
+    "Probar un despliegue en el Model playground (Instructions, parámetros, New chat) y elegir el playground adecuado para agentes, imágenes o vídeo."
+   ],
+   "takeaways": [
+    "Respuestas precisas y consistentes → **temperature baja**; lluvia de ideas creativa → **temperature alta**. Ajusta `temperature` **o** `top_p`, no ambos.",
+    "**Max output tokens** limita longitud y coste (demasiado bajo → respuesta **cortada**); si el modelo repite frases, usa un `frequency_penalty` positivo.",
+    "Los **modelos de razonamiento** (GPT-5, serie o) **no admiten** `temperature`, `top_p`, penalizaciones ni `max_tokens`: se controlan con `reasoning_effort`, `verbosity` y `max_output_tokens` / `max_completion_tokens`.",
+    "Rol, tono, formato y reglas para toda la conversación → **system message** (*Instructions* en el playground); ni este ni los parámetros cambian los pesos del modelo.",
+    "En el playground, **New chat** borra el historial: el modelo deja de «ver» los turnos anteriores porque ya no se le reenvían."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "Una vez desplegado, el comportamiento del modelo se ajusta en cada petición (o en el panel del playground) con instrucciones y parámetros. **No cambian el modelo** (sus pesos); cambian cómo genera la respuesta."
+    },
+    {
+     "type": "h",
+     "text": "Mensajes: instrucciones, usuario e historial"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**System message / Instructions** (mensaje de sistema; en modelos de razonamiento también *developer message*): define rol, tono, formato, límites y reglas. Se aplica a toda la conversación. En el playground es el cuadro **Instructions**.",
+      "**User message** (prompt del usuario): la petición concreta.",
+      "**Historial / contexto**: las APIs de chat no tienen memoria; la app reenvía los turnos anteriores (o usa una conversación almacenada en la Responses API). Más historial = más tokens de entrada = más coste y riesgo de agotar el context window. En el playground, **New chat** borra el historial."
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Parámetros de muestreo y longitud"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Parámetro",
+      "Qué hace",
+      "Valores",
+      "Úsalo así"
+     ],
+     "rows": [
+      [
+       "**temperature**",
+       "Controla la aleatoriedad al elegir el siguiente token",
+       "0–2 (típico 0–1); por defecto 1",
+       "Bajo (0–0,3) para respuestas factuales y consistentes; alto (0,8–1,2) para creatividad y variedad"
+      ],
+      [
+       "**top_p** (nucleus sampling)",
+       "Solo considera los tokens cuya probabilidad acumulada llega a *p*",
+       "0–1; por defecto 1",
+       "Bajo = más conservador. Ajusta **temperature o top_p, no ambos**"
+      ],
+      [
+       "**max output tokens** (`max_output_tokens` / `max_completion_tokens` / `max_tokens`)",
+       "Límite superior de tokens generados",
+       "Hasta el máximo del modelo",
+       "Controla longitud y coste; si es muy bajo, la respuesta queda **cortada**"
+      ],
+      [
+       "**stop sequences** (`stop`)",
+       "Secuencias que hacen que el modelo deje de generar",
+       "Hasta 4 cadenas",
+       "Cortar al llegar a un marcador, p. ej. `###`"
+      ],
+      [
+       "**frequency_penalty**",
+       "Penaliza tokens según **cuántas veces** ya aparecieron",
+       "-2 a 2; por defecto 0",
+       "Positivo reduce repeticiones literales"
+      ],
+      [
+       "**presence_penalty**",
+       "Penaliza tokens que **ya aparecieron** al menos una vez",
+       "-2 a 2; por defecto 0",
+       "Positivo empuja a introducir temas nuevos"
+      ],
+      [
+       "**reasoning effort** (`reasoning_effort`)",
+       "Cuánto 'piensa' un modelo de razonamiento antes de responder",
+       "`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (según modelo)",
+       "Más esfuerzo = mejor en tareas difíciles, pero más latencia y más tokens (coste)"
+      ],
+      [
+       "**verbosity** (GPT-5)",
+       "Concisión de la respuesta visible",
+       "`low`, `medium`, `high`",
+       "Respuestas más cortas o más detalladas"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo temperature y top_p afectan a la elección del siguiente token",
+     "mermaid": "flowchart LR\n  P[\"Prompt y contexto\"] --> M[\"Modelo calcula probabilidades del siguiente token\"]\n  M --> D[\"mat 0.4, table 0.2, chair 0.15, moon 0.01\"]\n  D --> T{\"temperature\"}\n  T -->|\"Baja\"| L[\"Casi siempre el más probable (consistente)\"]\n  T -->|\"Alta\"| H[\"Reparte probabilidad (variado y creativo)\"]\n  D --> TP{\"top_p\"}\n  TP -->|\"0.5\"| N[\"Solo candidatos que suman el 50 % superior\"]\n  L --> O[\"Token elegido y repetir hasta stop o max tokens\"]\n  H --> O\n  N --> O",
+     "caption": "Ambos parámetros actúan sobre la distribución de probabilidad del siguiente token."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Los **modelos de razonamiento** (GPT-5 y o-series, salvo excepciones como GPT-6) **no admiten** `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` ni `max_tokens`: se controlan con `reasoning_effort`, `verbosity` y `max_output_tokens` (Responses API) o `max_completion_tokens` (Chat Completions). Los *reasoning tokens* cuentan como tokens de salida y se facturan."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Asociaciones rápidas: *respuestas siempre iguales y precisas* → **temperature baja**. *Lluvia de ideas creativa* → **temperature alta**. *Evitar respuestas demasiado largas o caras* → **max output tokens**. *El modelo repite frases* → **frequency penalty**. *Definir personalidad y reglas del asistente* → **system message / instructions**. *Tarea compleja con un modelo de razonamiento* → subir **reasoning effort**."
+    },
+    {
+     "type": "h",
+     "text": "Playgrounds del portal"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Playground",
+      "Para qué",
+      "Detalles clave"
+     ],
+     "rows": [
+      [
+       "**Model playground** (chat)",
+       "Prompt engineering, ajuste de parámetros, comparar modelos",
+       "Instructions, parámetros, tools (web search, file search, code interpreter), guardrails, **Compare models** (hasta 3), pestaña **Code**, **Open in VS Code for the Web**, **Save as agent**"
+      ],
+      [
+       "**Agents playground**",
+       "Prototipar agentes con herramientas y conocimiento",
+       "Instrucciones, tools, knowledge, memoria, tracing y evaluaciones"
+      ],
+      [
+       "**Images playground**",
+       "Generar y editar imágenes",
+       "Se abre automáticamente con modelos como gpt-image o FLUX; variaciones, relación de aspecto, inpainting, **View code**"
+      ],
+      [
+       "**Video playground** (preview)",
+       "Generar vídeo",
+       "Con sora-2; relación de aspecto y duración; los vídeos se guardan 24 h"
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Flujo: del catálogo al código",
+     "mermaid": "sequenceDiagram\n  participant U as Usuario\n  participant C as Catálogo (Discover)\n  participant F as Foundry resource\n  participant P as Playground\n  participant A as App cliente\n  U->>C: Elige modelo y pulsa Deploy\n  C->>F: Crea despliegue con nombre, tipo y TPM\n  F-->>P: Abre el playground del despliegue\n  U->>P: Ajusta Instructions y parámetros y prueba prompts\n  P-->>U: Pestaña Code con endpoint y ejemplo\n  A->>F: Llama al endpoint con nombre del despliegue\n  F-->>A: Respuesta y uso de tokens",
+     "caption": "Tras desplegar aterrizas en el playground; de ahí pasas al código."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "# pip install openai azure-identity\nfrom openai import OpenAI\nfrom azure.identity import DefaultAzureCredential, get_bearer_token_provider\n\n# Autenticación keyless con Microsoft Entra ID (recomendado)\ntoken_provider = get_bearer_token_provider(\n    DefaultAzureCredential(), \"https://ai.azure.com/.default\")\n\nclient = OpenAI(\n    base_url=\"https://<recurso>.openai.azure.com/openai/v1/\",\n    api_key=token_provider)\n\nresponse = client.responses.create(\n    model=\"<nombre-del-despliegue>\",      # nombre del DESPLIEGUE, no del modelo\n    instructions=\"Eres un tutor conciso de Azure. Responde en español.\",\n    input=\"¿Qué es una data zone?\",\n    max_output_tokens=300)\nprint(response.output_text)",
+     "caption": "Ejemplo orientativo con la Responses API: instrucciones, entrada y límite de salida. Con clave de API pasarías la key en api_key."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Mensaje de sistema",
+       "en": "System message / Instructions",
+       "def": "Instrucciones persistentes que fijan rol, tono, formato y límites del modelo."
+      },
+      {
+       "term": "Temperatura",
+       "en": "Temperature",
+       "def": "Parámetro que controla la aleatoriedad de la salida: baja = determinista, alta = creativa."
+      },
+      {
+       "term": "Top-p",
+       "en": "Top_p / nucleus sampling",
+       "def": "Limita la elección a los tokens más probables cuya probabilidad acumulada suma p."
+      },
+      {
+       "term": "Máximo de tokens de salida",
+       "en": "Max output tokens",
+       "def": "Límite superior de tokens que el modelo puede generar en una respuesta."
+      },
+      {
+       "term": "Secuencia de parada",
+       "en": "Stop sequence",
+       "def": "Texto que, al generarse, detiene la respuesta."
+      },
+      {
+       "term": "Esfuerzo de razonamiento",
+       "en": "Reasoning effort",
+       "def": "Controla cuánto razona un modelo de razonamiento antes de responder."
+      },
+      {
+       "term": "Playground",
+       "en": "Playground",
+       "def": "Entorno del portal para probar modelos y agentes sin escribir código."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "Nombres anteriores de Microsoft Foundry",
+   "back": "Azure AI Studio → Azure AI Foundry (Ignite 2024) → Microsoft Foundry (Ignite 2025)."
+  },
+  {
+   "front": "¿Cómo se llaman ahora los Azure AI Services (antes Cognitive Services)?",
+   "back": "Foundry Tools (p. ej. Azure Speech in Foundry Tools)."
+  },
+  {
+   "front": "Foundry resource vs project",
+   "back": "Resource: nivel superior, gobierna seguridad, redes y despliegues. Project: espacio aislado de desarrollo que reutiliza los despliegues del recurso."
+  },
+  {
+   "front": "¿Qué valor va en el parámetro `model` al llamar a un modelo desplegado?",
+   "back": "El nombre del despliegue (deployment name)."
+  },
+  {
+   "front": "Autenticación recomendada para producción",
+   "back": "Microsoft Entra ID (keyless) con roles RBAC, en lugar de claves de API."
+  },
+  {
+   "front": "Sold by Azure vs partners and community",
+   "back": "Sold by Azure: facturado en Azure, SLA y soporte de Microsoft (todo Azure OpenAI, DeepSeek, Grok…). Partners: vía Azure Marketplace (Claude, Phi…)."
+  },
+  {
+   "front": "Tipo de despliegue por defecto recomendado",
+   "back": "Global Standard: pago por token, modelos nuevos primero, precio más bajo, mayor cuota."
+  },
+  {
+   "front": "Los datos deben procesarse solo en la UE",
+   "back": "Data Zone Standard (o Data Zone Provisioned) en una región de la zona EU."
+  },
+  {
+   "front": "¿Qué da un despliegue Provisioned?",
+   "back": "Capacidad reservada en PTU: throughput garantizado y latencia estable; se paga por hora aunque no se use."
+  },
+  {
+   "front": "Batch: ventaja y contrapartida",
+   "back": "~50 % más barato que Global Standard; asíncrono con objetivo de 24 h, sin respuesta en tiempo real."
+  },
+  {
+   "front": "¿Cuándo usar managed compute?",
+   "back": "Para modelos open-source o personalizados (p. ej. Hugging Face, NVIDIA NIM) en GPU dedicada; se paga por hora de GPU."
+  },
+  {
+   "front": "TPM y RPM",
+   "back": "Tokens por minuto (unidad de cuota) y peticiones por minuto (proporcional a TPM). Superarlos → HTTP 429."
+  },
+  {
+   "front": "La cuota se asigna por…",
+   "back": "Suscripción, región, modelo y tipo de despliegue, en TPM."
+  },
+  {
+   "front": "Temperature baja vs alta",
+   "back": "Baja: respuestas consistentes y factuales. Alta: más variedad y creatividad."
+  },
+  {
+   "front": "¿Ajustar temperature y top_p a la vez?",
+   "back": "No se recomienda: ajusta uno de los dos."
+  },
+  {
+   "front": "frequency_penalty vs presence_penalty",
+   "back": "Frequency: penaliza según cuántas veces aparece un token (menos repetición). Presence: penaliza si ya apareció (fomenta temas nuevos)."
+  },
+  {
+   "front": "Parámetros NO soportados por modelos de razonamiento (GPT-5, o-series)",
+   "back": "temperature, top_p, presence_penalty, frequency_penalty, max_tokens (y logprobs, logit_bias)."
+  },
+  {
+   "front": "¿Qué controla reasoning_effort?",
+   "back": "Cuánto razona el modelo antes de responder (none…high/xhigh/max): más esfuerzo = más calidad en tareas difíciles, más latencia y coste."
+  },
+  {
+   "front": "Model leaderboards: 4 dimensiones",
+   "back": "Quality, Safety, Cost (estimated) y Performance/Throughput; más trade-off charts y scenario leaderboards."
+  },
+  {
+   "front": "¿Cuántos modelos compara a la vez Compare models del playground?",
+   "back": "Hasta tres."
+  },
+  {
+   "front": "¿Qué es model-router?",
+   "back": "Un modelo desplegable que elige en tiempo real el modelo subyacente para cada prompt; modos Balanced, Quality y Cost."
+  },
+  {
+   "front": "¿Dónde ves y repartes la cuota en el nuevo portal?",
+   "back": "Manage → Quota (pestañas Token per minute y Provisioned throughput unit)."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s03-lab1",
+   "title": "Crear un proyecto de Foundry, desplegar un modelo y chatear en el playground",
+   "goal": "Crear un Foundry resource con un proyecto, desplegar gpt-5-mini con Global Standard, conversar con él en el playground y localizar endpoint, clave y nombre del despliegue.",
+   "minutes": 30,
+   "cost": "Céntimos (pago por token). Requiere suscripción de Azure con método de pago.",
+   "prereqs": [
+    "Suscripción de Azure con permisos para crear recursos (Owner o Contributor en la suscripción o el grupo de recursos)",
+    "Navegador moderno"
+   ],
+   "steps": [
+    {
+     "title": "Entrar en el portal nuevo",
+     "detail": "Abre https://ai.azure.com e inicia sesión con tu cuenta de Azure. Si ves el interruptor **New Foundry** en la barra superior, actívalo para usar la experiencia nueva."
+    },
+    {
+     "title": "Crear el proyecto (y su Foundry resource)",
+     "detail": "Selecciona **Create** (crear proyecto). Pon un nombre de proyecto, despliega **Advanced options** y rellena: **Foundry resource** (nombre único, se crea con el proyecto), **Subscription**, **Resource group** (crea uno nuevo, p. ej. `rg-ai901-s03`, para borrarlo todo al final) y **Region** (elige una región recomendada para Foundry, p. ej. East US 2 o Sweden Central). Pulsa **Create** y espera unos minutos."
+    },
+    {
+     "title": "Buscar el modelo en el catálogo",
+     "detail": "Ve a **Discover** (arriba a la derecha) → **Models**. Busca `gpt-5-mini` y abre su ficha. Revisa modalidades, context window, tipos de despliegue y la pestaña **Benchmarks** si aparece."
+    },
+    {
+     "title": "Desplegar con los valores por defecto",
+     "detail": "Pulsa **Deploy** → **Default settings**. Esto crea un despliegue **Global Standard** con el nombre del modelo como nombre de despliegue. Si no tienes cuota para este modelo, prueba `gpt-5-nano`, `gpt-5.4-mini` u otro modelo disponible en tu región."
+    },
+    {
+     "title": "Probar en el playground",
+     "detail": "Al terminar el despliegue aterrizas en el playground. Comprueba que tu despliegue está seleccionado y escribe en el chat: `¿Quién fue Ada Lovelace?`. Después haz una pregunta de seguimiento (`¿Y qué relación tuvo con Charles Babbage?`) para ver que el historial se mantiene. Pulsa **New chat** y repite la pregunta de seguimiento: verás que el modelo ya no sabe de quién hablas."
+    },
+    {
+     "title": "Ver el código",
+     "detail": "En el panel del chat abre la pestaña **Code**. Observa que el ejemplo usa el endpoint, la autenticación y el **nombre del despliegue** en el parámetro `model`."
+    },
+    {
+     "title": "Localizar endpoint y clave",
+     "detail": "Vuelve a **Home** del proyecto y anota el **Project endpoint** y la **Project API key** (no la compartas). Ve a **Build** → **Models** y comprueba que el despliegue aparece con estado **Succeeded**; abre su detalle y fíjate en el tipo de despliegue y el límite de TPM asignado."
+    }
+   ],
+   "verify": [
+    "El despliegue aparece en Build → Models con estado Succeeded y tipo Global Standard",
+    "El playground responde a tus preguntas y mantiene el contexto hasta pulsar New chat",
+    "Tienes anotados Project endpoint y nombre del despliegue"
+   ],
+   "cleanup": "Si vas a hacer los otros labs, deja el recurso. Al terminar: en https://portal.azure.com abre el grupo de recursos `rg-ai901-s03`, pulsa **Delete resource group**, escribe el nombre para confirmar y elimina. Así se borran el Foundry resource, el proyecto y los despliegues. (Un despliegue Standard sin uso apenas cuesta, pero no dejes recursos olvidados.)",
+   "challenge": "Pregunta al modelo algo que requiera datos recientes y compara la respuesta tras añadir la tool **Web search** en el apartado Tools del playground (pulsa New chat al cambiar herramientas)."
+  },
+  {
+   "id": "s03-lab2",
+   "title": "Instrucciones y parámetros: cambiar el comportamiento sin cambiar el modelo",
+   "goal": "Ver el efecto del mensaje de sistema (Instructions), de temperature y max output tokens en un modelo sin razonamiento, y del reasoning effort en un modelo de razonamiento.",
+   "minutes": 30,
+   "cost": "Céntimos (pago por token).",
+   "prereqs": [
+    "Haber completado el lab 1 (proyecto con gpt-5-mini desplegado)"
+   ],
+   "steps": [
+    {
+     "title": "Cambiar las instrucciones",
+     "detail": "En el playground de `gpt-5-mini`, localiza el cuadro **Instructions** en el panel izquierdo y sustituye el texto por: `Eres un experto en historia de la informática. Responde en español, en un máximo de 3 frases, y termina siempre con una pregunta para el alumno.` Pulsa **New chat** y pregunta `¿Qué fue ENIAC?`. Observa cómo cambian el tono, la longitud y el cierre."
+    },
+    {
+     "title": "Probar instrucciones restrictivas",
+     "detail": "Añade a las instrucciones: `Si te preguntan algo que no sea historia de la informática, responde que solo puedes hablar de ese tema.` Pregunta por una receta de cocina y comprueba que el modelo respeta el límite."
+    },
+    {
+     "title": "Observar los parámetros del modelo de razonamiento",
+     "detail": "Revisa la sección de parámetros del panel de configuración. `gpt-5-mini` es un **modelo de razonamiento**: no admite temperature ni top_p. Si tu portal muestra un control de **reasoning effort**, prueba el mismo problema lógico (`Tengo 3 cajas mal etiquetadas: manzanas, naranjas y mixta. ¿Cuántas frutas debo sacar para etiquetarlas bien?`) con esfuerzo bajo y alto y compara calidad y tiempo de respuesta."
+    },
+    {
+     "title": "Desplegar un modelo sin razonamiento",
+     "detail": "Ve a **Discover** → **Models** y despliega (**Deploy** → **Default settings**) un modelo de chat **sin razonamiento** disponible en tu región, por ejemplo `Llama-3.3-70B-Instruct` (sold by Azure, no requiere Marketplace) o `gpt-4.1-mini` si tu suscripción aún permite desplegarlo."
+    },
+    {
+     "title": "Temperature baja",
+     "detail": "En el playground del nuevo despliegue pon **Temperature** en 0 (o el mínimo). Pide `Inventa un eslogan para una cafetería llamada Byte & Bean`. Pulsa **New chat** y repite el mismo prompt 2–3 veces. Las respuestas deben ser iguales o casi iguales."
+    },
+    {
+     "title": "Temperature alta",
+     "detail": "Sube **Temperature** a 1,2 aproximadamente y repite el mismo prompt varias veces con **New chat** entre medias. Observa la variedad (y, con valores muy altos, respuestas menos coherentes). Deja **Top P** en su valor por defecto: se ajusta uno u otro, no ambos."
+    },
+    {
+     "title": "Limitar la salida",
+     "detail": "Reduce el **máximo de tokens de respuesta** (max output tokens / max response) a unos 20 y pide `Explica qué es un transformer`. La respuesta saldrá cortada: así se controla longitud y coste, pero un valor demasiado bajo trunca el resultado."
+    }
+   ],
+   "verify": [
+    "Con las nuevas Instructions el modelo responde en ≤3 frases y termina con una pregunta",
+    "Con temperature 0 las respuestas repetidas son prácticamente idénticas y con 1,2 varían",
+    "Con max output tokens muy bajo la respuesta queda truncada",
+    "Entiendes por qué gpt-5-mini no muestra temperature"
+   ],
+   "cleanup": "En **Build** → **Models**, selecciona el despliegue extra (p. ej. Llama-3.3-70B-Instruct) y elimínalo con **Delete**. Si no harás el lab 3, borra el grupo de recursos completo desde el portal de Azure.",
+   "challenge": "Pide al modelo que devuelva una lista numerada y añade una **stop sequence** (si tu playground la ofrece) como `4.` para que se detenga tras el tercer elemento."
+  },
+  {
+   "id": "s03-lab3",
+   "title": "Comparar modelos: leaderboards, Compare y cuota",
+   "goal": "Usar los model leaderboards y la comparación del catálogo para preseleccionar modelos, comparar dos despliegues en paralelo en el playground y revisar la cuota TPM.",
+   "minutes": 25,
+   "cost": "Céntimos (pago por token).",
+   "prereqs": [
+    "Proyecto del lab 1 con al menos un despliegue",
+    "Rol Reader o superior en el proyecto"
+   ],
+   "steps": [
+    {
+     "title": "Abrir el leaderboard",
+     "detail": "Ve a **Discover**. En la parte superior del catálogo verás el resumen del leaderboard. Ordena por **quality**, **safety**, **estimated cost** y **throughput**, y pulsa **Go to leaderboard** para la lista completa."
+    },
+    {
+     "title": "Usar el trade-off chart",
+     "detail": "En la página **Model leaderboard**, usa el desplegable **Compare quality against** y alterna entre estimated cost, throughput y safety. Identifica un modelo arriba a la derecha (bueno en ambas métricas)."
+    },
+    {
+     "title": "Leaderboards por escenario",
+     "detail": "Baja hasta **Leaderboards by scenario** y selecciona **Reasoning** y después **Coding**. Anota si el top cambia respecto al quality index general."
+    },
+    {
+     "title": "Comparar en el catálogo",
+     "detail": "Marca 2 o 3 modelos del leaderboard (por ejemplo `gpt-5-mini`, `gpt-5-nano` y un modelo de otro proveedor) y pulsa **Compare**. Revisa las pestañas **Performance benchmarks**, **Model details**, **Supported endpoints** y **Feature support**."
+    },
+    {
+     "title": "Comparar respuestas en el playground",
+     "detail": "Despliega un segundo modelo pequeño (p. ej. `gpt-5-nano`) con **Default settings**. En el playground del primer despliegue pulsa **Compare models** (arriba a la derecha) y añade el segundo. Escribe un prompt (`Resume en 2 frases qué es la residencia de datos`) y compara calidad, latencia y longitud de ambas respuestas lado a lado."
+    },
+    {
+     "title": "Revisar la cuota",
+     "detail": "Selecciona **Manage** (arriba a la derecha) → **Quota**. En la pestaña **Token per minute**, busca tus despliegues, abre uno y mira su asignación de TPM y la cuota compartida (*Affiliated deployments using shared quota*). No cambies nada salvo que quieras practicar a reducir el TPM de un despliegue."
+    }
+   ],
+   "verify": [
+    "Sabes explicar qué modelo destaca en calidad frente a coste en el trade-off chart",
+    "Has visto la comparación de 2–3 modelos con sus features",
+    "Has comparado dos despliegues con el mismo prompt en el playground",
+    "Has localizado el TPM asignado a un despliegue en Manage → Quota"
+   ],
+   "cleanup": "Borra todo: en https://portal.azure.com abre el grupo de recursos del lab, pulsa **Delete resource group**, escribe su nombre y confirma. Comprueba al día siguiente en **Cost Management → Cost analysis** que no hay cargos nuevos.",
+   "challenge": "Despliega `model-router` con Default settings (modo Balanced), envíale un saludo sencillo y un problema lógico complejo, y fíjate en qué modelo subyacente indica el playground para cada respuesta."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s03-q1",
+   "type": "single",
+   "q": "Tu empresa quiere que los equipos de desarrollo trabajen de forma aislada (agentes, archivos, evaluaciones) pero reutilizando los mismos despliegues de modelos y la misma configuración de red. ¿Qué debes crear para cada equipo?",
+   "options": [
+    "Un Foundry resource por equipo",
+    "Un Foundry project por equipo dentro del mismo Foundry resource",
+    "Una suscripción de Azure por equipo",
+    "Un despliegue Provisioned por equipo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los **projects** son espacios de desarrollo aislados dentro de un Foundry resource y reutilizan sus despliegues y conexiones. Un recurso por equipo duplicaría despliegues y gobernanza; una suscripción por equipo es excesiva; un despliegue Provisioned es un tipo de capacidad, no un aislamiento de trabajo."
+  },
+  {
+   "id": "s03-q2",
+   "type": "single",
+   "q": "¿Cuál es el nombre actual de la familia de servicios que antes se llamaba Azure AI Services (y antes Cognitive Services)?",
+   "options": [
+    "Azure AI Studio",
+    "Foundry Tools",
+    "Foundry Agent Service",
+    "Azure OpenAI in Foundry Models"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Desde Ignite 2025, Azure AI Services pasó a llamarse **Foundry Tools** (Azure Speech/Language/Vision in Foundry Tools, Content Understanding…). Azure AI Studio es el antiguo nombre de la plataforma; Agent Service es para agentes; Azure OpenAI es un conjunto de modelos."
+  },
+  {
+   "id": "s03-q3",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre la organización de Microsoft Foundry, indica Sí o No.",
+   "statements": [
+    {
+     "text": "La configuración de red y los despliegues de modelos se gestionan a nivel de Foundry resource.",
+     "answer": true
+    },
+    {
+     "text": "Un Foundry resource solo puede contener un proyecto.",
+     "answer": false
+    },
+    {
+     "text": "Storage, Key Vault y Azure AI Search conectados son recursos de Azure con su propia gobernanza.",
+     "answer": true
+    },
+    {
+     "text": "Azure AI Foundry es el nombre más reciente de la plataforma en 2026.",
+     "answer": false
+    }
+   ],
+   "explain": "El recurso gobierna redes, seguridad y despliegues, y puede contener **varios** proyectos. Los recursos conectados tienen su propio límite de gobernanza. El nombre actual es **Microsoft Foundry** (Azure AI Foundry fue el nombre de 2024–2025)."
+  },
+  {
+   "id": "s03-q4",
+   "type": "single",
+   "q": "Una aplicación llama a un modelo desplegado en Foundry con el SDK de OpenAI. ¿Qué valor debe pasar en el parámetro `model`?",
+   "options": [
+    "El nombre del Foundry resource",
+    "El nombre del proyecto",
+    "El nombre del despliegue",
+    "El ID de la suscripción"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Las peticiones se enrutan al **nombre del despliegue** (deployment name). Por defecto coincide con el nombre del modelo, pero puedes cambiarlo. El recurso y el proyecto forman parte del endpoint, no del parámetro `model`; la suscripción no interviene."
+  },
+  {
+   "id": "s03-q5",
+   "type": "single",
+   "q": "Seguridad pide que la aplicación de producción no almacene secretos para acceder al modelo y que el acceso se controle con roles. ¿Qué método de autenticación usas?",
+   "options": [
+    "Clave de API guardada en el código",
+    "Clave de API en una variable de entorno",
+    "Microsoft Entra ID (keyless) con RBAC",
+    "Token SAS de Storage"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "**Microsoft Entra ID** permite autenticación sin claves (managed identity, usuario o service principal) y permisos con roles RBAC; es el método recomendado. Las claves de API, estén donde estén, son secretos que hay que proteger y rotar. SAS es para Storage."
+  },
+  {
+   "id": "s03-q6",
+   "type": "single",
+   "q": "Necesitas un sistema que encuentre documentos internos con significado parecido a la pregunta del usuario (búsqueda semántica para RAG). ¿Qué tipo de modelo necesitas para vectorizar el texto?",
+   "options": [
+    "Un modelo de generación de imagen",
+    "Un modelo de embeddings",
+    "Un modelo realtime de audio",
+    "Un modelo de vídeo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los **embeddings** (p. ej. `text-embedding-3-large`) convierten texto en vectores que capturan el significado, lo que permite medir similitud. Los modelos de imagen, audio o vídeo generan otro tipo de contenido."
+  },
+  {
+   "id": "s03-q7",
+   "type": "single",
+   "q": "Una app debe describir fotos de productos que suben los usuarios y responder preguntas sobre ellas. ¿Qué capacidad del modelo es imprescindible?",
+   "options": [
+    "Generación de imagen",
+    "Entrada multimodal (texto + imagen)",
+    "Embeddings",
+    "Batch"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Para *entender* imágenes necesitas un modelo **multimodal con entrada de imagen** (p. ej. gpt-5.4, gpt-4.1, Llama-4-Maverick). La generación de imagen crea imágenes, no las interpreta; los embeddings vectorizan; Batch es un tipo de despliegue."
+  },
+  {
+   "id": "s03-q8",
+   "type": "single",
+   "q": "Quieres ejecutar un asistente sencillo en un dispositivo con recursos limitados y sin conexión permanente, priorizando coste y latencia. ¿Qué tipo de modelo es más adecuado?",
+   "options": [
+    "Un LLM de frontera con razonamiento alto",
+    "Un small language model (SLM) como Phi-4-mini-instruct",
+    "Un modelo de generación de vídeo",
+    "Model router"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los **SLM** son pequeños, rápidos y baratos, y pueden ejecutarse en edge o dispositivos. Un LLM de frontera es caro y necesita nube; vídeo no aplica; model router se ejecuta en la nube y enruta entre modelos grandes."
+  },
+  {
+   "id": "s03-q9",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones describen correctamente los Foundry Models sold by Azure? (Selecciona DOS.)",
+   "options": [
+    "Se facturan directamente en tu suscripción de Azure",
+    "Siempre requieren suscripción en Azure Marketplace",
+    "Incluyen todos los modelos de Azure OpenAI",
+    "Solo incluyen modelos creados por Microsoft",
+    "Los modelos Claude de Anthropic pertenecen a esta categoría"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "Los modelos *sold by Azure* se facturan en tu suscripción, tienen SLA y soporte de Microsoft e incluyen **todo Azure OpenAI** más modelos seleccionados de DeepSeek, Meta, Mistral, xAI, etc. No necesitan Marketplace (eso es para partners), no son solo de Microsoft, y Claude es un modelo *from partners and community*."
+  },
+  {
+   "id": "s03-q10",
+   "type": "single",
+   "q": "En el catálogo quieres ver qué modelos ofrecen el mejor equilibrio entre calidad y coste según benchmarks estándar. ¿Qué característica usas?",
+   "options": [
+    "Manage → Quota",
+    "Model leaderboards con trade-off charts",
+    "Agents playground",
+    "Azure Monitor Metrics"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los **model leaderboards** comparan quality, safety, cost y throughput, y los **trade-off charts** muestran dos métricas a la vez (p. ej. calidad frente a coste). Quota gestiona TPM; el Agents playground prototipa agentes; Azure Monitor mide tu propio uso, no benchmarks."
+  },
+  {
+   "id": "s03-q11",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre los leaderboards y benchmarks de Foundry, indica Sí o No.",
+   "statements": [
+    {
+     "text": "En el safety leaderboard, un Attack Success Rate más bajo indica un modelo más robusto.",
+     "answer": true
+    },
+    {
+     "text": "Un quality index alto garantiza el mejor resultado con tus propios datos.",
+     "answer": false
+    },
+    {
+     "text": "Existen leaderboards por escenario como Reasoning, Coding o Math.",
+     "answer": true
+    },
+    {
+     "text": "La vista Compare del leaderboard permite comparar hasta tres modelos.",
+     "answer": true
+    }
+   ],
+   "explain": "ASR bajo = más seguro. Los benchmarks usan datasets públicos, así que **no garantizan** el rendimiento con tus datos: hay que evaluar. Hay scenario leaderboards (Reasoning, Coding, Math, QA…) y la comparación admite 2–3 modelos."
+  },
+  {
+   "id": "s03-q12",
+   "type": "single",
+   "q": "Empiezas un prototipo con tráfico impredecible, quieres el precio más bajo y acceso a los modelos más nuevos, sin requisitos de residencia de datos. ¿Qué tipo de despliegue eliges?",
+   "options": [
+    "Regional Provisioned",
+    "Global Standard",
+    "Data Zone Batch",
+    "Developer"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Global Standard** es el punto de partida recomendado: pago por token, precio más bajo, mayor cuota y modelos nuevos primero. Provisioned es para carga alta y constante; Batch es asíncrono; Developer solo sirve para evaluar modelos fine-tuned."
+  },
+  {
+   "id": "s03-q13",
+   "type": "single",
+   "q": "Una empresa europea exige que los prompts y respuestas se procesen solo dentro de la UE, con pago por uso. ¿Qué tipo de despliegue cumple mejor?",
+   "options": [
+    "Global Standard",
+    "Data Zone Standard en una región de la zona EU",
+    "Global Batch",
+    "Managed compute"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Data Zone Standard** procesa la inferencia solo dentro de la data zone (EU, US o APAC) y factura por token. Global Standard y Global Batch pueden procesar en cualquier región; managed compute es para modelos open-source en GPU y solo global."
+  },
+  {
+   "id": "s03-q14",
+   "type": "single",
+   "q": "Una aplicación de atención al cliente tiene un volumen alto y constante y necesita latencia baja y predecible con throughput garantizado. ¿Qué eliges?",
+   "options": [
+    "Global Standard",
+    "Global Batch",
+    "Global Provisioned (PTU)",
+    "Instant access"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "Los tipos **Provisioned** reservan capacidad en PTU: throughput garantizado y menor variabilidad de latencia. Standard es best-effort y puede variar en latencia a gran volumen; Batch no es en tiempo real; instant access es para empezar sin despliegue, sin capacidad reservada."
+  },
+  {
+   "id": "s03-q15",
+   "type": "single",
+   "q": "Cada noche debes clasificar 2 millones de reseñas; los resultados pueden tardar hasta el día siguiente y quieres minimizar el coste. ¿Qué tipo de despliegue usas?",
+   "options": [
+    "Global Batch",
+    "Regional Provisioned",
+    "Standard",
+    "Developer"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "**Global Batch** procesa lotes asíncronos con un objetivo de 24 h a un **50 % menos** que Global Standard y con cuota separada. Provisioned cobra capacidad reservada; Standard es en línea a precio completo; Developer es solo para modelos fine-tuned."
+  },
+  {
+   "id": "s03-q16",
+   "type": "single",
+   "q": "Quieres desplegar un modelo open-source de la colección de Hugging Face en GPU dedicadas gestionadas por Foundry. ¿Qué opción de despliegue se usa?",
+   "options": [
+    "Serverless API con Global Standard",
+    "Managed compute",
+    "Data Zone Provisioned",
+    "Global Batch"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Managed compute** hospeda modelos open-source, de partners y personalizados en GPU dedicadas, facturado por hora de acelerador. Los tipos Standard/Provisioned/Batch pertenecen a la opción Serverless API para Foundry Models."
+  },
+  {
+   "id": "s03-q17",
+   "type": "multi",
+   "q": "¿Qué DOS afirmaciones sobre la cuota de modelos en Foundry son correctas? (Selecciona DOS.)",
+   "options": [
+    "La cuota se asigna por suscripción, región, modelo y tipo de despliegue en tokens por minuto (TPM)",
+    "La cuota TPM define el tamaño máximo del context window del modelo",
+    "Al superar el límite de TPM o RPM de un despliegue se recibe un error HTTP 429",
+    "La cuota solo se puede ver con la CLI, no en el portal",
+    "Cada modelo solo puede tener un despliegue por recurso"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "La cuota se asigna en **TPM** por suscripción/región/modelo/tipo, y superar TPM o RPM devuelve **429**. La cuota no tiene relación con el context window; se ve en **Manage → Quota** del portal; y ya no existe el límite de un despliegue por modelo."
+  },
+  {
+   "id": "s03-q18",
+   "type": "single",
+   "q": "Tienes 240.000 TPM de cuota para un modelo en una región. ¿Cuál de estas configuraciones es posible?",
+   "options": [
+    "Tres despliegues de 120.000 TPM",
+    "Dos despliegues de 120.000 TPM",
+    "Un despliegue de 300.000 TPM",
+    "Cuatro despliegues de 100.000 TPM"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La suma de TPM asignados a los despliegues de ese modelo en la región no puede superar la cuota: **2 × 120.000 = 240.000** cabe. 360.000, 300.000 y 400.000 superan la cuota."
+  },
+  {
+   "id": "s03-q19",
+   "type": "single",
+   "q": "Un chatbot de soporte técnico debe dar respuestas precisas y consistentes, casi idénticas ante la misma pregunta. ¿Qué ajuste aplicas en un modelo sin razonamiento?",
+   "options": [
+    "Temperature alta (≈1,5)",
+    "Temperature baja (≈0–0,2)",
+    "Presence penalty alta",
+    "Max output tokens muy bajo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Una **temperature baja** hace la salida más determinista y consistente. Temperature alta aumenta la variedad; presence penalty empuja a temas nuevos; limitar tokens solo acorta la respuesta."
+  },
+  {
+   "id": "s03-q20",
+   "type": "single",
+   "q": "Las respuestas de tu modelo son demasiado largas y el coste por petición es alto. ¿Qué parámetro limita directamente la longitud generada?",
+   "options": [
+    "top_p",
+    "Max output tokens",
+    "frequency_penalty",
+    "Stop sequences vacías"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Max output tokens** (max_output_tokens / max_completion_tokens / max_tokens según API) fija el máximo de tokens generados, controlando longitud y coste. top_p controla aleatoriedad; frequency_penalty reduce repeticiones; sin stop sequences no hay corte adicional."
+  },
+  {
+   "id": "s03-q21",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre parámetros de generación, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Se recomienda ajustar temperature o top_p, pero no ambos a la vez.",
+     "answer": true
+    },
+    {
+     "text": "frequency_penalty positivo reduce la repetición de las mismas palabras.",
+     "answer": true
+    },
+    {
+     "text": "Cambiar la temperature modifica los pesos del modelo desplegado.",
+     "answer": false
+    },
+    {
+     "text": "Una stop sequence detiene la generación cuando el modelo produce ese texto.",
+     "answer": true
+    }
+   ],
+   "explain": "Temperature y top_p se ajustan por separado. frequency_penalty penaliza tokens repetidos. Los parámetros **no cambian el modelo**, solo cómo se muestrea la salida. Las stop sequences cortan la generación al aparecer."
+  },
+  {
+   "id": "s03-q22",
+   "type": "single",
+   "q": "Usas gpt-5-mini (modelo de razonamiento) y la petición falla al enviar `temperature=0.2`. ¿Cuál es la causa y qué deberías usar para controlar la calidad/coste del razonamiento?",
+   "options": [
+    "La temperature debe ser mayor que 1; usa 1,5",
+    "Los modelos de razonamiento no admiten temperature; usa reasoning_effort",
+    "Hay que enviar top_p junto con temperature",
+    "El despliegue debe ser Provisioned"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los modelos de razonamiento (GPT-5, o-series) **no admiten** temperature, top_p ni penalizaciones; se controlan con **reasoning_effort** (y verbosity / max_output_tokens). El valor de temperature, top_p o el tipo de despliegue no resuelven el error."
+  },
+  {
+   "id": "s03-q23",
+   "type": "single",
+   "q": "Quieres que el asistente responda siempre como 'tutor de Azure', en español, con un máximo de tres frases, durante toda la conversación. ¿Dónde lo defines?",
+   "options": [
+    "En el mensaje de sistema / Instructions",
+    "En el nombre del despliegue",
+    "En la cuota TPM",
+    "En el tipo de despliegue"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "El **system message / Instructions** fija rol, idioma, formato y límites de forma persistente. El nombre del despliegue, la cuota o el tipo de despliegue no influyen en el comportamiento conversacional."
+  },
+  {
+   "id": "s03-q24",
+   "type": "single",
+   "q": "En el playground, un usuario se queja de que el modelo 'olvidó' lo que se habló antes. Acababa de pulsar un botón. ¿Cuál?",
+   "options": [
+    "Compare models",
+    "New chat",
+    "Code",
+    "Deploy"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**New chat** reinicia la conversación y borra el historial que se envía al modelo; los modelos no tienen memoria propia. Compare models abre comparación; Code muestra ejemplos; Deploy crea despliegues."
+  },
+  {
+   "id": "s03-q25",
+   "type": "multi",
+   "q": "¿Qué DOS acciones puedes hacer directamente en el model playground de Foundry? (Selecciona DOS.)",
+   "options": [
+    "Comparar hasta tres modelos con el mismo prompt",
+    "Aumentar la cuota de la suscripción",
+    "Ver código de ejemplo con el endpoint del despliegue",
+    "Cambiar la región del Foundry resource",
+    "Crear una suscripción de Azure Marketplace para Claude"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "El model playground permite **Compare models** (hasta 3) y la pestaña **Code** con ejemplos (y Open in VS Code, Save as agent). La cuota se gestiona en Manage → Quota / solicitud; la región del recurso no se cambia; la suscripción a Marketplace se hace al desplegar."
+  },
+  {
+   "id": "s03-q26",
+   "type": "single",
+   "q": "Quieres un único despliegue que elija automáticamente el modelo más adecuado para cada prompt, priorizando el coste en consultas simples. ¿Qué usas?",
+   "options": [
+    "Global Batch",
+    "model-router con modo Cost",
+    "Un SLM con temperature alta",
+    "Data Zone Provisioned"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**model-router** enruta en tiempo real cada prompt a un modelo subyacente; el modo **Cost** favorece modelos baratos (Balanced es el predeterminado, Quality prioriza calidad). Batch, un SLM o Provisioned no eligen modelo automáticamente."
+  },
+  {
+   "id": "s03-q27",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre costes, indica Sí o No.",
+   "statements": [
+    {
+     "text": "En un despliegue Global Standard pagas por los tokens de entrada y salida consumidos.",
+     "answer": true
+    },
+    {
+     "text": "Un despliegue Provisioned no genera coste si nadie lo usa.",
+     "answer": false
+    },
+    {
+     "text": "Los reasoning tokens de un modelo de razonamiento se facturan como tokens de salida.",
+     "answer": true
+    },
+    {
+     "text": "Borrar el grupo de recursos elimina el Foundry resource y sus despliegues.",
+     "answer": true
+    }
+   ],
+   "explain": "Standard factura por token. Provisioned reserva capacidad (PTU) y se paga **por hora aunque no se use**. Los reasoning tokens cuentan como salida. Eliminar el grupo de recursos borra todo lo que contiene, incluido el recurso y sus despliegues."
+  },
+  {
+   "id": "s03-q28",
+   "type": "single",
+   "q": "Tu equipo necesita desplegar un modelo Claude de Anthropic en Foundry. ¿Qué requisito adicional aplica frente a un modelo de Azure OpenAI?",
+   "options": [
+    "Crear un hub de Azure Machine Learning",
+    "Suscribirse a la oferta en Azure Marketplace con una suscripción de pago compatible",
+    "Usar obligatoriamente el tipo Developer",
+    "Desplegarlo con managed compute"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Claude es un modelo *from partners and community*: se factura mediante **Azure Marketplace** y requiere una suscripción de pago compatible (no sirven, por ejemplo, free trial o créditos de estudiante). No necesita hub, ni tipo Developer (solo para fine-tuned), ni managed compute (usa Serverless API)."
+  },
+  {
+   "id": "s03-q29",
+   "type": "single",
+   "q": "Un desarrollador quiere probar rápidamente un modelo compatible llamándolo por su nombre, sin crear un despliegue. ¿Qué característica (preview) lo permite?",
+   "options": [
+    "Instant access",
+    "Managed compute",
+    "Global Batch",
+    "Regional Provisioned"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "**Instant access (preview)** permite llamar a modelos compatibles por su nombre sin despliegue (en preview, proyectos de West US 3). Si luego necesitas residencia de datos, PTU o filtros personalizados, creas un despliegue. Las otras opciones requieren despliegue."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "What is Microsoft Foundry?",
+   "url": "https://learn.microsoft.com/azure/foundry/what-is-foundry"
+  },
+  {
+   "title": "Microsoft Foundry architecture",
+   "url": "https://learn.microsoft.com/azure/foundry/concepts/architecture"
+  },
+  {
+   "title": "Deployment overview for Microsoft Foundry Models",
+   "url": "https://learn.microsoft.com/azure/foundry/concepts/deployments-overview"
+  },
+  {
+   "title": "Understanding deployment types in Microsoft Foundry Models",
+   "url": "https://learn.microsoft.com/azure/foundry/foundry-models/concepts/deployment-types"
+  },
+  {
+   "title": "Instant access to models in Microsoft Foundry (preview)",
+   "url": "https://learn.microsoft.com/azure/foundry/concepts/instant-models"
+  },
+  {
+   "title": "Foundry Models sold by Azure",
+   "url": "https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+  },
+  {
+   "title": "Foundry Models from partners and community",
+   "url": "https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-from-partners"
+  },
+  {
+   "title": "Model benchmarks and leaderboards in Microsoft Foundry",
+   "url": "https://learn.microsoft.com/azure/foundry/concepts/model-benchmarks"
+  },
+  {
+   "title": "Compare models using the model leaderboard",
+   "url": "https://learn.microsoft.com/azure/foundry/how-to/benchmark-model-in-catalog"
+  },
+  {
+   "title": "Deploy Microsoft Foundry Models in the Foundry portal",
+   "url": "https://learn.microsoft.com/azure/foundry/foundry-models/how-to/deploy-foundry-models"
+  },
+  {
+   "title": "Manage Azure OpenAI in Microsoft Foundry Models quota",
+   "url": "https://learn.microsoft.com/azure/foundry/openai/how-to/quota"
+  },
+  {
+   "title": "Azure OpenAI reasoning models",
+   "url": "https://learn.microsoft.com/azure/foundry/openai/how-to/reasoning"
+  },
+  {
+   "title": "How to use model router for Microsoft Foundry",
+   "url": "https://learn.microsoft.com/azure/foundry/openai/how-to/model-router"
+  },
+  {
+   "title": "Microsoft Foundry Playgrounds",
+   "url": "https://learn.microsoft.com/azure/foundry/concepts/concept-playgrounds"
+  },
+  {
+   "title": "Model retirement schedule",
+   "url": "https://learn.microsoft.com/azure/foundry/openai/concepts/model-retirement-schedule"
+  },
+  {
+   "title": "Exercise: Get started with Microsoft Foundry (mslearn-ai-fundamentals)",
+   "url": "https://microsoftlearning.github.io/mslearn-ai-fundamentals/Instructions/Exercises/00-explore-foundry.html"
+  },
+  {
+   "title": "Exercise: Get started with generative AI and agents in Microsoft Foundry",
+   "url": "https://microsoftlearning.github.io/mslearn-ai-fundamentals/Instructions/Exercises/02a-generative-ai.html"
+  },
+  {
+   "title": "Select, deploy, and evaluate Microsoft Foundry models (Training)",
+   "url": "https://learn.microsoft.com/training/modules/model-catalog-evaluate/"
+  },
+  {
+   "title": "What's new in Microsoft Foundry (Oct–Nov 2025)",
+   "url": "https://devblogs.microsoft.com/foundry/whats-new-in-microsoft-foundry-oct-nov-2025/"
+  },
+  {
+   "title": "AI-901: Model Deployment Options and Configuration Parameters (Refactored)",
+   "url": "https://www.refactored.pro/blog/2026/8/11/ai-901-model-deployment-and-configuration"
+  }
+ ]
+}

@@ -1,0 +1,1777 @@
+{
+ "id": "s07",
+ "order": 7,
+ "title": "Voz: reconocimiento, síntesis y agentes de voz",
+ "domain": "implement",
+ "summary": "Aprendes cómo funcionan el reconocimiento de voz (Speech to text) y la síntesis de voz (Text to speech), qué capacidades ofrece **Azure Speech in Foundry Tools** y cuándo usar cada una, cómo programar STT y TTS con el Speech SDK de Python, y cómo responder a preguntas habladas con un modelo multimodal o con Voice Live. En el examen aparecen tanto preguntas de escenario (¿qué capacidad uso?) como preguntas de código (¿qué método o evento falta?).",
+ "objectives": [
+  "Identificar características y capacidades del reconocimiento y la síntesis de voz (Identify features and capabilities of speech recognition and speech synthesis)",
+  "Responder a prompts hablados usando un modelo multimodal desplegado (Respond to spoken prompts by using a deployed multimodal model)",
+  "Crear una aplicación ligera usando Azure Speech in Foundry Tools (Build a lightweight application by using Azure Speech in Foundry Tools)"
+ ],
+ "goal": "Elegir la capacidad de Azure Speech para cada escenario, programar STT y TTS con el Speech SDK de Python y responder a un prompt hablado con un modelo multimodal, con al menos un 80 % en el test.",
+ "lessons": [
+  {
+   "id": "s07-l1",
+   "title": "Cómo funcionan el reconocimiento y la síntesis de voz",
+   "minutes": 15,
+   "goals": [
+    "Distinguir el papel del modelo acústico (audio → fonemas) y del modelo de lenguaje (fonemas → palabras) en el pipeline de reconocimiento de voz.",
+    "Describir las etapas de la síntesis de voz: normalización del texto, análisis lingüístico, generación de prosodia y vocoder neuronal.",
+    "Elegir el elemento SSML adecuado (`<voice>`, `<prosody>`, `<break>`, `<mstts:express-as>`) para cambiar de voz, ajustar velocidad o tono, insertar pausas o aplicar un estilo."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La IA de voz tiene dos direcciones. El **reconocimiento de voz** (*speech recognition*, también llamado **Speech to text** o STT) convierte audio hablado en texto. La **síntesis de voz** (*speech synthesis*, también llamada **Text to speech** o TTS) hace lo contrario: genera audio hablado a partir de texto. Combinadas, permiten asistentes y agentes con los que se conversa en voz alta."
+    },
+    {
+     "type": "h",
+     "text": "Reconocimiento de voz: del sonido al texto"
+    },
+    {
+     "type": "p",
+     "text": "Microsoft Learn describe el reconocimiento de voz como una cadena de seis etapas. Para el examen, lo esencial es que el STT usa **varios modelos**: un **modelo acústico** (*acoustic model*), que convierte la señal de audio en **fonemas** (las unidades mínimas de sonido), y un **modelo de lenguaje** (*language model*), que convierte esas secuencias de fonemas en las palabras y frases más probables."
+    },
+    {
+     "type": "diagram",
+     "title": "Pipeline de reconocimiento de voz (STT)",
+     "mermaid": "flowchart LR\n  A[\"Captura de audio (micrófono o archivo, p. ej. 16 kHz)\"] --> B[\"Preprocesado (extracción de rasgos, MFCC)\"]\n  B --> C[\"Modelo acústico (audio a fonemas)\"]\n  C --> D[\"Modelo de lenguaje (fonemas a palabras)\"]\n  D --> E[\"Decodificación (beam search)\"]\n  E --> F[\"Posprocesado (mayúsculas, puntuación, ITN)\"]\n  F --> G[\"Texto transcrito + marcas de tiempo + confianza\"]",
+     "caption": "Cada etapa se apoya en la anterior; si la calidad falla, suele poder atribuirse a una etapa concreta."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Etapa",
+      "Qué hace",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "Captura de audio",
+       "El micrófono convierte la onda en muestras digitales (8–16 kHz para voz).",
+       "Ruido de fondo o un mal micrófono reducen la precisión en todas las etapas siguientes."
+      ],
+      [
+       "Preprocesado",
+       "Extrae rasgos compactos, típicamente **MFCC** (*Mel-Frequency Cepstral Coefficients*), por tramos de 20–30 ms.",
+       "Cada tramo se resume en ~13 coeficientes."
+      ],
+      [
+       "Modelo acústico",
+       "Predice qué **fonema** es más probable en cada instante (hoy con arquitecturas *transformer*).",
+       "\"cat\" = /k/ /æ/ /t/."
+      ],
+      [
+       "Modelo de lenguaje",
+       "Aplica vocabulario, gramática y contexto para elegir palabras.",
+       "Distingue \"their\" de \"there\"; un modelo personalizado aprende jerga médica."
+      ],
+      [
+       "Decodificación",
+       "Busca la secuencia de palabras que mejor encaja con ambos modelos (*beam search*).",
+       "Elige \"send the report by Friday\" frente a \"sent the report buy Friday\"."
+      ],
+      [
+       "Posprocesado",
+       "Mayúsculas, puntuación, formato de números, filtro de palabrotas, **normalización inversa de texto** (ITN).",
+       "\"three p m\" pasa a \"3 PM\"."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Pregunta clásica: *¿qué componente convierte audio en fonemas?* El **modelo acústico**. *¿Y qué componente asigna fonemas a palabras?* El **modelo de lenguaje**. Si el problema es **jerga de un sector** (términos médicos, nombres de productos), se mejora el **modelo de lenguaje** (Custom speech o una *phrase list*); si es **ruido o acento**, se mejora con **datos de audio** para el modelo acústico."
+    },
+    {
+     "type": "h",
+     "text": "Síntesis de voz: del texto al sonido"
+    },
+    {
+     "type": "p",
+     "text": "Una solución TTS necesita, como mínimo, **el texto que se va a decir** y **la voz que lo dirá**. Internamente, el texto pasa por cuatro etapas antes de convertirse en una forma de onda."
+    },
+    {
+     "type": "diagram",
+     "title": "Pipeline de síntesis de voz (TTS)",
+     "mermaid": "flowchart LR\n  A[\"Texto de entrada\"] --> B[\"Normalización del texto (Dr. a Doctor, 3 a tres)\"]\n  B --> C[\"Análisis lingüístico (grafema a fonema, G2P)\"]\n  C --> D[\"Generación de prosodia (tono, duración, pausas, énfasis)\"]\n  D --> E[\"Modelo acústico (espectrograma mel)\"]\n  E --> F[\"Vocoder neuronal (forma de onda)\"]\n  F --> G[\"Audio: altavoz, archivo o stream\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Etapa",
+      "Qué hace"
+     ],
+     "rows": [
+      [
+       "Normalización del texto",
+       "Expande abreviaturas, números, fechas y símbolos a su forma hablada (\"$25.50\" pasa a \"twenty-five dollars and fifty cents\")."
+      ],
+      [
+       "Análisis lingüístico",
+       "Divide en palabras y sílabas y convierte **grafemas** (letras) en **fonemas** con léxicos y modelos G2P; resuelve homógrafos por contexto (\"read\" presente o pasado)."
+      ],
+      [
+       "Generación de prosodia",
+       "Decide **cómo** se dice: entonación (pregunta frente a afirmación), duración, intensidad, pausas y acentos. Una prosodia plana es lo que suena \"robótico\"."
+      ],
+      [
+       "Síntesis",
+       "Un modelo acústico genera un **espectrograma mel** y un **vocoder neuronal** (p. ej. HiFi-GAN) lo convierte en audio."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Truco: el **vocoder** hace el camino inverso al reconocimiento. STT: audio a rasgos a fonemas a texto. TTS: texto a fonemas a prosodia a espectrograma a audio."
+    },
+    {
+     "type": "h",
+     "text": "Voces neuronales y SSML"
+    },
+    {
+     "type": "p",
+     "text": "Azure Speech usa **voces neuronales** (*neural voices*), generadas con redes neuronales profundas, que superan los problemas de entonación de las voces sintéticas antiguas y suenan mucho más naturales. Puedes elegir entre voces estándar (predefinidas, en muchos idiomas y variantes regionales; algunas **multilingües** y otras de alta definición, *HD*) o crear una **voz personalizada** (*custom voice*) con la identidad de tu marca, cuyo acceso es limitado y sujeto a revisión por IA responsable."
+    },
+    {
+     "type": "p",
+     "text": "Para controlar con precisión la forma de hablar se usa **SSML** (*Speech Synthesis Markup Language*, lenguaje de marcado de síntesis de voz), un XML con el que ajustas voz, idioma, velocidad, tono, volumen, pausas, pronunciación y estilos."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Elemento SSML",
+      "Para qué sirve",
+      "Ejemplo"
+     ],
+     "rows": [
+      [
+       "`<speak>`",
+       "Raíz obligatoria del documento (con `version`, `xmlns` y `xml:lang`).",
+       "`<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"es-ES\">`"
+      ],
+      [
+       "`<voice>`",
+       "Elige la voz (puedes cambiar de voz dentro del mismo documento).",
+       "`<voice name=\"es-ES-ElviraNeural\">`"
+      ],
+      [
+       "`<prosody>`",
+       "Ajusta **velocidad** (`rate`), **tono** (`pitch`) y **volumen** (`volume`).",
+       "`<prosody rate=\"-10%\" pitch=\"+5%\">`"
+      ],
+      [
+       "`<break>`",
+       "Inserta una **pausa** por tiempo o por intensidad.",
+       "`<break time=\"500ms\"/>`"
+      ],
+      [
+       "`<mstts:express-as>`",
+       "Aplica un **estilo** emocional o de escenario (cheerful, sad, customerservice, newscast...) y su intensidad con `styledegree` (0.01–2). Requiere el espacio de nombres `mstts` y una voz que soporte ese estilo.",
+       "`<mstts:express-as style=\"cheerful\" styledegree=\"2\">`"
+      ],
+      [
+       "`<phoneme>` / `<say-as>`",
+       "Controlan la pronunciación exacta o cómo leer fechas, números, etc.",
+       "`<say-as interpret-as=\"date\">`"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Trampa: SSML **no** es un formato de audio ni una API distinta; es texto XML que envías con `speak_ssml_async()` en lugar de `speak_text_async()`. Si el estilo indicado en `express-as` no existe para esa voz, se ignora y se usa la voz neutra."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Fonema",
+       "en": "Phoneme",
+       "def": "Unidad mínima de sonido que distingue palabras (el inglés tiene unas 44)."
+      },
+      {
+       "term": "Modelo acústico",
+       "en": "Acoustic model",
+       "def": "Modelo que relaciona rasgos de audio con fonemas."
+      },
+      {
+       "term": "Modelo de lenguaje",
+       "en": "Language model",
+       "def": "Modelo que convierte fonemas en palabras usando vocabulario, gramática y contexto."
+      },
+      {
+       "term": "MFCC",
+       "en": "Mel-Frequency Cepstral Coefficients",
+       "def": "Rasgos de audio que imitan la percepción del oído humano; entrada típica del modelo acústico."
+      },
+      {
+       "term": "Prosodia",
+       "en": "Prosody",
+       "def": "Ritmo, acento, entonación y pausas del habla."
+      },
+      {
+       "term": "Vocoder neuronal",
+       "en": "Neural vocoder",
+       "def": "Modelo que convierte un espectrograma en forma de onda de audio."
+      },
+      {
+       "term": "SSML",
+       "en": "Speech Synthesis Markup Language",
+       "def": "XML para controlar voz, prosodia, pausas, pronunciación y estilos en TTS."
+      },
+      {
+       "term": "Voz neuronal",
+       "en": "Neural voice",
+       "def": "Voz sintética generada con redes neuronales profundas, de entonación natural."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "El **modelo acústico** (*acoustic model*) convierte la señal de audio en **fonemas**; el **modelo de lenguaje** (*language model*) convierte esos fonemas en las palabras más probables.",
+    "Si falla la **jerga del dominio** (fármacos, productos), el problema está en el modelo de lenguaje; si fallan el **ruido** o los **acentos**, en el modelo acústico, que se mejora con datos de audio.",
+    "Una solución TTS necesita como mínimo **el texto** y **la voz**; la **prosodia** (entonación, ritmo, pausas) evita que suene robótica y el **vocoder neuronal** genera la forma de onda.",
+    "Azure Speech usa **voces neuronales** (*neural voices*); una **custom voice** con la identidad de tu marca tiene **acceso limitado** y pasa revisión de IA responsable.",
+    "**SSML** es XML, no un formato de audio: `<prosody>` = velocidad, tono y volumen; `<break>` = pausa; `<mstts:express-as>` = estilo emocional; `<voice>` = cambiar de voz."
+   ]
+  },
+  {
+   "id": "s07-l2",
+   "title": "Azure Speech in Foundry Tools: capacidades y escenarios",
+   "minutes": 15,
+   "goals": [
+    "Asociar cada escenario a la capacidad correcta de Azure Speech: speaker diarization, pronunciation assessment, language identification, speech translation, text to speech avatar o Voice Live.",
+    "Elegir entre transcripción en tiempo real (real-time), rápida (fast transcription) y por lotes (batch transcription) según el origen del audio, el volumen y la urgencia.",
+    "Distinguir una phrase list (ajuste ligero en código, sin entrenamiento) de Custom speech (modelo entrenado con datos propios) para mejorar la precisión del reconocimiento."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "**Azure Speech in Foundry Tools** (antes Azure AI Speech) es el servicio de voz de Microsoft. Se usa a través de un **recurso de Microsoft Foundry** (*Foundry resource*), cuyo **endpoint** y **clave** (o Microsoft Entra ID) autentican tus llamadas. Puedes probarlo sin código en los *playgrounds* del portal de Foundry y usarlo desde código con el **Speech SDK**, la **Speech CLI** o las **REST API**."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Capacidad",
+      "Qué hace",
+      "Caso de uso típico"
+     ],
+     "rows": [
+      [
+       "**Speech to text**",
+       "Transcribe audio a texto: en tiempo real, *fast transcription* o *batch transcription*.",
+       "Subtítulos en directo, dictado, transcripción de llamadas, entrada de voz para agentes."
+      ],
+      [
+       "**Custom speech**",
+       "Entrena/adapta modelos STT con datos propios (audio + transcripciones, texto del dominio, pronunciaciones).",
+       "Jerga médica o legal, nombres de producto, entornos ruidosos (fábrica, coche)."
+      ],
+      [
+       "**Text to speech**",
+       "Convierte texto en voz humana con voces neuronales; control fino con SSML.",
+       "Audiolibros, IVR, navegación, lectura en voz alta para accesibilidad."
+      ],
+      [
+       "**Custom voice**",
+       "Crea una voz propia de la marca (acceso limitado).",
+       "Voz corporativa reconocible en todos los canales."
+      ],
+      [
+       "**Text to speech avatar**",
+       "Convierte texto en **vídeo** de un humano fotorrealista hablando, en tiempo real o por lotes.",
+       "Presentadores virtuales, vídeos de formación, agentes con cara."
+      ],
+      [
+       "**Speech translation**",
+       "Traduce voz en tiempo real a **texto** o a **voz** en otros idiomas (*speech-to-text* y *speech-to-speech translation*).",
+       "Reuniones multilingües, atención al cliente internacional."
+      ],
+      [
+       "**Language identification**",
+       "Identifica qué idioma(s) se hablan en el audio; sola o combinada con STT o traducción.",
+       "Centro de llamadas que recibe llamadas en varios idiomas."
+      ],
+      [
+       "**Speaker diarization**",
+       "Separa y etiqueta **quién habla cuándo** (Guest-1, Guest-2...) dentro de una transcripción.",
+       "Actas de reuniones, entrevistas, llamadas agente/cliente."
+      ],
+      [
+       "**Pronunciation assessment**",
+       "Evalúa la pronunciación y devuelve puntuaciones (precisión, fluidez, completitud, prosodia).",
+       "Apps de aprendizaje de idiomas, práctica de presentaciones."
+      ],
+      [
+       "**Keyword recognition**",
+       "Detecta una palabra clave (\"Hey Contoso\") para activar el reconocimiento.",
+       "Dispositivos manos libres y asistentes activados por voz."
+      ],
+      [
+       "**Voice Live**",
+       "API de voz a voz de baja latencia que integra STT + modelo generativo + TTS (y avatar, herramientas).",
+       "Agentes de voz en contact centers, asistentes en el coche, tutores."
+      ],
+      [
+       "**LLM speech** (preview)",
+       "Modelo de voz mejorado con LLM para `transcribe` o `translate` de audio pregrabado, ajustable con prompts.",
+       "Subtítulos y resúmenes de reuniones con más contexto."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "El examen plantea escenarios y pide **la capacidad**: \"saber quién dijo qué en una reunión\" es **diarization**; \"verificar cómo pronuncia un alumno\" es **pronunciation assessment**; \"vídeo con una persona virtual que lee un guion\" es **text to speech avatar**; \"un hablante en inglés y el oyente oye alemán\" es **speech translation** (voz a voz); \"agente al que hablas y te contesta en voz con latencia mínima\" es **Voice Live**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Cuidado con capacidades retiradas: **Speaker recognition** (verificación/identificación de la persona por su huella de voz) y **Intent recognition** se retiraron el 30 de septiembre de 2025. **Diarization** (separar hablantes en una transcripción) **sigue disponible** y no es lo mismo: diarization no sabe *quién es* la persona, solo distingue voces diferentes."
+    },
+    {
+     "type": "h",
+     "text": "Tabla rápida escenario → capacidad"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Escenario",
+      "Capacidad de Azure Speech"
+     ],
+     "rows": [
+      [
+       "Subtítulos en directo para un webinar",
+       "Speech to text en **tiempo real** (captioning)"
+      ],
+      [
+       "Transcribir 20 000 grabaciones de llamadas guardadas en Blob Storage",
+       "**Batch transcription**"
+      ],
+      [
+       "Transcribir un vídeo de 40 minutos y tener el texto en segundos para editar subtítulos",
+       "**Fast transcription**"
+      ],
+      [
+       "Reconocer nombres de fármacos que el modelo base confunde",
+       "**Custom speech** o *phrase list*"
+      ],
+      [
+       "Leer en voz alta un artículo con una voz natural",
+       "**Text to speech** (voz neuronal)"
+      ],
+      [
+       "Que la voz suene alegre en un saludo y haga una pausa de 1 s",
+       "Text to speech con **SSML** (`express-as`, `break`)"
+      ],
+      [
+       "Vídeo de un presentador digital para un curso",
+       "**Text to speech avatar**"
+      ],
+      [
+       "Conferencia en español con subtítulos en inglés y francés",
+       "**Speech translation** (a texto, varios idiomas destino)"
+      ],
+      [
+       "Separar la voz del agente y la del cliente en una llamada",
+       "**Speaker diarization**"
+      ],
+      [
+       "Detectar si una llamada es en portugués o en español",
+       "**Language identification**"
+      ],
+      [
+       "App de idiomas que puntúa la pronunciación del alumno",
+       "**Pronunciation assessment**"
+      ],
+      [
+       "Agente de voz que conversa en tiempo real y puede llamar a herramientas",
+       "**Voice Live** (o *Voice mode* de un agente de Foundry)"
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Tres modos de transcripción"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Modo",
+      "Entrada",
+      "Cómo responde",
+      "Cuándo usarlo"
+     ],
+     "rows": [
+      [
+       "**Real-time transcription**",
+       "Audio en streaming (micrófono o archivo leído como stream).",
+       "Resultados **mientras** llega el audio (intermedios y finales). Speech SDK, Speech CLI.",
+       "Subtítulos en directo, dictado, entrada de voz a agentes, transcripción de llamadas en curso."
+      ],
+      [
+       "**Fast transcription**",
+       "Un archivo pregrabado (< 500 MB y < 5 h).",
+       "**Síncrono**: devuelve el resultado en la respuesta, más rápido que tiempo real. REST (`transcriptions:transcribe`) o SDK `azure-ai-transcription`.",
+       "Necesitas el texto de un archivo **ya** y con latencia predecible: subtítulos de un vídeo, notas de una reunión grabada."
+      ],
+      [
+       "**Batch transcription**",
+       "Muchos archivos en almacenamiento (URL pública o **SAS URI**, o un contenedor de Azure Blob).",
+       "**Asíncrono**: creas el trabajo, consultas su estado y recoges los resultados. REST API o Speech CLI (no el Speech SDK).",
+       "Grandes volúmenes de audio pregrabado donde no importa esperar (se programa *best-effort*: puede tardar en arrancar y hasta 24 h en completar en horas pico)."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo elegir el modo de transcripción",
+     "mermaid": "flowchart TD\n  Q[\"¿El audio está ocurriendo ahora?\"] -->|\"Sí\"| RT[\"Real-time transcription (Speech SDK)\"]\n  Q -->|\"No, es un archivo grabado\"| V[\"¿Cuántos archivos y con qué urgencia?\"]\n  V -->|\"Uno o pocos, lo necesito ya\"| FT[\"Fast transcription (síncrona)\"]\n  V -->|\"Muchos, puedo esperar\"| BT[\"Batch transcription (asíncrona, Blob + SAS)\"]"
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Palabras clave: \"en directo / mientras habla\" = **real-time**; \"grandes volúmenes / grabaciones almacenadas / asíncrono\" = **batch**; \"archivo pregrabado, resultado rápido y síncrono\" = **fast transcription**. Batch **no** se hace con el Speech SDK: usa la **REST API** (o la Speech CLI)."
+    },
+    {
+     "type": "h",
+     "text": "Mejorar la precisión: phrase list y Custom speech"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Phrase list** (lista de frases): ajuste ligero *just-in-time* en tu código; añades palabras o nombres (\"Contoso\", \"Jessie\") para sesgar el reconocimiento. No requiere entrenar nada.",
+      "**Custom speech**: entrenas un modelo personalizado con datos de audio y transcripciones etiquetadas, texto del dominio o datos de pronunciación; lo despliegas en un endpoint propio. Útil con ruido ambiental o terminología muy específica.",
+      "Para TTS, el equivalente es **custom voice** (voz de marca), con acceso limitado por IA responsable."
+     ]
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Diarización",
+       "en": "Speaker diarization",
+       "def": "Separar y etiquetar los segmentos de audio por hablante (quién habla cuándo)."
+      },
+      {
+       "term": "Transcripción por lotes",
+       "en": "Batch transcription",
+       "def": "Transcripción asíncrona de grandes volúmenes de audio almacenado, vía REST API."
+      },
+      {
+       "term": "Transcripción rápida",
+       "en": "Fast transcription",
+       "def": "Transcripción síncrona de un archivo pregrabado, más rápida que tiempo real."
+      },
+      {
+       "term": "Lista de frases",
+       "en": "Phrase list",
+       "def": "Lista de palabras o nombres que se añade en tiempo de ejecución para mejorar su reconocimiento."
+      },
+      {
+       "term": "SAS URI",
+       "en": "Shared Access Signature URI",
+       "def": "URL con token de acceso temporal a un blob o contenedor; se usa para pasar audio a batch transcription."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "\"Quién habló cuándo\" = **speaker diarization**; \"puntuar la pronunciación\" = **pronunciation assessment**; \"persona virtual que lee un guion\" = **text to speech avatar**; \"¿en qué idioma habla?\" = **language identification**.",
+    "**Batch transcription** es **asíncrona**, para grandes volúmenes de audio almacenado (Blob + SAS URI), y se usa con la **REST API** o la Speech CLI, **no** con el Speech SDK.",
+    "**Fast transcription** = un archivo pregrabado con respuesta **síncrona** y rápida; **real-time transcription** = audio en streaming con resultados mientras se habla.",
+    "*Phrase list* = ajuste *just-in-time* en tu código, sin entrenar nada; **Custom speech** = modelo entrenado con audio, transcripciones o texto del dominio y desplegado en su propio endpoint.",
+    "**Speaker recognition** (identificar a la persona por su voz) e **intent recognition** se retiraron el 30-sep-2025; la **diarization** sigue disponible y solo distingue voces, no identidades."
+   ]
+  },
+  {
+   "id": "s07-l3",
+   "title": "Speech to text con el Speech SDK de Python",
+   "minutes": 18,
+   "goals": [
+    "Configurar un reconocedor con `SpeechConfig` (clave y endpoint), `AudioConfig` (micrófono o archivo WAV) y `SpeechRecognizer`, fijando el idioma con `speech_recognition_language`.",
+    "Elegir entre `recognize_once_async()` y `start_continuous_recognition()` según haya que reconocer una sola locución o un audio largo.",
+    "Interpretar `result.reason` (`RecognizedSpeech`, `NoMatch`, `Canceled`) y los eventos `recognizing`, `recognized` y `session_stopped` para procesar la transcripción."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El **Speech SDK** para Python se instala con `pip install azure-cognitiveservices-speech` y se importa como `azure.cognitiveservices.speech`. El SDK gestiona red, autenticación, streaming de audio y parseo de respuestas. Siempre sigues el mismo patrón de tres objetos:"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Objeto",
+      "Rol",
+      "Detalle"
+     ],
+     "rows": [
+      [
+       "`SpeechConfig`",
+       "**A qué servicio** te conectas y con qué opciones.",
+       "`SpeechConfig(subscription=clave, endpoint=endpoint)` (también existe `region=`). Aquí fijas `speech_recognition_language` (por defecto `en-US`)."
+      ],
+      [
+       "`AudioConfig`",
+       "**De dónde viene el audio**.",
+       "`AudioConfig(use_default_microphone=True)` o `AudioConfig(filename=\"archivo.wav\")`."
+      ],
+      [
+       "`SpeechRecognizer`",
+       "**Hace el reconocimiento** combinando los dos anteriores.",
+       "`SpeechRecognizer(speech_config=..., audio_config=...)`."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Cómo encajan las clases del Speech SDK",
+     "mermaid": "classDiagram\n  class SpeechConfig {\n    subscription\n    endpoint\n    speech_recognition_language\n    speech_synthesis_voice_name\n  }\n  class AudioConfig {\n    use_default_microphone\n    filename\n  }\n  class AudioOutputConfig {\n    use_default_speaker\n    filename\n  }\n  class SpeechRecognizer {\n    recognize_once_async()\n    start_continuous_recognition()\n    stop_continuous_recognition()\n  }\n  class SpeechSynthesizer {\n    speak_text_async()\n    speak_ssml_async()\n  }\n  SpeechConfig --> SpeechRecognizer\n  AudioConfig --> SpeechRecognizer\n  SpeechConfig --> SpeechSynthesizer\n  AudioOutputConfig --> SpeechSynthesizer"
+    },
+    {
+     "type": "h",
+     "text": "Reconocimiento de una sola frase: recognize_once"
+    },
+    {
+     "type": "p",
+     "text": "`recognize_once_async()` escucha **una sola locución** (*utterance*): termina cuando detecta silencio al final de la frase o, como máximo, tras unos 30 segundos de audio. Devuelve un *future*; con `.get()` obtienes el resultado. Es ideal para comandos cortos o una pregunta."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nimport azure.cognitiveservices.speech as speechsdk\n\n# Variables de entorno: SPEECH_KEY y ENDPOINT (https://<recurso>.cognitiveservices.azure.com/)\nspeech_config = speechsdk.SpeechConfig(\n    subscription=os.environ[\"SPEECH_KEY\"],\n    endpoint=os.environ[\"ENDPOINT\"]\n)\nspeech_config.speech_recognition_language = \"es-ES\"\n\naudio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)\nrecognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)\n\nprint(\"Habla por el micrófono...\")\nresult = recognizer.recognize_once_async().get()\n\nif result.reason == speechsdk.ResultReason.RecognizedSpeech:\n    print(\"Reconocido:\", result.text)\nelif result.reason == speechsdk.ResultReason.NoMatch:\n    print(\"No se reconoció voz:\", result.no_match_details)\nelif result.reason == speechsdk.ResultReason.Canceled:\n    details = result.cancellation_details\n    print(\"Cancelado:\", details.reason)\n    if details.reason == speechsdk.CancellationReason.Error:\n        print(\"Error:\", details.error_details)",
+     "caption": "STT de micrófono con una sola locución (basado en el quickstart oficial)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "`result.reason`",
+      "Significado"
+     ],
+     "rows": [
+      [
+       "`ResultReason.RecognizedSpeech`",
+       "Se reconoció voz; el texto está en `result.text`."
+      ],
+      [
+       "`ResultReason.NoMatch`",
+       "Había audio pero no se pudo reconocer voz (silencio, ruido, idioma equivocado)."
+      ],
+      [
+       "`ResultReason.Canceled`",
+       "Se canceló: error de clave/endpoint, red, fin del audio... Mira `cancellation_details`."
+      ]
+     ]
+    },
+    {
+     "type": "h",
+     "text": "Reconocimiento continuo y eventos"
+    },
+    {
+     "type": "p",
+     "text": "Para audio largo (una reunión, un archivo de varios minutos) usas **reconocimiento continuo**: conectas manejadores a **eventos** y luego llamas a `start_continuous_recognition()`. Conectar los manejadores **no** empieza a escuchar; hay que arrancarlo explícitamente y pararlo con `stop_continuous_recognition()`."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Evento",
+      "Cuándo se dispara"
+     ],
+     "rows": [
+      [
+       "`recognizing`",
+       "Resultados **intermedios** (parciales) mientras la persona sigue hablando. El texto va cambiando."
+      ],
+      [
+       "`recognized`",
+       "Resultado **final** de una locución completa (con puntuación y formato)."
+      ],
+      [
+       "`canceled`",
+       "La sesión se canceló (error o fin del stream)."
+      ],
+      [
+       "`session_started` / `session_stopped`",
+       "Empieza o termina la sesión de reconocimiento (útil para saber cuándo acabó un archivo)."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Secuencia de eventos en reconocimiento continuo",
+     "mermaid": "sequenceDiagram\n  participant App as Aplicación\n  participant R as SpeechRecognizer\n  participant S as Azure Speech\n  App->>R: recognizing.connect y recognized.connect\n  App->>R: start_continuous_recognition()\n  R->>S: stream de audio\n  S-->>R: parcial Hello\n  R-->>App: evento recognizing\n  S-->>R: parcial Hello everyone welcome\n  R-->>App: evento recognizing\n  S-->>R: final Hello everyone, welcome to Foundry.\n  R-->>App: evento recognized\n  App->>R: stop_continuous_recognition()\n  R-->>App: evento session_stopped"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nimport time\nimport azure.cognitiveservices.speech as speechsdk\n\nspeech_config = speechsdk.SpeechConfig(\n    subscription=os.environ[\"SPEECH_KEY\"],\n    endpoint=os.environ[\"ENDPOINT\"]\n)\nspeech_config.speech_recognition_language = \"en-US\"\n\n# Audio desde un archivo WAV en lugar del micrófono\naudio_config = speechsdk.audio.AudioConfig(filename=\"reunion.wav\")\nrecognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)\n\n# Mejora opcional: phrase list con términos propios\nphrase_list = speechsdk.PhraseListGrammar.from_recognizer(recognizer)\nphrase_list.addPhrase(\"Contoso\")\n\ndone = False\n\ndef recognizing_handler(evt):\n    print(f\"Recognizing: {evt.result.text}\")\n\ndef recognized_handler(evt):\n    if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:\n        print(f\"Recognized: {evt.result.text}\")\n\ndef stop_handler(evt):\n    global done\n    done = True\n\nrecognizer.recognizing.connect(recognizing_handler)\nrecognizer.recognized.connect(recognized_handler)\nrecognizer.session_stopped.connect(stop_handler)\nrecognizer.canceled.connect(stop_handler)\n\nrecognizer.start_continuous_recognition()\nwhile not done:\n    time.sleep(0.5)\nrecognizer.stop_continuous_recognition()",
+     "caption": "Reconocimiento continuo de un archivo con eventos (patrón del módulo de Learn y de los samples oficiales)."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Método de `SpeechRecognizer`",
+      "Uso"
+     ],
+     "rows": [
+      [
+       "`recognize_once()` / `recognize_once_async()`",
+       "Una locución; devuelve al terminar la frase."
+      ],
+      [
+       "`start_continuous_recognition()` / `_async()`",
+       "Empieza reconocimiento continuo de múltiples locuciones (resultados por eventos)."
+      ],
+      [
+       "`stop_continuous_recognition()` / `_async()`",
+       "Detiene el reconocimiento continuo."
+      ],
+      [
+       "`start_keyword_recognition(model)`",
+       "Escucha hasta detectar una palabra clave y entonces reconoce."
+      ],
+      [
+       "`stop_keyword_recognition()`",
+       "Detiene el reconocimiento por palabra clave."
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si el enunciado dice \"transcribir una reunión de una hora\" o \"reconocer varias frases\", la respuesta es `start_continuous_recognition()` y eventos. Si dice \"un comando corto\" o \"una única frase\", `recognize_once_async()`. El evento con el texto **definitivo** es `recognized`; `recognizing` da **parciales**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Errores típicos: (1) olvidar `.get()` tras `recognize_once_async()` (obtienes un *future*, no el resultado); (2) conectar eventos y no llamar a `start_continuous_recognition()`; (3) dejar el idioma por defecto `en-US` cuando el audio es en español; (4) poner la clave en el código en lugar de variables de entorno o Key Vault (mejor aún: Microsoft Entra ID)."
+    },
+    {
+     "type": "h",
+     "text": "Variantes útiles del mismo patrón"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Diarización en tiempo real**: `speechsdk.transcription.ConversationTranscriber` con eventos `transcribing`/`transcribed`, `start_transcribing_async()` y `evt.result.speaker_id` (Guest-1, Guest-2...).",
+      "**Identificación de idioma**: `speechsdk.languageconfig.AutoDetectSourceLanguageConfig(languages=[\"en-US\", \"es-ES\"])` pasado al reconocedor.",
+      "**Traducción de voz**: `SpeechTranslationConfig` + `TranslationRecognizer` (lección 4)."
+     ]
+    }
+   ],
+   "takeaways": [
+    "Patrón de tres objetos: `SpeechConfig` (a qué servicio te conectas), `AudioConfig` (de dónde viene el audio) y `SpeechRecognizer` (hace el reconocimiento).",
+    "`recognize_once_async()` reconoce **una sola locución** y devuelve un *future*: sin `.get()` no obtienes el resultado.",
+    "Audio largo o varias frases → `start_continuous_recognition()` + eventos: `recognizing` da resultados **parciales** y `recognized` el texto **final**. Conectar los manejadores **no** arranca el reconocimiento.",
+    "`ResultReason.NoMatch` = había audio pero no se reconoció voz; `ResultReason.Canceled` = error de clave, endpoint o red, o fin del audio: revisa `cancellation_details`.",
+    "El idioma de reconocimiento por defecto es `en-US`: si el audio está en español, fija `speech_recognition_language = \"es-ES\"` o la transcripción será errónea."
+   ]
+  },
+  {
+   "id": "s07-l4",
+   "title": "Text to speech, SSML y traducción de voz en código",
+   "minutes": 15,
+   "goals": [
+    "Configurar un `SpeechSynthesizer` con `speech_synthesis_voice_name` y un `AudioOutputConfig` para enviar el audio al altavoz o a un archivo WAV.",
+    "Sintetizar voz a partir de un documento SSML con `speak_ssml_async()` y distinguir cuándo basta `speak_text_async()`.",
+    "Traducir voz a uno o varios idiomas con `SpeechTranslationConfig`, `add_target_language()` y `TranslationRecognizer`.",
+    "Explicar cuándo conviene la Voice Live API en lugar de orquestar por separado STT, un modelo generativo y TTS."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "La síntesis usa el mismo `SpeechConfig`, pero con un **`AudioOutputConfig`** (a dónde va el audio) y un **`SpeechSynthesizer`**. La voz se elige con `speech_config.speech_synthesis_voice_name`; la lista completa está en la *Voice Gallery* y en la documentación de idiomas soportados."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Salida de audio",
+      "Código"
+     ],
+     "rows": [
+      [
+       "Altavoz por defecto",
+       "`speechsdk.audio.AudioOutputConfig(use_default_speaker=True)`"
+      ],
+      [
+       "Archivo WAV",
+       "`speechsdk.audio.AudioOutputConfig(filename=\"salida.wav\")`"
+      ],
+      [
+       "En memoria (bytes)",
+       "`audio_config=None` y leer `result.audio_data`"
+      ]
+     ]
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nimport azure.cognitiveservices.speech as speechsdk\n\nspeech_config = speechsdk.SpeechConfig(\n    subscription=os.environ[\"SPEECH_KEY\"],\n    endpoint=os.environ[\"ENDPOINT\"]\n)\n# Voz neuronal en español de España\nspeech_config.speech_synthesis_voice_name = \"es-ES-ElviraNeural\"\n\n# 1) Al altavoz\nspeaker = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)\nsynth = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=speaker)\nresult = synth.speak_text_async(\"Hola, bienvenido a Microsoft Foundry.\").get()\n\nif result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:\n    print(\"Audio sintetizado\")\nelif result.reason == speechsdk.ResultReason.Canceled:\n    details = result.cancellation_details\n    print(\"Cancelado:\", details.reason, details.error_details)\n\n# 2) A un archivo WAV\nfile_out = speechsdk.audio.AudioOutputConfig(filename=\"saludo.wav\")\nfile_synth = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=file_out)\nfile_synth.speak_text_async(\"Este audio se guarda en un archivo.\").get()",
+     "caption": "TTS a altavoz y a archivo."
+    },
+    {
+     "type": "h",
+     "text": "SSML en código: estilo, prosodia y pausas"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "ssml = \"\"\"\n<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\"\n       xmlns:mstts=\"https://www.w3.org/2001/mstts\" xml:lang=\"en-US\">\n  <voice name=\"en-US-AvaMultilingualNeural\">\n    <mstts:express-as style=\"cheerful\" styledegree=\"1.5\">\n      Welcome to the Contoso help line!\n    </mstts:express-as>\n    <break time=\"700ms\"/>\n    <prosody rate=\"-10%\" pitch=\"-2st\">\n      Please have your order number ready.\n    </prosody>\n  </voice>\n</speak>\n\"\"\"\n\nresult = synth.speak_ssml_async(ssml).get()\nprint(result.reason)",
+     "caption": "Con SSML la voz se indica en el propio XML (`<voice name=...>`) y se usa `speak_ssml_async()`."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Recuerda los pares: `speak_text_async()` para **texto plano**; `speak_ssml_async()` para **SSML**. Para pausas: `<break>`; velocidad/tono/volumen: `<prosody>`; emoción o estilo de locutor: `<mstts:express-as>`; cambiar de voz: `<voice>`."
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Si la voz elegida no habla el idioma del texto, no obtendrás audio útil. Las voces **Multilingual** pueden hablar varios idiomas según el texto de entrada, lo que es cómodo cuando la respuesta viene de un LLM."
+    },
+    {
+     "type": "h",
+     "text": "Traducción de voz"
+    },
+    {
+     "type": "p",
+     "text": "Para traducir voz se usa `speechsdk.translation.SpeechTranslationConfig` (idioma de origen con `speech_recognition_language` y uno o varios destinos con `add_target_language()`) y un `TranslationRecognizer`. El resultado trae un diccionario `translations` con una entrada por idioma destino. Si además configuras una voz de síntesis, el servicio puede devolver el audio traducido (traducción voz a voz)."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nimport azure.cognitiveservices.speech as speechsdk\n\ntranslation_config = speechsdk.translation.SpeechTranslationConfig(\n    subscription=os.environ[\"SPEECH_KEY\"],\n    endpoint=os.environ[\"ENDPOINT\"]\n)\ntranslation_config.speech_recognition_language = \"es-ES\"   # idioma hablado\ntranslation_config.add_target_language(\"en\")               # destinos\ntranslation_config.add_target_language(\"fr\")\n\naudio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)\ntranslator = speechsdk.translation.TranslationRecognizer(\n    translation_config=translation_config, audio_config=audio_config\n)\n\nresult = translator.recognize_once_async().get()\nif result.reason == speechsdk.ResultReason.TranslatedSpeech:\n    print(\"Original:\", result.text)\n    for lang, text in result.translations.items():\n        print(lang, \"->\", text)",
+     "caption": "Traducción de voz a texto en dos idiomas destino."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "No confundas **Speech translation** (audio de entrada, traducción directa del habla) con **Azure Translator** (traduce **texto**). Si la entrada es voz y quieres el resultado traducido, la respuesta del examen es Speech translation."
+    },
+    {
+     "type": "h",
+     "text": "Voice Live y el patrón voz → IA → voz"
+    },
+    {
+     "type": "p",
+     "text": "Un agente de voz clásico encadena tres piezas: **STT** (entender lo que dice el usuario), un **modelo o agente** (razonar y decidir la respuesta) y **TTS** (responder en voz). Orquestarlas a mano añade complejidad y **latencia percibida**. La **Voice Live API** de Azure Speech lo resuelve en un único servicio totalmente gestionado: envías audio y recibes audio (y opcionalmente avatar y llamadas a funciones)."
+    },
+    {
+     "type": "diagram",
+     "title": "Agente de voz: orquestación manual frente a Voice Live",
+     "mermaid": "flowchart LR\n  U[\"Usuario habla\"] --> M1\n  subgraph DIY[\"Hazlo tú mismo\"]\n    M1[\"Speech to text\"] --> M2[\"Modelo o agente (LLM)\"] --> M3[\"Text to speech\"]\n  end\n  M3 --> O[\"Usuario escucha\"]\n  U2[\"Usuario habla\"] --> VL[\"Voice Live API (STT + LLM + TTS + avatar + herramientas)\"] --> O2[\"Usuario escucha\"]"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Característica de Voice Live",
+      "Qué aporta"
+     ],
+     "rows": [
+      [
+       "Conexión por **WebSocket**",
+       "Streaming bidireccional de audio; compatible con los eventos de la Realtime API de Azure OpenAI."
+      ],
+      [
+       "Elección de modelo generativo",
+       "Modelos GPT *realtime*, familia GPT-4o/4.1/5, Phi... totalmente gestionados, sin desplegar nada. El precio (Pro, Basic, Lite) depende del modelo elegido."
+      ],
+      [
+       "Mejoras conversacionales",
+       "Supresión de ruido, cancelación de eco, detección robusta de interrupciones y detección avanzada de fin de turno."
+      ],
+      [
+       "Personalización",
+       "Phrase list o Custom speech en la entrada; voces estándar o **custom voice** en la salida."
+      ],
+      [
+       "Avatar y funciones",
+       "Avatar sincronizado con el audio y *function calling* para ejecutar acciones o respuestas fundamentadas."
+      ]
+     ]
+    },
+    {
+     "type": "p",
+     "text": "En el portal de Foundry puedes probar Voice Live en su **playground** o activar **Voice mode** en un agente de Foundry, lo que integra Voice Live en la propia definición del agente. Para una app Python existe el paquete `azure-ai-voicelive` (junto con `pyaudio`, `python-dotenv` y `azure-identity`); el portal genera código de ejemplo que gestiona sesión, micrófono, altavoz e interrupciones."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "\"Construir un agente de voz de **baja latencia**, conversación natural, sin orquestar STT + LLM + TTS por separado\" = **Voice Live**. \"Añadir voz a un agente ya creado en el portal de Foundry\" = activar **Voice mode**."
+    }
+   ],
+   "takeaways": [
+    "TTS reutiliza `SpeechConfig` con un `AudioOutputConfig` (`use_default_speaker=True` o `filename=`) y un `SpeechSynthesizer`; el éxito lo indica `ResultReason.SynthesizingAudioCompleted`.",
+    "`speak_text_async()` recibe **texto plano**; `speak_ssml_async()` recibe **SSML**, y entonces la voz se indica en `<voice name=\"...\">` dentro del propio XML.",
+    "Entrada de voz con resultado traducido → **Speech translation** (`TranslationRecognizer`, una entrada por idioma en `result.translations`); **Azure Translator** traduce **texto**, no audio.",
+    "**Voice Live** = API voz a voz de **baja latencia** y totalmente gestionada (STT + modelo generativo + TTS, con avatar y *function calling*) por WebSocket, sin desplegar tú el modelo."
+   ]
+  },
+  {
+   "id": "s07-l5",
+   "title": "Responder a prompts hablados con un modelo multimodal",
+   "minutes": 15,
+   "goals": [
+    "Comparar los tres enfoques para responder a un prompt hablado: audio directo a un modelo multimodal, pipeline STT → LLM → TTS con Azure Speech y conversación voz a voz en tiempo real.",
+    "Escribir una llamada a `chat.completions.create` que envíe la pregunta en una parte `input_audio` en base64 y lea la respuesta en `message.audio.transcript` y `message.audio.data`.",
+    "Identificar la familia de modelos de audio de Foundry adecuada (gpt-audio, gpt-realtime, gpt-4o-transcribe, gpt-4o-mini-tts) y cuándo conviene usar Azure Speech en su lugar."
+   ],
+   "blocks": [
+    {
+     "type": "p",
+     "text": "El objetivo \"*Respond to spoken prompts by using a deployed multimodal model*\" se puede cumplir de dos formas. Conviene conocer ambas y saber cuándo elegir cada una."
+    },
+    {
+     "type": "table",
+     "head": [
+      "Enfoque",
+      "Cómo funciona",
+      "Ventajas",
+      "Inconvenientes"
+     ],
+     "rows": [
+      [
+       "**A. Audio directo al modelo multimodal**",
+       "Despliegas un modelo con entrada de audio (familia **GPT audio**: `gpt-audio`, `gpt-audio-mini`, `gpt-4o-audio-preview`...) y envías el audio (base64) en el mensaje de la **Chat Completions API**. Puede responder en texto y/o audio.",
+       "Un solo paso; el modelo \"oye\" el tono y matices; la respuesta puede venir ya en voz.",
+       "Menos control sobre la transcripción y la voz; modelos con disponibilidad regional limitada."
+      ],
+      [
+       "**B. Pipeline STT → LLM → TTS**",
+       "Azure Speech transcribe, envías el texto a cualquier modelo de chat desplegado y sintetizas la respuesta con Azure Speech.",
+       "Máximo control: Custom speech, SSML, cientos de voces neuronales, cualquier LLM.",
+       "Más piezas y más latencia."
+      ],
+      [
+       "**C. Tiempo real (voz a voz)**",
+       "Modelos `gpt-realtime` vía Realtime API, o Voice Live.",
+       "Conversación fluida con interrupciones.",
+       "Requiere WebSocket/WebRTC y streaming."
+      ]
+     ]
+    },
+    {
+     "type": "diagram",
+     "title": "Prompt hablado enviado a un modelo multimodal",
+     "mermaid": "sequenceDiagram\n  participant U as Usuario\n  participant App as App Python\n  participant M as Modelo GPT audio desplegado\n  U->>App: graba pregunta.wav\n  App->>App: codifica el audio en base64\n  App->>M: chat.completions.create con input_audio\n  M-->>App: texto y audio en base64 con transcript\n  App->>App: decodifica y guarda respuesta.wav\n  App-->>U: muestra el texto y reproduce el audio"
+    },
+    {
+     "type": "h",
+     "text": "Enfoque A: enviar el audio en la petición"
+    },
+    {
+     "type": "p",
+     "text": "Las peticiones de audio usan la misma ruta `/chat/completions` que el chat de texto. La diferencia está en el contenido del mensaje: una parte de tipo `input_audio` con los datos en **base64** y su formato (`wav` o `mp3`). Para obtener también voz en la respuesta se indican `modalities=[\"text\", \"audio\"]` y el parámetro `audio` con la voz y el formato de salida."
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import base64\nimport os\nfrom openai import AzureOpenAI\n\n# pip install openai\nclient = AzureOpenAI(\n    azure_endpoint=os.environ[\"AZURE_OPENAI_ENDPOINT\"],   # https://<recurso>.openai.azure.com/\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n    api_version=\"2025-01-01-preview\"\n)\n\n# 1) Leer la pregunta hablada y codificarla en base64\nwith open(\"pregunta.wav\", \"rb\") as f:\n    audio_b64 = base64.b64encode(f.read()).decode(\"utf-8\")\n\n# 2) Enviar el audio al modelo multimodal desplegado\ncompletion = client.chat.completions.create(\n    model=os.environ[\"AUDIO_DEPLOYMENT\"],        # nombre del despliegue, p. ej. gpt-audio\n    modalities=[\"text\", \"audio\"],               # queremos texto y voz\n    audio={\"voice\": \"alloy\", \"format\": \"wav\"},  # voz y formato de la respuesta\n    messages=[\n        {\"role\": \"system\", \"content\": \"Eres un asistente que responde de forma breve.\"},\n        {\n            \"role\": \"user\",\n            \"content\": [\n                {\"type\": \"text\", \"text\": \"Responde a la pregunta del audio.\"},\n                {\"type\": \"input_audio\",\n                 \"input_audio\": {\"data\": audio_b64, \"format\": \"wav\"}}\n            ]\n        }\n    ]\n)\n\n# 3) Mostrar la transcripción de la respuesta y guardar el audio\nmessage = completion.choices[0].message\nprint(\"Respuesta:\", message.audio.transcript)\nwith open(\"respuesta.wav\", \"wb\") as f:\n    f.write(base64.b64decode(message.audio.data))",
+     "caption": "Basado en el quickstart oficial de audio completions de Azure OpenAI en Foundry. `model` es el **nombre del despliegue**."
+    },
+    {
+     "type": "callout",
+     "variant": "warn",
+     "text": "Cuando pides `modalities=[\"text\", \"audio\"]`, el texto de la respuesta viene en `message.audio.transcript` (y el audio en `message.audio.data`, en base64), no en `message.content`. El audio de entrada debe ir en **base64**, no como ruta de archivo ni URL."
+    },
+    {
+     "type": "h",
+     "text": "Enfoque B: Azure Speech + cualquier modelo de chat"
+    },
+    {
+     "type": "code",
+     "lang": "python",
+     "code": "import os\nimport azure.cognitiveservices.speech as speechsdk\nfrom openai import AzureOpenAI\n\nspeech_config = speechsdk.SpeechConfig(subscription=os.environ[\"SPEECH_KEY\"], endpoint=os.environ[\"ENDPOINT\"])\nspeech_config.speech_recognition_language = \"es-ES\"\nspeech_config.speech_synthesis_voice_name = \"es-ES-ElviraNeural\"\n\nclient = AzureOpenAI(\n    azure_endpoint=os.environ[\"AZURE_OPENAI_ENDPOINT\"],\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n    api_version=\"2024-10-21\"\n)\n\n# 1) Voz -> texto (pregunta en un archivo)\nrecognizer = speechsdk.SpeechRecognizer(\n    speech_config=speech_config,\n    audio_config=speechsdk.audio.AudioConfig(filename=\"pregunta.wav\"))\nquestion = recognizer.recognize_once_async().get().text\nprint(\"Pregunta:\", question)\n\n# 2) Texto -> LLM\nanswer = client.chat.completions.create(\n    model=os.environ[\"CHAT_DEPLOYMENT\"],\n    messages=[{\"role\": \"system\", \"content\": \"Responde en una o dos frases.\"},\n              {\"role\": \"user\", \"content\": question}]\n).choices[0].message.content\nprint(\"Respuesta:\", answer)\n\n# 3) Texto -> voz (altavoz)\nsynth = speechsdk.SpeechSynthesizer(\n    speech_config=speech_config,\n    audio_config=speechsdk.audio.AudioOutputConfig(use_default_speaker=True))\nsynth.speak_text_async(answer).get()",
+     "caption": "Pipeline clásico; es el patrón del artículo \"Azure OpenAI speech to speech chat\" de la documentación de Azure Speech."
+    },
+    {
+     "type": "callout",
+     "variant": "exam",
+     "text": "Si el enunciado habla de **enviar el archivo de audio al modelo en la petición** y el modelo responde (incluso con audio), piensa en un **modelo multimodal con entrada de audio** y la parte `input_audio` en Chat Completions. Si pide **elegir una voz neuronal concreta, SSML o un modelo de voz personalizado**, piensa en **Azure Speech** (enfoque B o Voice Live)."
+    },
+    {
+     "type": "h",
+     "text": "Otros modelos de audio en Foundry"
+    },
+    {
+     "type": "table",
+     "head": [
+      "Familia",
+      "Para qué",
+      "API"
+     ],
+     "rows": [
+      [
+       "`gpt-audio`, `gpt-audio-mini`, `gpt-4o-audio-preview`",
+       "Entrada y salida de audio + texto en una petición.",
+       "Chat Completions"
+      ],
+      [
+       "`gpt-realtime`, `gpt-realtime-mini` (y versiones posteriores)",
+       "Conversación voz a voz de baja latencia.",
+       "Realtime API (WebSocket/WebRTC)"
+      ],
+      [
+       "`whisper`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`",
+       "Transcribir archivos de audio (hasta 25 MB).",
+       "Audio API (`/audio/transcriptions`)"
+      ],
+      [
+       "`gpt-4o-mini-tts`, `tts`, `tts-hd`",
+       "Generar voz a partir de texto.",
+       "Audio API (`/audio/speech`)"
+      ]
+     ]
+    },
+    {
+     "type": "callout",
+     "variant": "tip",
+     "text": "Regla práctica: **Azure Speech** cuando necesitas funciones de voz \"profesionales\" (diarización, batch, Custom speech, SSML, avatar, pronunciación); **modelo multimodal de audio** cuando quieres que un LLM entienda y conteste directamente a lo que se dijo."
+    },
+    {
+     "type": "terms",
+     "items": [
+      {
+       "term": "Modelo multimodal",
+       "en": "Multimodal model",
+       "def": "Modelo que acepta o genera más de un tipo de dato (texto, imagen, audio)."
+      },
+      {
+       "term": "input_audio",
+       "en": "input_audio content part",
+       "def": "Parte del mensaje de Chat Completions que contiene audio en base64 y su formato."
+      },
+      {
+       "term": "Modalidades",
+       "en": "modalities",
+       "def": "Parámetro que indica si la respuesta debe incluir texto, audio o ambos."
+      },
+      {
+       "term": "Voice Live",
+       "en": "Voice Live API",
+       "def": "API gestionada de Azure Speech para agentes voz a voz de baja latencia."
+      },
+      {
+       "term": "Voice mode",
+       "en": "Voice mode",
+       "def": "Opción de un agente de Foundry que integra Voice Live en la definición del agente."
+      }
+     ]
+    }
+   ],
+   "takeaways": [
+    "Para que el modelo responda directamente a un audio, despliega un modelo con entrada de audio (familia **GPT audio**, p. ej. `gpt-audio`) y envía el audio en **base64** en una parte `input_audio` de **Chat Completions**, no como ruta ni URL.",
+    "Para recibir también voz, indica `modalities=[\"text\", \"audio\"]` y el parámetro `audio` (voz y formato); el texto llega en `message.audio.transcript`, **no** en `message.content`.",
+    "Si el escenario pide **SSML**, una voz neuronal concreta, **Custom speech** o diarización, la respuesta es **Azure Speech** (pipeline STT → LLM → TTS o Voice Live); si el LLM debe entender y contestar lo dicho, un **modelo multimodal de audio**.",
+    "El pipeline STT → LLM → TTS da el máximo control (cualquier LLM, cientos de voces), a cambio de más piezas y más **latencia**.",
+    "Familias de audio: `gpt-audio` (Chat Completions), `gpt-realtime` (Realtime API por WebSocket/WebRTC), `whisper` o `gpt-4o-transcribe` (transcribir) y `gpt-4o-mini-tts` (generar voz)."
+   ]
+  }
+ ],
+ "flashcards": [
+  {
+   "front": "¿Qué convierte audio en fonemas en un sistema STT?",
+   "back": "El **modelo acústico**."
+  },
+  {
+   "front": "¿Qué convierte fonemas en palabras en un sistema STT?",
+   "back": "El **modelo de lenguaje**."
+  },
+  {
+   "front": "¿Qué dos datos necesita como mínimo una solución de Text to speech?",
+   "back": "El **texto** a decir y la **voz** que lo dirá."
+  },
+  {
+   "front": "¿Qué es SSML?",
+   "back": "*Speech Synthesis Markup Language*: XML para controlar voz, prosodia (rate, pitch, volume), pausas (`break`), pronunciación y estilos (`mstts:express-as`)."
+  },
+  {
+   "front": "Elemento SSML para insertar una pausa",
+   "back": "`<break time=\"500ms\"/>`"
+  },
+  {
+   "front": "Elemento SSML para velocidad, tono y volumen",
+   "back": "`<prosody rate=... pitch=... volume=...>`"
+  },
+  {
+   "front": "Elemento SSML para hablar con emoción o estilo (alegre, triste, noticias)",
+   "back": "`<mstts:express-as style=\"cheerful\" styledegree=\"...\">`"
+  },
+  {
+   "front": "recognize_once_async() frente a start_continuous_recognition()",
+   "back": "Una sola locución (termina con el silencio, máx. ~30 s) frente a varias locuciones con resultados por eventos hasta que llamas a stop."
+  },
+  {
+   "front": "Evento recognizing frente a recognized",
+   "back": "`recognizing` = resultados **intermedios**; `recognized` = resultado **final** de la locución."
+  },
+  {
+   "front": "Tres objetos del Speech SDK para STT",
+   "back": "`SpeechConfig` (servicio), `AudioConfig` (origen del audio), `SpeechRecognizer` (reconoce)."
+  },
+  {
+   "front": "¿Cómo envías el audio TTS a un archivo?",
+   "back": "`AudioOutputConfig(filename=\"salida.wav\")` en el `SpeechSynthesizer`."
+  },
+  {
+   "front": "¿Qué método sintetiza SSML?",
+   "back": "`speak_ssml_async(ssml).get()` (para texto plano: `speak_text_async`)."
+  },
+  {
+   "front": "Real-time frente a fast frente a batch transcription",
+   "back": "Real-time: audio en streaming. Fast: archivo pregrabado, síncrono y rápido. Batch: muchos archivos en almacenamiento, asíncrono vía REST."
+  },
+  {
+   "front": "¿Cómo se pasa el audio a batch transcription?",
+   "back": "Con URLs de archivos (pública o **SAS URI**) o un contenedor de **Azure Blob Storage**; por REST API o Speech CLI."
+  },
+  {
+   "front": "¿Qué capacidad separa quién habla cuándo?",
+   "back": "**Speaker diarization** (p. ej. `ConversationTranscriber`, `speaker_id` = Guest-1, Guest-2)."
+  },
+  {
+   "front": "¿Qué capacidad puntúa la pronunciación de un estudiante?",
+   "back": "**Pronunciation assessment** (precisión, fluidez, completitud, prosodia)."
+  },
+  {
+   "front": "¿Qué es Voice Live?",
+   "back": "API gestionada de Azure Speech (WebSocket) que integra STT + modelo generativo + TTS para agentes de voz de baja latencia, con supresión de ruido, cancelación de eco, fin de turno, avatar y function calling."
+  },
+  {
+   "front": "¿Cómo se envía un prompt hablado a un modelo GPT audio?",
+   "back": "En Chat Completions, una parte `{\"type\": \"input_audio\", \"input_audio\": {\"data\": <base64>, \"format\": \"wav\"}}`; con `modalities=[\"text\",\"audio\"]` si quieres respuesta hablada."
+  },
+  {
+   "front": "Clases para traducir voz",
+   "back": "`SpeechTranslationConfig` (+ `add_target_language`) y `TranslationRecognizer`; resultado en `result.translations[idioma]`."
+  },
+  {
+   "front": "¿Qué pasó con Speaker recognition e Intent recognition?",
+   "back": "Se retiraron el 30-sep-2025. La diarización sigue disponible."
+  }
+ ],
+ "labs": [
+  {
+   "id": "s07-lab1",
+   "title": "Explorar Speech to text, Text to speech y Voice Live en el portal de Foundry",
+   "goal": "Probar sin código las capacidades de Azure Speech en los playgrounds del nuevo portal de Microsoft Foundry y activar Voice mode en un agente.",
+   "minutes": 30,
+   "cost": "Céntimos (uso por consumo de Speech y del modelo); requiere suscripción de Azure",
+   "prereqs": [
+    "Suscripción de Azure con permiso para crear recursos",
+    "Navegador con micrófono y altavoces",
+    "Un archivo de audio corto (WAV o MP3) opcional"
+   ],
+   "steps": [
+    {
+     "title": "Crear el proyecto",
+     "detail": "Abre https://ai.azure.com, inicia sesión y activa el interruptor **New Foundry** si aparece. Crea un proyecto nuevo indicando **Foundry resource**, **Subscription**, **Resource group** y **Region** (elige una región recomendada). Pulsa **Create** y espera a que termine."
+    },
+    {
+     "title": "Abrir el playground de Speech to text",
+     "detail": "Ve a **Build** > **Models** > pestaña **AI services** y abre **Azure Speech - Speech to Text**. Sube un archivo de audio o graba tu voz. Observa la transcripción, la puntuación y la segmentación. Prueba a cambiar el idioma/locale y compara el resultado hablando en español con el idioma en inglés."
+    },
+    {
+     "title": "Abrir el playground de Text to speech",
+     "detail": "En la misma pestaña **AI services**, abre **Azure Speech - Text to Speech**. Escribe un texto, elige varias voces (una en español, una *Multilingual*) y ajusta la velocidad (*speed*) y el tono (*pitch*). Reproduce y compara."
+    },
+    {
+     "title": "Crear un agente",
+     "detail": "En **Home**, en el mosaico **Build an agent**, selecciona **Start building**. Nombra el agente `speech-agent`, elige un modelo desplegado y escribe unas **Instructions** del tipo: `Eres un agente que responde preguntas sobre IA de forma breve y precisa.` Pulsa **Save** y prueba en el chat: `What can you help me with?`"
+    },
+    {
+     "title": "Activar Voice mode",
+     "detail": "En el panel izquierdo del agente activa **Voice mode**. Abre **Configuration** (icono de engranaje) para revisar y previsualizar las voces de entrada y salida. Cierra y guarda el agente."
+    },
+    {
+     "title": "Conversar por voz",
+     "detail": "Pulsa **Start session**, permite el acceso al micrófono y, cuando veas \"Listening…\", haz una pregunta. Observa los estados Listening… > Processing… > Speaking… Activa **cc** para ver la transcripción. Interrumpe al agente mientras habla para comprobar la detección de interrupciones. Cierra con la **X**."
+    },
+    {
+     "title": "Ver el código de cliente",
+     "detail": "Selecciona **Call agent** en la parte superior y revisa el código de ejemplo (sesión, streaming de audio, dispositivos). Fíjate en el paquete `azure-ai-voicelive`."
+    }
+   ],
+   "verify": [
+    "El playground de Speech to Text devuelve el texto de tu audio.",
+    "Oyes el texto con distintas voces en el playground de Text to Speech.",
+    "El agente con Voice mode responde en voz y la transcripción aparece al pulsar cc."
+   ],
+   "cleanup": "En el portal de Azure elimina el **Resource group** del proyecto (o al menos el recurso de Foundry) para no generar costes.",
+   "challenge": "En el playground de Voice Live (si está disponible en tu región) crea una solución nueva, elige otro modelo generativo y activa la opción de interacción proactiva para que el agente inicie la conversación."
+  },
+  {
+   "id": "s07-lab2",
+   "title": "App Python de STT + TTS con el Speech SDK",
+   "goal": "Construir una app de consola que transcribe un archivo de audio y lo que dices por micrófono, y responde en voz usando SSML y guardando el audio en un archivo.",
+   "minutes": 40,
+   "cost": "Céntimos (Speech tiene nivel gratuito F0 en algunos recursos); requiere suscripción de Azure",
+   "prereqs": [
+    "Recurso de Microsoft Foundry (o de Speech) con su endpoint y clave",
+    "Python 3.10+",
+    "Visual Studio Code u otro editor",
+    "Micrófono y altavoces",
+    "Un archivo `muestra.wav` (16 kHz, mono) con alguien hablando"
+   ],
+   "steps": [
+    {
+     "title": "Obtener endpoint y clave",
+     "detail": "En el portal de Foundry abre tu proyecto y en la página de inicio/Overview copia el **endpoint** del recurso y una **key** (o en el portal de Azure: recurso > **Keys and Endpoint**). El endpoint tiene la forma `https://<recurso>.cognitiveservices.azure.com/`."
+    },
+    {
+     "title": "Preparar el entorno",
+     "detail": "Crea una carpeta, un entorno virtual e instala el SDK. Define las variables de entorno.",
+     "code": "python -m venv .venv\nsource .venv/bin/activate      # Windows: .venv\\Scripts\\activate\npip install azure-cognitiveservices-speech\nexport SPEECH_KEY=\"<tu-clave>\"\nexport ENDPOINT=\"https://<recurso>.cognitiveservices.azure.com/\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Transcribir un archivo (continuo)",
+     "detail": "Crea `stt_archivo.py`. Usa `AudioConfig(filename=...)`, conecta `recognizing`, `recognized`, `session_stopped` y `canceled`, y arranca con `start_continuous_recognition()`.",
+     "code": "import os, time\nimport azure.cognitiveservices.speech as speechsdk\n\ncfg = speechsdk.SpeechConfig(subscription=os.environ[\"SPEECH_KEY\"], endpoint=os.environ[\"ENDPOINT\"])\ncfg.speech_recognition_language = \"es-ES\"\nrec = speechsdk.SpeechRecognizer(speech_config=cfg,\n        audio_config=speechsdk.audio.AudioConfig(filename=\"muestra.wav\"))\n\ndone = False\ntexto = []\n\ndef on_recognized(evt):\n    if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:\n        texto.append(evt.result.text)\n        print(\"FINAL:\", evt.result.text)\n\ndef on_stop(evt):\n    global done\n    done = True\n\nrec.recognizing.connect(lambda evt: print(\"...\", evt.result.text))\nrec.recognized.connect(on_recognized)\nrec.session_stopped.connect(on_stop)\nrec.canceled.connect(on_stop)\n\nrec.start_continuous_recognition()\nwhile not done:\n    time.sleep(0.5)\nrec.stop_continuous_recognition()\n\nwith open(\"transcripcion.txt\", \"w\", encoding=\"utf-8\") as f:\n    f.write(\" \".join(texto))",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar y observar eventos",
+     "detail": "Ejecuta `python stt_archivo.py`. Verás líneas `...` (parciales de `recognizing`) que se van completando y luego líneas `FINAL:` (de `recognized`). Se crea `transcripcion.txt`."
+    },
+    {
+     "title": "Asistente de micrófono con respuesta en voz",
+     "detail": "Crea `asistente.py`: reconoce una frase del micrófono con `recognize_once_async()` y responde con SSML, al altavoz y a un archivo.",
+     "code": "import os\nimport azure.cognitiveservices.speech as speechsdk\n\ncfg = speechsdk.SpeechConfig(subscription=os.environ[\"SPEECH_KEY\"], endpoint=os.environ[\"ENDPOINT\"])\ncfg.speech_recognition_language = \"es-ES\"\n\nrec = speechsdk.SpeechRecognizer(speech_config=cfg,\n        audio_config=speechsdk.audio.AudioConfig(use_default_microphone=True))\nprint(\"Di tu nombre...\")\nr = rec.recognize_once_async().get()\nif r.reason != speechsdk.ResultReason.RecognizedSpeech:\n    raise SystemExit(f\"No reconocido: {r.reason}\")\nprint(\"Has dicho:\", r.text)\n\nssml = f\"\"\"<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\"\n  xmlns:mstts=\"https://www.w3.org/2001/mstts\" xml:lang=\"es-ES\">\n  <voice name=\"es-ES-ElviraNeural\">\n    Has dicho: <break time=\"400ms\"/>\n    <prosody rate=\"-10%\">{r.text}</prosody>\n  </voice>\n</speak>\"\"\"\n\n# Al altavoz\nspeaker = speechsdk.SpeechSynthesizer(speech_config=cfg,\n        audio_config=speechsdk.audio.AudioOutputConfig(use_default_speaker=True))\nspeaker.speak_ssml_async(ssml).get()\n\n# A archivo\nto_file = speechsdk.SpeechSynthesizer(speech_config=cfg,\n        audio_config=speechsdk.audio.AudioOutputConfig(filename=\"respuesta.wav\"))\nres = to_file.speak_ssml_async(ssml).get()\nprint(\"Archivo creado\" if res.reason == speechsdk.ResultReason.SynthesizingAudioCompleted else res.cancellation_details.error_details)",
+     "lang": "python"
+    },
+    {
+     "title": "Experimentar con voces y estilos",
+     "detail": "Cambia la voz a `en-US-AvaMultilingualNeural` y envuelve el texto en `<mstts:express-as style=\"cheerful\">`. Prueba también un `rate` de `+20%` y un `pitch` de `-2st`. Comprueba el efecto."
+    }
+   ],
+   "verify": [
+    "`transcripcion.txt` contiene el texto del audio de muestra.",
+    "Ves resultados intermedios (`...`) antes de cada línea `FINAL:`.",
+    "Oyes la respuesta con pausa y velocidad reducida, y existe `respuesta.wav`."
+   ],
+   "cleanup": "Desactiva el entorno virtual. Si creaste un recurso solo para este lab, elimina su grupo de recursos; guarda la clave solo en variables de entorno y no la subas a Git.",
+   "challenge": "Sustituye `SpeechRecognizer` por `speechsdk.transcription.ConversationTranscriber` con una grabación de dos personas y muestra `evt.result.speaker_id` en cada frase (diarización)."
+  },
+  {
+   "id": "s07-lab3",
+   "title": "Enviar una pregunta hablada a un modelo multimodal desplegado",
+   "goal": "Desplegar un modelo GPT con entrada de audio en Foundry, enviarle un archivo WAV con una pregunta y mostrar y reproducir su respuesta (texto + audio).",
+   "minutes": 35,
+   "cost": "Céntimos por petición; requiere suscripción de Azure y una región donde esté disponible el modelo de audio",
+   "prereqs": [
+    "Proyecto de Microsoft Foundry",
+    "Python 3.10+",
+    "`pregunta.wav`: grábate diciendo una pregunta corta (p. ej. \"¿Qué es la diarización?\") o genérala con el lab 2"
+   ],
+   "steps": [
+    {
+     "title": "Desplegar el modelo de audio",
+     "detail": "En el portal de Foundry ve al catálogo de modelos (**Discover** / **Models**), busca un modelo de la familia GPT audio (por ejemplo `gpt-audio`, `gpt-audio-mini` o `gpt-4o-mini-audio-preview`, según disponibilidad en tu región) y selecciona **Deploy**. Anota el **nombre del despliegue**."
+    },
+    {
+     "title": "Probar en el playground",
+     "detail": "Abre el despliegue en el **Chat playground**, adjunta o graba audio si la interfaz lo permite y comprueba que el modelo responde a lo que dijiste."
+    },
+    {
+     "title": "Copiar endpoint y clave",
+     "detail": "En la página del despliegue copia el **Target URI/endpoint** (forma `https://<recurso>.openai.azure.com/`) y la **Key**.",
+     "code": "pip install openai\nexport AZURE_OPENAI_ENDPOINT=\"https://<recurso>.openai.azure.com/\"\nexport AZURE_OPENAI_API_KEY=\"<clave>\"\nexport AUDIO_DEPLOYMENT=\"<nombre-del-despliegue>\"",
+     "lang": "bash"
+    },
+    {
+     "title": "Escribir el cliente",
+     "detail": "Crea `pregunta_hablada.py`: codifica `pregunta.wav` en base64, lo envía como `input_audio` y pide texto y audio de respuesta.",
+     "code": "import base64, os\nfrom openai import AzureOpenAI\n\nclient = AzureOpenAI(\n    azure_endpoint=os.environ[\"AZURE_OPENAI_ENDPOINT\"],\n    api_key=os.environ[\"AZURE_OPENAI_API_KEY\"],\n    api_version=\"2025-01-01-preview\"\n)\n\nwith open(\"pregunta.wav\", \"rb\") as f:\n    audio_b64 = base64.b64encode(f.read()).decode(\"utf-8\")\n\ncompletion = client.chat.completions.create(\n    model=os.environ[\"AUDIO_DEPLOYMENT\"],\n    modalities=[\"text\", \"audio\"],\n    audio={\"voice\": \"alloy\", \"format\": \"wav\"},\n    messages=[\n        {\"role\": \"system\", \"content\": \"Responde en español, en dos frases como máximo.\"},\n        {\"role\": \"user\", \"content\": [\n            {\"type\": \"text\", \"text\": \"Contesta a la pregunta de este audio.\"},\n            {\"type\": \"input_audio\", \"input_audio\": {\"data\": audio_b64, \"format\": \"wav\"}}\n        ]}\n    ]\n)\n\nmsg = completion.choices[0].message\nprint(\"Respuesta (texto):\", msg.audio.transcript)\nwith open(\"respuesta_modelo.wav\", \"wb\") as f:\n    f.write(base64.b64decode(msg.audio.data))\nprint(\"Audio guardado en respuesta_modelo.wav\")",
+     "lang": "python"
+    },
+    {
+     "title": "Ejecutar y reproducir",
+     "detail": "Ejecuta `python pregunta_hablada.py`. Reproduce `respuesta_modelo.wav` con tu reproductor (en macOS: `afplay respuesta_modelo.wav`; en Windows: ábrelo con doble clic)."
+    },
+    {
+     "title": "Variante solo texto",
+     "detail": "Elimina el parámetro `audio` y usa `modalities=[\"text\"]`. Ahora la respuesta estará en `completion.choices[0].message.content`. Compara la latencia."
+    }
+   ],
+   "verify": [
+    "La consola muestra una respuesta coherente con la pregunta grabada.",
+    "`respuesta_modelo.wav` se reproduce con la respuesta hablada.",
+    "Con `modalities=[\"text\"]` obtienes el texto en `message.content`."
+   ],
+   "cleanup": "Elimina el despliegue del modelo en el portal de Foundry (**Models + endpoints** > despliegue > **Delete**) o el grupo de recursos completo.",
+   "challenge": "Implementa la misma funcionalidad con el enfoque STT → LLM → TTS (Speech SDK + un despliegue de chat de texto) y usa una voz neuronal en español con SSML. Compara calidad, control y latencia."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "s07-q1",
+   "type": "single",
+   "q": "En un sistema de reconocimiento de voz, ¿qué componente convierte la señal de audio en fonemas?",
+   "options": [
+    "El modelo de lenguaje",
+    "El modelo acústico",
+    "El vocoder neuronal",
+    "El normalizador de texto"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El **modelo acústico** relaciona rasgos de audio con fonemas. El modelo de lenguaje convierte fonemas en palabras; el vocoder y la normalización de texto son etapas de la síntesis (TTS), no del reconocimiento."
+  },
+  {
+   "id": "s07-q2",
+   "type": "single",
+   "q": "Una app de dictado médico confunde nombres de fármacos poco comunes, aunque el audio es limpio. ¿Qué debes mejorar?",
+   "options": [
+    "El modelo acústico con más audio ruidoso",
+    "El modelo de lenguaje con un Custom speech o una phrase list con esos términos",
+    "La voz neuronal de salida",
+    "La velocidad de muestreo a 44,1 kHz"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El problema es de **vocabulario del dominio**, así que se mejora la parte de lenguaje: **Custom speech** con texto del dominio o una **phrase list**. El audio es limpio, por lo que más audio ruidoso no aporta; la voz de salida es TTS y no afecta al reconocimiento; subir el muestreo no resuelve el vocabulario."
+  },
+  {
+   "id": "s07-q3",
+   "type": "multi",
+   "q": "¿Qué DOS elementos necesita como mínimo una solución de Text to speech? (Selecciona DOS.)",
+   "options": [
+    "El texto que se va a decir",
+    "Un modelo de Custom speech",
+    "La voz que se usará",
+    "Un archivo SSML obligatorio",
+    "Un contenedor de Blob Storage"
+   ],
+   "answer": [
+    0,
+    2
+   ],
+   "explain": "TTS requiere **el texto** y **la voz**. SSML es opcional (se puede usar texto plano con `speak_text_async`), Custom speech es para reconocimiento, y Blob Storage se usa en batch transcription, no en síntesis."
+  },
+  {
+   "id": "s07-q4",
+   "type": "single",
+   "q": "Necesitas transcribir 50 000 grabaciones de llamadas almacenadas en Azure Blob Storage. El resultado puede tardar horas. ¿Qué usas?",
+   "options": [
+    "Real-time transcription con el Speech SDK",
+    "Fast transcription",
+    "Batch transcription",
+    "Speech translation"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "**Batch transcription** está pensada para grandes volúmenes de audio almacenado (URL/SAS o contenedor), de forma **asíncrona**. Real-time es para streaming; fast transcription es síncrona y para archivos puntuales; speech translation traduce, no es el caso."
+  },
+  {
+   "id": "s07-q5",
+   "type": "single",
+   "q": "Quieres subtítulos en directo para una presentación mientras el ponente habla. ¿Qué modo de transcripción usas?",
+   "options": [
+    "Batch transcription",
+    "Real-time transcription",
+    "Fast transcription",
+    "LLM speech"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los subtítulos en directo requieren resultados **mientras llega el audio**: **real-time transcription**. Batch y fast trabajan con archivos ya grabados, y LLM speech (preview) también es para audio pregrabado."
+  },
+  {
+   "id": "s07-q6",
+   "type": "single",
+   "q": "Un editor necesita la transcripción de un único vídeo de 30 minutos ya grabado lo antes posible, con latencia predecible y en una sola llamada síncrona. ¿Qué eliges?",
+   "options": [
+    "Batch transcription",
+    "Real-time transcription desde micrófono",
+    "Fast transcription",
+    "Text to speech avatar"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "**Fast transcription** procesa archivos pregrabados de forma **síncrona** y más rápido que tiempo real, con latencia predecible. Batch es asíncrona y puede quedar en cola; real-time está pensada para streaming; el avatar es síntesis de vídeo."
+  },
+  {
+   "id": "s07-q7",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre batch transcription, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Se puede indicar el audio con un SAS URI o un contenedor de Azure Blob Storage.",
+     "answer": true
+    },
+    {
+     "text": "Es síncrona: devuelve la transcripción en la misma respuesta HTTP.",
+     "answer": false
+    },
+    {
+     "text": "Se usa mediante la REST API de Speech to text (o la Speech CLI).",
+     "answer": true
+    },
+    {
+     "text": "Garantiza que el trabajo empieza en menos de un segundo.",
+     "answer": false
+    }
+   ],
+   "explain": "Batch acepta audio por URL/SAS o contenedor y se usa por **REST API** o Speech CLI. Es **asíncrona**: creas el trabajo y consultas el estado; se programa *best-effort*, así que puede tardar en arrancar (hasta 30 min en horas pico) y completar."
+  },
+  {
+   "id": "s07-q8",
+   "type": "single",
+   "q": "Quieres obtener, a partir de la grabación de una reunión, qué frases dijo cada participante (Guest-1, Guest-2...). ¿Qué capacidad usas?",
+   "options": [
+    "Speaker recognition",
+    "Speaker diarization",
+    "Language identification",
+    "Pronunciation assessment"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La **diarización** separa y etiqueta quién habla cuándo. Speaker recognition (verificación de identidad por voz) se retiró en septiembre de 2025 y además no produce transcripciones; language identification detecta el idioma; pronunciation assessment puntúa la pronunciación."
+  },
+  {
+   "id": "s07-q9",
+   "type": "single",
+   "q": "Una app de aprendizaje de inglés debe puntuar la precisión y fluidez con la que un alumno lee una frase. ¿Qué capacidad de Azure Speech usas?",
+   "options": [
+    "Custom voice",
+    "Speech translation",
+    "Pronunciation assessment",
+    "Keyword recognition"
+   ],
+   "answer": [
+    2
+   ],
+   "explain": "**Pronunciation assessment** evalúa la pronunciación y devuelve puntuaciones de precisión, fluidez, completitud y prosodia. Custom voice crea voces de síntesis, speech translation traduce y keyword recognition detecta una palabra de activación."
+  },
+  {
+   "id": "s07-q10",
+   "type": "single",
+   "q": "Una empresa quiere producir vídeos de formación en los que una persona fotorrealista lee un guion, sin grabar a nadie. ¿Qué capacidad usa?",
+   "options": [
+    "Text to speech avatar",
+    "Custom speech",
+    "Speech to text con diarización",
+    "Voice Live sin avatar"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "**Text to speech avatar** convierte texto en vídeo de un humano fotorrealista hablando (en tiempo real o por lotes). Custom speech mejora el reconocimiento; la diarización es de transcripción; Voice Live sin avatar solo produce audio."
+  },
+  {
+   "id": "s07-q11",
+   "type": "single",
+   "q": "Un conferenciante habla en español y el público debe ver subtítulos en inglés y francés a la vez. ¿Qué capacidad usas?",
+   "options": [
+    "Azure Translator (texto)",
+    "Speech translation con dos idiomas destino",
+    "Language identification",
+    "Batch transcription"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Speech translation** traduce el habla en tiempo real a uno o varios idiomas destino (`add_target_language`). Translator trabaja sobre texto, no sobre audio; language identification solo detecta el idioma; batch es asíncrona y no traduce."
+  },
+  {
+   "id": "s07-q12",
+   "type": "single",
+   "q": "Quieres construir un agente de voz de baja latencia que escuche, razone con un modelo generativo y responda hablando, con supresión de ruido y detección de fin de turno, sin orquestar tú STT, LLM y TTS. ¿Qué usas?",
+   "options": [
+    "Batch transcription + Azure Translator",
+    "Voice Live API",
+    "Text to speech avatar",
+    "Custom speech"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**Voice Live** integra STT, modelo generativo y TTS en un único servicio gestionado de baja latencia, con supresión de ruido, cancelación de eco, detección de interrupciones y fin de turno. Las otras opciones solo cubren una parte del problema."
+  },
+  {
+   "id": "s07-q13",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre Voice Live, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Se integra mediante WebSocket y es compatible con los eventos de la Realtime API de Azure OpenAI.",
+     "answer": true
+    },
+    {
+     "text": "Obliga a desplegar tú mismo el modelo generativo en tu recurso antes de usarlo.",
+     "answer": false
+    },
+    {
+     "text": "Puede añadir un avatar sincronizado con el audio y usar function calling.",
+     "answer": true
+    },
+    {
+     "text": "Su precio depende del modelo generativo elegido (niveles Pro, Basic o Lite).",
+     "answer": true
+    }
+   ],
+   "explain": "Voice Live se usa por **WebSocket**, es compatible con la Realtime API, admite **avatar** y **function calling**, y su precio se agrupa en Pro/Basic/Lite según el modelo. Los modelos soportados de forma nativa están **totalmente gestionados**: no tienes que desplegarlos (solo algunos modelos adicionales van por *Bring Your Own Model*)."
+  },
+  {
+   "id": "s07-q14",
+   "type": "single",
+   "q": "Completa el código para transcribir continuamente una reunión larga desde un archivo tras conectar los manejadores:\n`recognizer.recognized.connect(handler)`\n`recognizer.________()`",
+   "options": [
+    "recognize_once_async",
+    "start_continuous_recognition",
+    "speak_text_async",
+    "start_keyword_recognition"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Para varias locuciones se llama a **`start_continuous_recognition()`** (y luego `stop_continuous_recognition()`). `recognize_once_async` reconoce solo una frase; `speak_text_async` es de síntesis; `start_keyword_recognition` espera una palabra clave."
+  },
+  {
+   "id": "s07-q15",
+   "type": "single",
+   "q": "En reconocimiento continuo, ¿qué evento entrega el texto final y con puntuación de cada locución?",
+   "options": [
+    "recognizing",
+    "recognized",
+    "session_started",
+    "synthesizing"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**`recognized`** entrega el resultado final de la locución. `recognizing` da resultados intermedios que cambian; `session_started` indica el inicio de la sesión; `synthesizing` es un evento del sintetizador, no del reconocedor."
+  },
+  {
+   "id": "s07-q16",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre el Speech SDK de Python, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Conectar un manejador al evento `recognized` inicia automáticamente la escucha.",
+     "answer": false
+    },
+    {
+     "text": "`recognize_once_async()` devuelve un future y se usa `.get()` para obtener el resultado.",
+     "answer": true
+    },
+    {
+     "text": "Para leer audio de un archivo se usa `AudioConfig(filename=\"audio.wav\")`.",
+     "answer": true
+    },
+    {
+     "text": "Si no se indica, el idioma de reconocimiento por defecto es `en-US`.",
+     "answer": true
+    }
+   ],
+   "explain": "Conectar eventos **no** arranca el reconocimiento: hay que llamar a `start_continuous_recognition()`. Los métodos `_async` devuelven un *future* (`.get()`), el audio de archivo se configura con `AudioConfig(filename=...)` y el idioma por defecto es `en-US`."
+  },
+  {
+   "id": "s07-q17",
+   "type": "single",
+   "q": "¿Qué objeto del Speech SDK define de dónde procede el audio (micrófono o archivo)?",
+   "options": [
+    "SpeechConfig",
+    "AudioConfig",
+    "SpeechRecognizer",
+    "SpeechSynthesizer"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**`AudioConfig`** define la entrada de audio (`use_default_microphone=True` o `filename=`). `SpeechConfig` define el servicio (clave, endpoint, idioma); `SpeechRecognizer` combina ambos y reconoce; `SpeechSynthesizer` genera voz."
+  },
+  {
+   "id": "s07-q18",
+   "type": "single",
+   "q": "Quieres que tu app guarde la voz sintetizada en `aviso.wav` en lugar de reproducirla. ¿Qué configuras?",
+   "options": [
+    "`AudioConfig(use_default_microphone=True)`",
+    "`AudioOutputConfig(filename=\"aviso.wav\")`",
+    "`speech_config.speech_recognition_language = \"aviso.wav\"`",
+    "`AudioOutputConfig(use_default_speaker=True)`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "La salida de síntesis se define con **`AudioOutputConfig`**; con `filename=` se escribe en un archivo. `use_default_speaker=True` la envía al altavoz; `AudioConfig` con micrófono es entrada; el idioma de reconocimiento no tiene que ver con la salida."
+  },
+  {
+   "id": "s07-q19",
+   "type": "multi",
+   "q": "Quieres que una voz neuronal diga un saludo en tono alegre, haga una pausa de medio segundo y lea la siguiente frase más despacio. ¿Qué elementos SSML necesitas además de `speak` y `voice`? (Selecciona TRES.)",
+   "options": [
+    "`<mstts:express-as style=\"cheerful\">`",
+    "`<break time=\"500ms\"/>`",
+    "`<prosody rate=\"-20%\">`",
+    "`<audio src=...>`",
+    "`<lang xml:lang=...>`"
+   ],
+   "answer": [
+    0,
+    1,
+    2
+   ],
+   "explain": "El estilo alegre se consigue con **`mstts:express-as`**, la pausa con **`break`** y la velocidad con **`prosody rate`**. `<audio>` inserta un archivo grabado y `<lang>` cambia el idioma hablado; ninguno de los dos es necesario aquí."
+  },
+  {
+   "id": "s07-q20",
+   "type": "single",
+   "q": "Tienes un documento SSML en la variable `ssml`. ¿Qué método del `SpeechSynthesizer` lo sintetiza correctamente?",
+   "options": [
+    "speak_text_async(ssml)",
+    "speak_ssml_async(ssml)",
+    "recognize_once_async(ssml)",
+    "start_continuous_recognition(ssml)"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "**`speak_ssml_async()`** interpreta el XML SSML. Con `speak_text_async()` el marcado se trataría como texto plano; los otros dos métodos son de reconocimiento, no de síntesis."
+  },
+  {
+   "id": "s07-q21",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre la síntesis de voz, indica Sí o No.",
+   "statements": [
+    {
+     "text": "La normalización del texto convierte \"Dr.\" en \"Doctor\" y \"3\" en \"tres\" antes de pronunciar.",
+     "answer": true
+    },
+    {
+     "text": "Una prosodia plana y monótona es una causa habitual de que una voz suene robótica.",
+     "answer": true
+    },
+    {
+     "text": "El vocoder neuronal convierte fonemas en texto escrito.",
+     "answer": false
+    },
+    {
+     "text": "Las voces neuronales mejoran la entonación respecto a las voces sintéticas clásicas.",
+     "answer": true
+    }
+   ],
+   "explain": "La normalización expande abreviaturas y números; la **prosodia** determina la naturalidad; las voces neuronales corrigen la entonación. El **vocoder** hace lo contrario de lo que dice la tercera afirmación: convierte un espectrograma en **audio**."
+  },
+  {
+   "id": "s07-q22",
+   "type": "single",
+   "q": "Tienes desplegado un modelo `gpt-audio` en Foundry. ¿Cómo envías una pregunta hablada grabada en `pregunta.wav` con la Chat Completions API?",
+   "options": [
+    "Pasando la ruta del archivo en el campo `content` como texto",
+    "Añadiendo al mensaje una parte `{\"type\": \"input_audio\", \"input_audio\": {\"data\": <base64>, \"format\": \"wav\"}}`",
+    "Subiendo el archivo a Blob Storage y usando batch transcription",
+    "Usando `speak_text_async()` con el archivo"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Los modelos GPT audio aceptan el audio **en base64** en una parte **`input_audio`** del mensaje. Pasar la ruta como texto no envía el audio; batch transcription es un servicio de Azure Speech, no del modelo; `speak_text_async` es para sintetizar voz."
+  },
+  {
+   "id": "s07-q23",
+   "type": "single",
+   "q": "Con un modelo GPT audio llamas a `chat.completions.create(..., modalities=[\"text\", \"audio\"], audio={\"voice\": \"alloy\", \"format\": \"wav\"})`. ¿Dónde está el texto de la respuesta?",
+   "options": [
+    "`completion.choices[0].message.content`",
+    "`completion.choices[0].message.audio.transcript`",
+    "`completion.text`",
+    "`completion.choices[0].audio_file`"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "Cuando la salida incluye audio, el texto de la respuesta llega en **`message.audio.transcript`** y el audio en `message.audio.data` (base64). `message.content` se usa cuando la salida es solo texto; las otras propiedades no existen."
+  },
+  {
+   "id": "s07-q24",
+   "type": "multi",
+   "q": "Quieres responder a preguntas habladas usando un LLM de texto que ya tienes desplegado (sin capacidad de audio). ¿Qué DOS servicios o capacidades añades? (Selecciona DOS.)",
+   "options": [
+    "Speech to text de Azure Speech para transcribir la pregunta",
+    "Text to speech de Azure Speech para leer la respuesta",
+    "Azure Translator",
+    "Content Understanding para imágenes",
+    "Speaker recognition"
+   ],
+   "answer": [
+    0,
+    1
+   ],
+   "explain": "El patrón **STT → LLM → TTS** necesita **Speech to text** para convertir la pregunta en texto y **Text to speech** para devolver la respuesta en voz. Translator solo traduce texto, Content Understanding de imágenes no aplica, y Speaker recognition está retirado y no transcribe."
+  },
+  {
+   "id": "s07-q25",
+   "type": "single",
+   "q": "Ya has creado un agente en el portal de Microsoft Foundry y quieres que los usuarios le hablen y oigan sus respuestas con el menor código cliente posible. ¿Qué haces?",
+   "options": [
+    "Activar Voice mode en el agente",
+    "Crear un trabajo de batch transcription",
+    "Entrenar un modelo de Custom speech",
+    "Cambiar el modelo por un modelo de embeddings"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "**Voice mode** integra Voice Live en la definición del agente, así que la configuración de voz queda encapsulada en el agente y el cliente necesita menos código. Batch transcription es asíncrona y no conversa; Custom speech solo mejora el reconocimiento; un modelo de embeddings no genera respuestas."
+  },
+  {
+   "id": "s07-q26",
+   "type": "single",
+   "q": "¿Qué paquete de Python instalas para usar el Speech SDK (SpeechRecognizer, SpeechSynthesizer)?",
+   "options": [
+    "azure-ai-voicelive",
+    "azure-cognitiveservices-speech",
+    "azure-ai-textanalytics",
+    "openai"
+   ],
+   "answer": [
+    1
+   ],
+   "explain": "El Speech SDK es **`azure-cognitiveservices-speech`** (`import azure.cognitiveservices.speech as speechsdk`). `azure-ai-voicelive` es para la Voice Live API, `azure-ai-textanalytics` para Azure Language y `openai` para llamar a modelos como GPT audio."
+  },
+  {
+   "id": "s07-q27",
+   "type": "single",
+   "q": "Un centro de llamadas recibe llamadas en español y en portugués y necesita saber el idioma antes de transcribir. ¿Qué capacidad usa?",
+   "options": [
+    "Language identification",
+    "Pronunciation assessment",
+    "Text to speech avatar",
+    "Custom voice"
+   ],
+   "answer": [
+    0
+   ],
+   "explain": "**Language identification** detecta qué idioma se habla y se puede combinar con STT o traducción. Las demás opciones no detectan idiomas."
+  },
+  {
+   "id": "s07-q28",
+   "type": "yesno",
+   "q": "Para cada afirmación sobre `recognize_once_async()`, indica Sí o No.",
+   "statements": [
+    {
+     "text": "Es adecuado para reconocer un comando de voz corto.",
+     "answer": true
+    },
+    {
+     "text": "Transcribe una reunión de una hora completa en una sola llamada.",
+     "answer": false
+    },
+    {
+     "text": "Devuelve el resultado cuando detecta el final de la locución (silencio) o tras un máximo de unos 30 segundos.",
+     "answer": true
+    }
+   ],
+   "explain": "`recognize_once_async()` reconoce **una sola locución** y termina con el silencio o tras ~30 s, por eso sirve para comandos cortos. Para una reunión larga necesitas reconocimiento **continuo** (o fast/batch si es un archivo)."
+  }
+ ],
+ "sources": [
+  {
+   "title": "Study guide for Exam AI-901: Microsoft Azure AI Fundamentals",
+   "url": "https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/ai-901"
+  },
+  {
+   "title": "Learning path: Get started with AI applications and agents on Azure",
+   "url": "https://learn.microsoft.com/en-us/training/paths/get-started-ai-apps-agents/"
+  },
+  {
+   "title": "Module: Get started with speech in Azure",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-speech-azure/"
+  },
+  {
+   "title": "Unit: Speech recognition (Get started with speech in Azure)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-speech-azure/2-speech-recognition"
+  },
+  {
+   "title": "Unit: Speech synthesis (Get started with speech in Azure)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-speech-azure/3-speech-synthesis"
+  },
+  {
+   "title": "Unit: Creating a speech-capable agent (Voice Live)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/get-started-speech-azure/4-voice-live"
+  },
+  {
+   "title": "Module: Introduction to AI speech concepts",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-ai-speech/"
+  },
+  {
+   "title": "Unit: Speech recognition (conceptos)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-ai-speech/3-speech-recognition"
+  },
+  {
+   "title": "Unit: Speech synthesis (conceptos)",
+   "url": "https://learn.microsoft.com/en-us/training/modules/introduction-ai-speech/4-speech-synthesis"
+  },
+  {
+   "title": "Module: Create speech-enabled apps with Azure Speech in Microsoft Foundry Tools",
+   "url": "https://learn.microsoft.com/en-us/training/modules/create-speech-enabled-apps"
+  },
+  {
+   "title": "Exercise: Get started with speech in Microsoft Foundry",
+   "url": "https://microsoftlearning.github.io/mslearn-ai-fundamentals/Instructions/Exercises/04a-speech.html"
+  },
+  {
+   "title": "What is Azure Speech? - Foundry Tools",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/overview"
+  },
+  {
+   "title": "Speech to text quickstart (Python)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-started-speech-to-text?pivots=programming-language-python"
+  },
+  {
+   "title": "Text to speech quickstart",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-started-text-to-speech"
+  },
+  {
+   "title": "Speech translation quickstart",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-started-speech-translation?pivots=programming-language-python"
+  },
+  {
+   "title": "Real-time diarization quickstart",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-started-stt-diarization?pivots=programming-language-python"
+  },
+  {
+   "title": "Fast transcription API",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/fast-transcription-create"
+  },
+  {
+   "title": "Batch transcription overview",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/batch-transcription"
+  },
+  {
+   "title": "Voice and sound with SSML",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-voice"
+  },
+  {
+   "title": "Voice Live API overview",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live"
+  },
+  {
+   "title": "Azure OpenAI speech to speech chat (Speech + Azure OpenAI)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/openai-speech"
+  },
+  {
+   "title": "Quickstart: Azure OpenAI audio generation (audio completions)",
+   "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/audio-completions-quickstart"
+  },
+  {
+   "title": "Foundry Models sold by Azure (audio models)",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure"
+  },
+  {
+   "title": "Migrate from retired intent recognition",
+   "url": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/migrate-intent-recognition"
+  }
+ ]
+}
