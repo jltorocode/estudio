@@ -121,7 +121,7 @@ Cada ejercicio es una **serie de ítems** que el alumno responde uno a uno con c
                                       // | "lectura" | "audicion" | "escritura" | "expresion" | "examen" | "mixto"
   "minutes": 10,
   "prompt": ["Instrucciones en 1–2 párrafos."],
-  "items": [ /* 8–15 ítems (6–40 permitidos) */ ],
+  "items": [ /* 8–15 ítems (6–40 permitidos; en escritura y expresión oral bastan 2–4 ítems free, sin relleno) */ ],
   "pass": 80,                         // opcional
   "hints": ["Consejo general antes de empezar (opcional)"],
   "explain": "Qué practicaste y la regla que tienes que llevarte (se muestra al terminar).",

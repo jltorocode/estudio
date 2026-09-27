@@ -315,7 +315,7 @@ function TextQuestions({ questions }: { questions: TextQuestion[] }) {
                     onClick={() => setPicked({ ...picked, [i]: k })}>{o}</button>
                 ))}
               </div>
-              {got != null && <p className={got === q.answer ? "tq-msg ok" : "tq-msg ko"}>{got === q.answer ? "✓ Correcto." : `✗ Era: ${q.options[q.answer]}.`} {q.explain && <span dangerouslySetInnerHTML={{ __html: fmt(q.explain) }} />}</p>}
+              {got != null && <p className={got === q.answer ? "tq-msg ok" : "tq-msg ko"}>{got === q.answer ? "✓ Correcto." : `✗ Era: ${q.options[q.answer].replace(/[.!?]+$/, "")}.`} {q.explain && <span dangerouslySetInnerHTML={{ __html: fmt(q.explain) }} />}</p>}
             </li>
           );
         })}

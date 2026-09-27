@@ -82,6 +82,8 @@ function check(s, file) {
   // Todo el inglés que se escucha o se escribe pasa por el corrector ortográfico
   const english = [];
   const en = (text, where) => { if (str(text)) english.push([text, where]); };
+  const englishAlt = [];
+  const enAlt = (text, where) => { if (str(text)) englishAlt.push([text, where]); };
   const vague = /^(entender|conocer|saber|comprender|aprender)\b/i;
   const counts = { lessons: 0, diagrams: 0, patterns: 0, dialogs: 0, words: 0, phrases: 0, texts: 0, exercises: 0, items: 0, speak: 0, dictation: 0, free: 0, freeSpeak: 0, freeWrite: 0, exams: 0, flashcards: 0, quiz: 0, listening: 0 };
 
@@ -170,7 +172,9 @@ function check(s, file) {
     need(str(x.explain), `${w}: explain`);
     if (x.pass != null) need(Number.isInteger(x.pass) && x.pass >= 50 && x.pass <= 100, `${w}: pass entre 50 y 100`);
     if (x.hints != null) need(Array.isArray(x.hints) && x.hints.every(str), `${w}: hints`);
-    need(Array.isArray(x.items) && x.items.length >= 6 && x.items.length <= 40, `${w}: entre 6 y 40 ítems`);
+    // Las tareas de escritura y expresión oral son largas: bastan 2 ítems
+    const minItems = x.kind === "escritura" || x.kind === "expresion" ? 2 : 6;
+    need(Array.isArray(x.items) && x.items.length >= minItems && x.items.length <= 40, `${w}: entre ${minItems} y 40 ítems`);
     (x.items || []).forEach((it, k) => {
       const iw = `${w} ítem ${k} (${it.t})`;
       counts.items++;
@@ -184,7 +188,9 @@ function check(s, file) {
         if (str(it.say)) counts.dictation++;
         for (const a of it.answers || []) {
           const forms = tryExpand(a);
-          if (it.lang !== "es") forms.forEach((f) => en(f, iw + " answer"));
+          // La forma que se muestra (la primera de la primera respuesta) va en inglés americano; las demás son
+          // respuestas aceptadas y pueden llevar grafía británica (el alumno puede escribir «realised»)
+          if (it.lang !== "es") forms.forEach((f, n) => (a === it.answers[0] && n === 0 ? en(f, iw + " answer") : enAlt(f, iw + " answer")));
           const g = forms[0] ? E.grade(forms[0], it.answers, { lang: it.lang || "en", strict: it.strict }) : null;
           if (g && !g.correct) e.push(`${iw}: su propia respuesta «${forms[0]}» no se da por buena`);
         }
@@ -281,6 +287,8 @@ function check(s, file) {
   const bad = new Map();
   for (const [text, where] of english)
     for (const word of enWords(text)) if (!known(word) && !allow.has(word.toLowerCase())) { if (!bad.has(word)) bad.set(word, where); }
+  for (const [text, where] of englishAlt)
+    for (const word of enWords(text)) if (!known(word) && !allow.has(word.toLowerCase()) && !BRITISH[word.toLowerCase()]) { if (!bad.has(word)) bad.set(word, where); }
   for (const [word, where] of bad) e.push(`ortografía: «${word}» no existe en el diccionario (${where}). Si es un nombre propio, añádelo a "allow" de la sección`);
   const brit = new Map();
   for (const [text, where] of english) for (const word of enWords(text)) { const us = BRITISH[word.toLowerCase()]; if (us && !brit.has(word.toLowerCase())) brit.set(word.toLowerCase(), [us, where]); }
