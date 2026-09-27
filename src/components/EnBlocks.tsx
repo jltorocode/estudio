@@ -295,8 +295,24 @@ export function TextBlock({ title, kind = "read", level, source, paragraphs, glo
   );
 }
 
+/** Permutación de 0…n-1 que depende solo de `seed` (Fisher–Yates con un generador congruencial). */
+function seededOrder(n: number, seed: string): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619) >>> 0;
+  const out = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const j = h % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function TextQuestions({ questions }: { questions: TextQuestion[] }) {
   const [picked, setPicked] = useState<Record<number, number>>({});
+  // Orden de las opciones barajado de forma fija por pregunta (igual en el servidor y en el navegador),
+  // para que la correcta no quede siempre en el mismo lugar
+  const orders = questions.map((q) => seededOrder(q.options.length, q.q));
   const answered = Object.keys(picked).length;
   const right = questions.filter((q, i) => picked[i] === q.answer).length;
   return (
@@ -309,10 +325,10 @@ function TextQuestions({ questions }: { questions: TextQuestion[] }) {
             <li key={i}>
               <H as="p" html={q.q} />
               <div className="en-tq-opts">
-                {q.options.map((o, k) => (
+                {orders[i].map((k) => (
                   <button key={k} type="button" disabled={got != null}
                     className={"btn small" + (got != null && k === q.answer ? " tq-ok" : got === k ? " tq-ko" : "")}
-                    onClick={() => setPicked({ ...picked, [i]: k })}>{o}</button>
+                    onClick={() => setPicked({ ...picked, [i]: k })}>{q.options[k]}</button>
                 ))}
               </div>
               {got != null && <p className={got === q.answer ? "tq-msg ok" : "tq-msg ko"}>{got === q.answer ? "✓ Correcto." : `✗ Era: ${q.options[q.answer].replace(/[.!?]+$/, "")}.`} {q.explain && <span dangerouslySetInnerHTML={{ __html: fmt(q.explain) }} />}</p>}
