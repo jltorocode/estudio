@@ -14,8 +14,32 @@ const FIXES = {
   overcome: "OW2 V ER0 K AH1 M",
   overtake: "OW2 V ER0 T EY1 K",
   overdo: "OW2 V ER0 D UW1",
-  overlook: "OW2 V ER0 L UH1 K"
+  overlook: "OW2 V ER0 L UH1 K",
+  // Números en -teen: acento principal en -teen (el CMU les pone dos acentos principales)
+  thirteen: "TH ER2 T IY1 N",
+  thirteenth: "TH ER2 T IY1 N TH",
+  fourteen: "F AO2 R T IY1 N",
+  fourteenth: "F AO2 R T IY1 N TH",
+  seventeen: "S EH2 V AH0 N T IY1 N",
+  seventeenth: "S EH2 V AH0 N T IY1 N TH",
+  nineteen: "N AY2 N T IY1 N",
+  nineteenth: "N AY2 N T IY1 N TH",
+  outside: "AW2 T S AY1 D",
+  // Vocales o acentos que el CMU trae mal
+  apparatus: "AE2 P AH0 R AE1 T AH0 S",
+  panorama: "P AE2 N AH0 R AE1 M AH0",
+  paperboy: "P EY1 P ER0 B OY2",
+  direction: "D IH0 R EH1 K SH AH0 N",
+  hospital: "HH AA1 S P IH0 T AH0 L",
+  probably: "P R AA1 B AH0 B L IY0",
+  thirty: "TH ER1 D IY0",
+  tomorrow: "T AH0 M AA1 R OW0",
+  toothbrush: "T UW1 TH B R AH2 SH",
+  invention: "IH0 N V EH1 N SH AH0 N"
 };
+
+// IPA fija cuando la división en sílabas automática coloca mal la marca de acento (house·work, no hou·swork)
+const IPA_FIXES = { housework: "ˈhaʊsˌwɝk" };
 
 /** Mapa palabra → lista de pronunciaciones ARPAbet (la primera es la más común). */
 export function dict() {
@@ -70,13 +94,17 @@ const clean = (w) => w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g
 
 /** IPA de una palabra (null si no está en el diccionario). */
 export function ipa(word) {
-  const p = dict().get(clean(word));
+  const w = clean(word);
+  if (IPA_FIXES[w]) return IPA_FIXES[w];
+  const p = dict().get(w);
   return p ? arpaToIpa(p[0]) : null;
 }
 
 /** IPA de todas las pronunciaciones registradas de una palabra. */
 export function ipaAll(word) {
-  return (dict().get(clean(word)) || []).map(arpaToIpa);
+  const w = clean(word);
+  if (IPA_FIXES[w]) return [IPA_FIXES[w]];
+  return (dict().get(w) || []).map(arpaToIpa);
 }
 
 /** ¿Existe la palabra en inglés? (acepta posesivos: brother's, boys'). */
