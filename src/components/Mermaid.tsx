@@ -26,7 +26,18 @@ function useThemeKey() {
   return key;
 }
 
-export default function Mermaid({ code }: { code: string }) {
+/**
+ * Mermaid lee las etiquetas como Markdown: una que empieza por «1. », «+ », «- » o «# » se toma como
+ * lista o título y se dibuja «Unsupported markdown: list». Un espacio duro tras la marca lo evita sin cambiar lo que se ve.
+ */
+export function escapeLabelMarkdown(code: string) {
+  return code.replace(/"([^"\n]*)"/g, (m, label: string) =>
+    '"' + label.replace(/^(\s*)(\d{1,9}[.)]|[-+*]|#{1,6}) /, "$1$2 ") + '"'
+  );
+}
+
+export default function Mermaid({ code: raw }: { code: string }) {
+  const code = escapeLabelMarkdown(raw);
   const ref = useRef<HTMLDivElement>(null);
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const themeKey = useThemeKey();
